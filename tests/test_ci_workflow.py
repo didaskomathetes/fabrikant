@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = ROOT.parent  # GitHub lädt nur <repo-root>/.github/workflows
+REPO_ROOT = ROOT  # Standalone-Repo: Repo-Root == Paket-Root; GitHub lädt nur <repo-root>/.github/workflows
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "fabrik-ci.yml"
 
 
@@ -61,4 +61,4 @@ def test_state_and_token_gitignored():
 
 def test_workflow_at_repo_root_where_github_discovers_it():
     assert WORKFLOW.is_file()
-    assert (REPO_ROOT / "fabrik").resolve() == ROOT
+    assert REPO_ROOT == ROOT  # Workflow liegt direkt an der Repo-Root (kein Monorepo-Unterverzeichnis)

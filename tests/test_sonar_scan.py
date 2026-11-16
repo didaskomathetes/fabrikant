@@ -437,7 +437,7 @@ _REPORT_API = {
                 "severity": "MINOR",
                 "impacts": [{"severity": "LOW"}, {"severity": "HIGH"}],
                 "message": "m",
-                "component": "quark-playground:fabrik:src/x.py",
+                "component": "fabrik:src/x.py",
                 "line": 3,
             }
         ],
@@ -483,6 +483,7 @@ def test_report_file_is_written_even_when_gate_is_red(tmp_path):
                 "SONAR_REPORT_FILE": str(report),
                 "SONAR_COMMENT_FILE": str(comment),
                 "SONAR_LINK_BASE": "https://github.com/o/r/blob/abc",
+                "SONAR_PROJECT_KEY": "fabrik",
             },
         )
     assert p.returncode == EX_GATE_RED, p.stdout + p.stderr
@@ -491,10 +492,10 @@ def test_report_file_is_written_even_when_gate_is_red(tmp_path):
     assert data["conditions"][0]["metricKey"] == "new_coverage"
     assert data["measures"] == {"new_coverage": "50.0", "coverage": "90"}  # period-Wert für new_*
     issue = data["issues"][0]
-    assert issue["path"] == "fabrik/src/x.py"  # Repo-relativ (Monorepo-Präfix), nicht Sonar-Component
+    assert issue["path"] == "src/x.py"  # Repo-relativ (Standalone: kein Monorepo-Präfix), nicht Sonar-Component
     assert issue["severity"] == "HIGH"  # höchste Impact-Severity statt Legacy-MINOR
-    assert data["dashboard"].endswith("dashboard?id=quark-playground:fabrik")
-    assert "[fabrik/src/x.py:3](https://github.com/o/r/blob/abc/fabrik/src/x.py#L3)" in comment.read_text()
+    assert data["dashboard"].endswith("dashboard?id=fabrik")
+    assert "[src/x.py:3](https://github.com/o/r/blob/abc/src/x.py#L3)" in comment.read_text()
 
 
 # --- Fremde Projekte (SONAR_PROJECT_DIR, SONAR_TEST_CMD, SONAR_SCANNER, SONAR_SCANNER_ARGS) ------------

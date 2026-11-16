@@ -21,7 +21,7 @@
 #   SONAR_ADMIN_USER      (Default: admin)
 #   SONAR_ADMIN_PASSWORD  (Default: admin — nur relevant, wenn kein Token gecacht ist)
 #   SONAR_COMPOSE_FILE    (Default: <fabrik>/compose.yaml)
-#   SONAR_PROJECT_KEY     (Default: quark-playground:fabrik)
+#   SONAR_PROJECT_KEY     (Default: fabrik)
 #   SONAR_PROJECT_DIR     zu scannendes Repo/Verzeichnis (Default: <fabrik>; relativ = zum Aufruf-cwd)
 #   SONAR_TEST_CMD        Tests + Coverage, `bash -c` im Projekt (Default: fabrik-pytest → coverage.xml);
 #                         Exit 1/2 = Tests rot
@@ -96,7 +96,7 @@ HOST_URL="${SONAR_HOST_URL:-http://127.0.0.1:9000}"
 ADMIN_USER="${SONAR_ADMIN_USER:-admin}"
 ADMIN_PASS="${SONAR_ADMIN_PASSWORD:-admin}"
 COMPOSE_FILE="${SONAR_COMPOSE_FILE:-$FABRIK_DIR/compose.yaml}"
-PROJECT_KEY="${SONAR_PROJECT_KEY:-quark-playground:fabrik}"
+PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrik}"
 PROJECT_DIR="$(cd "${SONAR_PROJECT_DIR:-$FABRIK_DIR}" && pwd)"
 DEFAULT_TEST_CMD='uv run pytest -m "not browser and not perf" --cov=src --cov-report=xml:coverage.xml -q'
 TEST_CMD="${SONAR_TEST_CMD:-$DEFAULT_TEST_CMD}"
