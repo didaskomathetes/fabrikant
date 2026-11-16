@@ -7,12 +7,12 @@ import json
 import os
 import time
 
-from .. import config
+from .. import config, sandbox
 from ..backends import AgentBackend, create_backend, known_backends
 from ..backends._oneshot import OneShotCliBackend
 from ..context import _cap, _substitute, step_workdir
 from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
-from ..gitops import github_env, subprocess_env, token_overrides
+from ..gitops import cleared_tokens, github_env, subprocess_env, token_overrides
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..spec_sources import resolve_relative
@@ -193,17 +193,21 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
     """`github_identity: dev|reviewer` → `gh` im Agent-Prozess läuft als diese Identity (ADR 0010).
 
     Nur One-Shot-CLI-Backends: `opencode serve` ist ein fremder Prozess, dessen Env
-    der Step nicht setzen kann. Ohne Identity bekommen One-Shot-Agents trotzdem die
-    Projekt-Einstellungen (Token-Datei, `commit_via` für `python -m fabrik.push`).
-    Liefert eine Fehlermeldung oder None."""
+    der Step nicht setzen kann. Ohne Identity bekommen One-Shot-Agents auf dem Host die
+    Projekt-Einstellungen (Token-Datei, `commit_via` für `python -m fabrik.push`). In der
+    Sandbox (ADR 0054) dagegen KEIN Token: ohne `github_identity` sind alle Token-Variablen leer —
+    sonst trüge jeder Container still das Builder-Token des Projekts (GitHub ist über den
+    Egress-Proxy erreichbar). Liefert eine Fehlermeldung oder None."""
     role = str(step.get("github_identity") or "").strip()
     if not role:
-        if isinstance(be, OneShotCliBackend):
+        if isinstance(be, OneShotCliBackend) and sandbox.sandbox_enabled():
+            be.extra_env = cleared_tokens()
+        elif isinstance(be, OneShotCliBackend):
             # Geerbte globale Tokens überlagern (leer = `gh` ignoriert sie), sonst läuft `gh` als falsche Identität.
             be.extra_env = {**token_overrides(), **subprocess_env()}
         return None
     if not isinstance(be, OneShotCliBackend):
-        return f"github_identity: nur für CLI-Backends (claude_code, codex, copilot), nicht {be.name}"
+        return f"github_identity: nur für CLI-Backends (claude_code, codex, copilot; opencode in der Sandbox), nicht {be.name}"
     try:
         be.extra_env = github_env(role)
     except (RuntimeError, ValueError) as e:

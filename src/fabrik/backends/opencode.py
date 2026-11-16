@@ -12,6 +12,10 @@ Versions-Erkennung (lazy, gecacht): `GET /api/info` → 2.x, sonst
 `type`, `content`, top-level `tokens/cost/…`) werden in die 1.x-Envelope
 (`{info, parts}`) normalisiert, damit `poll()` eine gemeinsame
 Statuslogik hat.
+
+Mit `FABRIK_SANDBOX=1` wählt die Registry stattdessen den One-Shot-Adapter
+:class:`~fabrik.backends.opencode_cli.OpenCodeCliBackend` (eigene opencode-Instanz im
+Sandbox-Container, Config aus einer LLM-Verbindung) — kein geteilter `opencode serve` auf dem Host.
 """
 
 from __future__ import annotations
