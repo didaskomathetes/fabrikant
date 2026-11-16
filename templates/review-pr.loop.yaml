@@ -10,6 +10,8 @@ params:
   poll: 300
   timeout: 1800
   review_context: []  # extra_context des Review-Steps
+  human_label: needs human  # eskalierte PRs (ADR 0057) nicht reviewen
+  stall_rounds: 2  # so viele changes_requested-Runden ohne Builder-Commit → Eskalation `stalled`
 loop:
   description: "Code-Review neuer/aktualisierter PRs mit Label {pr_label} — Reviewer {reviewer_model} via {reviewer_backend} (Builder ≠ Reviewer)"
   tier: 1
@@ -17,6 +19,7 @@ loop:
     - type: on_pr
       repo: "{repo}"
       labels: ["{pr_label}"]
+      exclude_labels: ["{human_label}"]
       poll: "{poll}"
       # Pro Head-SHA reconcilen (ADR 0023): ein wegen belegtem Projekt-Lock verworfener
       # Trigger wird nachgeholt; Kommentare ohne Push lösen keinen Re-Review aus.
@@ -29,3 +32,11 @@ loop:
       prompt_file: "{prompt_file}"
       extra_context: "{review_context}"
       timeout: "{timeout}"
+    # Deterministisch auf dem Host (ADR 0057 §4): Stillstand → Label + Eskalations-Kommentar.
+    - name: escalation-check
+      type: shell
+      cmd: >-
+        python3 {fabrik_home}/scripts/pr-status.py escalation-check {pr_number} --repo {repo}
+        --stall-rounds {stall_rounds} --human-label "{human_label}" --escalate
+      timeout: 120
+      gate: false  # Prüf-Hänger dürfen das Review nicht scheitern lassen (kein Retry der Session)

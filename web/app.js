@@ -2227,7 +2227,7 @@ function formatApproval(ctx) {
   if (!ctx) return "";
   const row = (k, vHtml) => `<div class="appr-row"><span class="appr-k">${k}</span><span class="appr-v">${vHtml}</span></div>`;
   const rows = [];
-  for (const key of ["condition", "why", "what"]) {
+  for (const key of ["kind", "condition", "why", "what"]) {
     if (ctx[key]) rows.push(row(t(`approval.${key}`), esc(ctx[key])));
   }
   for (const p of ctx.permissions || []) rows.push(row(t("approval.permissions"), esc(p)));

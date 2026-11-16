@@ -13,9 +13,9 @@ from dataclasses import asdict, dataclass, field, replace
 
 # Anzeige-Labels in fester Reihenfolge — gemeinsam für Run-Log, Chat und CLI
 # (die UI in web/app.js formatApproval hält dieselbe Reihenfolge).
-_TEXT_LINES = (("condition", "bedingung"), ("why", "warum"), ("what", "was"))
+_TEXT_LINES = (("kind", "art"), ("condition", "bedingung"), ("why", "warum"), ("what", "was"))
 
-_STR_FIELDS = ("reason", "step", "condition", "why", "what", "issue", "pr", "pr_title")
+_STR_FIELDS = ("reason", "kind", "step", "condition", "why", "what", "issue", "pr", "pr_title")
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,8 @@ class ApprovalRequest:
 
     reason:      Auslöser — "step" (approval/approval_when), "gate" (Step meldet
                  zur Laufzeit needs_approval), "tier" (Tier-Gate am Loop-Ende),
-                 "criticality" (human_gate).
+                 "criticality" (human_gate), "escalation" (an einen Menschen eskaliert, ADR 0057).
+    kind:        Eskalationsart bei reason "escalation" (config.ESCALATION_KINDS), sonst leer.
     step:        Name des wartenden Steps ("" beim Tier-Gate).
     condition:   erfüllte `approval_when`-Bedingung, z. B. "label = needs approval".
     why:         fachliche Begründung (Step-Feld `approval_reason`, z. B. LLM-reasoning).
@@ -37,6 +38,7 @@ class ApprovalRequest:
     """
 
     reason: str
+    kind: str = ""
     step: str = ""
     condition: str = ""
     why: str = ""

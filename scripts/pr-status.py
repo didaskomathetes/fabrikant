@@ -18,8 +18,18 @@ Doppel-Posts, Fehl-Merges). Dieses Script kapselt das über `gh`:
       Legt der PR eine ADR mit einer auf der Base schon vergebenen Nummer an → "wait"
       (ADR 0032; Reparatur: `scripts/check-adr-numbers.py fix`). Label
       'needs approval' → "wait": solche PRs mergt nur der approval-Loop (ADR 0011).
+      Label `needs human` (`--human-label`) → "wait": eskaliert (ADR 0057).
   new-comments <num> --repo R --state state/replied-comments.json
       → [{"key", "kind", "id", "author", "created", "body", ...}] (chronologisch)
+  escalation-check <num> --repo R [--stall-rounds N] [--max-rounds N] [--escalate] [--human-label L]
+      Deterministische Eskalation (ADR 0057, kein LLM): `stalled` = die letzten N Verdikte des
+      Reviewers sind `changes_requested`, ohne dass dazwischen ein Nicht-Merge-Commit kam;
+      `exhausted` = `--max-rounds` Fix-Commits verbraucht und weiter `changes_requested` am Head.
+      → {"action": "escalate" | "continue", "kind": "...", "reason": "..."}; `--escalate` setzt
+      dann Label + Marker-Kommentar (siehe `escalate`).
+  escalate <num> --repo R --kind K --why TEXT [--human-label L]
+      Eskalation an einen Menschen (ADR 0057): Kommentar mit Marker + Label L (Default
+      `needs human`). Idempotent: trägt das Item das Label schon, passiert nichts.
   threads <num> --repo R
       → offene (unresolved) Review-Threads
   resolve-thread <num> --repo R --comment-id <id>
@@ -36,6 +46,9 @@ Marker (HTML-Kommentare, im gerenderten Text unsichtbar):
       Nötig, weil GitHub Approve/Request-Changes auf eigene PRs verbietet.
   <!-- fabrik-reply -->
       Antwort des pr-reply-Loops. Solche Kommentare sind nie "neu" (kein Self-Loop).
+  <!-- fabrik-escalate kind=<kind>[ re=<key>,…] -->
+      Eskalation an einen Menschen (ADR 0057); nur der Host schreibt ihn (Agent-Text wird
+      von allen fabrik-Markern bereinigt). Der escalation-Loop zeigt den letzten an.
 """
 
 from __future__ import annotations
@@ -73,6 +86,12 @@ REBASE_STATES = {
 # ADR-PRs mit diesem Label mergt nur der approval-Loop nach menschlicher Freigabe
 # (ADR 0011) — pr-reply darf sie trotz Review-Approve nicht mergen.
 APPROVAL_LABEL = "needs approval"
+# Eskalation an einen Menschen (ADR 0057): Label stoppt review-pr/pr-reply/develop und Merge.
+HUMAN_LABEL = "needs human"
+ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
+BUILDER_ESCALATION_KINDS = ("blocked", "scope")  # nur diese darf der Builder per Entwurf setzen
+ESCALATE_MARKER_RE = re.compile(r"<!-- fabrik-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
+DEFAULT_STALL_ROUNDS = 2
 WAIT_STATES = {
     "BLOCKED": "Branch-Protection blockiert (Pflicht-Review/-Checks) — Mensch nötig",
     "UNSTABLE": "Checks nicht grün",
@@ -225,22 +244,30 @@ def latest_plain_review_state(reviews: list[dict]) -> str:
     return ""
 
 
-def merge_decision(pr: dict, reviewer: str, open_threads: int) -> dict:
+def has_label(item: dict, label: str) -> bool:
+    """Trägt PR/Issue (gh-JSON oder REST, `labels: [{name}]`) das Label?"""
+    return label in {str(lbl.get("name", "")) for lbl in item.get("labels") or []}
+
+
+def merge_decision(pr: dict, reviewer: str, open_threads: int, human_label: str = HUMAN_LABEL) -> dict:
     """Merge-Entscheidung aus `gh pr view --json mergeStateStatus,headRefOid,reviews,labels`.
 
     Freigabe = Review-Marker 'approved' für den aktuellen Head-SHA, sonst eine
     GitHub-Review APPROVED. Blockiert durch CHANGES_REQUESTED ohne Marker
     (Mensch/pr_review-Step) und durch offene Review-Threads. Konflikt/Rückstand
     (REBASE_STATES) → resolve_conflicts unabhängig von der Freigabe. Label
-    APPROVAL_LABEL → immer wait (Merge nur über den approval-Loop, ADR 0011)."""
+    APPROVAL_LABEL → immer wait (Merge nur über den approval-Loop, ADR 0011); `human_label`
+    → wait (eskaliert, ADR 0057)."""
     status = pr.get("mergeStateStatus", "")
     if status in REBASE_STATES:
         return {"action": ACTION_REBASE, "reason": f"{REBASE_STATES[status]} (mergeStateStatus={status})"}
-    if APPROVAL_LABEL in {str(lbl.get("name", "")) for lbl in pr.get("labels") or []}:
+    if has_label(pr, APPROVAL_LABEL):
         return {
             "action": ACTION_WAIT,
             "reason": f"Label '{APPROVAL_LABEL}' — Merge nur über den approval-Loop (ADR 0011)",
         }
+    if human_label and has_label(pr, human_label):
+        return {"action": ACTION_WAIT, "reason": f"Label '{human_label}' — an einen Menschen eskaliert (ADR 0057)"}
 
     reviews = pr.get("reviews") or []
     plain = latest_plain_review_state(reviews)
@@ -459,6 +486,131 @@ def new_comments(items: list[dict], replied: dict) -> list[dict]:
     return [i for i in items if i["key"] not in replied and REPLY_MARKER not in i["body"]]
 
 
+# ── Eskalation (ADR 0057) ──
+
+ESCALATE, CONTINUE = "escalate", "continue"
+FIX_COMMIT_PREFIX = "fabrik: address review"  # Commit-Message der Fix-Commits (Rundenzähler)
+
+
+def _verdicts(reviews: list[dict], reviewer: str) -> list[tuple[str, str]]:
+    """Alle (verdict, sha) aus Marker-Reviews des Reviewer-Accounts, chronologisch."""
+    out = []
+    for r in reviews:
+        m = REVIEW_MARKER_RE.search(r.get("body") or "")
+        if m and _login(r) == reviewer:
+            out.append((m.group(1), m.group(2)))
+    return out
+
+
+def _builder_changed(commits: list[dict], since: str, until: str) -> bool:
+    """Gibt es zwischen `since` (exklusiv) und `until` (inklusiv) einen Nicht-Merge-Commit?
+    `commits` = `GET pulls/{n}/commits` (chronologisch). Base-Syncs (`update-branch`) sind
+    Merge-Commits und zählen nicht als Änderung durch den Builder. Unbekannte SHAs (Force-Push)
+    → True, damit ein umgeschriebener Branch nie als Stillstand gilt."""
+    shas = [str(c.get("sha", "")) for c in commits]
+    if since not in shas or until not in shas:
+        return True
+    window = commits[shas.index(since) + 1 : shas.index(until) + 1]
+    return any(len(c.get("parents") or []) < 2 for c in window)
+
+
+def escalation_decision(
+    reviews: list[dict],
+    commits: list[dict],
+    *,
+    reviewer: str,
+    head: str,
+    stall_rounds: int = DEFAULT_STALL_ROUNDS,
+    max_rounds: int = 0,
+) -> dict:
+    """Deterministische Eskalation aus Review-Markern und PR-Commits (ADR 0057 §4).
+
+    stalled:   die letzten `stall_rounds` Verdikte sind `changes_requested`, und der Builder hat
+               dazwischen keinen Code geändert (siehe _builder_changed).
+    exhausted: `max_rounds` > 0 Fix-Commits (`FIX_COMMIT_PREFIX`) verbraucht und das Verdikt
+               am aktuellen Head ist weiter `changes_requested`."""
+    verdicts = _verdicts(reviews, reviewer)
+    if not verdicts or verdicts[-1][0] == VERDICT_APPROVED:
+        return {"action": CONTINUE, "reason": "kein offenes changes_requested"}
+    rounds = max(2, stall_rounds)
+    tail = verdicts[-rounds:]
+    stuck = (
+        len(tail) == rounds
+        and all(v == "changes_requested" for v, _ in tail)
+        and not any(_builder_changed(commits, a, b) for (_, a), (_, b) in zip(tail, tail[1:], strict=False))
+    )
+    if stuck:
+        shas = " → ".join(sha[:7] for _, sha in tail)
+        return {
+            "action": ESCALATE,
+            "kind": "stalled",
+            "reason": f"{rounds} Runden changes_requested ohne Code-Änderung des Builders ({shas})",
+        }
+    fixes = sum(1 for c in commits if str((c.get("commit") or {}).get("message", "")).startswith(FIX_COMMIT_PREFIX))
+    if max_rounds and fixes >= max_rounds and verdicts[-1] == ("changes_requested", head):
+        return {
+            "action": ESCALATE,
+            "kind": "exhausted",
+            "reason": f"{fixes} Fix-Runden verbraucht (Limit {max_rounds}), Verdikt am Head {head[:7]} weiter changes_requested",
+        }
+    return {"action": CONTINUE, "reason": f"Verdikt changes_requested, {fixes} Fix-Runde(n), kein Stillstand"}
+
+
+def escalate_marker(kind: str, re_keys: str = "") -> str:
+    """Eskalations-Marker (ADR 0057); `re_keys` = kommagetrennte Kommentar-Keys (optional)."""
+    return f"<!-- fabrik-escalate kind={kind}{f' re={re_keys}' if re_keys else ''} -->"
+
+
+def escalation_comment(kind: str, why: str) -> str:
+    """Text des Eskalations-Kommentars (sichtbar + Marker für den escalation-Loop)."""
+    return (
+        f"**fabrik: an einen Menschen eskaliert** (`{kind}`)\n\n{why}\n\n"
+        "Review, Reply und Merge pausieren, bis das Label entfernt ist. "
+        "Entscheidung im fabrik-Gate: Fortsetzen, Neu zuschneiden oder Aufgeben.\n\n"
+        f"{escalate_marker(kind)}"
+    )
+
+
+def escalate(repo: str, num: int, kind: str, why: str, human_label: str = HUMAN_LABEL) -> dict:
+    """Kommentar mit Marker posten und Label setzen; idempotent über das Label."""
+    if kind not in ESCALATION_KINDS:
+        raise ValueError(f"unbekannte Eskalationsart {kind!r} (erlaubt: {ESCALATION_KINDS})")
+    item = _gh_json("api", f"repos/{repo}/issues/{num}")
+    if has_label(item, human_label):
+        return {"escalated": False, "reason": f"Label '{human_label}' schon gesetzt"}
+    res = _gh_json(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{repo}/issues/{num}/comments",
+        "--input",
+        "-",
+        stdin=json.dumps({"body": escalation_comment(kind, why)}),
+    )
+    _gh_text("api", "-X", "POST", f"repos/{repo}/issues/{num}/labels", "-f", f"labels[]={human_label}")
+    return {"escalated": True, "kind": kind, "url": res.get("html_url", "")}
+
+
+def escalation_check(
+    repo: str, num: int, *, stall_rounds: int, max_rounds: int, apply: bool, human_label: str = HUMAN_LABEL
+) -> dict:
+    """`escalation-check`: Entscheidung aus dem PR-Stand, mit `apply` gleich eskalieren."""
+    pr = _gh_json("pr", "view", str(num), "--repo", repo, "--json", "headRefOid,reviews,labels")
+    if human_label and has_label(pr, human_label):
+        return {"action": CONTINUE, "reason": f"Label '{human_label}' schon gesetzt"}
+    result = escalation_decision(
+        pr.get("reviews") or [],
+        fetch_paged(f"repos/{repo}/pulls/{num}/commits"),
+        reviewer=reviewer_login(),
+        head=str(pr.get("headRefOid") or ""),
+        stall_rounds=stall_rounds,
+        max_rounds=max_rounds,
+    )
+    if apply and result["action"] == ESCALATE:
+        result |= escalate(repo, num, result["kind"], result["reason"], human_label)
+    return result
+
+
 # ── CLI ──
 
 
@@ -467,7 +619,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     cmds = {
         name: sub.add_parser(name)
-        for name in ("post-review", "merge-check", "new-comments", "threads", "resolve-thread")
+        for name in (
+            "post-review",
+            "merge-check",
+            "new-comments",
+            "threads",
+            "resolve-thread",
+            "escalation-check",
+            "escalate",
+        )
     }
     for sp in cmds.values():
         sp.add_argument("num", type=int)
@@ -476,6 +636,13 @@ def main(argv: list[str] | None = None) -> int:
     cmds["post-review"].add_argument("--comment-only", action="store_true")
     cmds["new-comments"].add_argument("--state", type=Path, required=True)
     cmds["resolve-thread"].add_argument("--comment-id", type=int, required=True)
+    for name in ("merge-check", "escalation-check", "escalate"):
+        cmds[name].add_argument("--human-label", default=HUMAN_LABEL, help="Eskalations-Label (ADR 0057)")
+    cmds["escalation-check"].add_argument("--stall-rounds", type=int, default=DEFAULT_STALL_ROUNDS)
+    cmds["escalation-check"].add_argument("--max-rounds", type=int, default=0, help="0 = keine exhausted-Prüfung")
+    cmds["escalation-check"].add_argument("--escalate", action="store_true", help="bei Treffer Label + Kommentar")
+    cmds["escalate"].add_argument("--kind", required=True, choices=ESCALATION_KINDS)
+    cmds["escalate"].add_argument("--why", required=True)
     args = p.parse_args(argv)
     repo, num = args.repo, args.num
 
@@ -489,7 +656,7 @@ def main(argv: list[str] | None = None) -> int:
         result = (
             {"action": ACTION_WAIT, "reason": collision}
             if collision
-            else merge_decision(pr, reviewer_login(), len(open_threads(fetch_threads(repo, num))))
+            else merge_decision(pr, reviewer_login(), len(open_threads(fetch_threads(repo, num))), args.human_label)
         )
     elif args.cmd == "new-comments":
         items = collect_comments(
@@ -499,6 +666,17 @@ def main(argv: list[str] | None = None) -> int:
             fetch_paged(f"repos/{repo}/pulls/{num}/comments"),
         )
         result = new_comments(items, load_replied(args.state))
+    elif args.cmd == "escalation-check":
+        result = escalation_check(
+            repo,
+            num,
+            stall_rounds=args.stall_rounds,
+            max_rounds=args.max_rounds,
+            apply=args.escalate,
+            human_label=args.human_label,
+        )
+    elif args.cmd == "escalate":
+        result = escalate(repo, num, args.kind, args.why, args.human_label)
     elif args.cmd == "threads":
         result = open_threads(fetch_threads(repo, num))
     else:

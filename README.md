@@ -266,6 +266,7 @@ fabrik validate
 | `review` | `model` (Pflicht), `backend`/`endpoint` (wie `agent`), `target` (optional), `prompt_file` (optional; Auflösung wie bei `agent`) | Cross-Model Cold Critic (ADR 0003): Agent-Session mit **anderem Modell** als der Builder-Step (Engine-Check). Reviewer antwortet mit JSON-Verdict (`approved`\|`changes_requested` + Findings, optional `acceptance` — AC-Verifikation `[{criterion, status: met\|unmet\|unverifiable, evidence}]`, ADR 0013; ungültig → kein Verdict) → landet im Run-Record (`step.review`). `changes_requested` → Run `fail`. `target` Default: Output des letzten Agent-Steps |
 | `pr_review` | `repo`, `pr`, `model` (Pflicht), `backend`, `max_rounds` (Default 2), `max_findings` (Default 5), `fix_backend`/`fix_model`/`fix_variant` (Default: letzter Agent-Step), `fix_timeout` (Default 1800 s), `fix_checks: [cmd]`, `fix_check_timeout` (Default 900 s) | LLM-Review des PR-Diffs + GitHub-Review; bei `changes_requested` fixt der Builder (Backend/Modell/Variante des letzten `agent`-Steps) und pusht. `fix_checks` (z. B. Lint + Test) laufen nach dem Fix **vor** Commit/Push; ein roter Check bricht den Step ab (`outcome`), nichts wird gepusht |
 | `pr_merge` | `repo`, `pr`, `method` (`squash`\|`merge`\|`rebase`), `update_branch` (Default `false`) | PR mergen. `update_branch: true`: liegt der PR hinter der Base, zuerst `update-branch` (Merge der Base in den PR) und auf Mergebarkeit warten; Konflikt = Step rot (`outcome`). Der Update-Merge-Commit wird **nicht** erneut getestet (Trade-off: sonst bliebe der PR hinter einer wandernden `main` stranden) |
+| `escalation` | `repo`, `item` (Default `{pr_number}`, sonst `{issue_number}`), `label` (Default `needs human`) | Eskalation an einen Menschen (ADR 0057): Trägt das Item das Label, pausiert der Run mit Art (`blocked`\|`stalled`\|`exhausted`\|`scope`\|`access`) und Begründung aus dem letzten `fabrik-escalate`-Kommentar. Freigeben = Fortsetzen (Label wird entfernt), Ablehnen = Aufgeben (Label bleibt). Das Label setzt `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`) |
 
 ### `issue`-Step
 
@@ -511,7 +512,9 @@ ADR 0005):
   zuerst, unlabelte zuletzt. `skip_blocked: true` (ADR 0031, nur mit
   `reconcile`): Issues mit unerledigten GitHub-"blocked by"-Dependencies starten
   nicht, sondern beim ersten Poll, nachdem der letzte Blocker als `completed`
-  geschlossen wurde (`duplicate`/`not_planned` blockieren weiter)
+  geschlossen wurde (`duplicate`/`not_planned` blockieren weiter).
+  `exclude_labels` (auch an **on_pr**, ADR 0057, z. B. `[needs human]`): Items mit einem
+  dieser Labels starten nicht; nach dem Entfernen des Labels feuern sie wieder
 - **on_pr** — pollt GitHub-PRs (`repo` aus Spec oder Trigger, optional
   `labels` (AND-Semantik), `poll` in Sekunden, `states: [open|closed]`
   (Default `[open]`)), startet den Loop bei neuen/aktualisierten PRs

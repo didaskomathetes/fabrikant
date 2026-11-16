@@ -56,6 +56,7 @@ from .steps import (
     _notify,
     _step_agent,
     _step_alert_route,
+    _step_escalation,
     _step_git,
     _step_http,
     _step_human_gate,
@@ -176,6 +177,8 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
         intent = _issue_intent(step)
     elif t == "human_gate":
         intent = "Kritizitäts-Check (menschliche Freigabe bei kritisch)"
+    elif t == "escalation":
+        intent = "Eskalation an einen Menschen (ADR 0057): warten, dann fortsetzen"
     elif t == "report":
         intent = f"Report: {step.get('write', '(nur Log)')}"
     elif t == "notify":
@@ -962,6 +965,8 @@ def _dispatch_step(ctx: dict, step: dict, emit) -> dict:
         return _step_issue(ctx, step)
     if t == "human_gate":
         return _step_human_gate(ctx, step, emit)
+    if t == "escalation":
+        return _step_escalation(ctx, step, emit)
     if t == "report":
         text = _substitute(step.get("text", ""), ctx)
         w = step.get("write")
