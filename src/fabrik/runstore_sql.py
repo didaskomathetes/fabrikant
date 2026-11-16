@@ -159,6 +159,7 @@ _REVIEW_FIELDS: Mapping[str, str] = {"verdict": _TEXT, "model": _TEXT, "summary"
 _FINDING_FIELDS = ("severity", "text", "suggestion")  # Modellfelder eines Findings (Rest: LLM-Fremdfelder)
 _APPROVAL_FIELDS: Mapping[str, str] = {
     "reason": _TEXT,
+    "kind": _TEXT,
     "step": _TEXT,
     "condition": _TEXT,
     "why": _TEXT,

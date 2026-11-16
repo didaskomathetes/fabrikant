@@ -225,6 +225,7 @@ def _parse_approval(d: Any, run_status: RunStatus, rec: Mapping[str, Any]) -> Ap
     return Approval(
         status=_approval_status(run_status, rec),
         reason=reason,
+        kind=_text(d.get("kind")),
         what=_text(d.get("what")),
         step=_text(d.get("step")),
         issue=_text(d.get("issue")),

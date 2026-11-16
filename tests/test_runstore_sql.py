@@ -86,7 +86,7 @@ def test_upgrade_head_on_empty_db_matches_schema(tmp_path):
     engine.dispose()
     assert diff == []
     assert tables == set(metadata.tables) | {"alembic_version"}
-    assert version == "0003"
+    assert version == "0004"
 
 
 def test_migrate_is_idempotent(tmp_path):
@@ -461,4 +461,23 @@ def test_step_verdict_round_trips_and_migration_keeps_child_rows(sql, tmp_path):
     with engine.connect() as conn:
         assert conn.exec_driver_sql("SELECT count(*) FROM step_usage").scalar() == 1
         assert conn.exec_driver_sql("SELECT verdict FROM steps").scalar() is None
+    engine.dispose()
+
+
+def test_escalation_approval_round_trips_and_migration_keeps_permissions(sql, tmp_path):
+    """ADR 0057: reason=escalation + kind im SQL-Store; 0003 → 0004 verliert keine Freigabe-Rechte."""
+    approval = {"reason": "escalation", "kind": "stalled", "why": "2 Runden ohne Änderung"}
+    sql.create("p", "e", _rec(id="e", status="needs_approval", approval=approval))
+    assert runs.get_run("e", "p")["approval"] == approval
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'up4.db'}")
+    migrate(engine, "0003")
+    with engine.begin() as conn:
+        _seed_step(conn)
+        conn.execute(text("INSERT INTO approvals (run_id, status, reason) VALUES ('r1', 'pending', 'gate')"))
+        conn.execute(text("INSERT INTO approval_permissions (run_id, seq, permission) VALUES ('r1', 0, 'push')"))
+    migrate(engine)
+    with engine.begin() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM approval_permissions").scalar() == 1
+        conn.execute(text("UPDATE approvals SET reason = 'escalation', kind = 'blocked' WHERE run_id = 'r1'"))
     engine.dispose()
