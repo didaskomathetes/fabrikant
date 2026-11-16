@@ -1,0 +1,113 @@
+# Loop-Vorlage `develop` (dual-identity, ADR 0010): getriggtes Issue → Branch → Agent →
+# Lint/Test → PR → LLM-Review → Human-Gate (nur bei kritisch) → Merge.
+# Einbindung (ADR 0047):  develop: {use: develop, with: {prompt_file: ..., lint_cmd: ..., ...}}
+# `params`: Defaults; `null` = Pflicht (per `with:` oder Spec-`vars:`). Unbekannte {name}
+# bleiben Laufzeit-Variablen der Engine. Weitere Steps: `insert: [{after: <step>, steps: [...]}]`.
+params:
+  repo: null  # owner/name — Issues, PR, Review, Merge
+  prompt_file: null  # Builder-Prompt (relativ zur Spec, Fallback FABRIK_HOME)
+  lint_cmd: null
+  test_cmd: null
+  builder_model: null  # Builder-Modell = Konfiguration (ADR 0022)
+  builder_variant: ""  # opencode: Modell-Variante (Reasoning-Aufwand, z. B. medium); leer = Default des Modells
+  reviewer_model: null  # Cross-Model-Reviewer: ≠ Builder (ADR 0001)
+  builder_backend: claude_code
+  reviewer_backend: copilot
+  gate_provider: copilot  # gepinnt: ein UI-Toggle darf den Merge-Gate nicht umschalten
+  base: main
+  branch_prefix: fabrik/auto
+  issue_label: ready for development
+  pr_label: fabrik-develop  # develop-PRs; review-pr/pr-reply filtern auf `fabrik` (manuelle/Refactor-PRs) — bewusst getrennt, sonst Doppel-Review + Human-Gate-Bypass
+  adr_paths: [docs/adr]  # repo-relativ (Monorepo: Unterverzeichnis-Präfix)
+  commit_add: [":/"]  # Repo-Wurzel — workdir kann ein Subpfad sein
+  review_rounds: 2
+  fix_timeout: 1800  # Timeout je Fix-Runde des PR-Reviews (Builder-Session), s
+  builder_timeout: 3600
+  poll: 60
+  priority_labels: [p0, p1, p2, p3]
+  builder_context: []  # extra_context des Builder-Steps (changes)
+  review_context: []  # extra_context des Review-Steps (pr_review: Review- und Fix-Prompt)
+loop:
+  description: "Issue-Entwicklung (dual-identity, ADR 0010): Issue → PR → LLM-Review → Merge (Mensch nur bei kritisch)"
+  tier: 2
+  triggers:
+    - type: on_issue
+      repo: "{repo}"
+      labels: ["{issue_label}"]
+      poll: "{poll}"
+      reconcile: true  # Bestand nach Restart abarbeiten (ADR 0014)
+      max_per_poll: 2
+      priority_labels: "{priority_labels}"  # ADR 0021
+      # Nie mit unerledigten "blocked by"-Dependencies starten (ADR 0031).
+      skip_blocked: true
+  steps:
+    - name: prepare
+      type: git
+      branch: "{branch_prefix}/{issue_number}"
+    - name: changes
+      type: agent
+      backend: "{builder_backend}"
+      model: "{builder_model}"
+      variant: "{builder_variant}"
+      prompt_file: "{prompt_file}"
+      extra_context: "{builder_context}"
+      timeout: "{builder_timeout}"
+    - name: lint
+      type: shell
+      cmd: "{lint_cmd}"
+      timeout: 300
+      failure_kind: outcome  # rot = echtes Ergebnis (ADR 0035); Exit 126/127/75/78 haben Vorrang
+    - name: test
+      type: shell
+      cmd: "{test_cmd}"
+      timeout: 900
+      failure_kind: outcome
+    - name: ship
+      type: git
+      commit:
+        add: "{commit_add}"
+        message: "fabrik: {issue_title} (Issue #{issue_number}, auto)"
+      push: true
+    - name: pr
+      type: pr
+      repo: "{repo}"
+      base: "{base}"
+      head: "{branch_prefix}/{issue_number}"
+      labels: ["{pr_label}"]
+      title: "fabrik: {issue_title} (auto)"
+      # `Closes #N`: GitHub schließt das Issue beim Merge (ADR 0013). Fehlt issue_number,
+      # entsteht kein gültiges Closing-Keyword.
+      body: |
+        Closes #{issue_number}
+
+        Automatisch vom fabrik-Loop `develop` erstellt (Issue #{issue_number}).
+
+        Dual-Identity-Pipeline (ADR 0010): entwickelt von der Agent-App,
+        reviewt vom Repo-Owner (PAT).
+
+        ## Änderungen
+        - Implementierung des Issues
+        - Tests: `{test_cmd}` grün
+        - Lint: `{lint_cmd}` grün
+    - name: review
+      type: pr_review
+      repo: "{repo}"
+      backend: "{reviewer_backend}"
+      model: "{reviewer_model}"
+      max_rounds: "{review_rounds}"
+      extra_context: "{review_context}"
+      fix_timeout: "{fix_timeout}"
+      # Fix-Runden committen nach lint/test von `ship` — dieselben Checks vor jedem Fix-Push.
+      fix_checks: ["{lint_cmd}", "{test_cmd}"]
+    - name: gate
+      type: human_gate
+      repo: "{repo}"
+      provider: "{gate_provider}"
+      adr_paths: "{adr_paths}"
+    - name: merge
+      type: pr_merge
+      repo: "{repo}"
+      method: squash
+      # PR fiel während Review/Gate hinter die Base zurück → vor dem Merge nachziehen; Konflikt = roter Run
+      # (Failure-Alert). Der Update-Merge-Commit wird nicht erneut getestet (siehe pr_merge).
+      update_branch: true

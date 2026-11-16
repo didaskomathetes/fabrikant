@@ -1,0 +1,16 @@
+runs/
+state/
+sessionlog.db
+sessionlog.db-shm
+sessionlog.db-wal
+__pycache__/
+.venv/
+coverage.xml
+coverage.json
+fabrik.env
+selftest/reports/
+# GitHub-App-Private-Keys gehören nach ~/.config/fabrik/ (0600), nie ins Repo
+*.pem
+# Dienstliche Projekt-Specs/Prompts bleiben lokal (privates Repo, keine Firmendetails)
+projects/ai-lab-*.fabrik.yaml
+prompts/ailab-*.prompt.md

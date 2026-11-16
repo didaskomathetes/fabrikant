@@ -1,0 +1,13 @@
+# Alle 5 min — Merges kommen frühestens im Minutentakt; pr-reply läuft alle 5 min,
+# Leerlauf-Fenster zum Neustarten gibt es daher regelmäßig.
+
+[Unit]
+Description=Fabrik — autoupdate every 5 min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

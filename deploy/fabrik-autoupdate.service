@@ -1,0 +1,29 @@
+# fabrik-autoupdate — main nachziehen + fabrik.service nach Merges neu starten.
+#
+# ff-only-Pull von origin/main im Haupt-Checkout, bei Änderungen unter fabrik/
+# Neustart von fabrik.service — aber nur im Leerlauf (kein running/queued Run);
+# sonst vertagt auf den nächsten Timer-Tick.
+#
+# Install (setzt fabrik.service voraus):
+#   cp fabrik/deploy/fabrik-autoupdate.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fabrik-autoupdate.timer
+#
+# Status/Logs:
+#   systemctl --user status fabrik-autoupdate.timer
+#   journalctl --user -u fabrik-autoupdate.service -f
+#
+# Pfad: FABRIK_HOME (= fabrik/-Verzeichnis des Checkouts) kommt aus
+# ~/.config/fabrik/deploy.env — siehe fabrik/README.md, „Lokaler Betrieb".
+
+[Unit]
+Description=Fabrik — main nachziehen und fabrik.service nach Merges neu starten
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/fabrik/deploy.env
+# uv für `uv sync` bei geänderten Abhängigkeiten
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/sh -c 'cd "$${FABRIK_HOME:?FABRIK_HOME fehlt, siehe ~/.config/fabrik/deploy.env}" && exec .venv/bin/python scripts/fabrik-autoupdate.py'

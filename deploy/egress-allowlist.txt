@@ -1,0 +1,17 @@
+# fabrik: Egress-Allowlist (Default-Deny-Proxy, ADR 0051)
+#
+# Domänen, die Agent-Container (Sandbox-Netzwerk `fabrik-sandbox`) über den
+# Proxy erreichen dürfen. Subdomänen sind inkludiert. Zeile pro Domain
+# (Hostname mit mind. zwei Labels; `com` oder IP-Adressen werden abgelehnt),
+# `#`-Kommentare erlaubt. Ohne diesen Eintrag erlaubt der Proxy NICHTS
+# (Default-Deny). Die Builtins (github.com — inkl. `api.github.com` via
+# Subdomänen-Matching —, models.dev) kommen zusätzlich dazu —
+# siehe `egress.BUILTIN_ALLOWLIST`.
+#
+# Typische Ergänzungen (Model-Provider):
+# huggingface.co
+# inference.hetzner.com
+#
+# Python-Pakete (`uv lock`/`uv sync`; nur lesend, Hashes prüft uv):
+# pypi.org
+# files.pythonhosted.org

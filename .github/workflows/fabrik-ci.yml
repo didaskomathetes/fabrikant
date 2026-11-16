@@ -1,0 +1,40 @@
+# Fabrik-CI. Siehe docs/ci.md (Secrets, Playwright, Artefakt-Regeln).
+name: fabrik-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint, Typecheck, SAST (ruff, pyright, bandit)
+        run: bash scripts/lint.sh
+      - name: Specs validieren (vars, Templates, Steps — ohne host-abhängige root-Prüfung)
+        run: uv run fabrik validate --offline projects/*.fabrik.yaml
+      - name: Unit tests (ohne Browser, parallel)
+        run: uv run pytest -m "not browser and not perf" -n auto
+      - name: Perf-Budget-Tests (seriell, sonst Wall-Clock-Rauschen)
+        run: uv run pytest -m perf
+
+  browser:
+    # Playwright/Chromium-Tests. Blockierend: Fehler lassen den Job fehlschlagen.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Install Chromium + System-Abhängigkeiten
+        run: uv run playwright install --with-deps chromium
+      - name: Browser tests
+        run: uv run pytest -m browser

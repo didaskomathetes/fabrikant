@@ -1,0 +1,134 @@
+"""Step: state — deterministischer, persistenter State über Runs hinweg.
+
+ADR 0001 §4: Cron-Loops (review-pr, pr-reply) halten "bereits verarbeitet"
+in JSON-Dateien unter `state/`. Der Agent soll diese NICHT selbst anfassen —
+der `state`-Step macht get/set/add atomar und emitet `state_value` als Variable.
+
+Aktionen:
+- `get`: liest `key`, emitet `state_value` (leer wenn nicht vorhanden).
+- `set`: `value` (Substitution erlaubt) ersetzt `key`.
+- `add`: numerisch addiert zu `key` (Default 0); nicht-numerische `value`
+  werden an eine Liste appendet. Für Round-Caps / Zähler.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import tempfile
+from pathlib import Path
+
+from ..context import _substitute
+from ..filelock import locked
+
+_VALID_ACTIONS = ("get", "set", "add")
+
+
+def _state_file(ctx: dict, step: dict) -> Path:
+    f = step.get("file")
+    p = Path(_substitute(str(f), ctx)) if f else Path("state") / f"{ctx.get('project', 'default')}.json"
+    if not p.is_absolute():
+        p = Path(ctx.get("root", ".")) / p
+    return p.resolve()
+
+
+def _load(p: Path) -> dict:
+    with contextlib.suppress(FileNotFoundError):
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def _atomic_write(p: Path, data: dict) -> None:
+    """tmp-Write + os.replace: ein abgebrochener Run hinterlässt kein Halbwerk."""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".state-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp, p)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def _to_ctx_val(v: object) -> str | int | float | bool:
+    return v if isinstance(v, (str, int, float, bool)) else json.dumps(v, ensure_ascii=False)
+
+
+def _num(x: object) -> float:
+    """Best-effort: Zahl (auch als String, z. B. von `set`) → float; sonst 0."""
+    if isinstance(x, bool):
+        return 0.0
+    if isinstance(x, (int, float)):
+        return float(x)
+    if isinstance(x, str):
+        try:
+            return float(x)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _step_state(ctx: dict, step: dict, emit) -> dict:
+    action = str(step.get("action", "")).strip().lower()
+    if action not in _VALID_ACTIONS:
+        return {
+            "ok": False,
+            "summary": f"state-Step: unbekannte action '{action}' (verfügbar: {', '.join(_VALID_ACTIONS)})",
+        }
+    key = str(step.get("key", "")).strip()
+    if not key:
+        return {"ok": False, "summary": "state-Step: key fehlt"}
+
+    p = _state_file(ctx, step)
+    root_res = Path(ctx.get("root", ".")).resolve()
+    if root_res not in p.parents:
+        return {
+            "ok": False,
+            "summary": f"BLOCKED: State-Pfad {p} liegt außerhalb der Projekt-Root {root_res} (Path-Traversal-Schutz)",
+        }
+
+    # Read-Modify-Write unter Datei-Lock: parallele Runs (ADR 0028) verlieren keine Updates.
+    with locked(p):
+        return _apply(ctx, step, emit, p, action, key)
+
+
+def _apply(ctx: dict, step: dict, emit, p: Path, action: str, key: str) -> dict:
+    data = _load(p)
+
+    if action == "get":
+        val = data.get(key)
+        ctx["state_value"] = "" if val is None else _to_ctx_val(val)
+        emit(f"  state get {key} = {ctx['state_value']!r} ({p})")
+        return {"ok": True, "state_value": ctx["state_value"], "summary": f"state {key} = {ctx['state_value']!r}"}
+
+    raw = _substitute(str(step.get("value", "")), ctx)
+    if action == "set":
+        data[key] = raw
+        _atomic_write(p, data)
+        ctx["state_value"] = raw
+        emit(f"  state set {key} = {raw!r} → {p}")
+        return {"ok": True, "state_value": raw, "summary": f"state {key} = {raw!r}"}
+
+    # add: numerisch addieren, sonst an Liste appenden
+    cur = data.get(key, 0)
+    new: object
+    try:
+        delta = float(raw)
+        base = _num(cur)
+        new = base + delta
+        new = int(new) if float(new).is_integer() else new
+    except ValueError:
+        cur = cur if isinstance(cur, list) else []
+        cur.append(raw)
+        new = cur
+    data[key] = new
+    _atomic_write(p, data)
+    ctx["state_value"] = _to_ctx_val(new)
+    emit(f"  state add {key} += {raw!r} → {new!r}")
+    return {"ok": True, "state_value": ctx["state_value"], "summary": f"state {key} += {raw!r} → {new!r}"}

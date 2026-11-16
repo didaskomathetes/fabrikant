@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="app.title">FABRIK</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="logo">FABRIK<span class="sub" data-i18n="logo.sub">Software-Fabrik · agentic loops</span></div>
+  <div class="hdr-right">
+    <div id="health" class="health">…</div>
+    <button id="langtoggle" class="ghost" title="Sprache wechseln" data-i18n-title="header.lang">DE</button>
+    <span id="whoami" class="hidden"><span id="whoami-name"></span> <button id="logout" class="ghost" data-i18n="header.logout">logout</button></span>
+    <button id="settingstoggle" class="ghost" title="Einstellungen" data-i18n-title="header.settings">⚙</button>
+    <button id="chattoggle" class="ghost" data-i18n="header.chat">✉ chat</button>
+    <button id="schattoggle" class="ghost" data-i18n="header.schedule">📅 plan</button>
+  </div>
+</header>
+<div id="loginview" class="hidden">
+  <form id="loginform">
+    <h2 data-i18n="login.title">Anmelden</h2>
+    <input id="login-user" autocomplete="username" placeholder="Benutzer" data-i18n-ph="login.user" required>
+    <input id="login-pass" type="password" autocomplete="current-password" placeholder="Passwort" data-i18n-ph="login.password" required>
+    <button type="submit" data-i18n="login.submit">login</button>
+    <div id="login-error" class="error"></div>
+  </form>
+  <div id="oidclogin" class="hidden">
+    <h2>Abgemeldet</h2>
+    <a href="/api/login/oidc">Über den IdP anmelden</a>
+  </div>
+</div>
+<main>
+  <section id="projects" class="col left"></section>
+  <section id="detail" class="col right">
+    <div id="placeholder" class="placeholder" data-i18n="placeholder.selectProject">Projekt wählen</div>
+  </section>
+</main>
+<div id="runbackdrop" class="runbackdrop hidden"></div>
+<div id="runpanel" class="runpanel hidden" role="dialog" aria-modal="true" aria-labelledby="runtitle">
+  <div class="runbar">
+    <span id="runtitle"></span>
+    <span id="runstatus" class="badge"></span>
+    <span id="runactions" style="display:flex;gap:6px"></span>
+    <button id="runclose" class="ghost" title="schließen (Esc)" data-i18n-title="run.close">✕</button>
+  </div>
+  <div class="runtabbar">
+    <span id="runtabs" role="tablist">
+      <button data-tab="overview" class="ghost active" role="tab" data-i18n="run.tab.overview">Übersicht</button>
+      <button data-tab="log" class="ghost" role="tab" data-i18n="run.tab.log">Log</button>
+      <button data-tab="transcript" class="ghost" role="tab" data-i18n="run.tab.transcript">Transkript</button>
+    </span>
+    <label id="runfollowlabel" class="hidden"><input type="checkbox" id="runfollow" checked> <span data-i18n="run.follow">folgen</span></label>
+  </div>
+  <div id="runlog"></div>
+</div>
+<div id="settingsbackdrop" class="runbackdrop hidden"></div>
+<div id="settingspanel" class="runpanel settingspanel hidden" role="dialog" aria-modal="true" aria-labelledby="settingstitle">
+  <div class="runbar">
+    <span id="settingstitle" data-i18n="settings.title">Einstellungen · Verbindungen</span>
+    <button id="settingsclose" class="ghost" title="schließen (Esc)" data-i18n-title="run.close">✕</button>
+  </div>
+  <div id="settingsbody"></div>
+</div>
+<div id="chatpanel" class="chatpanel hidden">
+  <div class="chatbar">
+    <span><span data-i18n="chat.title">fabrik-copilot</span> <span style="color:var(--dim);font-size:11px" data-i18n="chat.helpHint">· `help` für Befehle</span></span>
+    <span class="chatbar-right">
+      <label class="llm-sel" title="Chat-Modell (aktiver LLM-Provider)" data-i18n-title="chat.llmTitle">
+        <span class="llm-label" data-i18n="chat.llm">LLM</span>
+        <select id="llmselect"></select>
+      </label>
+      <button id="chatclose" class="ghost">✕</button>
+    </span>
+  </div>
+  <div id="chatlog"></div>
+  <form id="chatform">
+    <input id="chatinput" placeholder="z. B.  lauf kyudo-neandertal lint  — oder einfach fragen …" data-i18n-ph="chat.inputPlaceholder" autocomplete="off">
+    <button type="submit" class="ghost">➤</button>
+  </form>
+</div>
+<div id="schedpanel" class="schedpanel hidden">
+  <div class="chatbar">
+    <span data-i18n="sched.title">Plan</span>
+    <span class="chatbar-right"><button id="schedclose" class="ghost">✕</button></span>
+  </div>
+  <div id="schedform"></div>
+  <div id="schedbody" class="schedbody"></div>
+</div>
+<footer>
+  <span id="clock"></span> · 127.0.0.1 · <a href="/api/health" id="foothealth" data-i18n="footer.api">api</a>
+</footer>
+<div id="graphctx" class="graphctx hidden"></div>
+<script src="/vendor/cytoscape.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

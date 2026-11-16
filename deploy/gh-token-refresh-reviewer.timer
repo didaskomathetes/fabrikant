@@ -1,0 +1,14 @@
+# Alle 30 min — das Installation-Token lebt 1h (Faktor 2 Puffer).
+# RandomizedDelaySec: DNS/Netz-Flakes nicht synchron mit anderen Timern.
+
+[Unit]
+Description=Fabrik — gh-token-refresh (reviewer) every 30 min
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30min
+RandomizedDelaySec=2min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
