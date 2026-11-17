@@ -1,8 +1,8 @@
 # CI
 
 Workflow: `<repo-root>/.github/workflows/fabrik-ci.yml` (GitHub lädt nur dort) (Jobs `test`, `browser`).
-Die Jobs laufen im Projektverzeichnis `fabrik` des Repository-Roots
-(`working-directory: fabrik`).
+Die Jobs laufen direkt im Repository-Root (Standalone-Layout, kein
+`working-directory`).
 
 ## Jobs
 
