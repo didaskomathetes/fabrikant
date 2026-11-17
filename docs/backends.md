@@ -23,7 +23,7 @@ Rest des Streams (copilot: exit 0, JSONL ohne `result`-Event; #153).
 ## opencode (P1)
 
 Langlaufender HTTP-Server (`opencode serve`), persistente Sessions, Polling über
-`GET /session/{id}/message`. Details: `spike-opencode.md`.
+`GET /session/{id}/message`. Details: [`archive/spike-opencode.md`](archive/spike-opencode.md).
 
 **Modelle** sind `provider/id` — der Provider muss in der opencode-Config
 (`~/.config/opencode/opencode.jsonc`) des serve-Prozesses existieren.

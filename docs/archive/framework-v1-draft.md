@@ -1,3 +1,5 @@
+> **Archived:** historical v1.1 design draft (2026-10-15). The framework has since evolved well beyond this draft; it is kept as a record of the original design discussion.
+
 # Fabrik Framework — Entwurf v1.1 (General Purpose + Enterprise Scale)
 
 **Stand:** 2026-10-15 · **Status:** DRAFT, nach kritischer Subagent-Review (v1.0) überarbeitet

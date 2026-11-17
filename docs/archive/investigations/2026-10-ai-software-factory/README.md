@@ -1,3 +1,5 @@
+> **Archived:** completed investigation (relay run of 2026-10-21/22, audited, verdict pass). Kept as a historical research report.
+
 # Investigation: AI software factory — patterns, concepts, prompts, error scenarios (2026-10)
 
 Desk research on public sources about agentic development pipelines ("AI software factories"),
