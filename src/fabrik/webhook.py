@@ -9,6 +9,10 @@ import hashlib
 import hmac
 import json
 import os
+import threading
+import time
+from collections.abc import Mapping
+from typing import Any, TypeAlias
 from urllib.parse import urlparse
 
 SIGNATURE_HEADER = "X-Fabrik-Signature"
@@ -16,6 +20,17 @@ SIGNATURE_PREFIX = "sha256="
 ORIGIN_ENV = "FABRIK_WEBHOOK_ORIGIN"
 MAX_BODY_BYTES = 1_000_000
 WEBHOOK_PATH_PREFIX = "/api/webhook/"
+TIMESTAMP_HEADER = "X-Fabrik-Timestamp"
+NONCE_HEADER = "X-Fabrik-Nonce"
+REPLAY_FLAG = "replay_protection"  # opt-in pro Trigger (abwärtskompatibel)
+REPLAY_WINDOW_S = 300  # Toleranz für |now - timestamp|
+MAX_NONCE_LEN = 128
+DEFAULT_TRIGGER_TYPE = "on_webhook"
+
+# Spec-Typen: ein Trigger ist ein YAML-Mapping, die Spec ein verschachteltes Dict.
+Trigger: TypeAlias = dict[str, Any]
+Spec: TypeAlias = Mapping[str, Any]
+PayloadMap: TypeAlias = Mapping[str, str]
 
 
 class WebhookError(Exception):
@@ -100,7 +115,7 @@ def verify_signature(secret: str, body: bytes, header: str) -> bool:
     return hmac.compare_digest(header.strip(), sign(secret, body))
 
 
-def find_trigger(spec: dict | None, lname: str, ttype: str = "on_webhook") -> dict | None:
+def find_trigger(spec: Spec | None, lname: str, ttype: str = DEFAULT_TRIGGER_TYPE) -> Trigger | None:
     """Erster Trigger vom Typ `ttype` (Default `on_webhook`) des Loops, sonst None."""
     ldef = ((spec or {}).get("loops") or {}).get(lname) or {}
     for trig in ldef.get("triggers") or []:
@@ -121,7 +136,7 @@ def _lookup(payload: object, path: str) -> object:
     return cur
 
 
-def map_payload(body: bytes, mapping: dict) -> dict[str, str]:
+def map_payload(body: bytes, mapping: PayloadMap | None) -> dict[str, str]:
     """JSON-Body gemäß `mapping` (Variable → Punkt-Pfad) auf Initial-Variablen abbilden.
 
     Ungültiges JSON / kein Objekt → 400, fehlendes Feld → 422. Werte werden zu
@@ -142,16 +157,74 @@ def map_payload(body: bytes, mapping: dict) -> dict[str, str]:
     return out
 
 
-def authenticate(trigger: dict | None, body: bytes, header: str) -> dict:
+def sign_replay(secret: str, body: bytes, timestamp: str, nonce: str) -> str:
+    """Signatur mit Replay-Schutz: HMAC über `<timestamp>.<nonce>.<body>`."""
+    return sign(secret, f"{timestamp}.{nonce}.".encode() + body)
+
+
+class NonceCache:
+    """Thread-sicherer Speicher gesehener Nonces mit TTL (im Prozess, nicht persistent)."""
+
+    def __init__(self, ttl_s: float = 2 * REPLAY_WINDOW_S):
+        self._ttl = ttl_s
+        self._seen: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def add(self, nonce: str, now: float) -> bool:
+        """Nonce merken; False, wenn sie innerhalb der TTL schon gesehen wurde."""
+        with self._lock:
+            self._seen = {n: t for n, t in self._seen.items() if now - t < self._ttl}
+            if nonce in self._seen:
+                return False
+            self._seen[nonce] = now
+            return True
+
+
+NONCES = NonceCache()
+
+
+def _check_replay(secret: str, body: bytes, header: str, timestamp: str, nonce: str, now: float) -> None:
+    """Signatur über Timestamp+Nonce prüfen, dann Fenster und Einmaligkeit (jeweils 401).
+
+    Signatur zuerst: Fehlermeldungen zu Timestamp/Nonce gibt es nur für authentische Requests."""
+    if not nonce or len(nonce) > MAX_NONCE_LEN or not timestamp:
+        raise WebhookError(401, "Signatur ungültig")
+    if not secret or not header or not hmac.compare_digest(header.strip(), sign_replay(secret, body, timestamp, nonce)):
+        raise WebhookError(401, "Signatur ungültig")
+    try:
+        ts = float(timestamp)
+    except ValueError:
+        raise WebhookError(401, "Timestamp ungültig") from None
+    if abs(now - ts) > REPLAY_WINDOW_S:
+        raise WebhookError(401, "Timestamp abgelaufen")
+    if not NONCES.add(nonce, now):
+        raise WebhookError(401, "Nonce bereits verwendet")
+
+
+def authenticate(
+    trigger: Trigger | None,
+    body: bytes,
+    header: str,
+    *,
+    timestamp: str = "",
+    nonce: str = "",
+    now: float | None = None,
+) -> Trigger:
     """Authentifizierten Trigger liefern; 401 bei fehlendem Trigger/Secret/Signatur
-    (bewusst einheitlich, kein Orakel)."""
+    (bewusst einheitlich, kein Orakel).
+
+    Mit `replay_protection: true` im Trigger sind Timestamp und Nonce Pflicht und
+    Teil der Signatur (`sign_replay`)."""
     secret = os.environ.get(str((trigger or {}).get("secret_env") or ""), "")
+    if trigger and trigger.get(REPLAY_FLAG):
+        _check_replay(secret, body, header, timestamp, nonce, time.time() if now is None else now)
+        return trigger
     if not trigger or not verify_signature(secret, body, header):
         raise WebhookError(401, "Signatur ungültig")
     return trigger
 
 
-def validate_trigger(trig: dict, where: str) -> list[str]:
+def validate_trigger(trig: Trigger, where: str) -> list[str]:
     """Spec-Validierung eines `on_webhook`-Triggers."""
     errs = []
     if not isinstance(trig.get("secret_env"), str) or not trig["secret_env"]:
@@ -159,4 +232,6 @@ def validate_trigger(trig: dict, where: str) -> list[str]:
     m = trig.get("map")
     if m is not None and (not isinstance(m, dict) or not all(isinstance(v, str) for v in m.values())):
         errs.append(f"{where}: on_webhook map muss Variable → Pfad (String) sein")
+    if REPLAY_FLAG in trig and not isinstance(trig[REPLAY_FLAG], bool):
+        errs.append(f"{where}: on_webhook {REPLAY_FLAG} muss bool sein")
     return errs

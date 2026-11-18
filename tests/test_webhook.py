@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -209,3 +210,140 @@ def test_tunnel_matches_trailing_dot(hook, host):  # noqa: F811
 @pytest.mark.parametrize("host", ["evil.example.com.", "hooks.example.com.:8443", "[::1]:443"])
 def test_tunnel_matches_rejects_other_hosts(hook, host):  # noqa: F811
     assert not webhook.tunnel_matches(host)
+
+
+# --- Replay-Schutz (opt-in `replay_protection: true`) ---------------------------
+
+REPLAY_TRIG = {"type": "on_webhook", "secret_env": "HOOK_SECRET", "replay_protection": True}
+NOW = 1_000_000.0
+
+
+@pytest.fixture
+def secret(monkeypatch):
+    monkeypatch.setenv("HOOK_SECRET", SECRET)
+    monkeypatch.setattr(webhook, "NONCES", webhook.NonceCache())
+
+
+def _auth(ts, nonce, *, body=b"{}", sig=None, now=NOW, trig=REPLAY_TRIG):
+    sig = webhook.sign_replay(SECRET, body, ts, nonce) if sig is None else sig
+    return webhook.authenticate(trig, body, sig, timestamp=ts, nonce=nonce, now=now)
+
+
+def test_replay_valid_request_accepted(secret):
+    assert _auth(str(NOW), "n1") is REPLAY_TRIG
+    assert _auth(str(NOW - webhook.REPLAY_WINDOW_S), "n2") is REPLAY_TRIG  # Fensterrand
+
+
+def test_replay_reused_nonce_rejected(secret):
+    _auth(str(NOW), "n1")
+    with pytest.raises(webhook.WebhookError, match="Nonce") as e:
+        _auth(str(NOW), "n1")
+    assert e.value.status == 401
+
+
+@pytest.mark.parametrize("delta", [-webhook.REPLAY_WINDOW_S - 1, webhook.REPLAY_WINDOW_S + 1])
+def test_replay_timestamp_outside_window_rejected(secret, delta):
+    with pytest.raises(webhook.WebhookError, match="abgelaufen"):
+        _auth(str(NOW + delta), "n1")
+
+
+def test_replay_non_numeric_timestamp_rejected(secret):
+    with pytest.raises(webhook.WebhookError, match="Timestamp ungültig"):
+        _auth("yesterday", "n1")
+
+
+@pytest.mark.parametrize("ts,nonce", [("", "n"), (str(NOW), ""), (str(NOW), "x" * (webhook.MAX_NONCE_LEN + 1))])
+def test_replay_missing_or_oversized_parts_rejected(secret, ts, nonce):
+    with pytest.raises(webhook.WebhookError) as e:
+        _auth(ts, nonce)
+    assert e.value.status == 401
+
+
+def test_replay_plain_body_signature_rejected(secret):
+    with pytest.raises(webhook.WebhookError, match="Signatur"):
+        _auth(str(NOW), "n1", sig=webhook.sign(SECRET, b"{}"))
+
+
+def test_replay_timestamp_is_signed(secret):
+    sig = webhook.sign_replay(SECRET, b"{}", str(NOW), "n1")
+    with pytest.raises(webhook.WebhookError, match="Signatur"):
+        webhook.authenticate(REPLAY_TRIG, b"{}", sig, timestamp=str(NOW + 1), nonce="n1", now=NOW)
+
+
+def test_replay_bad_signature_does_not_burn_nonce(secret):
+    with pytest.raises(webhook.WebhookError):
+        _auth(str(NOW), "n1", sig="sha256=bad")
+    assert _auth(str(NOW), "n1") is REPLAY_TRIG
+
+
+def test_without_flag_legacy_signature_still_works(secret):
+    trig = {"type": "on_webhook", "secret_env": "HOOK_SECRET"}
+    assert webhook.authenticate(trig, b"{}", webhook.sign(SECRET, b"{}")) is trig
+
+
+def test_nonce_cache_expires_entries():
+    cache = webhook.NonceCache(ttl_s=10)
+    assert cache.add("a", 0) and not cache.add("a", 5)
+    assert cache.add("a", 11)
+
+
+def test_validate_trigger_replay_flag_type():
+    assert not webhook.validate_trigger({"secret_env": "X", "replay_protection": True}, "w")
+    assert webhook.validate_trigger({"secret_env": "X", "replay_protection": "yes"}, "w")
+
+
+def test_replay_over_http(fabrik_url, hook, fabrik_home, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(webhook, "NONCES", webhook.NonceCache())
+    (fabrik_home / "projects" / "uitest.fabrik.yaml").write_text(
+        f"name: uitest\nroot: {fabrik_home}\nloops:\n  t:\n    triggers:\n"
+        "      - {type: on_webhook, secret_env: HOOK_SECRET, replay_protection: true}\n"
+        '    steps:\n      - {type: shell, name: a, cmd: "true"}\n'
+    )
+    ts = str(time.time())
+    headers = {
+        webhook.SIGNATURE_HEADER: webhook.sign_replay(SECRET, BODY, ts, "abc"),
+        webhook.TIMESTAMP_HEADER: ts,
+        webhook.NONCE_HEADER: "abc",
+    }
+    url = f"{fabrik_url}/api/webhook/uitest/t"
+    assert _post(url, BODY, headers)[0] == 200
+    assert _post(url, BODY, headers)[0] == 401  # Replay
+    assert _post(url, BODY, _signed(BODY))[0] == 401  # Legacy-Signatur reicht nicht
+
+
+# --- FABRIK_WEBHOOK_ORIGIN / Host-Formen ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["", "hooks.example.com", "https://", "https://u:p@hooks.example.com", "https://h:notaport", "https://h:99999"],
+)
+def test_invalid_origin_config_never_matches(monkeypatch, origin):
+    monkeypatch.setenv(webhook.ORIGIN_ENV, origin)
+    assert not webhook.tunnel_matches("hooks.example.com")
+    assert not webhook.tunnel_matches("h")
+
+
+@pytest.mark.parametrize(
+    "origin,host,expected",
+    [
+        ("https://hooks.example.com/", "hooks.example.com", True),  # Trailing Slash
+        ("https://HOOKS.Example.com", "hooks.EXAMPLE.com:443", True),  # Groß-/Kleinschreibung
+        ("http://hooks.example.com", "hooks.example.com:80", True),  # http-Default
+        ("http://hooks.example.com", "hooks.example.com:443", False),
+        ("https://hooks.example.com:8443", "hooks.example.com", False),
+        ("https://hooks.example.com:8443", "hooks.example.com:8443", True),
+        ("https://[::1]:8443", "[::1]:8443", True),  # IPv6
+        ("https://[::1]", "[::1]", True),
+        ("https://[::1]", "[::2]", False),
+        ("https://hooks.example.com", "hooks.example.com:abc", False),  # ungültiger Port
+        ("https://hooks.example.com", "hooks.example.com:99999", False),
+        ("https://hooks.example.com", "hooks.example.com/path", False),
+        ("https://hooks.example.com", "u@hooks.example.com", False),
+        ("https://hooks.example.com", "", False),
+        ("https://hooks.example.com", "  hooks.example.com  ", True),
+    ],
+)
+def test_tunnel_matches_host_forms(monkeypatch, origin, host, expected):
+    monkeypatch.setenv(webhook.ORIGIN_ENV, origin)
+    assert webhook.tunnel_matches(host) is expected

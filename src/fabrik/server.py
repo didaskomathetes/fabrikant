@@ -14,7 +14,7 @@ import urllib.parse
 from dataclasses import asdict
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import parse_qs, urlsplit
 
 import yaml
@@ -78,6 +78,13 @@ def _chains_or_empty() -> list[retry_chains.RetryChain]:
 
 # Routen mit eigener HMAC-Auth, die über den Tunnel-Host erreichbar bleiben.
 INTAKE_PATH_PREFIXES = (webhook.WEBHOOK_PATH_PREFIX, alerts.ALERT_PATH_PREFIX)
+
+
+class RunStartResult(NamedTuple):
+    """Antwort von `_start_run`: JSON-Payload und HTTP-Status."""
+
+    payload: dict[str, Any]
+    status: int
 
 
 class FabrikHandler(BaseHTTPRequestHandler):
@@ -161,7 +168,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
         if path.startswith(webhook.WEBHOOK_PATH_PREFIX):
             self._cors_headers()
             self.send_header("Access-Control-Allow-Methods", "POST")
-            self.send_header("Access-Control-Allow-Headers", f"Content-Type, {webhook.SIGNATURE_HEADER}")
+            allow = (webhook.SIGNATURE_HEADER, webhook.TIMESTAMP_HEADER, webhook.NONCE_HEADER)
+            self.send_header("Access-Control-Allow-Headers", ", ".join(("Content-Type", *allow)))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -180,7 +188,13 @@ class FabrikHandler(BaseHTTPRequestHandler):
         try:
             name, lname, body = self._read_intake(path, webhook.WEBHOOK_PATH_PREFIX)
             found = webhook.find_trigger(load_projects().get(name), lname)
-            trig = webhook.authenticate(found, body, self.headers.get(webhook.SIGNATURE_HEADER, ""))
+            trig = webhook.authenticate(
+                found,
+                body,
+                self.headers.get(webhook.SIGNATURE_HEADER, ""),
+                timestamp=self.headers.get(webhook.TIMESTAMP_HEADER, ""),
+                nonce=self.headers.get(webhook.NONCE_HEADER, ""),
+            )
             vars_ = webhook.map_payload(body, trig.get("map") or {})
         except (webhook.WebhookError, ValueError) as e:
             code = e.status if isinstance(e, webhook.WebhookError) else 400
@@ -333,8 +347,14 @@ class FabrikHandler(BaseHTTPRequestHandler):
         self._json({"ok": True}, headers={"Set-Cookie": auth.set_cookie_header("", clear=True)})
 
     def _start_run(
-        self, name: str, lname: str, note: str, initial_vars: dict | None, trigger: str, actor: str | None = None
-    ):
+        self,
+        name: str,
+        lname: str,
+        note: str,
+        initial_vars: dict[str, str] | None,
+        trigger: str,
+        actor: str | None = None,
+    ) -> RunStartResult:
         """Run mit Initial-Variablen starten (einzige interne Start-Funktion).
 
         Gemeinsam für `POST /api/runs` und `on_webhook` (kein eigener Webhook-
@@ -352,9 +372,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
             )
         except RuntimeError as e:
             # 5xx mit klarer Nachricht, damit Clients deterministisch reagieren.
-            return {"error": f"Worker-Start fehlgeschlagen: {e}"}, 500
+            return RunStartResult({"error": f"Worker-Start fehlgeschlagen: {e}"}, 500)
         payload = {"started": not queued, "queued": queued, "project": name, "loop": lname, "run_id": run_id}
-        return payload, 202 if queued else 200
+        return RunStartResult(payload, 202 if queued else 200)
 
     def _static(self, rel: str):
         f = config.WEB_DIR / (rel or "index.html")
