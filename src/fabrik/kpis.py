@@ -25,11 +25,10 @@ from typing import TypedDict
 
 from . import metrics
 from .costs import CostSummary, CostTotals, run_cost, runs_in_range
-from .runmodel import FailureKind, Run, RunStatus
+from .runmodel import FAILED_RUN_STATUSES, FailureKind, Run, RunStatus
 from .runquery import to_utc, utc_sort_text
 
 VERDICT_CHANGES_REQUESTED = "changes_requested"
-FAILED_STATUSES = frozenset({RunStatus.FAIL, RunStatus.ERROR})
 RATE_DIGITS = 4
 SECONDS_DIGITS = 1
 
@@ -73,7 +72,7 @@ def runtime_s(run: Run) -> float | None:
 
 def is_failed(run: Run) -> bool:
     """True bei Run-Status ``fail`` oder ``error`` (technisch oder fachlich gescheitert)."""
-    return run.status in FAILED_STATUSES
+    return run.status in FAILED_RUN_STATUSES
 
 
 def is_vetoed(run: Run) -> bool:
