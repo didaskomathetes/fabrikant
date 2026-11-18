@@ -34,6 +34,7 @@ from .gitops import (
     project_github,
     run_worktree_path,
 )
+from .launcher import RunLauncher, create_launcher
 from .runmodel import FAILED_RUN_STATUSES, RunStatus, StepStatus
 from .runs import (
     RunClaim,
@@ -1066,6 +1067,32 @@ def _get_run_pool() -> _WorkerPool:
         return _run_pool
 
 
+_launcher: RunLauncher | None = None
+_launcher_guard = threading.Lock()
+
+
+def _get_launcher() -> RunLauncher:
+    """Run-Launcher (Port) für das konfigurierte Substrat (FABRIK_LAUNCHER).
+
+    Singleton. In-process (Default) delegiert an den bestehenden Worker-Pool
+    (:func:`_get_run_pool`) und Daemon-Threads; die Scheduling-Policy bleibt im
+    Core. Neue Substrate (k8s, ecs) hängen über :mod:`fabrik.launcher.registry`
+    an, ohne diesen Code zu ändern."""
+    global _launcher
+    with _launcher_guard:
+        if _launcher is None:
+            # Späte Bindung (Lambda, keine Funktionsreferenz): `pool_factory()`/
+            # `pool_or_none()` lösen den Pool zum Aufrufzeitpunkt aus dem
+            # Modul-Globalen auf — so respektieren Tests, die `engine._get_run_pool`
+            # bzw. `engine._run_pool` monkeypatchen, den injizierten Pool.
+            _launcher = create_launcher(
+                config.configured_launcher(),
+                pool_factory=lambda: _get_run_pool(),
+                pool_or_none=lambda: _run_pool,
+            )
+        return _launcher
+
+
 # Eingereihte, noch nicht gestartete Trigger (project, loop, trigger) → Einreichungszeit
 # (Schedule-View: Queue mit echten Einreichungszeitpunkten). Der Run-Record entsteht
 # erst in work(); reconcile-Polls würden denselben Trigger sonst erneut einreihen,
@@ -1152,7 +1179,7 @@ def _safe_run(
         finally:
             claim.release()
 
-    _get_run_pool().submit(work)
+    _get_launcher().submit(work)
 
 
 def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict | None) -> RunClaim | None:
@@ -1309,7 +1336,7 @@ def spawn_priority_worker(
             acquired.release()
 
     try:
-        threading.Thread(target=target, daemon=True).start()
+        _get_launcher().submit_priority(target)
     except RuntimeError:
         if held is not None:
             held.release()

@@ -1023,9 +1023,9 @@ class _Attempt:
 
 
 def _submit(attempt: _Attempt) -> None:
-    from .engine import _get_run_pool  # lokal: engine importiert dieses Modul
+    from .engine import _get_launcher  # lokal: engine importiert dieses Modul
 
-    _get_run_pool().submit(attempt.run)
+    _get_launcher().submit(attempt.run)
 
 
 def _spawn_manual(attempt: _Attempt) -> None:
