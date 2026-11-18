@@ -25,6 +25,7 @@ from . import (
     branches,
     config,
     connections,
+    costs,
     metrics,
     oidc,
     pause,
@@ -449,7 +450,21 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 if retry:
                     r = {**r, "retry": retry}
                 r = {**r, "meta": run_meta(load_projects().get(str(r.get("project") or "")), r)}
+                parsed = parse_runs([r], str(r.get("project") or ""))
+                if parsed:
+                    r = {**r, "cost": costs.run_cost(parsed[0]).as_dict()}
             self._json(r, 200 if r else 404)
+        elif path == "/api/kpis/costs":
+            try:
+                self._json(
+                    costs.costs_report(
+                        self._query_param("project"),
+                        date_from=self._query_param("from") or "",
+                        date_to=self._query_param("to") or "",
+                    )
+                )
+            except ValueError as e:
+                self._json({"error": str(e)}, 400)
         elif path == "/api/health":
             self._json({"ok": True, "time": config.utcnow().isoformat()})
         elif path == "/api/metrics":

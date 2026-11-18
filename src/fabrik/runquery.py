@@ -8,8 +8,9 @@ Beide sortieren nach :func:`sort_key` absteigend (neueste zuerst).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from .runmodel import Run
 
@@ -31,6 +32,33 @@ def utc_sort_text(value: str) -> str | None:
         return to_utc(value).strftime(UTC_SORT_FORMAT) if value else None
     except ValueError:
         return None
+
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$")
+
+
+def _check_date(name: str, value: str) -> str:
+    """Strikte ISO-Prüfung: Datum allein oder Datum+Zeit (inkl. optionalem Offset)."""
+    try:
+        if not _DATE_RE.match(value):
+            raise ValueError(value)
+        if len(value) == 10:
+            date.fromisoformat(value)
+        else:
+            datetime.fromisoformat(value)
+    except ValueError as e:
+        raise ValueError(f"ungültiges Datum für '{name}': {value!r} (erwartet YYYY-MM-DD[THH:MM:SS])") from e
+    return value
+
+
+def date_bounds(date_from: str, date_to: str) -> tuple[datetime | None, datetime | None, bool]:
+    """→ (untere Grenze inkl., obere Grenze, obere exklusiv?). `to` als reines Datum = ganzer Tag."""
+    lower = to_utc(_check_date("from", date_from)) if date_from else None
+    if not date_to:
+        return lower, None, False
+    if len(_check_date("to", date_to)) == 10:
+        return lower, to_utc(date_to) + timedelta(days=1), True
+    return lower, to_utc(date_to), False
 
 
 def sort_key(run: Run) -> SortKey:

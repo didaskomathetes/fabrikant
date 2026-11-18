@@ -15,8 +15,10 @@ Auth: `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (fine-grained
 PAT mit "Copilot Requests") — Deployment-Umgebung, nicht Spec.
 `COPILOT_AUTO_UPDATE=false` wird pro Prozess gesetzt.
 
-Keine Token-/Cost-Daten: Copilot rechnet mit Premium Requests/AI-Credits,
-die CLI liefert kein Usage — die Step-Summary zeigt 0 tokens (wie codex).
+Usage: Copilot rechnet mit Premium Requests, nicht mit Tokens. Das `result`-Event
+trägt `usage.premiumRequests`; der Adapter meldet ihn als `premium_requests` im
+Poll-Ergebnis (Step-Summary + `cost`-Event im Session-Log). Tokens und USD-Kosten
+liefert die CLI nicht — sie bleiben 0 (dokumentierte Lücke, kein Pricing-Table).
 """
 
 from __future__ import annotations
@@ -78,6 +80,9 @@ class CopilotBackend(OneShotCliBackend):
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
         base = {"tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+        premium = self._premium_requests(out)
+        if premium is not None:
+            base["premium_requests"] = premium
         if returncode == 0:
             text, found = self._extract_result(out)
             if not found:
@@ -105,6 +110,21 @@ class CopilotBackend(OneShotCliBackend):
         reason = self._session_error_reason(out)
         text = f"copilot: {reason}\n{detail}" if reason else detail
         return {**base, "status": "failed", "text": text}
+
+    @staticmethod
+    def _premium_requests(out: str) -> int | None:
+        """``usage.premiumRequests`` des letzten ``result``-Events; None, wenn nicht vorhanden."""
+        found = None
+        for ln in out.splitlines():
+            try:
+                d = json.loads(ln)
+            except ValueError:
+                continue
+            usage = d.get("usage") if isinstance(d, dict) and d.get("type") == _EVENT_RESULT else None
+            n = usage.get("premiumRequests") if isinstance(usage, dict) else None
+            if isinstance(n, (int, float)) and not isinstance(n, bool) and n >= 0:
+                found = int(n)
+        return found
 
     @staticmethod
     def _content_text(v) -> str:

@@ -99,7 +99,7 @@ def test_send_prompt_flags_and_stdin(tmp_path, monkeypatch):
     sid = be.create_task("/wd", "t")
     be.send_prompt(sid, "do the thing", "/wd")
     p = calls[0]
-    assert p.cmd[:4] == ["codex", "exec", "--sandbox", "workspace-write"]
+    assert p.cmd[:5] == ["codex", "exec", "--json", "--sandbox", "workspace-write"]
     assert "--model" not in p.cmd
     assert p.stdin_buf.getvalue() == b"do the thing"
     assert p.stdin is None  # send_prompt schließt stdin und setzt es auf None
@@ -193,3 +193,48 @@ def test_dispatch_agent_step_codex(tmp_path, monkeypatch):
     assert res["ok"] is True
     assert res["output"] == "done-output"
     assert res["agent_session"].startswith("codex-")
+
+
+# ---------------------------------------------------------------- Usage (--json, Issue #1)
+_JSONL = "\n".join(
+    [
+        '{"type":"thread.started","thread_id":"t1"}',
+        '{"type":"turn.started"}',
+        '{"type":"item.completed","item":{"id":"i0","type":"reasoning","text":"hm"}}',
+        '{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"first"}}',
+        '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":7}}',
+        '{"type":"turn.started"}',
+        '{"type":"item.completed","item":{"id":"i2","type":"agent_message","text":"final answer"}}',
+        '{"type":"turn.completed","usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":3}}',
+    ]
+)
+
+
+def test_parse_sums_turn_usage_and_takes_last_agent_message():
+    r = CodexBackend()._parse(_JSONL, "", 0)
+    assert r["status"] == "done" and r["text"] == "final answer"
+    assert r["tokens"] == {"input": 150, "output": 10}
+    assert r["cost"] == 0.0
+
+
+def test_parse_plain_stdout_fallback_has_zero_tokens():
+    r = CodexBackend()._parse("just text\n", "", 0)
+    assert r["text"] == "just text" and r["tokens"] == {"input": 0, "output": 0}
+
+
+def test_parse_ignores_garbage_and_bad_usage_values():
+    out = 'not json\n[1]\n{"type":"turn.completed","usage":{"input_tokens":"x","output_tokens":-3}}\n'
+    r = CodexBackend()._parse(out, "", 0)
+    assert r["tokens"] == {"input": 0, "output": 0}
+
+
+def test_parse_failure_reports_turn_failed_message_and_keeps_usage():
+    out = '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":1}}\n{"type":"turn.failed","error":{"message":"spend cap reached"}}\n'
+    r = CodexBackend()._parse(out, "", 1)
+    assert r["status"] == "failed" and r["text"] == "spend cap reached"
+    assert r["tokens"] == {"input": 5, "output": 1}
+
+
+def test_parse_failure_falls_back_to_stderr():
+    r = CodexBackend()._parse("", "boom", 2)
+    assert r["status"] == "failed" and r["text"] == "boom"

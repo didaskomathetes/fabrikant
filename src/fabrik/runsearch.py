@@ -13,11 +13,11 @@ import base64
 import binascii
 import json
 import re
-from datetime import date, datetime, timedelta
 from typing import TypedDict
 
+from .costs import CostSummary, run_cost
 from .runmodel import Run
-from .runquery import RunQuery, SortKey, sort_key, to_utc
+from .runquery import RunQuery, SortKey, date_bounds, sort_key
 from .runstore import STORE
 
 
@@ -34,6 +34,7 @@ class RunRow(TypedDict):
     note: str
     failure_kind: str  # "" bei nicht gescheiterten Runs (ADR 0035)
     verdict: str  # fachliches Ergebnis (runmodel.Run.verdict), "" ohne
+    cost: CostSummary  # Verbrauch aus den Step-Usages (Issue #126)
 
 
 class RunPage(TypedDict):
@@ -45,8 +46,6 @@ class RunPage(TypedDict):
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 200
-
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$")
 
 
 def encode_cursor(started: str, project: str, run_id: str) -> str:
@@ -66,30 +65,6 @@ def decode_cursor(cursor: str) -> SortKey:
     return started, project, run_id
 
 
-def _check_date(name: str, value: str) -> str:
-    """Strikte ISO-Prüfung: Datum allein oder Datum+Zeit (inkl. optionalem Offset)."""
-    try:
-        if not _DATE_RE.match(value):
-            raise ValueError(value)
-        if len(value) == 10:
-            date.fromisoformat(value)
-        else:
-            datetime.fromisoformat(value)
-    except ValueError as e:
-        raise ValueError(f"ungültiges Datum für '{name}': {value!r} (erwartet YYYY-MM-DD[THH:MM:SS])") from e
-    return value
-
-
-def _date_bounds(date_from: str, date_to: str) -> tuple[datetime | None, datetime | None, bool]:
-    """→ (untere Grenze inkl., obere Grenze, obere exklusiv?). `to` als reines Datum = ganzer Tag."""
-    lower = to_utc(_check_date("from", date_from)) if date_from else None
-    if not date_to:
-        return lower, None, False
-    if len(_check_date("to", date_to)) == 10:
-        return lower, to_utc(date_to) + timedelta(days=1), True
-    return lower, to_utc(date_to), False
-
-
 def _row(run: Run) -> RunRow:
     return {
         "id": run.id,
@@ -102,6 +77,7 @@ def _row(run: Run) -> RunRow:
         "note": run.note,
         "failure_kind": run.failure_kind.value if run.failure_kind else "",
         "verdict": run.verdict,
+        "cost": run_cost(run).totals.as_dict(),
     }
 
 
@@ -128,7 +104,7 @@ def search_runs(
     aus den Ergebnissen ausgeschlossen (nicht nur Status-Filter-Verfehlung); sie sind
     nur über ``STORE.load_report()`` sichtbar (ADR 0034, tolerant laden)."""
     limit = max(1, min(int(limit), MAX_PAGE_SIZE))
-    lower, upper, upper_exclusive = _date_bounds(date_from, date_to)
+    lower, upper, upper_exclusive = date_bounds(date_from, date_to)
     query = RunQuery(
         project=project,
         words=tuple(w.lower() for w in re.findall(r"\w+", q)),

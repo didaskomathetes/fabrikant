@@ -212,9 +212,14 @@ def _agent_usage(last: dict, backend_name: str, model: str, carry: dict | None =
     return usage
 
 
-def _record_cost(lg, step_name: str, usage: dict) -> None:
-    """``cost``-Event ins Session-Log (Telemetrie, nicht Summand — siehe sessionlog)."""
+def _record_cost(lg, step_name: str, usage: dict, last: dict | None = None) -> None:
+    """``cost``-Event ins Session-Log (Telemetrie, nicht Summand — siehe sessionlog).
+
+    ``last``: Poll-Ergebnis; ein ``premium_requests``-Zähler (copilot) wandert mit ins Event."""
     if lg is not None:
+        extra = {}
+        if (premium := (last or {}).get("premium_requests")) is not None:
+            extra["premium_requests"] = premium
         lg.event(
             "cost",
             step_name=step_name,
@@ -222,6 +227,7 @@ def _record_cost(lg, step_name: str, usage: dict) -> None:
             tokens_in=usage["prompt_tokens"],
             tokens_out=usage["completion_tokens"],
             cost_usd=usage.get("cost_usd", 0.0),
+            **extra,
         )
 
 
@@ -343,7 +349,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                         time.sleep(wait)
                         break  # → nächste for-Iteration (neue Session)
                     usage = _agent_usage(last, backend_name, model, carry)
-                    _record_cost(lg, sname, usage)
+                    _record_cost(lg, sname, usage, last)
                     return failed(
                         f"agent session fehlgeschlagen: {str(last.get('text', ''))[:120]} (session {sid})",
                         _session_failure(last),
@@ -368,7 +374,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 # "timeout nach 1800s"). Bei anhaltendem Backend-Fehler die
                 # Ursache nennen (ADR 0012).
                 usage = _agent_usage(last, backend_name, model, carry)
-                _record_cost(lg, sname, usage)
+                _record_cost(lg, sname, usage, last)
                 if last_err:
                     return failed(
                         f"agent timeout nach {timeout}s (session {sid}) · Backend-Fehler: {last_err[:120]}",
@@ -407,10 +413,13 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
             tools = last.get("tools") or []
             usage = _agent_usage(last, backend_name, model, carry)
             t_in, t_out = usage["prompt_tokens"], usage["completion_tokens"]
-            summary = f"{dur}s · {t_in} in / {t_out} out tokens" + (
-                f" · tools: {', '.join(tools[:5])}" if tools else ""
+            premium = last.get("premium_requests")
+            summary = (
+                f"{dur}s · {t_in} in / {t_out} out tokens"
+                + (f" · {premium} premium requests" if premium is not None else "")
+                + (f" · tools: {', '.join(tools[:5])}" if tools else "")
             )
-            _record_cost(lg, sname, usage)
+            _record_cost(lg, sname, usage, last)
             return {
                 "ok": True,
                 "summary": summary,

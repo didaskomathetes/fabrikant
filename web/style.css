@@ -498,7 +498,8 @@ a { color: var(--run); }
 .histrow { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 3px 0; border-bottom: 1px solid var(--line, #2a2a2a); }
 .histmain { flex: 1; cursor: pointer; color: var(--dim); }
 .histmain:hover .histid { color: var(--acc); }
-.histmeta, .histnote { margin-left: 6px; }
+.histmeta, .histnote, .histcost { margin-left: 6px; }
+.histcost { color: var(--muted, #888); font-variant-numeric: tabular-nums; }
 .histactions { display: flex; gap: 6px; }
 .histempty { color: var(--dim); font-size: 12px; padding: 6px 0; }
 

@@ -7,16 +7,27 @@ One-Shot-Modell (Mechanik in `OneShotCliBackend`): Prompt über STDIN
 bubblewrap oft `danger-full-access` notwendig (Containment dann über
 User/VM, nicht über die Sandbox).
 
-Keine Token-/Cost-Daten: `codex exec` ohne `--json` liefert kein Usage —
-die Step-Summary zeigt 0 tokens (wie alle CLI-Backends).
+Usage: `codex exec --json` streamt JSONL; `turn.completed.usage`
+(`input_tokens`, `cached_input_tokens`, `output_tokens`) wird über alle Turns
+summiert (`input_tokens` enthält bereits den gecachten Anteil). Die finale
+Antwort ist die letzte `item.completed`/`agent_message`; Fehler stehen in
+`turn.failed`/`error`. Keine Kosten in USD — die CLI liefert keine (`cost`
+bleibt 0.0). Ohne JSON im stdout (ältere CLI) gilt der rohe stdout als Antwort.
 """
 
 from __future__ import annotations
 
+import json
 import os
 
 from ..agentenv import CODEX_AUTH_VARS, passthrough
 from ._oneshot import OneShotCliBackend
+
+_EVENT_TURN_COMPLETED = "turn.completed"
+_EVENT_TURN_FAILED = "turn.failed"
+_EVENT_ERROR = "error"
+_EVENT_ITEM_COMPLETED = "item.completed"
+_ITEM_AGENT_MESSAGE = "agent_message"
 
 
 class CodexBackend(OneShotCliBackend):
@@ -42,13 +53,52 @@ class CodexBackend(OneShotCliBackend):
         return "codex"
 
     def _build_cmd(self) -> list[str]:
-        cmd = ["codex", "exec", "--sandbox", self.sandbox]
+        cmd = ["codex", "exec", "--json", "--sandbox", self.sandbox]
         if self.model:
             cmd += ["--model", self.model]
         return cmd
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
-        base = {"tokens": {}, "cost": 0.0, "tools": []}
+        text, tokens, error = self._read_events(out)
+        base = {"tokens": tokens, "cost": 0.0, "tools": []}
         if returncode == 0:
-            return {**base, "status": "done", "text": out.strip()}
-        return {**base, "status": "failed", "text": (err.strip() or out.strip() or "codex: kein Output")[:300]}
+            return {**base, "status": "done", "text": text.strip()}
+        reason = error or err.strip() or out.strip() or "codex: kein Output"
+        return {**base, "status": "failed", "text": reason[:300]}
+
+    @staticmethod
+    def _read_events(out: str) -> tuple[str, dict, str]:
+        """JSONL-stdout → (finaler Agent-Text, {input, output}, Fehlermeldung).
+
+        Defensiv: Nicht-JSON-Zeilen und unbekannte Events werden ignoriert; liegt gar kein JSON
+        vor, ist der rohe stdout der Text (Schema-Fallback)."""
+        text, error = "", ""
+        tokens = {"input": 0, "output": 0}
+        parsed_json = False
+        for line in out.splitlines():
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(ev, dict):
+                continue
+            parsed_json = True
+            kind = ev.get("type")
+            if kind == _EVENT_TURN_COMPLETED and isinstance(ev.get("usage"), dict):
+                usage = ev["usage"]
+                tokens["input"] += _count(usage.get("input_tokens"))
+                tokens["output"] += _count(usage.get("output_tokens"))
+            elif kind == _EVENT_ITEM_COMPLETED and isinstance(ev.get("item"), dict):
+                item = ev["item"]
+                if item.get("type") == _ITEM_AGENT_MESSAGE and isinstance(item.get("text"), str):
+                    text = item["text"]
+            elif kind in (_EVENT_TURN_FAILED, _EVENT_ERROR):
+                err = ev.get("error") if kind == _EVENT_TURN_FAILED else ev
+                msg = err.get("message") if isinstance(err, dict) else None
+                error = str(msg or error)
+        return (text if parsed_json else out), tokens, error
+
+
+def _count(value) -> int:
+    """Token-Zähler aus einem JSON-Wert (nur nicht-negative ints, sonst 0)."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
