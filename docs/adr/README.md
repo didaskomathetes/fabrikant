@@ -61,9 +61,9 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0045](0045-incident-roundtrip.md) | Incident-Roundtrip (Sentry/CloudWatch → Triage → Hotfix-PR) | Akzeptiert (2026-11-13) |
 | [0046](0046-oidc-login.md) | OIDC-Login (generischer Client, optionales Extra `fabrik[oidc]`) | Akzeptiert (2026-11-13) |
 | [0047](0047-spec-sources-vars-templates.md) | Spec-Quellen (`FABRIK_PROJECTS_PATH`, Zielrepo), spec-relative Pfade, `vars`, Loop-Templates | Akzeptiert, Nachtrag 2026-11-03 (Worktrees außerhalb des Checkouts) vorgeschlagen |
-| [0049](0049-ui-i18n.md) | UI-Sprache — Message-Kataloge de/en, Locale-Formatierung | Vorgeschlagen |
+| [0049](0049-ui-i18n.md) | UI-Sprache — Message-Kataloge de/en, Locale-Formatierung | Akzeptiert |
 | [0050](0050-agent-env-allowlist.md) | Agent-Env-Allowlist — Agent-Prozesse erben kein `os.environ` | Vorgeschlagen |
-| [0051](0051-egress-default-deny-proxy.md) | Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy | Vorgeschlagen |
+| [0051](0051-egress-default-deny-proxy.md) | Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy | Akzeptiert |
 | [0052](0052-named-connections.md) | Benannte Verbindungen — LLM-Provider und Agent-Backends in der UI konfigurieren | Akzeptiert (2026-11-06) |
 | [0053](0053-sonar-pr-project-cleanup.md) | Sonar-PR-Projekte nach Merge/Close aufräumen (Python-Helfer, fail-safe, advisory im main-Scan) | Akzeptiert (2026-11-13) |
 | [0054](0054-per-run-agent-sandbox.md) | Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container | In Überarbeitung (2026-11-06) |

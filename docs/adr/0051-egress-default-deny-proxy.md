@@ -1,6 +1,6 @@
 # ADR 0051: Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy
 
-**Status:** Vorgeschlagen
+**Status:** Akzeptiert (2026-11-19) — umgesetzt (`egress.py`, `fabrik egress`, Denied-Log-Parser)
 **Betrifft:** Security (Prompt-Injection-Datenabfluss, OWASP ASI01/ASI05), Agent-Container, Deployment.
 **Issue:** #519.
 
