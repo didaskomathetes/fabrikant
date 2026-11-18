@@ -143,3 +143,52 @@ def test_prometheus_text_from_store(seeded):
     text = kpis.prometheus_text()
     assert 'fabrik_kpi_defects_escaped{project="p",loop="l"} 1' in text
     assert 'fabrik_kpi_cycle_time_avg_seconds{project="q",loop="l"} 10.0' in text
+
+
+def _with_usage(run, cost, tokens=10):
+    from dataclasses import replace
+
+    from fabrik.runmodel import Usage
+
+    step = Step(
+        name="a",
+        type="agent",
+        status=StepStatus.PASS,
+        usage=Usage(provider="b", prompt_tokens=tokens, completion_tokens=0, total_tokens=tokens, cost_usd=cost),
+    )
+    return replace(run, steps=(step,))
+
+
+def test_runtime_covers_any_status_but_needs_both_timestamps():
+    fail = _run("a", RunStatus.FAIL, "2026-01-01T10:00:00", "2026-01-01T10:00:30")
+    assert kpis.runtime_s(fail) == 30
+    assert kpis.runtime_s(_run("b", started="2026-01-01T10:00:00")) is None
+    assert kpis.runtime_s(_run("c", started="kaputt", finished="2026-01-01T10:00:00")) is None
+    assert kpis.runtime_s(_run("d", started="2026-01-01T11:00:00", finished="2026-01-01T10:00:00")) is None
+
+
+def test_failed_counts_fail_and_error_only():
+    statuses = [RunStatus.PASS, RunStatus.FAIL, RunStatus.ERROR, RunStatus.REJECTED, RunStatus.RUNNING]
+    t = kpis.loop_kpis([_run(str(i), s, started=f"2026-01-0{i + 1}T10:00:00") for i, s in enumerate(statuses)])
+    assert (t.runs, t.passed, t.failed) == (5, 1, 2)
+
+
+def test_runtime_cost_and_tokens_aggregate_and_merge():
+    a = _with_usage(_run("1", started="2026-01-01T10:00:00", finished="2026-01-01T10:01:00"), 0.5, 100)
+    b = _with_usage(_run("2", RunStatus.FAIL, "2026-01-02T10:00:00", "2026-01-02T10:03:00"), None, 50)
+    out = kpis.kpi_report([a, b, _run("3", project="q")])
+    p = out["projects"]["p"]
+    assert p["runtime_s"] == {"count": 2, "total": 240, "avg": 120, "max": 180}
+    assert p["cost"]["total_tokens"] == 150 and p["cost"]["cost_usd"] == 0.5 and p["cost"]["unpriced_steps"] == 1
+    assert out["total"]["cost"]["total_tokens"] == 150 and out["total"]["failed"] == 1
+    assert out["projects"]["q"]["runtime_s"]["avg"] is None  # nie beendet
+    assert kpis.loop_kpis([]).as_dict()["cost"]["total_tokens"] == 0
+
+
+def test_prometheus_exports_ops_gauges():
+    run = _with_usage(_run("1", started="2026-01-01T10:00:00", finished="2026-01-01T10:01:00"), 0.25, 7)
+    text = kpis.render_prometheus([run])
+    assert 'fabrik_kpi_tokens_total{project="p",loop="l"} 7' in text
+    assert 'fabrik_kpi_cost_usd_total{project="p",loop="l"} 0.25' in text
+    assert 'fabrik_kpi_runtime_seconds_total{project="p",loop="l"} 60' in text
+    assert 'fabrik_kpi_runs_failed{project="p",loop="l"} 0' in text

@@ -11,6 +11,9 @@ Rein lesend und store-neutral: arbeitet auf typisierten :class:`~fabrik.runmodel
   (roter ``verify``-Check, ``changes_requested``, Outcome-Fehler), der nicht entkommen ist.
   ``defect_escape_rate = escaped / (caught + escaped)``.
 
+Dazu Betriebszahlen je Gruppe: erfolgreiche/gescheiterte Runs (``fail``/``error``), Laufzeit aller
+beendeten Runs (Summe/Mittel/Max) und Token-/Kosten-Summen aus :mod:`fabrik.costs`.
+
 Replayability (§5) ist nicht Teil dieses Moduls.
 """
 
@@ -21,11 +24,12 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 from . import metrics
-from .costs import runs_in_range
+from .costs import CostSummary, CostTotals, run_cost, runs_in_range
 from .runmodel import FailureKind, Run, RunStatus
 from .runquery import to_utc, utc_sort_text
 
 VERDICT_CHANGES_REQUESTED = "changes_requested"
+FAILED_STATUSES = frozenset({RunStatus.FAIL, RunStatus.ERROR})
 RATE_DIGITS = 4
 SECONDS_DIGITS = 1
 
@@ -35,6 +39,9 @@ class KpiSummary(TypedDict):
 
     runs: int
     passed: int
+    failed: int
+    runtime_s: dict[str, float | int | None]
+    cost: CostSummary
     cycle_time_s: dict[str, float | int | None]
     reviewed_runs: int
     vetoed_runs: int
@@ -50,13 +57,23 @@ def _rate(part: int, whole: int) -> float | None:
 
 def cycle_time_s(run: Run) -> float | None:
     """Dauer eines erfolgreichen Runs in Sekunden; None bei anderem Status, fehlenden/ungültigen/negativen Zeiten."""
-    if run.status is not RunStatus.PASS or not run.started or not run.finished:
+    return runtime_s(run) if run.status is RunStatus.PASS else None
+
+
+def runtime_s(run: Run) -> float | None:
+    """Laufzeit eines beendeten Runs in Sekunden (jeder Status); None bei fehlenden/ungültigen/negativen Zeiten."""
+    if not run.started or not run.finished:
         return None
     try:
         seconds = (to_utc(run.finished) - to_utc(run.started)).total_seconds()
     except ValueError:
         return None
     return seconds if seconds >= 0 else None
+
+
+def is_failed(run: Run) -> bool:
+    """True bei Run-Status ``fail`` oder ``error`` (technisch oder fachlich gescheitert)."""
+    return run.status in FAILED_STATUSES
 
 
 def is_vetoed(run: Run) -> bool:
@@ -80,6 +97,9 @@ class KpiTotals:
 
     runs: int = 0
     passed: int = 0
+    failed: int = 0
+    runtimes: list[float] = field(default_factory=list)
+    cost: CostTotals = field(default_factory=CostTotals)
     cycle_times: list[float] = field(default_factory=list)
     reviewed_runs: int = 0
     vetoed_runs: int = 0
@@ -90,6 +110,9 @@ class KpiTotals:
         """Addiert eine andere Summe."""
         self.runs += other.runs
         self.passed += other.passed
+        self.failed += other.failed
+        self.runtimes += other.runtimes
+        self.cost.merge(other.cost)
         self.cycle_times += other.cycle_times
         self.reviewed_runs += other.reviewed_runs
         self.vetoed_runs += other.vetoed_runs
@@ -121,11 +144,24 @@ class KpiTotals:
         median = times[mid] if len(times) % 2 else (times[mid - 1] + times[mid]) / 2
         return round(median, SECONDS_DIGITS)
 
+    @property
+    def runtime_total_s(self) -> float:
+        """Summe der Laufzeiten aller beendeten Runs in Sekunden."""
+        return round(sum(self.runtimes), SECONDS_DIGITS)
+
     def as_dict(self) -> KpiSummary:
         """JSON-Form."""
         return {
             "runs": self.runs,
             "passed": self.passed,
+            "failed": self.failed,
+            "runtime_s": {
+                "count": len(self.runtimes),
+                "total": self.runtime_total_s,
+                "avg": round(sum(self.runtimes) / len(self.runtimes), SECONDS_DIGITS) if self.runtimes else None,
+                "max": round(max(self.runtimes), SECONDS_DIGITS) if self.runtimes else None,
+            },
+            "cost": self.cost.as_dict(),
             "cycle_time_s": {
                 "count": len(self.cycle_times),
                 "avg": self.cycle_time_avg_s,
@@ -156,6 +192,10 @@ def loop_kpis(runs: Iterable[Run]) -> KpiTotals:
             out.passed += 1
         if cycle is not None:
             out.cycle_times.append(cycle)
+        out.failed += is_failed(run)
+        if (runtime := runtime_s(run)) is not None:
+            out.runtimes.append(runtime)
+        out.cost.merge(run_cost(run).totals)
         if any(s.review is not None for s in run.steps):
             out.reviewed_runs += 1
             out.vetoed_runs += is_vetoed(run)
@@ -203,6 +243,10 @@ _PROM_GAUGES: tuple[tuple[str, str, Callable[[KpiTotals], float | None]], ...] =
     ("fabrik_kpi_defects_caught", "Runs with a defect signal that did not resurface", lambda t: t.defects_caught),
     ("fabrik_kpi_defects_escaped", "Outcome failures after an earlier accepted run", lambda t: t.defects_escaped),
     ("fabrik_kpi_defect_escape_rate", "escaped / (caught + escaped)", lambda t: t.defect_escape_rate),
+    ("fabrik_kpi_runs_failed", "Runs with status fail or error", lambda t: t.failed),
+    ("fabrik_kpi_runtime_seconds_total", "Summed runtime of finished runs", lambda t: t.runtime_total_s),
+    ("fabrik_kpi_tokens_total", "Tokens used by agent/LLM steps", lambda t: t.cost.total_tokens),
+    ("fabrik_kpi_cost_usd_total", "Known cost of agent/LLM steps in USD", lambda t: round(t.cost.cost_usd, 6)),
 )
 
 

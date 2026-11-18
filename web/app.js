@@ -2958,8 +2958,13 @@ function fmtKpiRate(r) {
 function renderKpiRow(name, k) {
   const ct = k.cycle_time_s || {};
   const cycle = ct.avg === null || ct.avg === undefined ? "—" : fmtDur(Math.round(ct.avg));
+  const rt = k.runtime_s || {};
+  const runtime = rt.count ? `${fmtDur(Math.round(rt.avg))} / ${fmtDur(Math.round(rt.total))}` : "—";
   return `<div class="schedrow">
     <div class="schedrow-main"><span class="schedname">${esc(name)}</span></div>
+    <span title="${esc(t("kpis.runsTitle"))}">${esc(t("kpis.runs"))}: ${k.passed || 0} ✔ / ${k.failed || 0} ✖ (${k.runs || 0})</span>
+    <span title="${esc(t("kpis.runtimeTitle"))}">${esc(t("kpis.runtime"))}: ${esc(runtime)}</span>
+    <span title="${esc(t("kpis.costTitle"))}">${esc(t("kpis.cost"))}: ${esc(fmtCost(k.cost) || "—")}</span>
     <span title="${esc(t("kpis.cycleTitle"))}">${esc(t("kpis.cycle"))}: ${esc(cycle)} (${ct.count || 0})</span>
     <span title="${esc(t("kpis.vetoTitle"))}">${esc(t("kpis.veto"))}: ${esc(fmtKpiRate(k.judge_veto_rate))}</span>
     <span title="${esc(t("kpis.escapeTitle"))}">${esc(t("kpis.escape"))}: ${esc(fmtKpiRate(k.defect_escape_rate))}
