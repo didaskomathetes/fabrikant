@@ -1,146 +1,144 @@
-# ADR 0057: `needs human` — Eskalation an einen Menschen bei Blockade, Stagnation und Scope-Drift
+# ADR 0057: `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift
 
-**Status:** Vorgeschlagen (2026-11-16)
-**Ergänzt:** ADR 0011 (Approval-Request-Protokoll), ADR 0013 (AC-Verifikation im Review),
-ADR 0024 (Verdikt-Marker, Reply-Sperre),
-ADR 0035 (Fehlerklassen), ADR 0036 (Run-Retry, erschöpfte Aufträge), ADR 0039 (konvergente
-Review-Runden).
+**Status:** Proposed (2026-11-16)
+**Extends:** ADR 0011 (approval request protocol), ADR 0013 (AC verification in review),
+ADR 0024 (verdict markers, reply lock),
+ADR 0035 (error classes), ADR 0036 (run retry, exhausted jobs), ADR 0039 (convergent
+review rounds).
 
-## Kontext
+## Context
 
-PR example-org/example-repo#1282 (Issue #1078) lief vier Review-Runden
-(2026-11-13 dreimal, 2026-11-16 einmal), ohne dass sich etwas bewegte:
+A review loop can get stuck when it needs a human, with nothing moving across multiple
+rounds:
 
-- Der Reviewer meldete jede Runde dieselben zwei Findings: Die Live-Allow-List ist nicht
-  angepasst (P1), und es fehlt der Nachweis aus dem Fixture-Shop (P2). Verdikt jeweils
+- The reviewer reports the same findings every round and the verdict stays
   `changes_requested`.
-- Der Builder antwortete jede Runde: „korrekt, aber nicht von hier lösbar, braucht einen
-  Menschen" und änderte nichts. Die Live-Liste liegt in einem anderen Repo, der Fixture-Shop
-  ist aus der Sandbox nicht erreichbar.
-- Jede Antwort und jeder neue Head löste den nächsten Review aus. Das „braucht einen
-  Menschen" stand nur als Freitext in einem PR-Kommentar. Niemand wurde benachrichtigt, und
-  in der fabrik-UI war nichts sichtbar.
+- The builder answers each round that the blocker is not resolvable from here and needs a
+  human, and changes nothing. The blocker lives outside the sandbox's reach — for example a
+  change in another repository or by another team, or an environment that is not reachable
+  from the sandbox.
+- Every reply and every new head triggers the next review. The "needs a human" request exists
+  only as free text in a PR comment. Nobody is notified, and nothing is visible in the fabrik
+  UI.
 
-Das ist derselbe Fehler, den ADR 0011 für ADRs behoben hat: Die Bitte um eine menschliche
-Entscheidung ist in PR-Kommentaren vergraben, und es gibt keinen Weg, darauf zu handeln.
-ADR 0011 deckt aber nur den Fall „Änderung braucht eine ADR" ab. Es fehlt ein allgemeiner
-Kanal für die übrigen Fälle, in denen ein Loop nicht von selbst weiterkommt:
+This is the same failure ADR 0011 fixed for ADRs: the request for a human decision is buried
+in PR comments, and there is no way to act on it. ADR 0011 only covers the case "a change
+needs an ADR." What is missing is a general channel for the remaining cases in which a loop
+cannot proceed on its own:
 
-1. **Blockade:** Der Builder braucht etwas außerhalb seiner Reichweite: Zugang (Live-Shop,
-   Fixture-Shop), eine Änderung in einem fremden Repo oder bei einem anderen Team, eine
-   Policy- oder Produktentscheidung.
-2. **Stagnation:** Review und Reply drehen sich, das Verdikt ändert sich nicht (#1282).
-3. **Erschöpfung:** `pr_review` erreicht `max_rounds` (ADR 0039), eine Retry-Kette ist
-   `exhausted` (ADR 0036). Heute endet beides als `fail` im Run-Log, ohne dass jemand eine
-   Entscheidung treffen muss.
-4. **Scope-Drift:** Die Lösung weicht deutlich von den Acceptance Criteria des Issues ab oder
-   ist viel größer als das Issue vermuten ließ (anderes Repo, anderes Team, Architektur).
+1. **Blockage:** The builder needs something outside its reach: access (to a live or fixture
+   environment), a change in a foreign repository or by another team, or a policy or product
+   decision.
+2. **Stagnation:** Review and reply go in circles, the verdict does not change.
+3. **Exhaustion:** `pr_review` reaches `max_rounds` (ADR 0039), a retry chain is
+   `exhausted` (ADR 0036). Today both end as `fail` in the run log, without anyone needing to
+   make a decision.
+4. **Scope drift:** The solution deviates significantly from the issue's acceptance criteria,
+   or is much larger than the issue suggested (another repository, another team,
+   architecture).
 
-## Entscheidung
+## Decision
 
-### 1. Ein Zustand, ein Label, ein Gate
+### 1. One state, one label, one gate
 
-Alle vier Fälle münden in **denselben Eskalationszustand**. Er fühlt sich an wie eine
-Freigabe: Der Mensch sieht in der fabrik-UI/CLI einen wartenden Run mit Begründung und
-handelt dort.
+All four cases converge on **the same escalation state**. It feels like an approval: the
+human sees a waiting run with a reason in the fabrik UI/CLI and acts there.
 
-- **Dauerhafter Zustand = Label** `needs human` am PR (bzw. am Issue, wenn kein PR existiert).
-  Der Labelname ist pro Projekt konfigurierbar (`human_label`, Default `needs human`).
-- **Sichtbarkeit = Run im Gate:** Ein `escalation`-Loop (Trigger `on_pr`/`on_issue`, Labels
-  `[fabrik, needs human]`, `reconcile: true`, analog zum `approval`-Loop aus ADR 0011)
-  startet pro markiertem Item einen Run, der in `needs_approval` pausiert. Der
-  `ApprovalRequest` bekommt den neuen `reason` `escalation` und trägt:
-  `kind` (s. u.), `why` (Zusammenfassung des Blockers), `what` (die Optionen für den
-  Menschen), `pr`/`issue` und Links auf die auslösenden Kommentare.
-- **Benachrichtigung:** wie bei Freigaben (UI-Badge, `notify`-Step, falls konfiguriert).
+- **Durable state = label** `needs human` on the PR (or on the issue, if no PR exists). The
+  label name is configurable per project (`human_label`, default `needs human`).
+- **Visibility = run in the gate:** an `escalation` loop (trigger `on_pr`/`on_issue`, labels
+  `[fabrik, needs human]`, `reconcile: true`, analogous to the `approval` loop from ADR
+  0011) starts a run per marked item that pauses in `needs_approval`. The `ApprovalRequest`
+  gets the new `reason` `escalation` and carries: `kind` (see below), `why` (summary of the
+  blocker), `what` (the options for the human), `pr`/`issue`, and links to the triggering
+  comments.
+- **Notification:** as for approvals (UI badge, `notify` step, if configured).
 
-### 2. Eskalationsarten (`kind`)
+### 2. Escalation kinds (`kind`)
 
-Feste, kleine Menge. Neue Arten nur per ADR-Änderung.
+A fixed, small set. New kinds only via an ADR change.
 
-| `kind` | Auslöser | erkannt durch |
+| `kind` | Trigger | Detected by |
 |---|---|---|
-| `blocked` | Builder braucht Zugang, eine Änderung in fremdem Repo/Team oder eine Entscheidung; oder ein AC ist aus der Sandbox nicht prüfbar | Marker des Builders (§3); AC-Verifikation des Reviewers (§3) |
-| `stalled` | `stall_rounds` (Default 2) aufeinanderfolgende `changes_requested`-Verdikte, ohne dass der Builder dazwischen Code geändert hat, oder ohne neue Findings (ADR 0039: Reviewer meldet nur Vorrunden-Findings als offen) | deterministisch aus Verdikt- und Reply-Markern (§4) |
-| `exhausted` | `pr_review` nach `max_rounds` weiter `changes_requested`; Retry-Kette `exhausted` (ADR 0036) | Engine, an der Stelle, an der heute `fail` gesetzt wird |
-| `scope` | Lösung erfordert deutlich mehr als die ACs, oder ein blockierendes Finding liegt außerhalb der ACs | Marker des Builders (§3) oder Finding-Feld `out_of_scope` des Reviewers (§3) |
+| `blocked` | Builder needs access, a change in a foreign repo/team, or a decision; or an AC is not verifiable from the sandbox | Builder marker (§3); reviewer AC verification (§3) |
+| `stalled` | `stall_rounds` (default 2) consecutive `changes_requested` verdicts without the builder changing code in between, or without new findings (ADR 0039: the reviewer reports only prior-round findings as open) | Deterministically from verdict and reply markers (§4) |
+| `exhausted` | `pr_review` still `changes_requested` after `max_rounds`; retry chain `exhausted` (ADR 0036) | Engine, at the point where `fail` is set today |
+| `scope` | Solution requires significantly more than the ACs, or a blocking finding lies outside the ACs | Builder marker (§3) or reviewer finding field `out_of_scope` (§3) |
 
-### 3. Marker statt Freitext
+### 3. Markers instead of free text
 
-Der Builder eskaliert über einen **strukturierten Marker** in seiner Antwort, nicht über die
-Formulierung „needs human":
+The builder escalates via a **structured marker** in its reply, not via the phrasing "needs
+human":
 
 ```
 <!-- fabrik-escalate kind=blocked re=<keys> -->
 ```
 
-- `post-replies` (host-seitig, `pr-status.py`) validiert den Marker wie die übrigen: `kind`
-  nur aus der Tabelle, `re` nur aus den Keys dieses Runs. Erst der Host setzt das Label.
-  Der Agent erhält dafür keine zusätzlichen Rechte.
-- Der Reviewer darf pro Finding `out_of_scope: true` setzen (Erweiterung des Finding-Schemas
-  aus ADR 0039). Ist ein blockierendes Finding (`high`/P1) `out_of_scope`, eskaliert der
-  Review-Step mit `kind=scope`, statt `changes_requested` zu posten und den Builder
-  loszuschicken.
-- **AC-Verifikation (ADR 0013 Stufe 2):** Der Reviewer meldet pro Kriterium
-  `met`/`unmet`/`unverifiable`. Ist ein Kriterium in zwei aufeinanderfolgenden Runden
-  `unverifiable` (im Beispiel: TICKET-REDACTED gegen einen Fixture-Shop), eskaliert der Review-Step
-  mit `kind=blocked`. Er schickt den Builder nicht erneut los, denn der kann es per Definition
-  nicht nachweisen. `unverifiable` blockiert das Verdikt weiterhin nicht (ADR 0013); es stoppt
-  nur die Schleife.
-- **Vorher alles Machbare tun:** Bevor der Builder eskaliert, erledigt er, was in seiner
-  Reichweite liegt und nicht die Entscheidung des Menschen vorwegnimmt (z. B. Tests ergänzen,
-  den PR-Body um den tatsächlich umgesetzten Scope ergänzen). Die Eskalation nennt, was
-  erledigt ist und was offen bleibt.
+- `post-replies` (host-side, `pr-status.py`) validates the marker like the others: `kind`
+  only from the table, `re` only from the keys of this run. Only the host sets the label.
+  The agent gains no additional rights for this.
+- The reviewer may set `out_of_scope: true` per finding (extension of the finding schema from
+  ADR 0039). If a blocking finding (`high`/P1) is `out_of_scope`, the review step escalates
+  with `kind=scope` instead of posting `changes_requested` and sending the builder off.
+- **AC verification (ADR 0013 stage 2):** The reviewer reports `met`/`unmet`/`unverifiable`
+  per criterion. If a criterion is `unverifiable` in two consecutive rounds (for example a
+  criterion that can only be checked against an environment not reachable from the sandbox),
+  the review step escalates with `kind=blocked`. It does not send the builder off again,
+  because the builder cannot prove it by definition. `unverifiable` still does not block the
+  verdict (ADR 0013); it only stops the loop.
+- **Do everything feasible first:** Before the builder escalates, it completes what is within
+  its reach and does not preempt the human's decision (e.g. add tests, extend the PR body with
+  the scope actually implemented). The escalation states what is done and what remains open.
 
-### 4. Stopp: Loops respektieren das Label
+### 4. Stop: loops respect the label
 
-- `review-pr`, `pr-reply` und `develop` überspringen Items mit `needs human`. Das gilt am
-  Trigger (Label-Ausschluss) und zusätzlich im Gate von `pr-status.py` (`reply-context`,
-  `merge-check` → `skip`), damit ein manueller Run nicht durchrutscht.
-- Die Stagnationserkennung (`stalled`) läuft deterministisch in `pr-status.py` aus den
-  vorhandenen Markern (`fabrik-review verdict=… sha=…`, `fabrik-reply re=…`) und der
-  Commit-Historie des PR-Branches. Sie nutzt kein LLM.
+- `review-pr`, `pr-reply`, and `develop` skip items with `needs human`. This applies at the
+  trigger (label exclusion) and additionally in the gate of `pr-status.py` (`reply-context`,
+  `merge-check` → `skip`), so a manual run does not slip through.
+- Stagnation detection (`stalled`) runs deterministically in `pr-status.py` from the existing
+  markers (`fabrik-review verdict=… sha=…`, `fabrik-reply re=…`) and the commit history of the
+  PR branch. It uses no LLM.
 
-### 5. Aktionen des Menschen
+### 5. Human actions
 
-Im Gate der fabrik-UI/CLI, mit derselben Bedienung wie Freigaben:
+In the gate of the fabrik UI/CLI, with the same operation as approvals:
 
-| Aktion | Wirkung |
+| Action | Effect |
 |---|---|
-| **Fortsetzen** (optional mit Notiz) | Label entfernt. Die Notiz wird als PR-Kommentar vom Account des Menschen gepostet und ist damit regulärer Input für `pr-reply` (z. B. „MAS-PR ist gemergt, bitte erneut verifizieren"). Die `on_pr`-Reconcile-Trigger feuern wieder. |
-| **Neu zuschneiden** | Wie Fortsetzen. Der Mensch hat vorher ACs oder PR-Body angepasst (z. B. `Closes` → `Refs`). Die Notiz sagt dem Builder, was sich geändert hat. |
-| **Aufgeben** (= Ablehnen) | PR geschlossen mit Begründungskommentar. Issue bleibt offen, `needs human` bleibt am Issue, damit `develop` es nicht neu aufgreift. |
+| **Resume** (optionally with a note) | Label removed. The note is posted as a PR comment from the human's account and is thus regular input for `pr-reply` (e.g. "the upstream PR is merged, please re-verify"). The `on_pr` reconcile triggers fire again. |
+| **Re-scope** | Like resume. The human has adjusted the ACs or PR body beforehand (e.g. `Closes` → `Refs`). The note tells the builder what changed. |
+| **Give up** (= reject) | PR closed with a reasoning comment. The issue stays open, `needs human` stays on the issue, so `develop` does not pick it up again. |
 
-Löst der Mensch das Problem direkt auf GitHub (Label manuell entfernt), endet der
-Eskalations-Run beim nächsten Reconcile von selbst als erledigt.
+If the human resolves the problem directly on GitHub (removes the label manually), the
+escalation run ends on its own as done at the next reconcile.
 
-### 6. Verhältnis zu bestehenden Mechanismen
+### 6. Relationship to existing mechanisms
 
-- **ADR 0011** bleibt für den Fall „ADR nötig" maßgeblich: Dort gibt es konkreten Inhalt zum
-  Freigeben (den ADR-PR). `needs human` ist für Fälle ohne solchen Inhalt.
-- **ADR 0035/0036:** `environment`-Fehler alarmieren weiter über den Alert-Pfad (ADR 0025).
-  Nur Ketten, deren letzter Fehler `outcome` war, werden zusätzlich zu `exhausted`-Eskalationen.
-  Infrastrukturprobleme werden also keine PR-Labels.
+- **ADR 0011** remains authoritative for the "ADR needed" case: there is concrete content to
+  approve (the ADR PR). `needs human` is for cases without such content.
+- **ADR 0035/0036:** `environment` errors still alert via the alert path (ADR 0025). Only
+  chains whose last error was `outcome` additionally become `exhausted` escalations.
+  Infrastructure problems thus do not become PR labels.
 
-## Konsequenzen
+## Consequences
 
-+ Review-/Reply-Schleifen wie bei #1282 enden spätestens nach `stall_rounds`. Keine weiteren
-  Token für Runden, die nichts ändern.
-+ Ein Kanal, eine Bedienung für alle „braucht einen Menschen"-Fälle. Die Bitte steht in der
-  UI, nicht in Kommentar Nr. 7.
-+ Erschöpfte Fix-Runden und Retry-Ketten werden zu Entscheidungen statt zu stillen `fail`s.
-+ Der Agent bekommt keine neuen Rechte. Label und Run setzt der Host nach Validierung.
-- Ein neuer Loop (`escalation`) und ein neuer `ApprovalRequest.reason`. Die UI muss
-  `escalation` von normalen Freigaben unterscheiden (Text, Aktionen).
-- Ein falscher `blocked`-Marker parkt einen PR, den der Builder hätte lösen können. Gegenmittel:
-  Der Marker verlangt die Liste „erledigt / offen", und der Mensch kann mit Notiz fortsetzen.
-- `stall_rounds` zu niedrig stoppt Schleifen, die gerade konvergieren. Der Default 2 ist
-  vorsichtig gewählt und pro Loop überschreibbar.
++ Review/reply loops like the one in the context end after at most `stall_rounds`. No further
+  tokens for rounds that change nothing.
++ One channel, one operation for all "needs a human" cases. The request is in the UI, not in
+  comment number 7.
++ Exhausted fix rounds and retry chains become decisions instead of silent `fail`s.
++ The agent gains no new rights. The host sets the label and the run after validation.
+- A new loop (`escalation`) and a new `ApprovalRequest.reason`. The UI must distinguish
+  `escalation` from regular approvals (text, actions).
+- A wrong `blocked` marker parks a PR that the builder could have resolved. Countermeasure:
+  the marker requires the "done / open" list, and the human can resume with a note.
+- `stall_rounds` too low stops loops that are just converging. The default 2 is chosen
+  conservatively and is overridable per loop.
 
-## Offene Punkte (nicht Teil dieser Entscheidung)
+## Open points (not part of this decision)
 
-- Automatisches Anlegen eines Folge-Issues im fremden Repo bei `kind=blocked`, wenn der
-  Blocker ein konkreter Code-Change ist (im Beispiel: `merchant-assistant-service`). Braucht
-  Schreibrechte dort und eine Regel, wer das darf.
-- Eskalation aus dem `refine`-Loop (ADR 0006/0017), wenn ein Issue schon beim Verfeinern als
-  nicht in diesem Repo lösbar erkennbar ist.
+- Automatically creating a follow-up issue in the foreign repository for `kind=blocked`, when
+  the blocker is a concrete code change. Requires write access there and a rule for who may do
+  it.
+- Escalation from the `refine` loop (ADR 0006/0017), when an issue is already recognizable as
+  not resolvable in this repository during refinement.

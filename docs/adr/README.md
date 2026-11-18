@@ -71,4 +71,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
 | [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIK_LAUNCHER`) | Akzeptiert (2026-11-18) |
 | [0058](0058-webhook-replay-protection.md) | Webhook-Replay-Schutz (opt-in `replay_protection`) | Akzeptiert (2026-11-18) |
-| [0059](0059-needs-human-escalation.md) | `needs human` — Eskalation an einen Menschen bei Blockade, Stagnation und Scope-Drift | Vorgeschlagen |
+| [0059](0059-needs-human-escalation.md) | `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift | Vorgeschlagen |
