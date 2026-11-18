@@ -1,6 +1,6 @@
 # ADR 0057: Run-Launcher — Port/Adapter für das Ausführungs-Substrat
 
-**Status:** Vorgeschlagen
+**Status:** Akzeptiert (2026-11-18)
 **Betrifft:** ADR 0028 (Worktree pro Run), ADR 0043 (Reconcile-Dedup), P3 (ECS/GKE)
 
 ## Kontext
