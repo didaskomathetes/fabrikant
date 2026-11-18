@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +21,7 @@ _EXTRA_SECRET_FILES = [
 # Kürzere Werte werden nicht maskiert (sonst träfe das Masking beliebige kurze Wörter im Log).
 MIN_SECRET_LEN = 8
 _extra_secrets_cache: list[str] | None = None
+_env_lock = threading.Lock()
 _runtime_secrets: list[str] = []  # Spec-env-Values, pro Run registriert
 _sources: list[Callable[[], list[str]]] = []  # weitere Secret-Quellen (z. B. UI-Connections)
 
@@ -30,10 +32,33 @@ def register_source(source: Callable[[], list[str]]) -> None:
         _sources.append(source)
 
 
+def _scan_environ() -> list[str]:
+    """Secret-Werte aus os.environ lesen (iteriert die Umgebung — nur zu ruhigen Zeitpunkten aufrufen)."""
+    return [v for k, v in os.environ.items() if v and len(v) >= MIN_SECRET_LEN and _SECRET_NAME_RE.search(k)]
+
+
+_env_secrets: list[str] = _scan_environ()  # Snapshot beim Import (Prozessstart, noch single-threaded)
+
+
+def refresh_env_secrets() -> None:
+    """Env-Snapshot explizit neu einlesen (z. B. nach bewusstem Setzen eines Secrets in os.environ).
+
+    Nicht im Hotpath aufrufen: die Iteration über os.environ ist nicht thread-sicher gegenüber
+    parallelen putenv/setenv-Aufrufen anderer Threads.
+    """
+    global _env_secrets
+    snapshot = _scan_environ()
+    with _env_lock:
+        _env_secrets = snapshot
+
+
 def _secrets() -> list[str]:
-    """Secret-Werte für Log-/Record-Masking (env + Env-Dateien + Spec-env, gecacht)."""
+    """Secret-Werte für Log-/Record-Masking (Env-Snapshot + Env-Dateien + Spec-env, gecacht).
+
+    Iteriert os.environ bewusst NICHT (Segfault-Hazard bei parallelem setenv, Issue #13).
+    """
     global _extra_secrets_cache
-    vals = [v for k, v in os.environ.items() if v and len(v) >= MIN_SECRET_LEN and _SECRET_NAME_RE.search(k)]
+    vals = list(_env_secrets)
     if _extra_secrets_cache is None:
         _extra_secrets_cache = []
         for f in _EXTRA_SECRET_FILES:

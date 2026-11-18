@@ -3,23 +3,24 @@
 import json
 
 import fabrik
+from fabrik import secrets
 
 _SECRET = "supersecretvalue123"
 
 
 # ---------------------------------------------------------------- redaction
 def test_redact_masks_env_secret(monkeypatch):
-    monkeypatch.setenv("FABRIK_TEST_TOKEN", _SECRET)
+    monkeypatch.setattr(secrets, "_env_secrets", [_SECRET])
     assert fabrik._redact(f"token={_SECRET} ok") == "token=[REDACTED] ok"
 
 
 def test_redact_leaves_non_secret(monkeypatch):
-    monkeypatch.setenv("FABRIK_TEST_TOKEN", _SECRET)
+    monkeypatch.setattr(secrets, "_env_secrets", [_SECRET])
     assert fabrik._redact("nothing sensitive here") == "nothing sensitive here"
 
 
 def test_redact_record_masks_steps_and_error(monkeypatch):
-    monkeypatch.setenv("FABRIK_TEST_TOKEN", _SECRET)
+    monkeypatch.setattr(secrets, "_env_secrets", [_SECRET])
     rec = {
         "steps": [{"summary": f"used {_SECRET}", "output": _SECRET}],
         "error": f"failed with {_SECRET}",
