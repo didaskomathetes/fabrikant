@@ -23,6 +23,7 @@ from fabrik.failures import (
     classify_exit_code,
     classify_git_output,
     classify_http,
+    describe_exit,
     failed,
     from_result,
     is_signal_exit,
@@ -90,6 +91,24 @@ def test_exit_codes(code, kind):
 )
 def test_is_signal_exit(code, signal):
     assert is_signal_exit(code) is signal
+
+
+@pytest.mark.parametrize(
+    ("code", "text"),
+    [
+        (0, "exit 0"),
+        (1, "exit 1"),
+        (128, "exit 128"),
+        (-11, "signal SIGSEGV"),
+        (139, "exit 139 (SIGSEGV)"),
+        (134, "exit 134 (SIGABRT)"),
+        (191, "exit 191 (signal 63)"),  # Echtzeit-Signal ohne eigenen Namen im Enum
+        (-63, "signal signal 63"),
+        (193, "exit 193"),
+    ],
+)
+def test_describe_exit(code, text):
+    assert describe_exit(code) == text
 
 
 @pytest.mark.parametrize(
