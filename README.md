@@ -729,7 +729,8 @@ CLI wird gekillt. Das Modell-Dropdown sitzt in der Titelleiste des Chats.
 | `/api/runs?project=&limit=` | GET | Run-Liste (neueste zuerst) |
 | `/api/runs?project=&q=&from=&to=&status=&failure_kind=&loop=&cursor=&limit=` | GET | Historie: Freitext (Run-Id, Loop, Trigger, Status, Notiz, Step-Summaries; nicht das Log), Datumsbereich, Status/Fehlerklasse (kommagetrennt)/Loop; Cursor-paginiert → `{runs, next_cursor}` (ADR 0034, 0035) |
 | `/api/runs` | POST `{"project","loop","note"}` | Run starten; läuft das Projekt, wird er eingereiht (202, `queued: true`, Record-Status `queued`) und startet mit Vorrang vor Trigger-Runs (ADR 0015). Response enthält `run_id` |
-| `/api/run/<id>` | GET | Run-Record (Steps, Output) |
+| `/api/run/<id>` | GET | Run-Record (Steps, Output) + `cost`: Token-/Kosten-Summe aus den Step-Usages, aufgeschlüsselt je Step und Backend; `unpriced_steps` > 0 = Backend lieferte keine Kosten (Summe ist Untergrenze) |
+| `/api/kpis/costs?project=&from=&to=` | GET | Kosten-Rollup je Projekt (Runs, Tokens, `cost_usd`, je Backend) im Zeitraum (`from`/`to` wie in der Historie, `to` als Datum = ganzer Tag) + Gesamtsumme; die Run-Liste trägt je Zeile `cost` (Issue #126) |
 | `/api/run/<id>/log?lines=N` | GET | rohes Run-Log als Plain-Text (Tail via `lines`) |
 | `/api/run/<id>/stream?project=` | GET | Live-Log + Statuswechsel als Server-Sent Events (`log`/`status`/`end`); Reconnect via `Last-Event-ID` (Byte-Offset); Secrets redigiert (ADR 0038) |
 | `/api/run/<id>/transcript?after=&limit=` | GET | Agent-Turns (Prompt, Tool-Calls, Antworten) aus dem SessionLog, seitenweise (ADR 0038) |

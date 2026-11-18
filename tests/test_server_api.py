@@ -902,3 +902,21 @@ def test_connections_writes_need_admin_reads_need_viewer():
     assert auth.required_role("GET", "/api/connections") == auth.VIEWER
     assert auth.required_role("PUT", "/api/connections/x") == auth.ADMIN
     assert auth.required_role("DELETE", "/api/connections/x") == auth.ADMIN
+
+
+def test_get_run_includes_cost_rollup(fabrik_url):
+    status, body, _ = _get(f"{fabrik_url}/api/run/{RUN_ID}")
+    assert status == 200
+    cost = json.loads(body)["cost"]
+    assert cost["total_tokens"] == 0 and cost["steps"] == []
+
+
+def test_get_kpis_costs(fabrik_url):
+    status, body, _ = _get(f"{fabrik_url}/api/kpis/costs?project=uitest")
+    assert status == 200
+    assert json.loads(body)["projects"]["uitest"]["runs"] >= 1
+
+
+def test_get_kpis_costs_bad_date(fabrik_url):
+    status, _, _ = _get(f"{fabrik_url}/api/kpis/costs?from=nope")
+    assert status == 400

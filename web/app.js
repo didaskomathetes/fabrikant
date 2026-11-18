@@ -693,6 +693,7 @@ function renderHistoryList() {
       <span class="histmain" data-act="open">
         <span class="histid">${esc(r.id)}</span> ${badge(statusLabel(r.status), r.status)}${kindBadge(r)}${verdictBadge(r)}
         <span class="histmeta">${esc(r.loop)} · ${esc(r.trigger)} · ${esc(fmtDateTime(r.started))}</span>
+        ${fmtCost(r.cost) ? `<span class="histcost">${esc(fmtCost(r.cost))}</span>` : ""}
         ${r.note ? `<span class="histnote">${esc(r.note)}</span>` : ""}
       </span>
       ${r.status === "needs_approval" ? `<span class="histactions">
@@ -2252,6 +2253,23 @@ function formatRunMeta(meta) {
   return rows.length ? `<div class="runmetabox">${rows.join("")}</div>` : "";
 }
 
+// Kosten/Tokens kompakt ("$0.0123 · 4.5k tok"); "" ohne Verbrauch (Run ohne LLM-Steps).
+function fmtCost(c) {
+  if (!c || !c.total_tokens) return "";
+  const tok = c.total_tokens >= 1000 ? `${(c.total_tokens / 1000).toFixed(1)}k` : String(c.total_tokens);
+  const usd = c.unpriced_steps ? `≥ $${c.cost_usd.toFixed(4)}` : `$${c.cost_usd.toFixed(4)}`;
+  return `${usd} · ${tok} ${t("run.tokens")}`;
+}
+
+function formatRunCost(cost) {
+  const total = fmtCost(cost);
+  if (!total) return "";
+  const rows = (cost.steps || [])
+    .map((s) => `<div class="appr-row"><span class="appr-k">${esc(s.step)}</span><span class="appr-v">${esc(s.backend)}${s.model ? ` / ${esc(s.model)}` : ""} · ${esc(fmtCost(s) || "–")}</span></div>`)
+    .join("");
+  return `<div class="runmetabox"><div class="appr-row"><span class="appr-k">${esc(t("run.cost"))}</span><span class="appr-v">${esc(total)}</span></div>${rows}</div>`;
+}
+
 const STEP_ICONS = { pass: "✔", skipped: "–", waiting: "⏸", running: "▶" };
 
 function formatRun(rec) {
@@ -2276,6 +2294,7 @@ function formatRun(rec) {
     out += `<div class="runretry">${esc(label)}</div>`;
   }
   out += formatRunMeta(rec.meta);
+  out += formatRunCost(rec.cost);
   if (rec.status === "queued") out += `<div class="runapproval"><div class="appr-title">${esc(t("run.queued"))}</div></div>`;
   if (rec.status === "needs_approval") {
     if (rec.approval_queued) out += `<div class="runapproval"><div class="appr-title">${esc(t("run.approvalQueued"))}</div></div>`;

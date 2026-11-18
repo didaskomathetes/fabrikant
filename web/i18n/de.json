@@ -16,6 +16,8 @@
   "run.tab.overview": "Übersicht",
   "run.tab.log": "Log",
   "run.tab.transcript": "Transkript",
+  "run.cost": "Kosten",
+  "run.tokens": "Tok.",
   "run.follow": "folgen",
   "run.status.queued": "in Warteschlange",
   "run.status.running": "läuft",
