@@ -125,10 +125,15 @@ def kpi_costs(runs: Iterable[Run]) -> dict:
     }
 
 
-def costs_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
-    """``GET /api/kpis/costs``: Kosten je Projekt im Zeitraum (``from``/``to`` wie in der Run-Suche).
+def runs_in_range(project: str | None, date_from: str, date_to: str) -> Iterable[Run]:
+    """Runs eines Projekts (oder aller) im Zeitraum (``from``/``to`` wie in der Run-Suche).
 
     ValueError bei ungültigem Datum."""
     lower, upper, upper_exclusive = date_bounds(date_from, date_to)
     query = RunQuery(project=project, lower=lower, upper=upper, upper_exclusive=upper_exclusive)
-    return kpi_costs(r for r in STORE.load_all(project) if query.matches(r))
+    return (r for r in STORE.load_all(project) if query.matches(r))
+
+
+def costs_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
+    """``GET /api/kpis/costs``: Kosten je Projekt im Zeitraum. ValueError bei ungültigem Datum."""
+    return kpi_costs(runs_in_range(project, date_from, date_to))

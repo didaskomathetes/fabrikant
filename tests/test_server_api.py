@@ -917,6 +917,18 @@ def test_get_kpis_costs(fabrik_url):
     assert json.loads(body)["projects"]["uitest"]["runs"] >= 1
 
 
+def test_get_kpis(fabrik_url):
+    status, body, _ = _get(f"{fabrik_url}/api/kpis?project=uitest")
+    assert status == 200
+    assert json.loads(body)["projects"]["uitest"]["runs"] >= 1
+    assert _get(f"{fabrik_url}/api/kpis?from=nope")[0] == 400
+
+
+def test_metrics_export_includes_kpis(fabrik_url):
+    status, body, _ = _get(f"{fabrik_url}/api/metrics")
+    assert status == 200 and "# TYPE fabrik_kpi_defect_escape_rate gauge" in body
+
+
 def test_get_kpis_costs_bad_date(fabrik_url):
     status, _, _ = _get(f"{fabrik_url}/api/kpis/costs?from=nope")
     assert status == 400

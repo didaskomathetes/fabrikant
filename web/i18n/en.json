@@ -246,5 +246,16 @@
   "verdict.value.fail": "fail",
   "verdict.value.done": "done",
   "verdict.value.blocked": "blocked",
-  "verdict.value.active": "active"
+  "verdict.value.active": "active",
+  "header.kpis": "📊 KPIs",
+  "kpis.title": "Factory KPIs",
+  "kpis.total": "All projects",
+  "kpis.empty": "No runs yet.",
+  "kpis.loadFailed": "Could not load KPIs: {error}",
+  "kpis.cycle": "cycle",
+  "kpis.cycleTitle": "Mean cycle time of passed runs (number of runs)",
+  "kpis.veto": "veto",
+  "kpis.vetoTitle": "Share of reviewed runs with changes requested",
+  "kpis.escape": "escape",
+  "kpis.escapeTitle": "Defect escape rate (caught/escaped): outcome failures after an earlier accepted run"
 }
