@@ -12,6 +12,7 @@ Text-Klassifikation gibt es nur als eng begrenzten Fallback für Ausgaben fremde
 from __future__ import annotations
 
 import re
+import signal
 import urllib.error
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -129,6 +130,19 @@ def classify_exit_code(code: int | None) -> FailureKind:
 def is_signal_exit(code: int) -> bool:
     """True, wenn der Prozess durch ein Signal starb (OOM-Kill, SIGTERM, …): sagt nichts über sein Ergebnis."""
     return code < 0 or _SIGNAL_EXIT_BASE < code <= _SIGNAL_EXIT_BASE + _MAX_SIGNAL
+
+
+def describe_exit(code: int) -> str:
+    """Exit-Code für Menschen: ``exit 1``, ``signal SIGSEGV`` (``subprocess``: -11) bzw.
+    ``exit 139 (SIGSEGV)`` (Shell/``docker run``: 128+n). Unbekannte Signalnummern bleiben Zahlen."""
+    if not is_signal_exit(code):
+        return f"exit {code}"
+    number = -code if code < 0 else code - _SIGNAL_EXIT_BASE
+    try:
+        name = signal.Signals(number).name
+    except ValueError:
+        name = f"signal {number}"
+    return f"signal {name}" if code < 0 else f"exit {code} ({name})"
 
 
 def _retry_after_header(headers: Headers | None, now: datetime) -> datetime | None:

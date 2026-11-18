@@ -257,3 +257,48 @@ def test_cancel_without_sandbox_does_not_touch_docker(monkeypatch, tmp_path):
     sid = be.create_task(str(tmp_path), "t")
     be.send_prompt(sid, "prompt", str(tmp_path))
     be.cancel(sid, str(tmp_path))
+
+
+class _CrashBackend(_EchoBackend):
+    """Kind schreibt einen langen Crash-Banner nach stderr und stirbt an SIGSEGV."""
+
+    def _build_cmd(self) -> list[str]:
+        script = (
+            "import os, signal, sys; sys.stdin.read();"
+            "sys.stderr.write('=' * 60 + '\\n' + 'noise line\\n' * 2000 + 'panic: Segmentation fault at address 0x0\\n');"
+            "sys.stderr.flush(); os.kill(os.getpid(), signal.SIGSEGV)"
+        )
+        return [sys.executable, "-c", script]
+
+    def _parse(self, out: str, err: str, returncode: int) -> dict:
+        # wie die echten Adapter: nur der ANFANG von stderr im Text
+        return {"status": "done" if returncode == 0 else "failed", "text": err[:300]}
+
+
+def test_failed_result_keeps_exit_code_and_stderr_tail(tmp_path):
+    """Ein Absturz der CLI: `_parse` behält nur den Banner-Anfang, die Ursache steht am Ende von
+    stderr — `poll` liefert Exit-Code und dieses Ende mit (zeilenweise abgeschnitten, begrenzt)."""
+    from fabrik.backends._oneshot import STDERR_TAIL_CHARS
+
+    r = _final(_CrashBackend(), tmp_path)
+    assert r["status"] == "failed"
+    assert r["exit_code"] == -11
+    assert "Segmentation fault at address" not in r["text"]
+    assert r["stderr_tail"].endswith("panic: Segmentation fault at address 0x0")
+    assert len(r["stderr_tail"]) <= STDERR_TAIL_CHARS
+    assert r["stderr_tail"].startswith("noise line")
+
+
+def test_done_result_has_no_exit_fields(tmp_path):
+    r = _final(_EnvBackend(), tmp_path)
+    assert r["status"] == "done"
+    assert "exit_code" not in r
+    assert "stderr_tail" not in r
+
+
+def test_tail_short_text_and_no_newline():
+    from fabrik.backends._oneshot import _tail
+
+    assert _tail("kurz\n") == "kurz"
+    assert _tail("x" * 50, limit=10) == "x" * 10
+    assert _tail("a\nbb\nccc", limit=6) == "ccc"

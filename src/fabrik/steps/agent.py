@@ -11,9 +11,10 @@ from .. import config
 from ..backends import AgentBackend, create_backend, known_backends
 from ..backends._oneshot import OneShotCliBackend
 from ..context import _cap, _substitute, step_workdir
-from ..failures import ConfigError, Failure, classify_agent_output, failed, from_result
+from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
 from ..gitops import github_env, subprocess_env, token_overrides
 from ..runmodel import FailureKind
+from ..secrets import _redact
 from ..spec_sources import resolve_relative
 from .extra_context import render_extra_context
 from .shell import _step_shell
@@ -134,6 +135,26 @@ def _session_failure(last: dict) -> Failure:
     if last.get("retryable"):
         return Failure(FailureKind.TRANSIENT)
     return classify_agent_output(str(last.get("text") or ""))
+
+
+def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
+    """Step-Result einer gescheiterten Session. Exit-Code (mit Signalname) in die Summary, das Ende
+    von stderr (One-Shot-CLIs: `stderr_tail`) redigiert ins Run-Log und als `output` in den Record —
+    bei einem Absturz steht die Ursache dort, nicht im gekürzten `text`."""
+    code = last.get("exit_code")
+    exit_note = f" ({describe_exit(code)})" if isinstance(code, int) else ""
+    extra: dict = {"exit_code": code} if isinstance(code, int) else {}
+    if tail := _redact(str(last.get("stderr_tail") or "")):
+        emit("  agent stderr (Ende):")
+        for line in tail.splitlines():
+            emit(f"    {line}")
+        extra["output"] = _cap(tail)
+    return failed(
+        f"agent session fehlgeschlagen{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
+        _session_failure(last),
+        usage=usage,
+        **extra,
+    )
 
 
 class _Progress:
@@ -350,11 +371,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                         break  # → nächste for-Iteration (neue Session)
                     usage = _agent_usage(last, backend_name, model, carry)
                     _record_cost(lg, sname, usage, last)
-                    return failed(
-                        f"agent session fehlgeschlagen: {str(last.get('text', ''))[:120]} (session {sid})",
-                        _session_failure(last),
-                        usage=usage,
-                    )
+                    return _session_failed(last, sid, usage, emit)
                 time.sleep(15)
             else:
                 # Timeout (while-Condition false) — kein Retry: eine hängende

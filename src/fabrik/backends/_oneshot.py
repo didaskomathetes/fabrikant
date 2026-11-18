@@ -10,6 +10,10 @@ definieren nur noch die Unterschiede:
   - `_build_cmd()`    argv OHNE Prompt (Prompt geht via stdin)
   - `_parse(out, err, rc)` → {status, text, tokens, cost, tools}
 
+Ein `failed`-Ergebnis trägt zusätzlich `exit_code` und `stderr_tail` (die letzten
+`STDERR_TAIL_CHARS` Zeichen von stderr): `_parse` kürzt seinen `text` auf den Anfang, bei
+einem Absturz (Crash-Banner der CLI, Python-Traceback) steht die Ursache aber am Ende.
+
 Optionale Hooks: `_env()` (zusätzliches Prozess-Env), `_sid_prefix()`,
 `_stale_after()` (None = Staleness-Check deaktiviert, z. B. claude_code).
 `extra_env` (vom Agent-Step gesetzt, z. B. die GitHub-Identity) überlagert
@@ -36,6 +40,20 @@ import uuid
 from .. import procs, sandbox
 from ..agentenv import build_agent_env
 from ..runmodel import FailureKind
+
+# Ende von stderr, das ein `failed`-Ergebnis mitnimmt — groß genug für einen Crash-Banner samt
+# Stack (Bun-Panic, Python-Traceback), klein genug für Run-Record und Run-Log.
+STDERR_TAIL_CHARS = 4000
+
+
+def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:
+    """Letzte `limit` Zeichen von `text`, ab einer Zeilengrenze (sofern es im Ausschnitt eine gibt)."""
+    text = text.rstrip()
+    if len(text) <= limit:
+        return text
+    cut = text[-limit:]
+    newline = cut.find("\n")
+    return cut[newline + 1 :] if newline != -1 else cut
 
 
 class _PipeDrain:
@@ -180,16 +198,23 @@ class OneShotCliBackend:
         procs.untrack(proc)
         drain = s.get("drain") or _PipeDrain(proc)
         out_b, err_b = drain.result()
+        out = out_b.decode(errors="replace") if isinstance(out_b, bytes) else (out_b or "")
+        err = err_b.decode(errors="replace") if isinstance(err_b, bytes) else (err_b or "")
         exchange = s.pop("sandbox", None)
         if exchange is not None:
             # Ergebnis des Containers in den Worktree übernehmen — auch bei Exit ≠ 0
             # (wie ein Agent auf dem Host, dessen Änderungen nach einem Fehler liegen bleiben).
             error = sandbox.finish_exchange(exchange, directory)
             if error:
-                return {**base, "status": "failed", "text": f"{self.name}: Sandbox — {error}"}
-        out = out_b.decode(errors="replace") if isinstance(out_b, bytes) else (out_b or "")
-        err = err_b.decode(errors="replace") if isinstance(err_b, bytes) else (err_b or "")
-        return self._parse(out, err, rc)
+                return self._with_exit({**base, "status": "failed", "text": f"{self.name}: Sandbox — {error}"}, rc, err)
+        return self._with_exit(self._parse(out, err, rc), rc, err)
+
+    @staticmethod
+    def _with_exit(res: dict, returncode: int, err: str) -> dict:
+        """`failed`-Ergebnis um `exit_code` und `stderr_tail` ergänzen (Moduldocstring)."""
+        if res.get("status") != "failed":
+            return res
+        return {**res, "exit_code": returncode, "stderr_tail": _tail(err)}
 
     def transcript(self, session_id: str, directory: str) -> list[dict]:
         """One-Shot-CLIs haben keinen abrufbaren Dialog → leer.

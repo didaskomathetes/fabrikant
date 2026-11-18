@@ -663,3 +663,34 @@ def test_agent_retry_accumulates_usage_of_discarded_attempts(monkeypatch):
     assert res["usage"]["prompt_tokens"] == 15
     assert res["usage"]["completion_tokens"] == 5
     assert res["usage"]["cost_usd"] == pytest.approx(0.5)
+
+
+def test_session_failed_reports_exit_and_stderr_tail(monkeypatch):
+    """Abgestürzte One-Shot-CLI: Exit-Code mit Signalname in der Summary, das stderr-Ende redigiert
+    als `output` und im Run-Log — dort steht die Ursache, nicht im gekürzten `text`."""
+    secret = "super-secret-value-123"
+    monkeypatch.setenv("FABRIK_TEST_SECRET", secret)
+    lines: list[str] = []
+    last = {
+        "status": "failed",
+        "text": "=" * 60 + "\nBun v1.4.4",
+        "exit_code": 134,
+        "stderr_tail": f"token {secret}\npanic(main thread): Segmentation fault at address 0x10",
+    }
+    res = agent_step._session_failed(last, "claude_code-abc", {"model": "m"}, lines.append)
+    assert res["ok"] is False
+    assert "(exit 134 (SIGABRT))" in res["summary"]
+    assert res["exit_code"] == 134
+    assert res["output"].endswith("Segmentation fault at address 0x10")
+    assert secret not in res["output"] and "[REDACTED]" in res["output"]
+    assert "    panic(main thread): Segmentation fault at address 0x10" in lines
+    assert not any(secret in line for line in lines)
+
+
+def test_session_failed_without_exit_info_keeps_old_shape():
+    """Backends ohne Exit-Infos (opencode serve): Summary wie bisher, kein output/exit_code."""
+    lines: list[str] = []
+    res = agent_step._session_failed({"status": "failed", "text": "boom"}, "s1", {}, lines.append)
+    assert res["summary"] == "agent session fehlgeschlagen: boom (session s1)"
+    assert "exit_code" not in res and "output" not in res
+    assert lines == []
