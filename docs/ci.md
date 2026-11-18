@@ -1,8 +1,8 @@
 # CI
 
 Workflow: `<repo-root>/.github/workflows/fabrik-ci.yml` (GitHub lädt nur dort) (Jobs `test`, `browser`).
-Die Jobs laufen im Projektverzeichnis `fabrik` des Repository-Roots
-(`working-directory: fabrik`).
+Läuft bei Pull Requests und Pushes auf `main`; Python 3.12, uv-Cache über `uv.lock`,
+Action-Versionen per Commit-SHA gepinnt, Permissions `contents: read`.
 
 ## Jobs
 
