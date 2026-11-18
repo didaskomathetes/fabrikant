@@ -9,6 +9,7 @@ import pytest
 import yaml
 from helpers import http_error
 
+from fabrik import secrets
 from fabrik.engine import _dispatch_step
 from fabrik.secrets import _redact_record
 from fabrik.steps import issue
@@ -219,7 +220,7 @@ def test_dispatch_and_token_never_in_result(monkeypatch):
 def test_token_redacted_in_run_record(monkeypatch):
     """Selbst wenn ein Fehlertext das Token enthielte, maskiert der Run-Record es."""
     secret = "ghs_supersecret_token_123"
-    monkeypatch.setenv("GITHUB_TOKEN", secret)
+    monkeypatch.setattr(secrets, "_env_secrets", [secret])
     record = {"steps": [{"summary": f"issue: boom {secret}", "output": secret}], "vars": {"issue_url": secret}}
     dumped = json.dumps(_redact_record(record))
     assert secret not in dumped and "[REDACTED]" in dumped

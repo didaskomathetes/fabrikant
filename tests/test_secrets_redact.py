@@ -16,6 +16,8 @@ SECRET = "sk-SECRET-XYZ999"
 @pytest.fixture
 def secret_env(monkeypatch):
     monkeypatch.setenv("FABRIK_TEST_SECRET", SECRET)
+    monkeypatch.setattr(secrets, "_env_secrets", [])
+    secrets.refresh_env_secrets()
     yield
 
 
@@ -103,3 +105,61 @@ def test_run_vars_are_redacted(secret_env):
     # saubere Werte bleiben unangetastet
     assert out["vars"]["issue_number"] == "42"
     assert out["vars"]["label"] == "ready to develop"
+
+
+def test_secrets_does_not_iterate_environ(monkeypatch):
+    """Hotpath darf os.environ nicht iterieren (Issue #13: Segfault-Hazard)."""
+
+    def boom(*_a, **_k):
+        raise AssertionError("os.environ iteriert")
+
+    monkeypatch.setattr(secrets.os.environ.__class__, "items", boom)
+    monkeypatch.setattr(secrets, "_env_secrets", [SECRET])
+    assert SECRET in secrets._secrets()
+    assert secrets._redact(f"x {SECRET} y") == "x [REDACTED] y"
+
+
+def test_refresh_env_secrets_picks_up_new_value(monkeypatch):
+    monkeypatch.setattr(secrets, "_env_secrets", [])
+    monkeypatch.setenv("FABRIK_TEST_SECRET", SECRET)
+    assert SECRET not in secrets._secrets()
+    secrets.refresh_env_secrets()
+    assert SECRET in secrets._secrets()
+
+
+def test_refresh_ignores_short_and_non_secret_names(monkeypatch):
+    monkeypatch.setattr(secrets, "_env_secrets", [])
+    monkeypatch.setenv("FABRIK_SHORT_TOKEN", "abc")
+    monkeypatch.setenv("FABRIK_PLAIN", SECRET)
+    secrets.refresh_env_secrets()
+    assert "abc" not in secrets._secrets()
+    assert SECRET not in secrets._secrets()
+
+
+def test_concurrent_redact_and_env_mutation(monkeypatch):
+    """Redaction parallel zu setenv-Schreibern: kein Crash, Ergebnis stabil."""
+    import threading
+
+    monkeypatch.setattr(secrets, "_env_secrets", [SECRET])
+    stop = threading.Event()
+    errors: list[BaseException] = []
+
+    def writer():
+        i = 0
+        while not stop.is_set():
+            monkeypatch.setenv(f"FABRIK_RACE_{i % 50}", str(i))
+            i += 1
+
+    t = threading.Thread(target=writer)
+    t.start()
+    try:
+        for _ in range(2000):
+            try:
+                assert secrets._redact(f"a {SECRET}") == "a [REDACTED]"
+            except BaseException as e:  # noqa: BLE001
+                errors.append(e)
+                break
+    finally:
+        stop.set()
+        t.join()
+    assert not errors

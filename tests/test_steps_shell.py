@@ -10,6 +10,7 @@ import os
 
 import pytest
 
+from fabrik import secrets
 from fabrik.steps import _step_shell
 
 NOOP = lambda m: None  # noqa: E731
@@ -268,7 +269,7 @@ def test_shell_redacts_secrets(tmp_path, monkeypatch):
     Secret-Name) darf weder im output- noch im summary-Feld landen.
     """
     secret = "super-secret-value-123"
-    monkeypatch.setenv("FABRIK_TEST_SECRET", secret)
+    monkeypatch.setattr(secrets, "_env_secrets", [secret])
     res = _step_shell(
         _ctx(tmp_path, token=secret),
         {"type": "shell", "env": {"tok": "{token}"}, "cmd": 'echo "$tok"'},
