@@ -1,3 +1,5 @@
+> **Archived:** completed spike (2026-10-15). Current backend documentation lives in [`backends.md`](../backends.md); this file remains as the historical spike report (test results, pitfalls, API references).
+
 # SPIKE: opencode serve als Agent-Backend (P1)
 
 **Datum:** 2026-10-15
