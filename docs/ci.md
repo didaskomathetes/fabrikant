@@ -3,6 +3,8 @@
 Workflow: `<repo-root>/.github/workflows/fabrik-ci.yml` (GitHub lädt nur dort) (Jobs `test`, `browser`).
 Läuft bei Pull Requests und Pushes auf `main`; Python 3.12, uv-Cache über `uv.lock`,
 Action-Versionen per Commit-SHA gepinnt, Permissions `contents: read`.
+Die Jobs laufen direkt im Repository-Root (Standalone-Layout, kein
+`working-directory`).
 
 ## Jobs
 

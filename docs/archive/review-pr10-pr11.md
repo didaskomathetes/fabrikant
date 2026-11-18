@@ -1,3 +1,5 @@
+> **Archived:** one-off code review of PRs #10/#11 (merged 2026-10); the findings below are addressed in later versions. Kept for history.
+
 # Code-Review: Software-Fabrik PR #10 (v0.3/P0) + PR #11 (v0.4/P1)
 
 Basis: `fabrik/fabrik.py` auf `p1/agent-backend` (1744 Zeilen), Selftest-Spec, README, Spike-Doku.

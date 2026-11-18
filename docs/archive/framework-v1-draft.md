@@ -1,3 +1,7 @@
+> **Archived:** historical v1.1 design draft (2026-10-15). The framework has since evolved well beyond this draft; it is kept as a record of the original design discussion.
+>
+> **Superseded as a plan:** the still-valid content (principles, P0→P3 phases, KPI definitions) lives on in the living [roadmap](../roadmap.md), which reconciles this draft with what was actually shipped.
+
 # Fabrik Framework — Entwurf v1.1 (General Purpose + Enterprise Scale)
 
 **Stand:** 2026-10-15 · **Status:** DRAFT, nach kritischer Subagent-Review (v1.0) überarbeitet

@@ -8,6 +8,27 @@ Agent-Steps (`backend:` im Step) nutzen ein pluggables Backend-Interface
 Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
 (eigene CLI via Shell).
 
+## Design notes (English)
+
+- **Model routing.** Cost follows the difficulty: small models for
+  triage, strong models for the build, and a *different* model with fresh
+  context (ideally a different vendor) for the review — the Cold Critic
+  (ADR 0003). Model choice is configuration, not architecture
+  (ADR 0022).
+- **Interface history.** The v1.1 design draft
+  ([`archive/framework-v1-draft.md`](archive/framework-v1-draft.md), §2)
+  proposed a frozen `AgentBackend` base class with
+  `create_session`/`run`/`resume`/`health`/`budget`. That design was never
+  frozen: the interface above is implicit (no base class) and shaped by
+  what the backends actually support. There is no per-session `resume`;
+  recovery is run-level (ADR 0036). See the [roadmap](roadmap.md) for the
+  full reconciliation.
+- **Cost & usage.** `opencode` and `claude_code` report tokens and cost;
+  `codex` and `copilot` report none (their CLIs emit no
+  usage data), so step summaries show 0 tokens for them. The draft's rule
+  was `cost: None`, not 0. Capturing usage across all backends is open
+  (issue #1).
+
 One-Shot-CLI-Backends (`claude_code`, `codex`, `copilot`) leeren stdout/stderr ab dem
 Spawn per Hintergrund-Thread (`_oneshot.py`, `_PipeDrain`): Eine erst nach Prozessende
 gelesene Pipe läuft nach ~64 KiB voll — die CLI blockiert bzw. verwirft beim Shutdown den
@@ -23,7 +44,7 @@ Rest des Streams (copilot: exit 0, JSONL ohne `result`-Event; #153).
 ## opencode (P1)
 
 Langlaufender HTTP-Server (`opencode serve`), persistente Sessions, Polling über
-`GET /session/{id}/message`. Details: `spike-opencode.md`.
+`GET /session/{id}/message`. Details: [`archive/spike-opencode.md`](archive/spike-opencode.md).
 
 **Modelle** sind `provider/id` — der Provider muss in der opencode-Config
 (`~/.config/opencode/opencode.jsonc`) des serve-Prozesses existieren.
