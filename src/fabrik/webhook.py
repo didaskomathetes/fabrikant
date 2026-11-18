@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import threading
 import time
@@ -195,6 +196,9 @@ def _check_replay(secret: str, body: bytes, header: str, timestamp: str, nonce: 
         ts = float(timestamp)
     except ValueError:
         raise WebhookError(401, "Timestamp ungültig") from None
+    # Nicht-endliche Werte (nan/inf) umgehen das Fenster: nan vergleicht nie >.
+    if not math.isfinite(ts):
+        raise WebhookError(401, "Timestamp ungültig")
     if abs(now - ts) > REPLAY_WINDOW_S:
         raise WebhookError(401, "Timestamp abgelaufen")
     if not NONCES.add(nonce, now):

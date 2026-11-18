@@ -252,6 +252,13 @@ def test_replay_non_numeric_timestamp_rejected(secret):
         _auth("yesterday", "n1")
 
 
+@pytest.mark.parametrize("ts", ["nan", "inf", "-inf"])
+def test_replay_non_finite_timestamp_rejected(secret, ts):
+    # nan/inf parsen als float, würden aber das Fenster umgehen (nan vergleicht nie >).
+    with pytest.raises(webhook.WebhookError, match="Timestamp ungültig"):
+        _auth(ts, "n1")
+
+
 @pytest.mark.parametrize("ts,nonce", [("", "n"), (str(NOW), ""), (str(NOW), "x" * (webhook.MAX_NONCE_LEN + 1))])
 def test_replay_missing_or_oversized_parts_rejected(secret, ts, nonce):
     with pytest.raises(webhook.WebhookError) as e:

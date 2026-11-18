@@ -70,3 +70,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0055](0055-ui-delegated-event-handlers.md) | UI ohne Inline-Event-Handler (data-* + Delegation) | Akzeptiert (2026-11-13) |
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
 | [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIK_LAUNCHER`) | Vorgeschlagen |
+| [0058](0058-webhook-replay-protection.md) | Webhook-Replay-Schutz (opt-in `replay_protection`) | Vorgeschlagen |

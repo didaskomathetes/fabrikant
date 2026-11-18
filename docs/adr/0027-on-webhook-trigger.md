@@ -1,6 +1,6 @@
 # ADR 0027: `on_webhook`-Trigger (HMAC, Tunnel-CORS)
 
-**Status:** Akzeptiert (2026-10-20, Merge #189; vorgeschlagen 2026-10-20; geändert durch ADR 0028)
+**Status:** Akzeptiert (2026-10-20, Merge #189; vorgeschlagen 2026-10-20; geändert durch ADR 0028; erweitert durch ADR 0058)
 **Ergänzt:** `docs/framework-v1-draft.md` §1.3 (aus P0 gestrichen, hier P2).
 
 ## Kontext
@@ -21,6 +21,9 @@ Tunnel (cloudflared) würde ihn öffentlich machen: `POST /api/runs` ohne
 - **Secret-Handhabung:** Das Spec nennt nur den Env-Namen (`secret_env`), nie den
   Wert. Pro Loop ein eigenes Secret. Kein Replay-Schutz (Timestamp/Nonce) in
   diesem Schritt — bewusst ausgeklammert, Folge-Issue falls nötig.
+  *(Nachtrag 2026-11-18: Replay-Schutz ist seit ADR 0058 als opt-in
+  `replay_protection: true` verfügbar; die Ausklammerung gilt nur noch für
+  Trigger ohne das Flag.)*
 - **Payload→Variablen:** `map: {variable: "punkt.pfad"}` (Dict-Keys, Listen-Index).
   Ungültiges JSON/kein Objekt → 400, fehlendes Feld → 422. Werte sind untrusted
   (§1.4), Nicht-Strings werden als JSON serialisiert. Body max. 1 MB (413).
