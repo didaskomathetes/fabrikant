@@ -542,3 +542,43 @@ def test_agent_backend_copilot_is_known(monkeypatch):
 def test_agent_backend_unknown_still_raises():
     with pytest.raises(ValueError, match="copilot"):
         _step_agent_backend({}, {}, lambda m: None, "bogus", "p")
+
+
+def test_parse_reports_premium_requests_from_result_event():
+    out = (
+        '{"type":"assistant.message","data":{"content":"ok"}}\n'
+        '{"type":"result","exitCode":0,"usage":{"premiumRequests":3}}\n'
+    )
+    r = CopilotBackend()._parse(out, "", 0)
+    assert r["status"] == "done" and r["premium_requests"] == 3
+    assert r["tokens"] == {"input": 0, "output": 0}
+
+
+def test_parse_without_usage_has_no_premium_requests_key():
+    out = '{"type":"assistant.message","data":{"content":"ok"}}\n{"type":"result","exitCode":0,"usage":{}}\n'
+    assert "premium_requests" not in CopilotBackend()._parse(out, "", 0)
+
+
+def test_premium_requests_survive_failure_and_ignore_bad_values():
+    assert CopilotBackend._premium_requests('{"type":"result","usage":{"premiumRequests":"x"}}\nnope\n') is None
+    out = '{"type":"result","usage":{"premiumRequests":2}}\n'
+    assert CopilotBackend()._parse(out, "boom", 1)["premium_requests"] == 2
+
+
+class _Log:
+    def __init__(self):
+        self.events = []
+
+    def event(self, kind, **data):
+        self.events.append((kind, data))
+
+
+def test_record_cost_event_carries_premium_requests_only_when_reported():
+    from fabrik.steps.agent import _record_cost
+
+    usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    lg = _Log()
+    _record_cost(lg, "s", usage, {"premium_requests": 2})
+    _record_cost(lg, "s", usage, {})
+    assert lg.events[0][1]["premium_requests"] == 2
+    assert "premium_requests" not in lg.events[1][1]
