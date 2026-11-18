@@ -34,6 +34,7 @@ from .gitops import (
     project_github,
     run_worktree_path,
 )
+from .launcher import LauncherStatus, RunLauncher, create_launcher
 from .runmodel import FAILED_RUN_STATUSES, RunStatus, StepStatus
 from .runs import (
     RunClaim,
@@ -1066,6 +1067,32 @@ def _get_run_pool() -> _WorkerPool:
         return _run_pool
 
 
+_launcher: RunLauncher | None = None
+_launcher_guard = threading.Lock()
+
+
+def _get_launcher() -> RunLauncher:
+    """Run-Launcher (Port) für das konfigurierte Substrat (FABRIK_LAUNCHER).
+
+    Singleton. In-process (Default) delegiert an den bestehenden Worker-Pool
+    (:func:`_get_run_pool`) und Daemon-Threads; die Scheduling-Policy bleibt im
+    Core. Neue Substrate (k8s, ecs) hängen über :mod:`fabrik.launcher.registry`
+    an, ohne diesen Code zu ändern."""
+    global _launcher
+    with _launcher_guard:
+        if _launcher is None:
+            # Späte Bindung (Lambda, keine Funktionsreferenz): `pool_factory()`/
+            # `pool_or_none()` lösen den Pool zum Aufrufzeitpunkt aus dem
+            # Modul-Globalen auf — so respektieren Tests, die `engine._get_run_pool`
+            # bzw. `engine._run_pool` monkeypatchen, den injizierten Pool.
+            _launcher = create_launcher(
+                config.configured_launcher(),
+                pool_factory=lambda: _get_run_pool(),
+                pool_or_none=lambda: _run_pool,
+            )
+        return _launcher
+
+
 # Eingereihte, noch nicht gestartete Trigger (project, loop, trigger) → Einreichungszeit
 # (Schedule-View: Queue mit echten Einreichungszeitpunkten). Der Run-Record entsteht
 # erst in work(); reconcile-Polls würden denselben Trigger sonst erneut einreihen,
@@ -1090,15 +1117,14 @@ def queued_trigger_snapshot() -> list[dict]:
         ]
 
 
-def pool_status() -> dict:
-    """Worker-Pool: Größe (FABRIK_WORKERS), belegte Worker (`busy`) + Queue-Länge (FIFO).
+def pool_status() -> LauncherStatus:
+    """Substrat-Status des konfigurierten Run-Launchers (ADR 0057): Größe,
+    belegte Worker (`busy`) + Queue-Länge.
 
-    Der Pool entsteht erst mit dem ersten Trigger-Run; vorher meldet die
-    Schedule-View die konfigurierte Größe (nicht 0 — irreführend)."""
-    pool = _run_pool
-    if pool is None:
-        return {"workers": config.configured_workers(), "busy": 0, "queue": 0}
-    return {"workers": pool.size, "busy": pool.busy, "queue": pool.waiting}
+    Delegiert an den Launcher — die In-Prozess-Variante meldet die
+    konfigurierte Größe (FABRIK_WORKERS), solange der Pool noch nicht
+    angelegt ist (nicht 0 — irreführend)."""
+    return _get_launcher().status()
 
 
 def _safe_run(
@@ -1119,6 +1145,10 @@ def _safe_run(
     `on_claimed` nach erfolgreichem Claim (vor dem Run), sonst `on_rejected`
     (Pause, bereits gelaufen, Limit/Lock, Fehler vor dem Claim). Ein schon
     eingereihter identischer Trigger wird ignoriert (kein Callback)."""
+    # Launcher vor der Mutation von `_queued_triggers` auflösen: ein unbekanntes
+    # Substrat (FABRIK_LAUNCHER) wirft, ohne den Trigger dauerhaft zu unterdrücken.
+    launcher = _get_launcher()
+
     qkey = (name, lname, trigger)
     with _queued_guard:
         if qkey in _queued_triggers:
@@ -1152,7 +1182,14 @@ def _safe_run(
         finally:
             claim.release()
 
-    _get_run_pool().submit(work)
+    try:
+        launcher.submit(work)
+    except Exception:
+        # Submit fehlgeschlagen (z. B. ungültige FABRIK_WORKERS beim Pool-Aufbau):
+        # den Trigger nicht dauerhaft unterdrücken — Eintrag wieder entfernen.
+        with _queued_guard:
+            _queued_triggers.pop(qkey, None)
+        raise
 
 
 def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict | None) -> RunClaim | None:
@@ -1309,7 +1346,7 @@ def spawn_priority_worker(
             acquired.release()
 
     try:
-        threading.Thread(target=target, daemon=True).start()
+        _get_launcher().submit_priority(target)
     except RuntimeError:
         if held is not None:
             held.release()

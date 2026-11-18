@@ -239,6 +239,18 @@ def configured_workers() -> int:
     return int(os.environ.get("FABRIK_WORKERS", str(DEFAULT_WORKERS)))
 
 
+LAUNCHER_ENV = "FABRIK_LAUNCHER"
+DEFAULT_LAUNCHER = "inprocess"  # Ausführungs-Substrat für Runs (launcher.registry)
+
+
+def configured_launcher() -> str:
+    """Konfiguriertes Run-Launcher-Substrat (FABRIK_LAUNCHER, Default :data:`DEFAULT_LAUNCHER`).
+
+    Leerer Wert zählt als nicht gesetzt. Die gültigen Namen liefert
+    :func:`fabrik.launcher.registry.known_launchers`."""
+    return os.environ.get(LAUNCHER_ENV, "").strip() or DEFAULT_LAUNCHER
+
+
 # Variablen, die einen Run an ein Issue/PR binden (Dedup: ein aktiver Run pro Loop + Bezug).
 DEDUPE_VARS = ("issue_number", "pr_number")
 

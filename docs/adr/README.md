@@ -69,3 +69,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0054](0054-per-run-agent-sandbox.md) | Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container | In Überarbeitung (2026-11-06) |
 | [0055](0055-ui-delegated-event-handlers.md) | UI ohne Inline-Event-Handler (data-* + Delegation) | Akzeptiert (2026-11-13) |
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
+| [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIK_LAUNCHER`) | Vorgeschlagen |
