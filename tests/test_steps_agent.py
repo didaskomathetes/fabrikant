@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from fabrik import secrets
 from fabrik.runmodel import FailureKind
 from fabrik.steps import agent as agent_step
 
@@ -669,7 +670,7 @@ def test_session_failed_reports_exit_and_stderr_tail(monkeypatch):
     """Abgestürzte One-Shot-CLI: Exit-Code mit Signalname in der Summary, das stderr-Ende redigiert
     als `output` und im Run-Log — dort steht die Ursache, nicht im gekürzten `text`."""
     secret = "super-secret-value-123"
-    monkeypatch.setenv("FABRIK_TEST_SECRET", secret)
+    monkeypatch.setattr(secrets, "_env_secrets", [secret])
     lines: list[str] = []
     last = {
         "status": "failed",
