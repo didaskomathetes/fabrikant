@@ -147,3 +147,48 @@ class TestEngineLauncher:
         monkeypatch.setattr(engine, "_run_pool", _FakePool())
         engine._get_launcher().submit(lambda: None)
         assert len(submitted) == 1
+
+    def test_pool_status_delegates_to_launcher_without_pool(self, monkeypatch):
+        """pool_status() und launcher.status() stimmen überein (eine Quelle)."""
+        monkeypatch.setattr(engine, "_run_pool", None)
+        monkeypatch.setenv("FABRIK_WORKERS", "7")
+        assert engine.pool_status() == engine._get_launcher().status()
+        assert engine.pool_status() == {"workers": 7, "busy": 0, "queue": 0}
+
+    def test_pool_status_delegates_to_launcher_with_pool(self, monkeypatch):
+        pool = engine._WorkerPool(3)
+        monkeypatch.setattr(engine, "_run_pool", pool)
+        try:
+            assert engine.pool_status() == engine._get_launcher().status()
+            assert engine.pool_status() == {"workers": 3, "busy": 0, "queue": 0}
+        finally:
+            pool.shutdown()
+
+    def test_submit_failure_does_not_leak_queued_trigger(self, monkeypatch):
+        """Submit-Fehler (ungültige FABRIK_WORKERS) unterdrückt den Trigger nicht dauerhaft."""
+        monkeypatch.setattr(engine, "_run_pool", None)
+        monkeypatch.setattr(engine, "_queued_triggers", {})
+        monkeypatch.setenv("FABRIK_WORKERS", "not-a-number")
+        with pytest.raises(ValueError):
+            engine._safe_run("p", "l", "cron")
+        assert engine._queued_triggers == {}
+        # Nach dem Fehler kann derselbe Trigger erneut eingereiht werden.
+        monkeypatch.setenv("FABRIK_WORKERS", "2")
+        submitted: list = []
+
+        class _FakePool:
+            def submit(self, work):
+                submitted.append(work)
+
+        monkeypatch.setattr(engine, "_run_pool", _FakePool())
+        engine._safe_run("p", "l", "cron")
+        assert len(submitted) == 1
+
+    def test_unknown_substrate_does_not_leak_queued_trigger(self, monkeypatch):
+        """Unbekanntes FABRIK_LAUNCHER unterdrückt den Trigger nicht dauerhaft."""
+        monkeypatch.setattr(engine, "_launcher", None)
+        monkeypatch.setattr(engine, "_queued_triggers", {})
+        monkeypatch.setenv(config.LAUNCHER_ENV, "does-not-exist")
+        with pytest.raises(ValueError, match="unbekanntes Substrat"):
+            engine._safe_run("p", "l", "cron")
+        assert engine._queued_triggers == {}

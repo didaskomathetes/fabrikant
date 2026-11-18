@@ -9,12 +9,13 @@ Der Port (:class:`RunLauncher`) trennt die Scheduling-Policy des Core
 from __future__ import annotations
 
 from .inprocess import InProcessLauncher
-from .port import RunLauncher
+from .port import LauncherStatus, RunLauncher
 from .registry import ADAPTERS, create_launcher, known_launchers
 
 __all__ = [
     "ADAPTERS",
     "InProcessLauncher",
+    "LauncherStatus",
     "RunLauncher",
     "create_launcher",
     "known_launchers",

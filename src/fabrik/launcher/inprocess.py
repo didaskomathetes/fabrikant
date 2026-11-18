@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .. import config
+from .port import LauncherStatus
 
 
 class InProcessLauncher:
@@ -40,7 +41,7 @@ class InProcessLauncher:
         # weitergereicht, der dort Claim/Wartezähler aufräumt.
         threading.Thread(target=work, daemon=True).start()
 
-    def status(self) -> dict:
+    def status(self) -> LauncherStatus:
         pool = self._pool_or_none()
         if pool is None:
             # Pool noch nicht angelegt: konfigurierte Größe melden (nicht 0).

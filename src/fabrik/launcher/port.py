@@ -14,7 +14,17 @@ Signatur erfüllen (wie :class:`fabrik.backends.port.AgentBackend`).
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
+
+
+class LauncherStatus(TypedDict):
+    """Substrat-Beobachtbarkeit: Pool-Größe (`workers`), belegte Worker (`busy`),
+    eingereihtes Work (`queue`). In-process: der Worker-Pool; Remote-Substrate
+    melden die entsprechenden Kapazitäts-Größen."""
+
+    workers: int
+    busy: int
+    queue: int
 
 
 @runtime_checkable
@@ -44,7 +54,7 @@ class RunLauncher(Protocol):
         weitergereicht — der Core räumt dann Claim/Wartezähler auf."""
         ...
 
-    def status(self) -> dict:
+    def status(self) -> LauncherStatus:
         """Substrat-Beobachtbarkeit (in-process: ``workers``/``busy``/``queue``)."""
         ...
 

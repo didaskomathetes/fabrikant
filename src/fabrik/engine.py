@@ -34,7 +34,7 @@ from .gitops import (
     project_github,
     run_worktree_path,
 )
-from .launcher import RunLauncher, create_launcher
+from .launcher import LauncherStatus, RunLauncher, create_launcher
 from .runmodel import FAILED_RUN_STATUSES, RunStatus, StepStatus
 from .runs import (
     RunClaim,
@@ -1117,15 +1117,14 @@ def queued_trigger_snapshot() -> list[dict]:
         ]
 
 
-def pool_status() -> dict:
-    """Worker-Pool: Größe (FABRIK_WORKERS), belegte Worker (`busy`) + Queue-Länge (FIFO).
+def pool_status() -> LauncherStatus:
+    """Substrat-Status des konfigurierten Run-Launchers (ADR 0057): Größe,
+    belegte Worker (`busy`) + Queue-Länge.
 
-    Der Pool entsteht erst mit dem ersten Trigger-Run; vorher meldet die
-    Schedule-View die konfigurierte Größe (nicht 0 — irreführend)."""
-    pool = _run_pool
-    if pool is None:
-        return {"workers": config.configured_workers(), "busy": 0, "queue": 0}
-    return {"workers": pool.size, "busy": pool.busy, "queue": pool.waiting}
+    Delegiert an den Launcher — die In-Prozess-Variante meldet die
+    konfigurierte Größe (FABRIK_WORKERS), solange der Pool noch nicht
+    angelegt ist (nicht 0 — irreführend)."""
+    return _get_launcher().status()
 
 
 def _safe_run(
@@ -1146,6 +1145,10 @@ def _safe_run(
     `on_claimed` nach erfolgreichem Claim (vor dem Run), sonst `on_rejected`
     (Pause, bereits gelaufen, Limit/Lock, Fehler vor dem Claim). Ein schon
     eingereihter identischer Trigger wird ignoriert (kein Callback)."""
+    # Launcher vor der Mutation von `_queued_triggers` auflösen: ein unbekanntes
+    # Substrat (FABRIK_LAUNCHER) wirft, ohne den Trigger dauerhaft zu unterdrücken.
+    launcher = _get_launcher()
+
     qkey = (name, lname, trigger)
     with _queued_guard:
         if qkey in _queued_triggers:
@@ -1179,7 +1182,14 @@ def _safe_run(
         finally:
             claim.release()
 
-    _get_launcher().submit(work)
+    try:
+        launcher.submit(work)
+    except Exception:
+        # Submit fehlgeschlagen (z. B. ungültige FABRIK_WORKERS beim Pool-Aufbau):
+        # den Trigger nicht dauerhaft unterdrücken — Eintrag wieder entfernen.
+        with _queued_guard:
+            _queued_triggers.pop(qkey, None)
+        raise
 
 
 def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict | None) -> RunClaim | None:
