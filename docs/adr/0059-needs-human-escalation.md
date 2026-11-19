@@ -1,6 +1,6 @@
 # ADR 0059: `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift
 
-**Status:** Vorgeschlagen (2026-11-16)
+**Status:** Akzeptiert (2026-11-19)
 **Betrifft:** ADR 0011 (approval request protocol), ADR 0013 (AC verification in review),
 ADR 0024 (verdict markers, reply lock),
 ADR 0035 (error classes), ADR 0036 (run retry, exhausted jobs), ADR 0039 (convergent
