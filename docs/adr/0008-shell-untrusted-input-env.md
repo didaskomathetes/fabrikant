@@ -1,34 +1,36 @@
-# ADR 0008: Shell-Steps mit untrusted Input — `env:` statt Inline-Substitution
+# ADR 0008: Shell steps with untrusted input — `env:` instead of inline substitution
 
-**Status:** Accepted (2026-10-18) — Amendment (Guard-Semantik + Kompatibilität) in Draft, PR #72; geändert 2026-11-03 (PR #347): Trust-Default für `extra_context`-Quellen
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Kontext
+**Status:** Accepted (2026-10-18) — amendment (guard semantics + compatibility) in draft, PR #72; amended 2026-11-03 (PR #347): trust default for `extra_context` sources
 
-Shell-Steps (`type: shell`) ersetzen `{Platzhalter}` im `cmd` per
-`_substitute()` (Variable-Substitution aus dem Run-Kontext). Einige dieser
-Variablen sind **untrusted**: LLM-Output (z. B. Triage-`acceptance_criteria`),
-Issue-Titel/-Body.
+## Context
 
-Wenn untrusted Text **inline** in den Befehl substituiert wird, brechen
-Quotes/Backticks/Newlines/`$`-Sequenzen die Shell-Semantik:
+Shell steps (`type: shell`) replace `{placeholders}` in `cmd` via
+`_substitute()` (variable substitution from the run context). Some of these
+variables are **untrusted**: LLM output (e.g. triage `acceptance_criteria`),
+issue titles/bodies.
 
-- **Stilles No-op:** Ein Newline/Quote im Wert zerhackt eine `if`-Bedingung →
-  der Guard wird `false` → `exit 0` → der Step meldet "pass", obwohl nichts
-  passiert ist.
-- **Command-Substitution:** Backticks (`` `…` ``) oder `$(…)` im Wert werden
-  von der Shell **ausgeführt** → Shell-Injection.
+If untrusted text is substituted **inline** into the command, quotes/
+backticks/newlines/`$` sequences break the shell semantics:
 
-Regression: Issue #62 (Triage-Loop `add-acceptance` substituierte
-LLM-`acceptance_criteria` inline).
+- **Silent no-op:** a newline/quote in the value chops up an `if` condition →
+  the guard becomes `false` → `exit 0` → the step reports "pass" although nothing
+  happened.
+- **Command substitution:** backticks (`` `…` ``) or `$(…)` in the value are
+  **executed** by the shell → shell injection.
 
-## Entscheidung
+Regression: issue #62 (triage loop `add-acceptance` substituted the
+LLM `acceptance_criteria` inline).
 
-**Untrusted Werte gehören ausschließlich in `env:`, nicht in `cmd`.**
+## Decision
 
-1. **`env:`-Mechanismus:** Untrusted Werte werden als Umgebungsvariable
-   übergeben und im Befehl als `"$VAR"` referenziert. Die Shell behandelt den
-   Wert als ein einzelnes, inertes Argument — keine Interpretation von
-   Quotes/Backticks/`$`.
+**Untrusted values belong exclusively in `env:`, not in `cmd`.**
+
+1. **`env:` mechanism:** untrusted values are passed as an environment variable
+   and referenced in the command as `"$VAR"`. The shell treats the
+   value as a single, inert argument — no interpretation of
+   quotes/backticks/`$`.
 
    ```yaml
    env:
@@ -36,67 +38,66 @@ LLM-`acceptance_criteria` inline).
    cmd: 'if [ -n "$criteria" ]; then …; fi'
    ```
 
-2. **Fail-fast-Guard gegen das Mischmuster:** Ein Step, in dem ein
-   Inline-Placehalter in `cmd` **mit einem `env:`-Key desselben Steps
-   kollidiert**, wird **abgelehnt** (`ok: False`, `exit_code: 1`) — nicht nur
-   gewarnt. Eine Warnung ist ignorierbar und die Inline-Substitution würde
-   trotzdem laufen; ein fehlgeschlagener Step ist nicht. Die Kollision ist die
-   eigentliche Gefährdung: der Platzhalter wird aus dem (potenziell untrusted)
-   Kontext substituiert, während der `env:`-Wert ignoriert wird.
-   Vertrauenswürdige Placehalter (`{issue_number}`, `{run_id}`, …) ohne
-   Kollision mit `env:`-Keys bleiben erlaubt — auch in Steps, die `env:` für
-   untrusted Werte nutzen. Die Platzhalter-Erkennung nutzt eine
-   Regex (`\{[A-Za-z_][A-Za-z0-9_]*\}`, gleiche Syntax wie `_substitute`),
-   damit Literal-Braces (z. B. JSON `{"a": 1}`) **kein** False-Positive
-   triggern.
+2. **Fail-fast guard against the mixed pattern:** a step in which an
+   inline placeholder in `cmd` **collides with an `env:` key of the same step**
+   is **rejected** (`ok: False`, `exit_code: 1`) — not merely
+   warned about. A warning can be ignored and the inline substitution would
+   run anyway; a failed step cannot. The collision is the
+   actual danger: the placeholder is substituted from the (potentially untrusted)
+   context while the `env:` value is ignored.
+   Trusted placeholders (`{issue_number}`, `{run_id}`, …) without a
+   collision with `env:` keys remain allowed — even in steps that use `env:` for
+   untrusted values. Placeholder detection uses a
+   regex (`\{[A-Za-z_][A-Za-z0-9_]*\}`, same syntax as `_substitute`),
+   so literal braces (e.g. JSON `{"a": 1}`) trigger **no** false positive.
 
-3. **Log-Masking:** Der Step loggt das **Command-Template** (mit
-   `{placeholders}`), nicht den substituierten Befehl — substituierte Werte
-   können Secrets/untrusted Text enthalten und dürften nicht im Run-Log landen.
+3. **Log masking:** the step logs the **command template** (with
+   `{placeholders}`), not the substituted command — substituted values
+   may contain secrets/untrusted text and must not end up in the run log.
 
-4. **Trust-Default für `extra_context`-Quellen** (PR #347): Jede Quelle gilt als
-   untrusted, solange sie nicht `trusted: true` setzt. Das ist nur für repo-eigene
-   Dateien und Tool-Ausgaben vorgesehen; Issue-Text und PR-Kommentare bleiben untrusted.
-   Untrusted Inhalt geht durch `untrusted_blocks`. Darin werden `<untrusted`/`<context`-Tags
-   neutralisiert, damit Text keinen Block schließen oder einen trusted Block vortäuschen kann.
+4. **Trust default for `extra_context` sources** (PR #347): every source is
+   untrusted unless it sets `trusted: true`. That is only intended for repo-owned
+   files and tool output; issue text and PR comments remain untrusted.
+   Untrusted content goes through `untrusted_blocks`. In there `<untrusted`/`<context` tags
+   are neutralized so that text cannot close a block or fake a trusted block.
 
-## Konsequenzen
+## Consequences
 
-- Deterministisches Sicherheitsverhalten: das unsichere Mischmuster schlägt
-  fail-fast fehl, statt still ein No-op zu sein oder zu injizieren
-- Kein Secret-Leak im Run-Log (Template statt substituiertem Befehl)
-- Untrusted Text bleibt byte-gleich erhalten (kein stilles No-op)
-- Regex-Erkennung = gleiche Platzhalter-Syntax wie `_substitute` (konsistent,
-  keine False-Positives bei Literal-Braces)
-- Bestehende Shell-Steps mit inline untrusted Werten müssen auf `env:`
-  migriert werden (sonst fail-fast)
-- `env:`-Werte werden per `_substitute` aufgelöst — vertrauenswürdige
-  Config-Werte (z. B. `{issue_number}`) dürfen weiterhin inline in `cmd`
-  stehen, solange sie nicht mit `env:`-Keys desselben Steps kollidieren
+- Deterministic security behavior: the unsafe mixed pattern fails
+  fast instead of silently being a no-op or injecting
+- No secret leak in the run log (template instead of substituted command)
+- Untrusted text is preserved byte for byte (no silent no-op)
+- Regex detection = same placeholder syntax as `_substitute` (consistent,
+  no false positives on literal braces)
+- Existing shell steps with inline untrusted values must be migrated to `env:`
+  (otherwise fail-fast)
+- `env:` values are resolved via `_substitute` — trusted
+  config values (e.g. `{issue_number}`) may still appear inline in `cmd`
+  as long as they do not collide with `env:` keys of the same step
 
-## Kompatibilität & Migration
+## Compatibility & migration
 
-Die Platzhalter-Regex ist bewusst **strikt**: `\{[A-Za-z_][A-Za-z0-9_]*\}`
-verlangt einen echten Identifikator (erster Buchstabe/`_`). Das ist ein
-**Breaking Change** gegenüber der früheren, lockeren Syntax:
+The placeholder regex is deliberately **strict**: `\{[A-Za-z_][A-Za-z0-9_]*\}`
+requires a real identifier (first character letter/`_`). That is a
+**breaking change** compared to the earlier, looser syntax:
 
-- **Numerische/sonstige Platzhalter** wie `{123}` werden **nicht mehr
-  substituiert** — sie bleiben literal im Befehl stehen.
-- **Migration:** Betroffene Steps (falls vorhanden) müssen die Platzhalter auf
-  Identifikator-Form umstellen (z. B. `{123}` → `{num123}` bzw. den
-  Kontext-Key entsprechend benennen). Im aktuellen Projekt (`projects/*.yaml`)
-  existieren keine numerischen Platzhalter — die Migration ist dort ein No-op.
+- **Numeric/other placeholders** such as `{123}` are **no longer
+  substituted** — they stay literal in the command.
+- **Migration:** affected steps (if any) must change the placeholders to
+  identifier form (e.g. `{123}` → `{num123}`, or name the
+  context key accordingly). In the current project (`projects/*.yaml`)
+  there are no numeric placeholders — the migration is a no-op there.
 
-Der Guard selbst ist **relaxiert** (keine Breaking-Change): Steps mit `env:`
-und Inline-Placeholdern, die **nicht** mit `env:`-Keys kollidieren, laufen
-weiterhin — zuvor wurden sie pauschal abgelehnt.
+The guard itself is **relaxed** (not a breaking change): steps with `env:`
+and inline placeholders that do **not** collide with `env:` keys still
+run — previously they were rejected across the board.
 
-## Alternativen (abgelehnt)
+## Alternatives (rejected)
 
-- **Warn-only:** ignorierbar; unsichere Fälle laufen trotzdem → inkonsistentes
-  Sicherheitslevel.
-- **Nur CI-Lint-Regel:** fängt nur statisch erkannte Fälle, kein
-  Laufzeit-Schutz; weniger direkt als ein fail-fast-Step.
-- **Shell-Quoting der substituierten Werte:** verhindert nicht das Muster,
-  ist fehleranfällig (Quoting korrekt zu machen ist genau das Problem) und
-  ändert die Semantik legitimer Inline-Nutzung.
+- **Warn-only:** ignorable; unsafe cases run anyway → inconsistent
+  security level.
+- **CI lint rule only:** catches only statically detectable cases, no
+  runtime protection; less direct than a fail-fast step.
+- **Shell-quoting the substituted values:** does not prevent the pattern,
+  is error-prone (getting the quoting right is exactly the problem) and
+  changes the semantics of legitimate inline use.
