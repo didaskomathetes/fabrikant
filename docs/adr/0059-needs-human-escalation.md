@@ -1,10 +1,10 @@
 # ADR 0059: `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift
 
-**Status:** Akzeptiert (2026-11-19)
+**Status:** Akzeptiert (2026-11-19); Nachtrag 2026-11-16: escalation kind `access` (ADR 0060)
 **Betrifft:** ADR 0011 (approval request protocol), ADR 0013 (AC verification in review),
 ADR 0024 (verdict markers, reply lock),
 ADR 0035 (error classes), ADR 0036 (run retry, exhausted jobs), ADR 0039 (convergent
-review rounds).
+review rounds), ADR 0060 (research fetcher, access profiles).
 
 ## Context
 
@@ -36,13 +36,16 @@ cannot proceed on its own:
 4. **Scope drift:** The solution deviates significantly from the issue's acceptance criteria,
    or is much larger than the issue suggested (another repository, another team,
    architecture).
+5. **Access** (addendum, ADR 0060): A run needs a URL that is neither in the origin protocol
+   nor in the grant list, or an access profile its loop does not have.
 
 ## Decision
 
 ### 1. One state, one label, one gate
 
-All four cases converge on **the same escalation state**. It feels like an approval: the
-human sees a waiting run with a reason in the fabrik UI/CLI and acts there.
+All five cases converge on **the same escalation state** (exception for the label: `access`,
+§5a). It feels like an approval: the human sees a waiting run with a reason in the fabrik
+UI/CLI and acts there.
 
 - **Durable state = label** `needs human` on the PR (or on the issue, if no PR exists). The
   label name is configurable per project (`human_label`, default `needs human`).
@@ -64,6 +67,7 @@ A fixed, small set. New kinds only via an ADR change.
 | `stalled` | `stall_rounds` (default 2) consecutive `changes_requested` verdicts without the builder changing code in between, or without new findings (ADR 0039: the reviewer reports only prior-round findings as open) | Deterministically from verdict and reply markers (§4) |
 | `exhausted` | `pr_review` still `changes_requested` after `max_rounds`; retry chain `exhausted` (ADR 0036) | Engine, at the point where `fail` is set today |
 | `scope` | Solution requires significantly more than the ACs, or a blocking finding lies outside the ACs | Builder marker (§3) or reviewer finding field `out_of_scope` (§3) |
+| `access` | URLs that are neither in the origin protocol nor in the grant list (bundled per session), or an access profile defined in the project that the loop does not have (ADR 0060) | The fetcher, or the host check of the profile marker (ADR 0060 §3, §5); never the agent directly |
 
 ### 3. Markers instead of free text
 
@@ -115,6 +119,30 @@ In the gate of the fabrik UI/CLI, with the same operation as approvals:
 If the human resolves the problem directly on GitHub (removes the label manually), the
 escalation run ends on its own as done at the next reconcile.
 
+### 5a. Special case `access` (addendum 2026-11-16, ADR 0060)
+
+`access` asks for a permission, not for a decision about the work itself. It therefore
+deviates in three points:
+
+- **No label, no stop.** `needs human` is not set; `review-pr`, `pr-reply`, `develop`, and
+  relay sessions keep running. Unanswered URLs stay unfetched, the session works without them
+  and notes that (ADR 0060 §3). A missing profile only skips the steps that need it.
+- **The gate run starts directly** from the fetcher or the host check, not via the
+  `escalation` loop (which reacts to the label). There is at most one open `access` request
+  per item; new URLs of a later session are appended to it. Flow without an answer:
+  `access_timeout` (default 24 h), after which the request is treated as rejected.
+- **Own actions:**
+
+| Action | Effect |
+|---|---|
+| **Grant** (per URL or all; profiles with a validity, e.g. "24 h" or "next 3 sessions") | URLs are fetched before the next session; profile grants are valid for the item until expiry (ADR 0060 §5). |
+| **Reject** (per URL or all) | Stays unfetched. The rejection is counted; repeated requests for the same URL are not presented again. |
+| **Suggest domain** | Hint only: opens the spec change for the profile's grant list; no automatic inclusion. |
+
+Only roles with grant rights may grant (ADR 0030). A PR or issue comment is never a grant;
+unlike resume, no note is posted as a comment, so no grant information reaches the agent's
+untrusted input.
+
 ### 6. Relationship to existing mechanisms
 
 - **ADR 0011** remains authoritative for the "ADR needed" case: there is concrete content to
@@ -131,6 +159,7 @@ escalation run ends on its own as done at the next reconcile.
   comment number 7.
 + Exhausted fix rounds and retry chains become decisions instead of silent `fail`s.
 + The agent gains no new rights. The host sets the label and the run after validation.
++ Access requests (`access`) use the same UI without stopping the work on the item.
 - A new loop (`escalation`) and a new `ApprovalRequest.reason`. The UI must distinguish
   `escalation` from regular approvals (text, actions).
 - A wrong `blocked` marker parks a PR that the builder could have resolved. Countermeasure:
