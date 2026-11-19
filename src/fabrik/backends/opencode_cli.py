@@ -23,7 +23,9 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from .. import connections, egress
+from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend
+from .opencode import opencode_tokens
 
 CONFIG_CONTENT_VAR = "OPENCODE_CONFIG_CONTENT"
 # opencode-Schalter in der Sandbox: nichts aus dem Repo oder HOME übernehmen, nichts nachladen.
@@ -157,7 +159,7 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
     (Cache-Tokens zählen zum Input, Reasoning zum Output); Fehler = letzte `error`-Meldung."""
     texts: list[str] = []
     tools: list[str] = []
-    tokens = {"input": 0, "output": 0}
+    tokens = TokenCounts()
     cost = 0.0
     error = ""
     for line in out.splitlines():
@@ -181,12 +183,9 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
         elif part.get("type") == "tool" and part.get("tool"):
             tools.append(str(part["tool"]))
         elif part.get("type") == "step-finish":
-            t = part.get("tokens") or {}
-            cache = t.get("cache") or {}
-            tokens["input"] += int(t.get("input") or 0) + int(cache.get("read") or 0) + int(cache.get("write") or 0)
-            tokens["output"] += int(t.get("output") or 0) + int(t.get("reasoning") or 0)
+            tokens += opencode_tokens(part.get("tokens"))
             cost += float(part.get("cost") or 0)
-    return "\n".join(texts).strip(), tokens, cost, tools, error
+    return "\n".join(texts).strip(), tokens.as_poll(), cost, tools, error
 
 
 class OpenCodeCliBackend(OneShotCliBackend):

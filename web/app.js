@@ -2253,12 +2253,29 @@ function formatRunMeta(meta) {
   return rows.length ? `<div class="runmetabox">${rows.join("")}</div>` : "";
 }
 
-// Kosten/Tokens kompakt ("$0.0123 · 4.5k tok"); "" ohne Verbrauch (Run ohne LLM-Steps).
+// Token-Zahl kompakt: 950, 12.3k, 1.30M.
+function fmtTokens(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+// Kosten/Tokens kompakt ("$0.0123 · 1.30M tok (1.28M cached)"); "" ohne Verbrauch (Run ohne LLM-Steps).
+// Cache-Reads sind in total_tokens enthalten: ein Agent liest seinen Kontext jeden Turn neu.
+// Abo-Steps (billing=subscription) kosten kein Geld pro Token, sondern Limits: "≈ $x" + Hinweis.
+function fmtUsd(c) {
+  const sub = c.subscription_cost_usd || 0;
+  const billed = c.cost_usd - sub;
+  const parts = [];
+  if (billed > 0 || !sub) parts.push(`${c.unpriced_steps ? "≥ " : ""}$${billed.toFixed(4)}`);
+  if (sub) parts.push(`≈ $${sub.toFixed(4)} ${t("run.apiEquiv")}`);
+  return parts.join(" + ");
+}
+
 function fmtCost(c) {
   if (!c || !c.total_tokens) return "";
-  const tok = c.total_tokens >= 1000 ? `${(c.total_tokens / 1000).toFixed(1)}k` : String(c.total_tokens);
-  const usd = c.unpriced_steps ? `≥ $${c.cost_usd.toFixed(4)}` : `$${c.cost_usd.toFixed(4)}`;
-  return `${usd} · ${tok} ${t("run.tokens")}`;
+  const usd = fmtUsd(c);
+  const cached = c.cache_read_tokens ? ` (${fmtTokens(c.cache_read_tokens)} ${t("run.cached")})` : "";
+  return `${usd} · ${fmtTokens(c.total_tokens)} ${t("run.tokens")}${cached}`;
 }
 
 function formatRunCost(cost) {

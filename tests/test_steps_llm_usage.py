@@ -71,6 +71,9 @@ def test_usage_recorded_in_result(clean_llm, monkeypatch, tmp_path):
         "prompt_tokens": 11,
         "completion_tokens": 7,
         "total_tokens": 18,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "billing": "unknown",
     }
     assert ctx["a"] == 1  # Schema-Injection weiterhin unverändert
 
