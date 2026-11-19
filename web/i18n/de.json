@@ -166,6 +166,7 @@
   "run.logEmpty": "(leeres Log)",
   "run.transcriptFailed": "Transkript nicht geladen: {error}",
   "run.noTranscript": "(keine Agent-Session aufgezeichnet)",
+  "approval.kind": "art",
   "approval.condition": "bedingung",
   "approval.why": "warum",
   "approval.what": "was",

@@ -210,6 +210,7 @@ approvals = Table(
     # Abgeleiteter Zustand (ADR 0034 Nr. 2): pending | queued | approved | rejected.
     Column("status", Text, nullable=False),
     Column("reason", Text),
+    Column("kind", Text),  # Eskalationsart bei reason = escalation (ADR 0059)
     Column("step", Text),
     Column("condition", Text),
     Column("why", Text),

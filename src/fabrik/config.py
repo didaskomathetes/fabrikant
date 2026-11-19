@@ -162,6 +162,7 @@ STEP_TYPES = (
     "issue",
     "human_gate",
     "alert_route",
+    "escalation",
 )
 TRIGGER_TYPES = ("manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook", "on_alert", "on_slack")
 # Polling-Trigger mit `poll`-Intervall (Sekunden, endliche Zahl >= 0).
@@ -210,6 +211,11 @@ def runs_archive_dir() -> Path:
     """Archiv für importierte Run-JSON (ADR 0034 Nr. 8): ``state/runs-archive`` (Layout wie ``runs/``)."""
     return STATE_DIR / "runs-archive"
 
+
+# Eskalation an einen Menschen (ADR 0059). Gleiche Werte wie in scripts/pr-status.py
+# (Host-Skript ohne Paket-Import; tests/test_escalation.py prüft den Gleichstand).
+HUMAN_LABEL = "needs human"
+ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 
 # human_gate-Defaults (ADR 0010): Diff-Heuristiken für die Kritizitäts-Check.
 # ADR-Pfade: Touch → immer menschliche Freigabe (Critical Decision).

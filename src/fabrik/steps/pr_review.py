@@ -77,6 +77,7 @@ from ..failures import ConfigError, failed, from_result
 from ..gitops import _gh_api, _gh_diff, _gh_token
 from ..runmodel import FailureKind
 from .agent import _step_agent_backend
+from .escalation import GRANT_ROUNDS_CTX
 from .extra_context import render_extra_context
 from .git import STAGE_ALL, _git
 from .review import (
@@ -349,7 +350,9 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     dev_token = _gh_token("dev")
     reviewer_token = _gh_token("reviewer")
     pr_number = _resolve_pr_number(ctx, step, repo, dev_token)
-    max_rounds = max(0, int(step.get("max_rounds", 2)))
+    # ADR 0059: eine Eskalations-Freigabe gewährt ein frisches Runden-Budget
+    # (ctx-Variable GRANT_ROUNDS_CTX) — ein fortgesetzter Run erschöpft nicht sofort.
+    max_rounds = max(0, int(step.get("max_rounds", 2))) + int(ctx.get(GRANT_ROUNDS_CTX, 0) or 0)
     pushed_sha = ""  # Head nach der letzten Fix-Runde; leer = Runde 1
     previous: list[dict] = []  # Findings der Vorrunde (Konvergenz, ADR 0039)
 

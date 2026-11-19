@@ -629,6 +629,12 @@ loops:
         cmd: python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["status"]; print("Quality Gate:", s); sys.exit(s != "OK")' .fabrik/sonar/report.json
         failure_kind: outcome
 
+  # ── 7b. Eskalation (ADR 0057): PR mit 'needs human' → Gate-Run; Fortsetzen entfernt das Label ──
+  escalation:
+    use: escalation
+    with:
+      poll: "{fast_poll}"
+
   # ── 8. Approval (ADR 0011): ADR-PR 'needs approval' → Pause → Mensch approvet (UI/CLI) → ADR-PR mergen ──
   # Schließt den Deadlock aus ADR 0011: Ein Agent (pr-reply), der eine Änderung
   # braucht, die menschliche Freigabe erfordert (ADR/Spec, Architektur), legt die

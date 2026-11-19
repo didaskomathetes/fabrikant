@@ -52,12 +52,13 @@ class ApprovalStatus(StrEnum):
 
 class ApprovalReason(StrEnum):
     """Warum der Run pausiert: Step-Gate, dynamisches Gate (ADR 0010), Tier-Freigabe (T2+) oder
-    Kritikalität (``human_gate``)."""
+    Kritikalität (``human_gate``) oder Eskalation an einen Menschen (ADR 0059)."""
 
     STEP = "step"
     GATE = "gate"
     TIER = "tier"
     CRITICALITY = "criticality"
+    ESCALATION = "escalation"
 
 
 class FailureKind(StrEnum):
@@ -214,6 +215,7 @@ class Approval:
 
     status: ApprovalStatus
     reason: ApprovalReason
+    kind: str = ""  # Eskalationsart (ADR 0059), sonst leer
     what: str = ""
     step: str = ""
     issue: str = ""

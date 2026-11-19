@@ -193,6 +193,18 @@ def _unresolved_blockers(repo: str, tok: str, issue: dict) -> list[str]:
     return out
 
 
+def _label_names(item: dict) -> set[str]:
+    """Label-Namen eines Issues/PRs aus der REST-Antwort."""
+    return {str(lbl.get("name", "")) for lbl in item.get("labels") or [] if isinstance(lbl, dict)}
+
+
+def _without_excluded(items: list[dict], exclude: list[str]) -> list[dict]:
+    """Items ohne eines der `exclude_labels` (z. B. `needs human`, ADR 0059)."""
+    if not exclude:
+        return items
+    return [it for it in items if not _label_names(it) & set(exclude)]
+
+
 def _unprocessed_issues(
     repo: str,
     tok: str,
@@ -201,6 +213,7 @@ def _unprocessed_issues(
     limit: int,
     priority_labels: list[str] | None = None,
     blocked: dict[int, list[str]] | None = None,
+    exclude: list[str] | None = None,
 ) -> list[dict]:
     """Reconcile-Modus: bis zu `limit` offene Issues, deren Trigger nicht in `done`
     (Trigger-Strings bisheriger Runs, s. `loop_run_triggers`) steht — höchste
@@ -213,10 +226,13 @@ def _unprocessed_issues(
     `blocked` (dict, `skip_blocked`, ADR 0031): Issues mit unerledigten Blockern
     werden übersprungen und mit ihren Blockern dort eingetragen. Sie belegen
     kein `limit`-Kontingent und feuern, sobald alle Blocker erledigt sind.
+
+    `exclude` (`exclude_labels`): Issues mit einem dieser Labels werden übersprungen, ohne
+    Kontingent zu belegen; sie feuern, sobald das Label entfernt ist.
     """
     todo: list[dict] = []
     for it in _iter_open_issues_oldest_first(repo, tok, labels):
-        if f"on_issue:#{it['number']}" in done:
+        if f"on_issue:#{it['number']}" in done or not _without_excluded([it], exclude or []):
             continue
         if blocked is not None:
             blockers = _unresolved_blockers(repo, tok, it)
@@ -505,6 +521,10 @@ class Scheduler(threading.Thread):
         "blocked by"-Dependencies starten nicht; sie bleiben ohne Run-Record und
         feuern beim ersten Poll, nachdem ihr letzter Blocker als `completed`
         geschlossen wurde.
+
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): Issues mit einem dieser Labels
+        starten nicht. Im Reconcile-Modus feuern sie, sobald das Label weg ist; im Event-Modus
+        gelten sie als gesehen.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -517,6 +537,7 @@ class Scheduler(threading.Thread):
         st["ts"] = time.time()
         labels = [str(x) for x in (trig.get("labels") or [])]
         priority_labels = [str(x) for x in (trig.get("priority_labels") or [])]
+        exclude = [str(x) for x in (trig.get("exclude_labels") or [])]
         try:
             tok = _gh_token_safe()
             if not tok:
@@ -525,11 +546,11 @@ class Scheduler(threading.Thread):
                 max_per_poll = max(1, int(trig.get("max_per_poll", DEFAULT_MAX_PER_POLL)))
                 blocked: dict[int, list[str]] | None = {} if trig.get("skip_blocked") else None
                 done = loop_run_triggers(name, lname)
-                todo = _unprocessed_issues(repo, tok, labels, done, max_per_poll, priority_labels, blocked)
+                todo = _unprocessed_issues(repo, tok, labels, done, max_per_poll, priority_labels, blocked, exclude)
                 _log_blocked(st, repo, blocked)
             else:
                 new = _new_issues(st, _only_issues(_gh_get_list(_issues_url(repo, labels, "desc"), tok)))
-                todo = _by_priority(new, priority_labels)
+                todo = _by_priority(_without_excluded(new, exclude), priority_labels)
         except Exception as e:
             print(f"[fabrik] on_issue Poll {repo} fehlgeschlagen: {e}")
             return
@@ -616,6 +637,9 @@ class Scheduler(threading.Thread):
         Die Fire-Entscheidung pro PR rechnet der reine Helfer `_pr_fire_kind`
         (ohne I/O); hier bleiben nur Polling/Throttling, Label-Filter,
         Dedup-State (`seen`/`floor`) und das Run-Starten via `_safe_run`.
+
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): PRs mit einem dieser Labels feuern
+        nicht; das Entfernen des Labels ist selbst eine Änderung und feuert danach wieder.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -646,9 +670,8 @@ class Scheduler(threading.Thread):
         # filtert nur OR. Ohne dies würde z. B. 'needs approval' auch
         # Nicht-fabrik-PRs treffen (ADR 0011).
         if required_labels:
-            prs = [
-                pr for pr in prs if set(required_labels) <= {str(lbl.get("name", "")) for lbl in pr.get("labels", [])}
-            ]
+            prs = [pr for pr in prs if set(required_labels) <= _label_names(pr)]
+        prs = _without_excluded(prs, [str(x) for x in (trig.get("exclude_labels") or [])])
         # State + updated_at pro PR tracken: State-Wechsel (z. B. open→closed)
         # ist ein eigenes Feuer-Ereignis, Update (gleicher State, neues
         # updated_at) ebenfalls; unverändert → kein Fire (Dedup).

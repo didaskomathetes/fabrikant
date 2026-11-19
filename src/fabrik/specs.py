@@ -599,6 +599,16 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
         # Event-Modus feuert jedes Issue nur einmal — ein blockiertes Issue ginge
         # verloren statt nach dem Schließen des Blockers zu starten (ADR 0031).
         errs.append(f"loop {lname} trigger {i}: skip_blocked nur für on_issue mit reconcile: true")
+    exclude = trig.get("exclude_labels")
+    if exclude is not None and (
+        ttype not in ("on_issue", "on_pr")
+        or not isinstance(exclude, list)
+        or not all(isinstance(x, str) and x for x in exclude)
+    ):
+        errs.append(
+            f"loop {lname} trigger {i}: exclude_labels nur für on_issue/on_pr, Liste nicht-leerer Strings "
+            f"(ist {exclude!r})"
+        )
     on_start = trig.get("on_start")
     if on_start is not None and (ttype != "cron" or not isinstance(on_start, bool)):
         errs.append(f"loop {lname} trigger {i}: on_start nur für cron und nur true/false (ist {on_start!r})")
