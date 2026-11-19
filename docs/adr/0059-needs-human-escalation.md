@@ -1,7 +1,7 @@
-# ADR 0057: `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift
+# ADR 0059: `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift
 
-**Status:** Proposed (2026-11-16)
-**Extends:** ADR 0011 (approval request protocol), ADR 0013 (AC verification in review),
+**Status:** Vorgeschlagen (2026-11-16)
+**Betrifft:** ADR 0011 (approval request protocol), ADR 0013 (AC verification in review),
 ADR 0024 (verdict markers, reply lock),
 ADR 0035 (error classes), ADR 0036 (run retry, exhausted jobs), ADR 0039 (convergent
 review rounds).
@@ -74,7 +74,8 @@ human":
 <!-- fabrik-escalate kind=blocked re=<keys> -->
 ```
 
-- `post-replies` (host-side, `pr-status.py`) validates the marker like the others: `kind`
+- The agent posts the reply itself (as with every `pr-reply` answer, the last line is
+  exactly `<!-- fabrik-reply -->`); the host validates the marker like the others: `kind`
   only from the table, `re` only from the keys of this run. Only the host sets the label.
   The agent gains no additional rights for this.
 - The reviewer may set `out_of_scope: true` per finding (extension of the finding schema from
@@ -96,8 +97,10 @@ human":
   trigger (label exclusion) and additionally in the gate of `pr-status.py` (`reply-context`,
   `merge-check` → `skip`), so a manual run does not slip through.
 - Stagnation detection (`stalled`) runs deterministically in `pr-status.py` from the existing
-  markers (`fabrik-review verdict=… sha=…`, `fabrik-reply re=…`) and the commit history of the
-  PR branch. It uses no LLM.
+  markers (`fabrik-review verdict=… sha=…`, the bare `<!-- fabrik-reply -->` reply marker) and
+  the commit history of the PR branch. The reply marker carries no attributes, so "the builder
+  changed nothing" is derived from the reply's content and the commit history, not from a
+  marker attribute. It uses no LLM.
 
 ### 5. Human actions
 
@@ -105,7 +108,7 @@ In the gate of the fabrik UI/CLI, with the same operation as approvals:
 
 | Action | Effect |
 |---|---|
-| **Resume** (optionally with a note) | Label removed. The note is posted as a PR comment from the human's account and is thus regular input for `pr-reply` (e.g. "the upstream PR is merged, please re-verify"). The `on_pr` reconcile triggers fire again. |
+| **Resume** (optionally with a note) | Label removed. The note is posted as a PR comment from the human's account and is thus regular input for `pr-reply` (e.g. "the upstream PR is merged, please re-verify"). The `on_pr` reconcile triggers fire again — with a **fresh budget**: the run gets a new `max_rounds`/`stall_rounds` window, not a continuation of the old one. This is deliberate: for `exhausted`, `pr_review` has already hit `max_rounds`, so a plain re-trigger would immediately re-exhaust; for `stalled`, the same findings would re-trigger the same stall. The human's approval is an explicit decision to give the loop a new chance, and that chance must come with a new budget. |
 | **Re-scope** | Like resume. The human has adjusted the ACs or PR body beforehand (e.g. `Closes` → `Refs`). The note tells the builder what changed. |
 | **Give up** (= reject) | PR closed with a reasoning comment. The issue stays open, `needs human` stays on the issue, so `develop` does not pick it up again. |
 
