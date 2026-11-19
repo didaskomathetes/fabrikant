@@ -205,34 +205,35 @@ _JSONL = "\n".join(
         '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":7}}',
         '{"type":"turn.started"}',
         '{"type":"item.completed","item":{"id":"i2","type":"agent_message","text":"final answer"}}',
-        '{"type":"turn.completed","usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":3}}',
+        '{"type":"turn.completed","usage":{"input_tokens":150,"cached_input_tokens":40,"cache_write_input_tokens":20,"output_tokens":10}}',
     ]
 )
 
 
-def test_parse_sums_turn_usage_and_takes_last_agent_message():
+def test_parse_takes_cumulative_usage_of_last_turn_and_last_agent_message():
+    """turn.completed trägt die Thread-Summe — Addieren würde frühere Turns doppelt zählen."""
     r = CodexBackend()._parse(_JSONL, "", 0)
     assert r["status"] == "done" and r["text"] == "final answer"
-    assert r["tokens"] == {"input": 150, "output": 10}
+    assert r["tokens"] == {"input": 150, "output": 10, "cache_read": 40, "cache_write": 20}
     assert r["cost"] == 0.0
 
 
 def test_parse_plain_stdout_fallback_has_zero_tokens():
     r = CodexBackend()._parse("just text\n", "", 0)
-    assert r["text"] == "just text" and r["tokens"] == {"input": 0, "output": 0}
+    assert r["text"] == "just text" and r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 
 def test_parse_ignores_garbage_and_bad_usage_values():
     out = 'not json\n[1]\n{"type":"turn.completed","usage":{"input_tokens":"x","output_tokens":-3}}\n'
     r = CodexBackend()._parse(out, "", 0)
-    assert r["tokens"] == {"input": 0, "output": 0}
+    assert r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 
 def test_parse_failure_reports_turn_failed_message_and_keeps_usage():
     out = '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":1}}\n{"type":"turn.failed","error":{"message":"spend cap reached"}}\n'
     r = CodexBackend()._parse(out, "", 1)
     assert r["status"] == "failed" and r["text"] == "spend cap reached"
-    assert r["tokens"] == {"input": 5, "output": 1}
+    assert r["tokens"] == {"input": 5, "output": 1, "cache_read": 0, "cache_write": 0}
 
 
 def test_parse_failure_falls_back_to_stderr():

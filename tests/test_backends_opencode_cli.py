@@ -153,7 +153,7 @@ def test_parse_events_sums_usage_and_collects_text():
     )
     text, tokens, cost, tools, error = parse_events(out)
     assert text == "Fertig." and tools == ["read"] and error == ""
-    assert tokens == {"input": 162, "output": 15} and cost == 0.25
+    assert tokens == {"input": 162, "output": 15, "cache_read": 10, "cache_write": 2} and cost == 0.25
 
 
 def test_parse_events_error_message():

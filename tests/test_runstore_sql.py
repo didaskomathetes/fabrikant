@@ -86,7 +86,7 @@ def test_upgrade_head_on_empty_db_matches_schema(tmp_path):
     engine.dispose()
     assert diff == []
     assert tables == set(metadata.tables) | {"alembic_version"}
-    assert version == "0004"
+    assert version == "0005"
 
 
 def test_migrate_is_idempotent(tmp_path):
@@ -480,4 +480,31 @@ def test_escalation_approval_round_trips_and_migration_keeps_permissions(sql, tm
     with engine.begin() as conn:
         assert conn.exec_driver_sql("SELECT count(*) FROM approval_permissions").scalar() == 1
         conn.execute(text("UPDATE approvals SET reason = 'escalation', kind = 'blocked' WHERE run_id = 'r1'"))
+    engine.dispose()
+
+
+def test_usage_cache_tokens_round_trip_and_migration_keeps_usage_rows(sql, tmp_path):
+    usage = {
+        "prompt_tokens": 100,
+        "completion_tokens": 5,
+        "cache_read_tokens": 80,
+        "cache_write_tokens": 10,
+        "billing": "subscription",
+    }
+    step = {"name": "a", "type": "agent", "status": "pass", "usage": usage}
+    sql.create("p", "c", _rec(id="c", status="pass", steps=[step]))
+    assert runs.get_run("c", "p")["steps"][0]["usage"] == usage
+
+    # 0004 → 0005: Alt-Zeilen bleiben, die neuen Spalten sind NULL (= nicht gemeldet).
+    engine = make_engine(f"sqlite:///{tmp_path / 'up.db'}")
+    migrate(engine, "0004")
+    with engine.begin() as conn:
+        _seed_step(conn)
+        conn.execute(text("INSERT INTO step_usage (run_id, step_idx, prompt_tokens) VALUES ('r1', 0, 7)"))
+    migrate(engine)
+    with engine.connect() as conn:
+        row = conn.exec_driver_sql(
+            "SELECT prompt_tokens, cache_read_tokens, cache_write_tokens, billing FROM step_usage"
+        ).one()
+        assert tuple(row) == (7, None, None, None)
     engine.dispose()
