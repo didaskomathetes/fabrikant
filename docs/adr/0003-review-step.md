@@ -1,70 +1,71 @@
-# ADR 0003: `review`-Step — Cross-Model Cold Critic
+# ADR 0003: `review` step — cross-model cold critic
 
-**Status:** Accepted (2026-10-17); Nachtrag 2026-11-04 (ADR 0013 Stufe 2):
-Verdict-Vertrag um `acceptance` erweitert
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
+
+**Status:** Accepted (2026-10-17); addendum 2026-11-04 (ADR 0013 stage 2):
+verdict contract extended with `acceptance`
 **Issue:** #12
 
-## Kontext
+## Context
 
-Der Review-on-PR-Use Case wurde in P0 prompt-basiert gelöst (ADR 0001,
-`review-pr`-Loop mit qwen3:4b): ein Loop, der nach einem PR-Run manuell
-oder per Scheduler angefasst wird. Das ist umständlich und lässt den
-Review nicht in der Run-Semantik landen (kein Verdict im Run-Record,
-kein Gate-Verhalten).
+The review-on-PR use case was solved prompt-based in P0 (ADR 0001,
+`review-pr` loop with qwen3:4b): a loop that is touched manually or by a
+scheduler after a PR run. That is cumbersome and keeps the review out of
+the run semantics (no verdict in the run record, no gate behavior).
 
-Ziel: ein Engine-Step, der **vor** dem PR-Step läuft und den Run bei
-`changes_requested` sauber zurücksetzt.
+Goal: an engine step that runs **before** the PR step and cleanly resets
+the run on `changes_requested`.
 
-## Entscheidung
+## Decision
 
-**Neuer Step-Typ `review`:** startet eine Agent-Session mit **anderem
-Modell** als der Builder-Step (frischer Kontext, kein Bias — derselbe
-Modell-Typ zu reviewen, der den Code geschrieben hat, ist Selbstlob).
+**New step type `review`:** starts an agent session with a **different
+model** than the builder step (fresh context, no bias — using the same
+model type to review the code it wrote is self-praise).
 
-- Step-Def: `type: review`, `model` (Pflicht), `backend`/`endpoint` wie
-  agent, optional `target` (Default: Output des letzten Agent-Steps) und
-  `prompt_file` (ersetzt die Review-Vorlage).
-- **Cross-Model-Check:** Die Engine trackt das Modell des letzten
-  Agent-Steps (`ctx["last_agent_model"]`). Review mit gleichem Modell →
-  Step failt. (Engine-Check, nicht nur Doku-Versprechen.)
-- **Verdict-Vertrag:** Der Reviewer antwortet mit striktem JSON
+- Step definition: `type: review`, `model` (required), `backend`/`endpoint` as
+  for agent, optional `target` (default: output of the last agent step) and
+  `prompt_file` (replaces the review template).
+- **Cross-model check:** the engine tracks the model of the last
+  agent step (`ctx["last_agent_model"]`). Review with the same model →
+  step fails. (An engine check, not just a documentation promise.)
+- **Verdict contract:** the reviewer answers with strict JSON
   (`verdict: approved | changes_requested`, `findings[]`, `summary`).
-  Parsing ist tolerant (erstes `{` bis letztes `}`), unlesbarer Output →
-  Step failt (kein Silent-Pass).
-- **Run-Semantik:** Verdict + Findings landen im Run-Record
-  (`step.review`). `changes_requested` → Step fail → Run fail
-  (gate: true, Findings in der Step-Summary). Der Reviewer kann also den
-  Run zurücksetzen, der Builder nicht.
-- Reuse: `_step_agent_backend` aus dem agent-Step (Session-Lifecycle,
-  Orphan-Schutz, Usage-Recording, Session-Log-Events) — kein zweiter
-  Backend-Pfad.
+  Parsing is tolerant (first `{` to last `}`); unreadable output →
+  step fails (no silent pass).
+- **Run semantics:** verdict + findings land in the run record
+  (`step.review`). `changes_requested` → step fail → run fail
+  (gate: true, findings in the step summary). So the reviewer can reset the
+  run; the builder cannot.
+- Reuse: `_step_agent_backend` from the agent step (session lifecycle,
+  orphan protection, usage recording, session-log events) — no second
+  backend path.
 
-## Konsequenzen
+## Consequences
 
-+ Verdict im Run-Record → querybar (Session-Log), exportierbar
-  (Tracing-Exporter), gate-fähig
-+ Review im selben Run wie Build (deterministische Abarbeitungsreihenfolge)
-+ Cold Critic erzbar, nicht nur empfohlen
-- Review-Model muss erreichbar sein (zweites Backend/Modell im Homelab)
-- Reviewer-Output ist LLM-Text: Verdict-JSON-Vertrag ist eine
-  Vereinbarung, kein Protokoll — daher failt unparseable Output statt
-  zu raten
++ Verdict in the run record → queryable (session log), exportable
+  (tracing exporter), gate-capable
++ Review in the same run as build (deterministic processing order)
++ Cold critic is enforceable, not just recommended
+- The review model must be reachable (second backend/model in the homelab)
+- Reviewer output is LLM text: the verdict JSON contract is an
+  agreement, not a protocol — hence unparseable output fails instead of
+  guessing
 
-## Alternativen (abgelehnt)
+## Alternatives (rejected)
 
-- **Review als zweiter agent-Step + prompt:** kein Cross-Model-Check,
-  kein Verdict im Record, kein Run-Reset — genau der P0-Umweg, den dies
-  ersetzt.
-- **Review im PR-Step (vor dem Push):** PR-Step bleibt simpel; Review
-  vor PR ist die saubere Reihenfolge und testbar ohne Git-Infra.
+- **Review as a second agent step + prompt:** no cross-model check,
+  no verdict in the record, no run reset — exactly the P0 detour this
+  replaces.
+- **Review in the PR step (before the push):** the PR step stays simple; review
+  before PR is the clean order and testable without git infrastructure.
 
-## Nachtrag 2026-11-04 (ADR 0013, Stufe 2)
+## Addendum 2026-11-04 (ADR 0013, stage 2)
 
-Der Verdict-Vertrag wird um das optionale Feld `acceptance` erweitert:
-`[{criterion, status: met | unmet | unverifiable, evidence}]` — ein Eintrag
-pro Acceptance Criterion des verlinkten Issues (gesetzt durch `pr_review`,
-das dem Reviewer die AC als untrusted Daten mitgibt). Fehlendes Feld →
-leere Liste. Ungültige Struktur (kein List, Eintrag kein Dict, leeres
-Kriterium, unbekannter Status) wird **abgelehnt** (kein Verdict → Step
-failt), nicht still ignoriert. `acceptance` landet im Run-Record
-(`step.review`) — auch `unverifiable`, das nicht blockiert.
+The verdict contract is extended with the optional field `acceptance`:
+`[{criterion, status: met | unmet | unverifiable, evidence}]` — one entry
+per acceptance criterion of the linked issue (set by `pr_review`,
+which passes the ACs to the reviewer as untrusted data). Missing field →
+empty list. An invalid structure (not a list, entry not a dict, empty
+criterion, unknown status) is **rejected** (no verdict → step
+fails), not silently ignored. `acceptance` lands in the run record
+(`step.review`) — including `unverifiable`, which does not block.
