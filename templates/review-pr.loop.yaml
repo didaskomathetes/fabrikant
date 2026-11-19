@@ -10,7 +10,7 @@ params:
   poll: 300
   timeout: 1800
   review_context: []  # extra_context des Review-Steps
-  human_label: needs human  # eskalierte PRs (ADR 0057) nicht reviewen
+  human_label: needs human  # eskalierte PRs (ADR 0059) nicht reviewen
   stall_rounds: 2  # so viele changes_requested-Runden ohne Builder-Commit → Eskalation `stalled`
 loop:
   description: "Code-Review neuer/aktualisierter PRs mit Label {pr_label} — Reviewer {reviewer_model} via {reviewer_backend} (Builder ≠ Reviewer)"
@@ -32,7 +32,7 @@ loop:
       prompt_file: "{prompt_file}"
       extra_context: "{review_context}"
       timeout: "{timeout}"
-    # Deterministisch auf dem Host (ADR 0057 §4): Stillstand → Label + Eskalations-Kommentar.
+    # Deterministisch auf dem Host (ADR 0059 §4): Stillstand → Label + Eskalations-Kommentar.
     - name: escalation-check
       type: shell
       cmd: >-

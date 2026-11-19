@@ -18,19 +18,19 @@ Doppel-Posts, Fehl-Merges). Dieses Script kapselt das über `gh`:
       Legt der PR eine ADR mit einer auf der Base schon vergebenen Nummer an → "wait"
       (ADR 0032; Reparatur: `scripts/check-adr-numbers.py fix`). Label
       'needs approval' → "wait": solche PRs mergt nur der approval-Loop (ADR 0011).
-      Label `needs human` (`--human-label`) → "wait": eskaliert (ADR 0057).
+      Label `needs human` (`--human-label`) → "wait": eskaliert (ADR 0059).
   new-comments <num> --repo R --state state/replied-comments.json
       → [{"key", "kind", "id", "author", "created", "body", ...}] (chronologisch)
   escalation-check <num> --repo R [--stall-rounds N] [--max-rounds N] [--escalate] [--human-label L]
-      Deterministische Eskalation (ADR 0057, kein LLM): `stalled` = die letzten N Verdikte des
+      Deterministische Eskalation (ADR 0059, kein LLM): `stalled` = die letzten N Verdikte des
       Reviewers sind `changes_requested`, ohne dass dazwischen ein Nicht-Merge-Commit kam;
       `exhausted` = `--max-rounds` Fix-Commits verbraucht und weiter `changes_requested` am Head.
       → {"action": "escalate" | "continue", "kind": "...", "reason": "..."}; `--escalate` setzt
       dann Label + Marker-Kommentar (siehe `escalate`).
   escalate <num> --repo R --kind K --why TEXT [--human-label L] [--builder]
-      Eskalation an einen Menschen (ADR 0057): Kommentar mit Marker + Label L (Default
+      Eskalation an einen Menschen (ADR 0059): Kommentar mit Marker + Label L (Default
       `needs human`). Idempotent: trägt das Item das Label schon, passiert nichts.
-      `--builder` (Builder-Entwurf, ADR 0057 §3): `--kind` nur aus BUILDER_ESCALATION_KINDS
+      `--builder` (Builder-Entwurf, ADR 0059 §3): `--kind` nur aus BUILDER_ESCALATION_KINDS
       (`blocked`/`scope`) — nur der Host darf `stalled`/`exhausted`/`access` setzen.
   threads <num> --repo R
       → offene (unresolved) Review-Threads
@@ -49,7 +49,7 @@ Marker (HTML-Kommentare, im gerenderten Text unsichtbar):
   <!-- fabrik-reply -->
       Antwort des pr-reply-Loops. Solche Kommentare sind nie "neu" (kein Self-Loop).
   <!-- fabrik-escalate kind=<kind>[ re=<key>,…] -->
-      Eskalation an einen Menschen (ADR 0057); nur der Host schreibt ihn (Agent-Text wird
+      Eskalation an einen Menschen (ADR 0059); nur der Host schreibt ihn (Agent-Text wird
       von allen fabrik-Markern bereinigt). Der escalation-Loop zeigt den letzten an.
 """
 
@@ -88,7 +88,7 @@ REBASE_STATES = {
 # ADR-PRs mit diesem Label mergt nur der approval-Loop nach menschlicher Freigabe
 # (ADR 0011) — pr-reply darf sie trotz Review-Approve nicht mergen.
 APPROVAL_LABEL = "needs approval"
-# Eskalation an einen Menschen (ADR 0057): Label stoppt review-pr/pr-reply/develop und Merge.
+# Eskalation an einen Menschen (ADR 0059): Label stoppt review-pr/pr-reply/develop und Merge.
 HUMAN_LABEL = "needs human"
 ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 BUILDER_ESCALATION_KINDS = ("blocked", "scope")  # nur diese darf der Builder per Entwurf setzen
@@ -259,7 +259,7 @@ def merge_decision(pr: dict, reviewer: str, open_threads: int, human_label: str 
     (Mensch/pr_review-Step) und durch offene Review-Threads. Konflikt/Rückstand
     (REBASE_STATES) → resolve_conflicts unabhängig von der Freigabe. Label
     APPROVAL_LABEL → immer wait (Merge nur über den approval-Loop, ADR 0011); `human_label`
-    → wait (eskaliert, ADR 0057)."""
+    → wait (eskaliert, ADR 0059)."""
     status = pr.get("mergeStateStatus", "")
     if status in REBASE_STATES:
         return {"action": ACTION_REBASE, "reason": f"{REBASE_STATES[status]} (mergeStateStatus={status})"}
@@ -269,7 +269,7 @@ def merge_decision(pr: dict, reviewer: str, open_threads: int, human_label: str 
             "reason": f"Label '{APPROVAL_LABEL}' — Merge nur über den approval-Loop (ADR 0011)",
         }
     if human_label and has_label(pr, human_label):
-        return {"action": ACTION_WAIT, "reason": f"Label '{human_label}' — an einen Menschen eskaliert (ADR 0057)"}
+        return {"action": ACTION_WAIT, "reason": f"Label '{human_label}' — an einen Menschen eskaliert (ADR 0059)"}
 
     reviews = pr.get("reviews") or []
     plain = latest_plain_review_state(reviews)
@@ -488,7 +488,7 @@ def new_comments(items: list[dict], replied: dict) -> list[dict]:
     return [i for i in items if i["key"] not in replied and REPLY_MARKER not in i["body"]]
 
 
-# ── Eskalation (ADR 0057) ──
+# ── Eskalation (ADR 0059) ──
 
 ESCALATE, CONTINUE = "escalate", "continue"
 FIX_COMMIT_PREFIX = "fabrik: address review"  # Commit-Message der Fix-Commits (Rundenzähler)
@@ -525,7 +525,7 @@ def escalation_decision(
     stall_rounds: int = DEFAULT_STALL_ROUNDS,
     max_rounds: int = 0,
 ) -> dict:
-    """Deterministische Eskalation aus Review-Markern und PR-Commits (ADR 0057 §4).
+    """Deterministische Eskalation aus Review-Markern und PR-Commits (ADR 0059 §4).
 
     stalled:   die letzten `stall_rounds` Verdikte sind `changes_requested`, und der Builder hat
                dazwischen — und auch nach dem letzten Verdikt bis zum Head — keinen Code geändert
@@ -564,7 +564,7 @@ def escalation_decision(
 
 
 def escalate_marker(kind: str, re_keys: str = "") -> str:
-    """Eskalations-Marker (ADR 0057); `re_keys` = kommagetrennte Kommentar-Keys (optional)."""
+    """Eskalations-Marker (ADR 0059); `re_keys` = kommagetrennte Kommentar-Keys (optional)."""
     return f"<!-- fabrik-escalate kind={kind}{f' re={re_keys}' if re_keys else ''} -->"
 
 
@@ -583,7 +583,7 @@ def escalate(
 ) -> dict:
     """Kommentar mit Marker posten und Label setzen; idempotent über das Label.
 
-    `builder=True` (Builder-Entwurf, ADR 0057 §3) beschränkt `kind` auf
+    `builder=True` (Builder-Entwurf, ADR 0059 §3) beschränkt `kind` auf
     BUILDER_ESCALATION_KINDS — nur der Host darf `stalled`/`exhausted`/`access` setzen.
     Der Agent erhält dadurch keine zusätzlichen Rechte."""
     allowed = BUILDER_ESCALATION_KINDS if builder else ESCALATION_KINDS
@@ -651,7 +651,7 @@ def main(argv: list[str] | None = None) -> int:
     cmds["new-comments"].add_argument("--state", type=Path, required=True)
     cmds["resolve-thread"].add_argument("--comment-id", type=int, required=True)
     for name in ("merge-check", "escalation-check", "escalate"):
-        cmds[name].add_argument("--human-label", default=HUMAN_LABEL, help="Eskalations-Label (ADR 0057)")
+        cmds[name].add_argument("--human-label", default=HUMAN_LABEL, help="Eskalations-Label (ADR 0059)")
     cmds["escalation-check"].add_argument("--stall-rounds", type=int, default=DEFAULT_STALL_ROUNDS)
     cmds["escalation-check"].add_argument("--max-rounds", type=int, default=0, help="0 = keine exhausted-Prüfung")
     cmds["escalation-check"].add_argument("--escalate", action="store_true", help="bei Treffer Label + Kommentar")
@@ -660,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
     cmds["escalate"].add_argument(
         "--builder",
         action="store_true",
-        help="Builder-Entwurf (ADR 0057 §3): --kind nur aus BUILDER_ESCALATION_KINDS",
+        help="Builder-Entwurf (ADR 0059 §3): --kind nur aus BUILDER_ESCALATION_KINDS",
     )
     args = p.parse_args(argv)
     repo, num = args.repo, args.num

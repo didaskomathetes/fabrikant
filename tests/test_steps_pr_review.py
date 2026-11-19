@@ -179,7 +179,7 @@ def test_rounds_exhausted_fails(monkeypatch, tmp_path):
 
 
 def test_granted_rounds_extend_budget(monkeypatch, tmp_path):
-    """ADR 0057: Eskalations-Freigabe gewährt frische Runden — pr_review addiert sie zum Budget."""
+    """ADR 0059: Eskalations-Freigabe gewährt frische Runden — pr_review addiert sie zum Budget."""
     calls = _patch(monkeypatch, [CHANGES])
     ctx = {**_ctx(tmp_path), pr_review.GRANT_ROUNDS_CTX: 2}
     res = pr_review._step_pr_review(ctx, {"repo": "o/r", "model": "m2", "max_rounds": 1}, lambda m: None)

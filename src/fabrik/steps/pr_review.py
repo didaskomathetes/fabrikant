@@ -350,7 +350,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     dev_token = _gh_token("dev")
     reviewer_token = _gh_token("reviewer")
     pr_number = _resolve_pr_number(ctx, step, repo, dev_token)
-    # ADR 0057: eine Eskalations-Freigabe gewährt ein frisches Runden-Budget
+    # ADR 0059: eine Eskalations-Freigabe gewährt ein frisches Runden-Budget
     # (ctx-Variable GRANT_ROUNDS_CTX) — ein fortgesetzter Run erschöpft nicht sofort.
     max_rounds = max(0, int(step.get("max_rounds", 2))) + int(ctx.get(GRANT_ROUNDS_CTX, 0) or 0)
     pushed_sha = ""  # Head nach der letzten Fix-Runde; leer = Runde 1

@@ -632,7 +632,7 @@ def test_post_review_idempotent_for_bot_reviewer(mod, fake_gh, monkeypatch):
     assert not any("POST" in args for args, _ in calls)
 
 
-# ── Eskalation an einen Menschen (ADR 0057) ──
+# ── Eskalation an einen Menschen (ADR 0059) ──
 
 C1, C2, C3 = "c" * 40, "d" * 40, "e" * 40
 
@@ -653,7 +653,7 @@ def _cr(sha: str) -> dict:
 def test_merge_decision_human_label_blocks_merge(mod):
     pr = _pr(reviews=[_review(_marker("approved"))], labels=("needs human",))
     result = mod.merge_decision(pr, REVIEWER, 0)
-    assert result["action"] == "wait" and "ADR 0057" in result["reason"]
+    assert result["action"] == "wait" and "ADR 0059" in result["reason"]
     assert mod.merge_decision(pr, REVIEWER, 0, human_label="")["action"] == "merge"  # abschaltbar
 
 
@@ -736,7 +736,7 @@ def test_escalate_is_idempotent_and_validates_kind(mod, fake_gh):
 
 
 def test_escalate_builder_rejects_non_builder_kind(mod, fake_gh):
-    """ADR 0057 §3: Builder darf nur blocked/scope eskalieren, nicht stalled/exhausted/access."""
+    """ADR 0059 §3: Builder darf nur blocked/scope eskalieren, nicht stalled/exhausted/access."""
     responses, _ = fake_gh
     responses["repos/o/r/issues/7"] = {"labels": []}
     for kind in ("stalled", "exhausted", "access"):

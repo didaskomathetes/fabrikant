@@ -24,7 +24,7 @@ class ApprovalRequest:
 
     reason:      Auslöser — "step" (approval/approval_when), "gate" (Step meldet
                  zur Laufzeit needs_approval), "tier" (Tier-Gate am Loop-Ende),
-                 "criticality" (human_gate), "escalation" (an einen Menschen eskaliert, ADR 0057).
+                 "criticality" (human_gate), "escalation" (an einen Menschen eskaliert, ADR 0059).
     kind:        Eskalationsart bei reason "escalation" (config.ESCALATION_KINDS), sonst leer.
     step:        Name des wartenden Steps ("" beim Tier-Gate).
     condition:   erfüllte `approval_when`-Bedingung, z. B. "label = needs approval".

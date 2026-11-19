@@ -1,4 +1,4 @@
-"""Step: escalation — wartender Gate-Run für ein an einen Menschen eskaliertes Item (ADR 0057).
+"""Step: escalation — wartender Gate-Run für ein an einen Menschen eskaliertes Item (ADR 0059).
 
 Das Label (`needs human`, Spec-Feld `label`) setzt `scripts/pr-status.py` (`escalate` /
 `escalation-check --escalate`) mit Marker-Kommentar. Dieser Step macht
@@ -11,7 +11,7 @@ die Eskalation in der fabrik-UI sichtbar und handlungsfähig:
    Die Freigabe gewährt dem Run zusätzlich ein frisches Runden-Budget
    (``grant_rounds``, Default ``DEFAULT_GRANT_ROUNDS``) als ctx-Variable
    ``GRANT_ROUNDS_CTX`` — so erschöpft ein fortgesetzter Run nicht sofort wieder und
-   eskaliert nicht erneut (ADR 0057; konsumiert von pr_review und dem nachgelassenen
+   eskaliert nicht erneut (ADR 0059; konsumiert von pr_review und dem nachgelassenen
    ``exhausted``-Pfad). **Neu zuschneiden** ist dasselbe, nachdem der Mensch ACs/PR-Body
    angepasst und das in einem PR-Kommentar gesagt hat (regulärer Input für pr-reply).
 3. Ablehnen = **Aufgeben**: der Run endet, das Label bleibt — Loops lassen das Item liegen;
@@ -22,7 +22,7 @@ Step-Def:
     repo: owner/name
     item: "{pr_number}"   # optional; Default: ctx pr_number, sonst issue_number
     label: needs human    # optional; Default config.HUMAN_LABEL
-    grant_rounds: 2       # optional; frisches Runden-Budget pro Freigabe (ADR 0057)
+    grant_rounds: 2       # optional; frisches Runden-Budget pro Freigabe (ADR 0059)
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ GH_API = "https://api.github.com"
 COMMENTS_PER_PAGE = 100
 MAX_WHY_CHARS = 1500  # Begründung im Gate kurz halten; der Link führt zum vollen Kommentar
 RESUME_FLAG = "escalation_acknowledged"
-# ADR 0057: eine Freigabe gewährt dem Run ein frisches Runden-Budget, damit ein
+# ADR 0059: eine Freigabe gewährt dem Run ein frisches Runden-Budget, damit ein
 # fortgesetzter Run nicht sofort wieder erschöpft und neu eskaliert. Der Grant ist
 # eine ctx-Variable, die die Runden-budgetierenden Steps (pr_review und der
 # nachgelassene `exhausted`-Pfad) lesen und zu ihrem eigenen Budget addieren.
@@ -128,7 +128,7 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
     token = _gh_token("dev")
 
     if str(ctx.get(RESUME_FLAG, "")) == "true":
-        # ADR 0057: Freigabe = frisches Runden-Budget (Hook für pr_review und den
+        # ADR 0059: Freigabe = frisches Runden-Budget (Hook für pr_review und den
         # nachgelassenen `exhausted`-Pfad), nicht nur Resume mit dem alten Budget.
         granted = max(0, int(step.get("grant_rounds", DEFAULT_GRANT_ROUNDS)))
         ctx[GRANT_ROUNDS_CTX] = granted

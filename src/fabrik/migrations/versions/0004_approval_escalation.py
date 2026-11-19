@@ -1,4 +1,4 @@
-"""Eskalation an einen Menschen (ADR 0057): ``approvals.kind`` und ``reason = 'escalation'``.
+"""Eskalation an einen Menschen (ADR 0059): ``approvals.kind`` und ``reason = 'escalation'``.
 
 ``kind`` ist ein natives ADD COLUMN (nullable). Der ``reason``-CHECK bekommt den neuen Wert; unter
 SQLite heißt das Tabellen-Neubau (Batch). Das DROP der alten ``approvals`` löst die CASCADE-Löschung

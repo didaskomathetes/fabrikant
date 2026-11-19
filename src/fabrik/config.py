@@ -212,7 +212,7 @@ def runs_archive_dir() -> Path:
     return STATE_DIR / "runs-archive"
 
 
-# Eskalation an einen Menschen (ADR 0057). Gleiche Werte wie in scripts/pr-status.py
+# Eskalation an einen Menschen (ADR 0059). Gleiche Werte wie in scripts/pr-status.py
 # (Host-Skript ohne Paket-Import; tests/test_escalation.py prüft den Gleichstand).
 HUMAN_LABEL = "needs human"
 ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")

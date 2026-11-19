@@ -1,4 +1,4 @@
-"""Eskalation an einen Menschen (ADR 0057): escalation-Step (Pause, Fortsetzen, schon erledigt),
+"""Eskalation an einen Menschen (ADR 0059): escalation-Step (Pause, Fortsetzen, schon erledigt),
 `exclude_labels` am on_pr-/on_issue-Trigger, Spec-Validierung, ApprovalRequest.kind und der
 Gleichstand der Konstanten zwischen Paket und Host-Skript `scripts/pr-status.py`."""
 
@@ -114,7 +114,7 @@ def test_step_resume_propagates_other_http_errors(monkeypatch):
 
 
 def test_step_resume_grants_fresh_round_budget(monkeypatch):
-    """ADR 0057: Freigabe gewährt ein frisches Runden-Budget (nicht erschöpft gelassen)."""
+    """ADR 0059: Freigabe gewährt ein frisches Runden-Budget (nicht erschöpft gelassen)."""
     _fake_github(monkeypatch, {}, [])
     ctx = _ctx(**{escalation.RESUME_FLAG: "true"})
     escalation._step_escalation(ctx, {"repo": "o/r"}, lambda _: None)

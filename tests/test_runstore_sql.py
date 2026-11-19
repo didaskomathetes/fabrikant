@@ -465,7 +465,7 @@ def test_step_verdict_round_trips_and_migration_keeps_child_rows(sql, tmp_path):
 
 
 def test_escalation_approval_round_trips_and_migration_keeps_permissions(sql, tmp_path):
-    """ADR 0057: reason=escalation + kind im SQL-Store; 0003 → 0004 verliert keine Freigabe-Rechte."""
+    """ADR 0059: reason=escalation + kind im SQL-Store; 0003 → 0004 verliert keine Freigabe-Rechte."""
     approval = {"reason": "escalation", "kind": "stalled", "why": "2 Runden ohne Änderung"}
     sql.create("p", "e", _rec(id="e", status="needs_approval", approval=approval))
     assert runs.get_run("e", "p")["approval"] == approval

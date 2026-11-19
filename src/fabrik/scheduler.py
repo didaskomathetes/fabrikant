@@ -199,7 +199,7 @@ def _label_names(item: dict) -> set[str]:
 
 
 def _without_excluded(items: list[dict], exclude: list[str]) -> list[dict]:
-    """Items ohne eines der `exclude_labels` (z. B. `needs human`, ADR 0057)."""
+    """Items ohne eines der `exclude_labels` (z. B. `needs human`, ADR 0059)."""
     if not exclude:
         return items
     return [it for it in items if not _label_names(it) & set(exclude)]
@@ -522,7 +522,7 @@ class Scheduler(threading.Thread):
         feuern beim ersten Poll, nachdem ihr letzter Blocker als `completed`
         geschlossen wurde.
 
-        `exclude_labels` (ADR 0057, z. B. `[needs human]`): Issues mit einem dieser Labels
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): Issues mit einem dieser Labels
         starten nicht. Im Reconcile-Modus feuern sie, sobald das Label weg ist; im Event-Modus
         gelten sie als gesehen.
         """
@@ -638,7 +638,7 @@ class Scheduler(threading.Thread):
         (ohne I/O); hier bleiben nur Polling/Throttling, Label-Filter,
         Dedup-State (`seen`/`floor`) und das Run-Starten via `_safe_run`.
 
-        `exclude_labels` (ADR 0057, z. B. `[needs human]`): PRs mit einem dieser Labels feuern
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): PRs mit einem dieser Labels feuern
         nicht; das Entfernen des Labels ist selbst eine Änderung und feuert danach wieder.
         """
         repo = trig.get("repo") or spec.get("github")

@@ -11,7 +11,7 @@ Du arbeitest mit demselben Modell wie der develop-Loop (Builder-Modell).
 2. `git fetch origin`
 3. Offene fabrik-PRs auflisten:
    `gh pr list --repo didaskomathetes/quark-playground --label fabrik --state open --json number,headRefName,labels`
-   PRs mit Label `needs human` **überspringen** (an einen Menschen eskaliert, ADR 0057) —
+   PRs mit Label `needs human` **überspringen** (an einen Menschen eskaliert, ADR 0059) —
    weder antworten noch fixen noch mergen.
 4. Für jede PR die **neuen Kommentare** deterministisch ermitteln (ADR 0024) — NICHT
    selbst aus dem Roh-JSON filtern:
@@ -117,14 +117,14 @@ Du arbeitest mit demselben Modell wie der develop-Loop (Builder-Modell).
         **Zuerst Duplikat-Check:** `gh issue list --repo didaskomathetes/quark-playground
         --label fabrik --state open` — bei passendem offenen Issue NICHT neu anlegen,
         sondern das bestehende in der Antwort referenzieren.
-      - **Nicht von hier lösbar → an einen Menschen eskalieren (ADR 0057):** Der Fix braucht
+      - **Nicht von hier lösbar → an einen Menschen eskalieren (ADR 0059):** Der Fix braucht
         etwas außerhalb deiner Reichweite (Zugang zu einem Shop/System, Änderung in einem
         anderen Repo/Team, Policy- oder Produktentscheidung) → `blocked`; oder er geht deutlich
         über die Acceptance Criteria des Issues hinaus → `scope`. Vorher erledigen, was in
         deiner Reichweite liegt (Tests, PR-Body mit dem tatsächlichen Scope). Dann:
         `python3 scripts/pr-status.py escalate <num> --repo didaskomathetes/quark-playground --builder --kind blocked|scope --why "<erledigt: … / offen: … / wer: …>"`
         (`--builder` ist Pflicht: als Builder darfst du nur `blocked`/`scope` eskalieren,
-        ADR 0057 §3 — `stalled`/`exhausted`/`access` setzt nur der Host.) Das setzt das Label
+        ADR 0059 §3 — `stalled`/`exhausted`/`access` setzt nur der Host.) Das setzt das Label
         `needs human` und postet die Begründung; danach diese PR nicht
         weiter bearbeiten. Nur **„braucht einen Menschen“ zu schreiben, ohne zu eskalieren,
         ist falsch** — dann dreht sich Review und Reply im Kreis.

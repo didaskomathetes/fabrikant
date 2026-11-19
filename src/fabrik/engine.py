@@ -178,7 +178,7 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
     elif t == "human_gate":
         intent = "Kritizitäts-Check (menschliche Freigabe bei kritisch)"
     elif t == "escalation":
-        intent = "Eskalation an einen Menschen (ADR 0057): warten, dann fortsetzen"
+        intent = "Eskalation an einen Menschen (ADR 0059): warten, dann fortsetzen"
     elif t == "report":
         intent = f"Report: {step.get('write', '(nur Log)')}"
     elif t == "notify":
