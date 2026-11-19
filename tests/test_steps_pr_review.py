@@ -178,6 +178,17 @@ def test_rounds_exhausted_fails(monkeypatch, tmp_path):
     assert len(calls["reviews"]) == 2  # beide REQUEST_CHANGES
 
 
+def test_granted_rounds_extend_budget(monkeypatch, tmp_path):
+    """ADR 0057: Eskalations-Freigabe gewährt frische Runden — pr_review addiert sie zum Budget."""
+    calls = _patch(monkeypatch, [CHANGES])
+    ctx = {**_ctx(tmp_path), pr_review.GRANT_ROUNDS_CTX: 2}
+    res = pr_review._step_pr_review(ctx, {"repo": "o/r", "model": "m2", "max_rounds": 1}, lambda m: None)
+    # max_rounds=1 + 2 gewährt = 3 → 4 Review-Runden bis zur Erschöpfung
+    assert res["ok"] is False
+    assert len(calls["reviews"]) == 4
+    assert calls["fixes"] == 3
+
+
 def test_fix_round_without_changes_fails(monkeypatch, tmp_path):
     _patch(monkeypatch, [CHANGES], git_status="")
     res = pr_review._step_pr_review(_ctx(tmp_path), {"repo": "o/r", "model": "m2"}, lambda m: None)

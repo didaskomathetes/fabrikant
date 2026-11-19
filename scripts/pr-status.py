@@ -27,9 +27,11 @@ Doppel-Posts, Fehl-Merges). Dieses Script kapselt das über `gh`:
       `exhausted` = `--max-rounds` Fix-Commits verbraucht und weiter `changes_requested` am Head.
       → {"action": "escalate" | "continue", "kind": "...", "reason": "..."}; `--escalate` setzt
       dann Label + Marker-Kommentar (siehe `escalate`).
-  escalate <num> --repo R --kind K --why TEXT [--human-label L]
+  escalate <num> --repo R --kind K --why TEXT [--human-label L] [--builder]
       Eskalation an einen Menschen (ADR 0057): Kommentar mit Marker + Label L (Default
       `needs human`). Idempotent: trägt das Item das Label schon, passiert nichts.
+      `--builder` (Builder-Entwurf, ADR 0057 §3): `--kind` nur aus BUILDER_ESCALATION_KINDS
+      (`blocked`/`scope`) — nur der Host darf `stalled`/`exhausted`/`access` setzen.
   threads <num> --repo R
       → offene (unresolved) Review-Threads
   resolve-thread <num> --repo R --comment-id <id>
@@ -526,7 +528,8 @@ def escalation_decision(
     """Deterministische Eskalation aus Review-Markern und PR-Commits (ADR 0057 §4).
 
     stalled:   die letzten `stall_rounds` Verdikte sind `changes_requested`, und der Builder hat
-               dazwischen keinen Code geändert (siehe _builder_changed).
+               dazwischen — und auch nach dem letzten Verdikt bis zum Head — keinen Code geändert
+               (siehe _builder_changed).
     exhausted: `max_rounds` > 0 Fix-Commits (`FIX_COMMIT_PREFIX`) verbraucht und das Verdikt
                am aktuellen Head ist weiter `changes_requested`."""
     verdicts = _verdicts(reviews, reviewer)
@@ -538,6 +541,10 @@ def escalation_decision(
         len(tail) == rounds
         and all(v == "changes_requested" for v, _ in tail)
         and not any(_builder_changed(commits, a, b) for (_, a), (_, b) in zip(tail, tail[1:], strict=False))
+        # Auch NACH dem letzten Verdikt: hat der Builder seitdem gepusht (Review ausstehend),
+        # ist er aktiv — kein Stillstand (konsistent mit `exhausted` unten, das ebenfalls
+        # den aktuellen Head prüft).
+        and not _builder_changed(commits, tail[-1][1], head)
     )
     if stuck:
         shas = " → ".join(sha[:7] for _, sha in tail)
@@ -571,10 +578,17 @@ def escalation_comment(kind: str, why: str) -> str:
     )
 
 
-def escalate(repo: str, num: int, kind: str, why: str, human_label: str = HUMAN_LABEL) -> dict:
-    """Kommentar mit Marker posten und Label setzen; idempotent über das Label."""
-    if kind not in ESCALATION_KINDS:
-        raise ValueError(f"unbekannte Eskalationsart {kind!r} (erlaubt: {ESCALATION_KINDS})")
+def escalate(
+    repo: str, num: int, kind: str, why: str, human_label: str = HUMAN_LABEL, *, builder: bool = False
+) -> dict:
+    """Kommentar mit Marker posten und Label setzen; idempotent über das Label.
+
+    `builder=True` (Builder-Entwurf, ADR 0057 §3) beschränkt `kind` auf
+    BUILDER_ESCALATION_KINDS — nur der Host darf `stalled`/`exhausted`/`access` setzen.
+    Der Agent erhält dadurch keine zusätzlichen Rechte."""
+    allowed = BUILDER_ESCALATION_KINDS if builder else ESCALATION_KINDS
+    if kind not in allowed:
+        raise ValueError(f"unbekannte Eskalationsart {kind!r} (erlaubt: {allowed})")
     item = _gh_json("api", f"repos/{repo}/issues/{num}")
     if has_label(item, human_label):
         return {"escalated": False, "reason": f"Label '{human_label}' schon gesetzt"}
@@ -643,6 +657,11 @@ def main(argv: list[str] | None = None) -> int:
     cmds["escalation-check"].add_argument("--escalate", action="store_true", help="bei Treffer Label + Kommentar")
     cmds["escalate"].add_argument("--kind", required=True, choices=ESCALATION_KINDS)
     cmds["escalate"].add_argument("--why", required=True)
+    cmds["escalate"].add_argument(
+        "--builder",
+        action="store_true",
+        help="Builder-Entwurf (ADR 0057 §3): --kind nur aus BUILDER_ESCALATION_KINDS",
+    )
     args = p.parse_args(argv)
     repo, num = args.repo, args.num
 
@@ -676,7 +695,7 @@ def main(argv: list[str] | None = None) -> int:
             human_label=args.human_label,
         )
     elif args.cmd == "escalate":
-        result = escalate(repo, num, args.kind, args.why, args.human_label)
+        result = escalate(repo, num, args.kind, args.why, args.human_label, builder=args.builder)
     elif args.cmd == "threads":
         result = open_threads(fetch_threads(repo, num))
     else:

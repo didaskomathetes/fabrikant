@@ -113,6 +113,22 @@ def test_step_resume_propagates_other_http_errors(monkeypatch):
         escalation._step_escalation(_ctx(**{escalation.RESUME_FLAG: "true"}), {"repo": "o/r"}, lambda _: None)
 
 
+def test_step_resume_grants_fresh_round_budget(monkeypatch):
+    """ADR 0057: Freigabe gewährt ein frisches Runden-Budget (nicht erschöpft gelassen)."""
+    _fake_github(monkeypatch, {}, [])
+    ctx = _ctx(**{escalation.RESUME_FLAG: "true"})
+    escalation._step_escalation(ctx, {"repo": "o/r"}, lambda _: None)
+    assert ctx[escalation.GRANT_ROUNDS_CTX] == escalation.DEFAULT_GRANT_ROUNDS
+    assert ctx[escalation.GRANT_ROUNDS_CTX] > 0  # frisches Budget, nicht erschöpft
+
+
+def test_step_resume_grant_rounds_overridable(monkeypatch):
+    _fake_github(monkeypatch, {}, [])
+    ctx = _ctx(**{escalation.RESUME_FLAG: "true"})
+    escalation._step_escalation(ctx, {"repo": "o/r", "grant_rounds": 5}, lambda _: None)
+    assert ctx[escalation.GRANT_ROUNDS_CTX] == 5
+
+
 @pytest.mark.parametrize(("ctx", "step"), [({}, {"repo": "o/r"}), (_ctx(), {})])
 def test_step_config_errors(monkeypatch, ctx, step):
     monkeypatch.setattr(escalation, "_gh_token", lambda role="dev": "tok")

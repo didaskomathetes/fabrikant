@@ -8,8 +8,12 @@ die Eskalation in der fabrik-UI sichtbar und handlungsfähig:
    pausiert den Run mit ``ApprovalRequest(reason="escalation", kind=…, why=…)``.
    Trägt das Item das Label nicht (mehr), endet der Step ohne Pause (``done``).
 2. Freigabe = **Fortsetzen**: Label entfernen; review-pr/pr-reply/develop greifen wieder.
-   **Neu zuschneiden** ist dasselbe, nachdem der Mensch ACs/PR-Body angepasst und das in einem
-   PR-Kommentar gesagt hat (regulärer Input für pr-reply).
+   Die Freigabe gewährt dem Run zusätzlich ein frisches Runden-Budget
+   (``grant_rounds``, Default ``DEFAULT_GRANT_ROUNDS``) als ctx-Variable
+   ``GRANT_ROUNDS_CTX`` — so erschöpft ein fortgesetzter Run nicht sofort wieder und
+   eskaliert nicht erneut (ADR 0057; konsumiert von pr_review und dem nachgelassenen
+   ``exhausted``-Pfad). **Neu zuschneiden** ist dasselbe, nachdem der Mensch ACs/PR-Body
+   angepasst und das in einem PR-Kommentar gesagt hat (regulärer Input für pr-reply).
 3. Ablehnen = **Aufgeben**: der Run endet, das Label bleibt — Loops lassen das Item liegen;
    PR schließen bleibt dem Menschen überlassen.
 
@@ -18,6 +22,7 @@ Step-Def:
     repo: owner/name
     item: "{pr_number}"   # optional; Default: ctx pr_number, sonst issue_number
     label: needs human    # optional; Default config.HUMAN_LABEL
+    grant_rounds: 2       # optional; frisches Runden-Budget pro Freigabe (ADR 0057)
 """
 
 from __future__ import annotations
@@ -36,6 +41,12 @@ GH_API = "https://api.github.com"
 COMMENTS_PER_PAGE = 100
 MAX_WHY_CHARS = 1500  # Begründung im Gate kurz halten; der Link führt zum vollen Kommentar
 RESUME_FLAG = "escalation_acknowledged"
+# ADR 0057: eine Freigabe gewährt dem Run ein frisches Runden-Budget, damit ein
+# fortgesetzter Run nicht sofort wieder erschöpft und neu eskaliert. Der Grant ist
+# eine ctx-Variable, die die Runden-budgetierenden Steps (pr_review und der
+# nachgelassene `exhausted`-Pfad) lesen und zu ihrem eigenen Budget addieren.
+GRANT_ROUNDS_CTX = "escalation_granted_rounds"
+DEFAULT_GRANT_ROUNDS = 2  # frisches Budget pro Freigabe (entspricht pr_review-Default)
 HTTP_NOT_FOUND = 404
 # Gleiches Format wie scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py prüft das).
 ESCALATE_MARKER_RE = re.compile(r"<!-- fabrik-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
@@ -117,9 +128,16 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
     token = _gh_token("dev")
 
     if str(ctx.get(RESUME_FLAG, "")) == "true":
+        # ADR 0057: Freigabe = frisches Runden-Budget (Hook für pr_review und den
+        # nachgelassenen `exhausted`-Pfad), nicht nur Resume mit dem alten Budget.
+        granted = max(0, int(step.get("grant_rounds", DEFAULT_GRANT_ROUNDS)))
+        ctx[GRANT_ROUNDS_CTX] = granted
         removed = _remove_label(repo, number, label, token)
         state = "entfernt" if removed else "war schon entfernt"
-        return {"ok": True, "summary": f"escalation: #{number} fortgesetzt — Label '{label}' {state}"}
+        return {
+            "ok": True,
+            "summary": f"escalation: #{number} fortgesetzt — Label '{label}' {state}, +{granted} Runden",
+        }
 
     item = _gh_api("GET", f"{GH_API}/repos/{repo}/issues/{number}", token)
     if not _has_label(item, label):

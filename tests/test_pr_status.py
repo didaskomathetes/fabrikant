@@ -666,6 +666,8 @@ def test_merge_decision_human_label_blocks_merge(mod):
         ([_cr(C1), _cr(C1)], [_commit(C1)], "stalled"),
         # Builder hat dazwischen committet → kein Stillstand
         ([_cr(C1), _cr(C2)], [_commit(C1), _commit(C2)], None),
+        # Builder hat NACH dem letzten changes_requested gepusht (Review ausstehend) → kein Stillstand
+        ([_cr(C1), _cr(C2)], [_commit(C1), _commit(C2, merge=True), _commit(C3)], None),
         # Force-Push (alter SHA unbekannt) → nie stalled
         ([_cr(C1), _cr(C2)], [_commit(C2, merge=True)], None),
         # nur eine Runde → zu früh
@@ -731,3 +733,31 @@ def test_escalate_is_idempotent_and_validates_kind(mod, fake_gh):
     assert mod.escalate(REPO, 7, "blocked", "x")["escalated"] is False and len(calls) == 1
     with pytest.raises(ValueError, match="unbekannte Eskalationsart"):
         mod.escalate(REPO, 7, "panic", "x")
+
+
+def test_escalate_builder_rejects_non_builder_kind(mod, fake_gh):
+    """ADR 0057 §3: Builder darf nur blocked/scope eskalieren, nicht stalled/exhausted/access."""
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    for kind in ("stalled", "exhausted", "access"):
+        with pytest.raises(ValueError, match="unbekannte Eskalationsart"):
+            mod.escalate(REPO, 7, kind, "x", builder=True)
+
+
+@pytest.mark.parametrize("kind", ["blocked", "scope"])
+def test_escalate_builder_allows_builder_kinds(mod, fake_gh, kind):
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    responses["repos/o/r/issues/7/comments"] = {"html_url": "https://gh/esc"}
+    responses["repos/o/r/issues/7/labels"] = ""
+    assert mod.escalate(REPO, 7, kind, "x", builder=True)["escalated"] is True
+
+
+@pytest.mark.parametrize("kind", ["blocked", "stalled", "exhausted", "scope", "access"])
+def test_escalate_host_allows_all_kinds(mod, fake_gh, kind):
+    """Ohne --builder (Host) sind alle Eskalationsarten erlaubt."""
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    responses["repos/o/r/issues/7/comments"] = {"html_url": "https://gh/esc"}
+    responses["repos/o/r/issues/7/labels"] = ""
+    assert mod.escalate(REPO, 7, kind, "x")["escalated"] is True
