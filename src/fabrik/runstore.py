@@ -56,6 +56,7 @@ from typing import Any, TypeVar
 
 from . import config, filelock
 from .failures import Failure, parse_kind
+from .i18n import t
 from .runmodel import (
     FAILED_RUN_STATUSES,
     FAILED_STEP_STATUSES,
@@ -101,7 +102,9 @@ def _require_status(raw: dict, run_id: str, status: RunStatus) -> None:
     """On-Disk-Status muss ``status`` sein (sonst :class:`PreconditionError`)."""
     actual = raw.get("status")
     if actual != status.value:
-        raise PreconditionError(f"Run {run_id}: On-Disk-Status {actual!r}, erwartet {status.value!r}")
+        raise PreconditionError(
+            t("runstore.run_on_disk_status_expected", run_id=run_id, actual=actual, v3=status.value)
+        )
 
 
 def valid_run_id(run_id: str) -> bool:
@@ -254,10 +257,10 @@ def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
     ``project``: Verzeichnisname, hat Vorrang vor dem Feld im Record. Defaults: siehe Moduldoku."""
     run_id = rec.get("id")
     if not isinstance(run_id, str) or not run_id:
-        raise RecordError("id fehlt oder ist kein nicht-leerer String")
+        raise RecordError(t("runstore.id_missing_or_not_a"))
     proj = project or _text(rec.get("project"))
     if not proj:
-        raise RecordError("project fehlt")
+        raise RecordError(t("runstore.project_missing"))
     status = _enum(RunStatus, rec.get("status"), "Run")
     steps = tuple(_parse_step(s, i) for i, s in enumerate(_dicts(rec.get("steps")), 1))
     raw_vars = rec.get("vars")
@@ -335,15 +338,17 @@ def _check_transition(raw: Mapping[str, Any], record: Mapping[str, Any], expect:
         raise RunStoreError(f"defekter Run-Record: unbekannter Status {cur!r}") from e
     run_id = record.get("id") or "?"
     if expect is not None and current is not expect:
-        raise PreconditionError(f"Run {run_id}: On-Disk-Status {current.value!r}, erwartet {expect.value!r}")
+        raise PreconditionError(
+            t("runstore.run_on_disk_status_expected_2", run_id=run_id, v2=current.value, v3=expect.value)
+        )
     same = target is current and current not in TERMINAL_RUN_STATUSES
     if not same and target not in RUN_TRANSITIONS[current]:
-        raise PreconditionError(f"Run {run_id}: unerlaubter Übergang {current.value!r} → {target.value!r}")
+        raise PreconditionError(t("runstore.run_illegal_transition", run_id=run_id, v2=current.value, v3=target.value))
 
 
 def _existing(raw: dict | None, run_id: str) -> dict:
     if raw is None:
-        raise PreconditionError(f"Run {run_id} existiert nicht")
+        raise PreconditionError(t("runstore.run_does_not_exist", run_id=run_id))
     return raw
 
 
@@ -432,10 +437,12 @@ class BaseRunStore(ABC):
         def mutate(raw: dict | None) -> dict:
             if create:
                 if raw is not None:
-                    raise PreconditionError(f"Run {run_id} existiert bereits (Status {raw.get('status')!r})")
+                    raise PreconditionError(
+                        t("runstore.run_already_exists_status", run_id=run_id, v2=raw.get("status"))
+                    )
             elif raw is None:
                 if not allow_missing:
-                    raise PreconditionError(f"Run {run_id} existiert nicht")
+                    raise PreconditionError(t("runstore.run_does_not_exist", run_id=run_id))
             else:
                 _check_transition(raw, record, expect)
             return record
@@ -551,9 +558,9 @@ class BaseRunStore(ABC):
 def _check_ids(project: str, run_id: str) -> None:
     """Ungültige Projekt-/Run-Ids (Pfad-Traversal) → :class:`RunStoreError`."""
     if not valid_project(project):
-        raise RunStoreError(f"ungültiger Projektname: {project!r}")
+        raise RunStoreError(t("runstore.invalid_project_name", project=project))
     if not valid_run_id(run_id):
-        raise RunStoreError(f"ungültige Run-Id: {run_id!r}")
+        raise RunStoreError(t("runstore.invalid_run_id", run_id=run_id))
 
 
 # Datei-Identität für den Parse-Cache: (mtime_ns, size, inode).
@@ -613,9 +620,9 @@ class RunStore(BaseRunStore):
         except FileNotFoundError:
             raise RecordError("Datei verschwunden") from None
         except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
-            raise RecordError(f"kein gültiges JSON: {e}") from e
+            raise RecordError(t("runstore.not_valid_json", e=e)) from e
         if not isinstance(data, dict):
-            raise RecordError(f"erwartet Object, ist {type(data).__name__}")
+            raise RecordError(t("runstore.expected_object_is", v1=type(data).__name__))
         return parse_run(data, f.parent.name)
 
     def load_report(self, project: str | None = None) -> tuple[list[Run], LoadReport]:
@@ -659,10 +666,10 @@ class RunStore(BaseRunStore):
                 ValueError,
                 FileNotFoundError,
             ) as e:  # defektes JSON / Race mit Löschen; andere I/O-Fehler propagieren
-                print(f"[fabrik] Run-Record {f.name} übersprungen: {e}")
+                print(t("runstore.fabrik_run_record_skipped", v1=f.name, e=e))
                 continue
             if not isinstance(r, dict):
-                print(f"[fabrik] Run-Record {f.name} übersprungen: erwartet Object, ist {type(r).__name__}")
+                print(t("runstore.fabrik_run_record_skipped_expected", v1=f.name, v2=type(r).__name__))
                 continue
             if status is not None and r.get("status") != status.value:
                 continue
@@ -698,7 +705,7 @@ class RunStore(BaseRunStore):
         except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
             raise RunStoreError(f"defekter Run-Record {path.name}: {e}") from e
         if not isinstance(data, dict):
-            raise RunStoreError(f"defekter Run-Record {path.name}: erwartet Object, ist {type(data).__name__}")
+            raise RunStoreError(t("runstore.broken_run_record_expected_object", v1=path.name, v2=type(data).__name__))
         return data
 
     def _atomic_write(self, path: Path, record: dict) -> None:

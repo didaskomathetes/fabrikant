@@ -11,6 +11,7 @@ import urllib.request
 from http.client import HTTPResponse
 
 from .failures import ConfigError
+from .i18n import t
 
 ALLOWED_SCHEMES = frozenset({"http", "https"})
 
@@ -24,6 +25,6 @@ def urlopen(req: urllib.request.Request | str, timeout: float) -> HTTPResponse:
     url = req.full_url if isinstance(req, urllib.request.Request) else req
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme not in ALLOWED_SCHEMES:
-        raise ConfigError(f"URL-Scheme {scheme or '(leer)'!r} nicht erlaubt (nur http/https): {url}")
+        raise ConfigError(t("httpsafe.url_scheme_not_allowed_http", v1=scheme or "(leer)", url=url))
     # Attribut-Lookup zur Laufzeit (nicht `from urllib.request import urlopen`): Tests patchen urllib.request.urlopen.
     return urllib.request.urlopen(req, timeout=timeout)  # nosec B310 # Scheme oben geprüft

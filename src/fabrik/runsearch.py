@@ -16,6 +16,7 @@ import re
 from typing import TypedDict
 
 from .costs import CostSummary, run_cost
+from .i18n import t
 from .runmodel import Run
 from .runquery import RunQuery, SortKey, date_bounds, sort_key
 from .runstore import STORE
@@ -58,9 +59,9 @@ def decode_cursor(cursor: str) -> SortKey:
     try:
         parts = json.loads(base64.urlsafe_b64decode(cursor.encode()))
     except (binascii.Error, ValueError, TypeError) as e:
-        raise ValueError("ungültiger cursor") from e
+        raise ValueError(t("runsearch.invalid_cursor")) from e
     if not isinstance(parts, list) or len(parts) != 3 or not all(isinstance(p, str) for p in parts):
-        raise ValueError("ungültiger cursor")
+        raise ValueError(t("runsearch.invalid_cursor"))
     started, project, run_id = parts
     return started, project, run_id
 

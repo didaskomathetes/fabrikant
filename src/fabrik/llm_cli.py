@@ -22,6 +22,7 @@ from .backends._oneshot import OneShotCliBackend
 from .backends.claude_code import ClaudeCodeBackend
 from .backends.copilot import CopilotBackend
 from .failures import StepFailure, classify_agent_output
+from .i18n import t
 from .runmodel import FailureKind
 
 _POLL_INTERVAL_S = 0.2
@@ -82,7 +83,7 @@ def _run(backend: OneShotCliBackend, prompt: str, timeout: int, cancel_event: th
             return res
         if cancel_event is not None and cancel_event.is_set():
             backend.cancel(sid, workdir)
-            raise LlmCliError("abgebrochen")
+            raise LlmCliError(t("llm_cli.cancelled"))
         if time.monotonic() > deadline:
             backend.cancel(sid, workdir)
             raise LlmCliError(f"Timeout nach {timeout}s")

@@ -75,6 +75,7 @@ from ..apicommit import push_branch
 from ..context import _cap, _substitute
 from ..failures import ConfigError, failed, from_result
 from ..gitops import _gh_api, _gh_diff, _gh_token
+from ..i18n import t
 from ..runmodel import FailureKind
 from .agent import _step_agent_backend
 from .extra_context import render_extra_context
@@ -235,7 +236,7 @@ def _resolve_pr_number(ctx: dict, step: dict, repo: str, token: str) -> int:
         res = _gh_api("GET", f"https://api.github.com/repos/{repo}/pulls?state=open&head={owner}:{branch}", token)
         if isinstance(res, list) and res:
             return int(res[0]["number"])
-    raise ValueError(f"pr_review: PR-Number nicht auflösbar (pr: {raw!r}, branch: {branch!r})")
+    raise ValueError(t("steps.pr_review.pr_review_pr_number_cannot", raw=raw, branch=branch))
 
 
 def _post_review(repo: str, pr_number: int, token: str, event: str, body: str) -> None:
@@ -290,7 +291,7 @@ def _review_diff(
             _apply_acceptance_gate(verdict)  # unmet → changes_requested (ADR 0013), vor dem Finding-Cap
             verdict["findings"] = _rank_findings(verdict["findings"], max_findings)
             return verdict, res
-        emit(f"  ⚠ kein gültiges JSON-Verdict (Versuch {attempt + 1}/{1 + VERDICT_RETRIES}) — Retry")
+        emit(t("steps.pr_review.no_valid_json_verdict_attempt", v1=attempt + 1, v2=1 + VERDICT_RETRIES))
     return None, res
 
 
@@ -315,7 +316,7 @@ def _run_fix_checks(ctx: dict, step: dict, emit) -> dict | None:
 
 def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> dict:
     """Developer-Agent (Builder) fixt die Findings im Worktree + commit + push (→ ``sha``)."""
-    flist = _format_findings(findings) or "- (ohne Findings)"
+    flist = _format_findings(findings) or t("steps.pr_review.no_findings")
     prompt = (
         _FIX_TEMPLATE.replace("{findings}", flist).replace("{diff}", _cap(diff))
         + _requirements(ctx)
@@ -328,7 +329,7 @@ def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> 
     base = ctx["workdir"]
     status = _git(ctx, base, "status", "--porcelain", check=False)
     if not status.strip():
-        return failed("pr_review: Fix-Runde ohne Änderungen (Agent hat nichts geändert)", FailureKind.OUTCOME)
+        return failed(t("steps.pr_review.pr_review_fix_round_without"), FailureKind.OUTCOME)
     if bad := _run_fix_checks(ctx, step, emit):
         return bad
     # Repo-weit stagen: workdir kann ein Monorepo-Subpfad sein (`.` verfehlt z. B. `.github/`).
@@ -336,7 +337,7 @@ def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> 
     _git(ctx, base, "commit", "-m", _substitute(step.get("fix_commit", "fabrik: review fixes ({run_id})"), ctx))
     branch = _git(ctx, base, "rev-parse", "--abbrev-ref", "HEAD")
     if branch in (step.get("protected") or config.PROTECTED_DEFAULT) or branch == "HEAD":
-        return failed(f"pr_review: BLOCKED — Fix-Push auf geschützten Branch '{branch}'", FailureKind.ENVIRONMENT)
+        return failed(t("steps.pr_review.pr_review_blocked_fix_push", branch=branch), FailureKind.ENVIRONMENT)
     pushed = push_branch(base, branch, protected=step.get("protected") or config.PROTECTED_DEFAULT)
     sha = _git(ctx, base, "rev-parse", "HEAD")  # nach API-Push: der signierte Commit
     return {"ok": True, "sha": sha, "summary": f"Fix-Runde: commit + {pushed}"}
@@ -345,7 +346,7 @@ def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> 
 def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     repo = str(step.get("repo") or "").strip()
     if not repo:
-        raise ConfigError("pr_review: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.pr_review.pr_review_repo_owner_name"))
     dev_token = _gh_token("dev")
     reviewer_token = _gh_token("reviewer")
     pr_number = _resolve_pr_number(ctx, step, repo, dev_token)
@@ -356,8 +357,12 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     for round_i in range(max_rounds + 1):
         if pushed_sha and not _wait_for_head(repo, pr_number, pushed_sha, dev_token):
             return failed(
-                f"pr_review: GitHub meldet PR #{pr_number} nach {_HEAD_SYNC_TIMEOUT_S}s nicht auf "
-                f"{pushed_sha[:7]} — Re-Review auf veraltetem Diff verhindert",
+                t(
+                    "steps.pr_review.pr_review_github_does_not",
+                    pr_number=pr_number,
+                    v2=_HEAD_SYNC_TIMEOUT_S,
+                    v3=pushed_sha[:7],
+                ),
                 FailureKind.TRANSIENT,
             )
         diff = _gh_diff(repo, pr_number, dev_token)
@@ -365,7 +370,11 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
         verdict, res = _review_diff(diff, ctx, step, emit, previous)
         if verdict is None:
             return failed(
-                f"pr_review: kein Verdict (Runde {round_i + 1}) — {res.get('summary', 'unlesbarer Output')}",
+                t(
+                    "steps.pr_review.pr_review_no_verdict_round",
+                    v1=round_i + 1,
+                    v2=res.get("summary", "unlesbarer Output"),
+                ),
                 from_result(res),  # Klasse des Agent-Steps; lesbarer, aber unparsbarer Output → unknown
                 output=res.get("output", ""),
                 usage=res.get("usage"),
@@ -392,8 +401,11 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
         emit(f"  ⚠ changes_requested ({len(verdict['findings'])} Findings)")
         if round_i >= max_rounds:
             return failed(
-                f"pr_review: nach {max_rounds + 1} Runden immer noch changes_requested: "
-                f"{_summarize_findings(verdict['findings'])}",
+                t(
+                    "steps.pr_review.pr_review_still_changes_requested",
+                    v1=max_rounds + 1,
+                    v2=_summarize_findings(verdict["findings"]),
+                ),
                 FailureKind.OUTCOME,
                 review=review_field,
                 usage=res.get("usage"),

@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 
 from . import webhook
+from .i18n import t
 from .webhook import WebhookError
 
 ALERT_PATH_PREFIX = "/api/alert/"
@@ -97,7 +98,7 @@ def parse_sentry(payload: dict) -> Alert:
     issue = _dict(data.get("issue"))
     title = _str(event.get("title")) or _str(issue.get("title")) or _str(payload.get("message"))
     if not title:
-        raise WebhookError(422, "Sentry-Alert ohne Titel")
+        raise WebhookError(422, t("alerts.sentry_alert_without_title"))
     return Alert(
         source="sentry",
         title=title,
@@ -115,11 +116,11 @@ def parse_cloudwatch(payload: dict) -> Alert | None:
         try:
             inner = json.loads(msg)
         except json.JSONDecodeError as e:
-            raise WebhookError(422, "CloudWatch-Message kein JSON") from e
+            raise WebhookError(422, t("alerts.cloudwatch_message_is_not_json")) from e
         payload = inner if isinstance(inner, dict) else {}
     name = _str(payload.get("AlarmName"))
     if not name:
-        raise WebhookError(422, "CloudWatch-Alarm ohne AlarmName")
+        raise WebhookError(422, t("alerts.cloudwatch_alarm_without_alarmname"))
     if _str(payload.get("NewStateValue")) != CLOUDWATCH_ALARM_STATE:
         return None
     trigger = _dict(payload.get("Trigger"))
@@ -139,9 +140,9 @@ def parse_alert(source: str, body: bytes) -> Alert | None:
     try:
         payload = json.loads(body.decode() or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise WebhookError(400, "ungültiges JSON") from e
+        raise WebhookError(400, t("alerts.invalid_json")) from e
     if not isinstance(payload, dict):
-        raise WebhookError(400, "JSON-Objekt erwartet")
+        raise WebhookError(400, t("alerts.json_object_expected"))
     return parse_sentry(payload) if source == "sentry" else parse_cloudwatch(payload)
 
 
@@ -218,11 +219,9 @@ def _route_cycle_errors(spec: dict) -> list[str]:
             if mark == 1:
                 cycle = path[path.index(nxt) :] + [nxt]
                 if len(cycle) == 2:
-                    errs.append(
-                        f"alert_route: Route {cycle[0]!r} → {cycle[1]!r} zeigt auf den eigenen Loop (Endlosschleife)"
-                    )
+                    errs.append(t("alerts.alert_route_route_points_to", v1=cycle[0], v2=cycle[1]))
                 else:
-                    errs.append(f"alert_route: Route-Zyklus {' → '.join(cycle)} (verschachtelte Runs ohne Ende)")
+                    errs.append(t("alerts.alert_route_route_cycle_nested", v1=" → ".join(cycle)))
             elif mark == 0:
                 dfs(nxt, path)
         path.pop()
@@ -243,10 +242,10 @@ def validate_route_step(step: dict, spec: dict, where: str) -> list[str]:
     würde unendlich verschachtelte Runs starten."""
     routes = step.get("routes")
     if not isinstance(routes, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in routes.items()):
-        return [f"{where}: alert_route routes muss Mapping Kategorie → Loop (Strings) sein"]
+        return [t("alerts.alert_route_routes_must_be", where=where)]
     fallback = step.get("fallback")
     if fallback is not None and not isinstance(fallback, str):
-        return [f"{where}: alert_route fallback muss ein Loop-Name (String) sein"]
+        return [t("alerts.alert_route_fallback_must_be", where=where)]
     loops = spec.get("loops") or {}
     errs = []
     for key, target in _route_targets(step):
@@ -260,7 +259,7 @@ def validate_trigger(trig: dict, where: str) -> list[str]:
     """Spec-Validierung eines `on_alert`-Triggers."""
     errs = []
     if trig.get("source") not in SOURCES:
-        errs.append(f"{where}: on_alert source muss einer von {list(SOURCES)} sein (ist {trig.get('source')!r})")
+        errs.append(t("alerts.on_alert_source_must_be", where=where, v2=list(SOURCES), v3=trig.get("source")))
     if not isinstance(trig.get("secret_env"), str) or not trig["secret_env"]:
-        errs.append(f"{where}: on_alert braucht secret_env (Name der Env-Variable mit dem Shared Secret)")
+        errs.append(t("alerts.on_alert_needs_secret_env", where=where))
     return errs

@@ -245,5 +245,10 @@
   "verdict.value.fail": "fail",
   "verdict.value.done": "fertig",
   "verdict.value.blocked": "blockiert",
-  "verdict.value.active": "aktiv"
+  "verdict.value.active": "aktiv",
+  "login.loggedOut": "Abgemeldet",
+  "login.oidc": "Über den IdP anmelden",
+  "graph.roGenerated": "generiert aus dem <code>relay:</code>-Block",
+  "graph.roTemplate": "vom Template {use}",
+  "graph.roNote": "read-only — {src}; ändern nur in der YAML"
 }

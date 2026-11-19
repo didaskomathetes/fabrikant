@@ -8,6 +8,7 @@ import urllib.request
 from .. import httpsafe
 from ..context import _cap, _substitute
 from ..failures import ConfigError, classify_http, failed
+from ..i18n import t
 
 
 def _step_http(ctx: dict, step: dict, emit) -> dict:
@@ -28,7 +29,11 @@ def _step_http(ctx: dict, step: dict, emit) -> dict:
     expect = step.get("expect") or {}
     want = expect.get("status", 200)
     if status != want:
-        return failed(f"HTTP {status} (erwartet {want})", classify_http(status, resp_headers), output=_cap(content))
+        return failed(
+            t("steps.http.http_expected", status=status, want=want),
+            classify_http(status, resp_headers),
+            output=_cap(content),
+        )
     for var, kind in (step.get("emit") or {}).items():
         if kind == "status":
             ctx[var] = str(status)

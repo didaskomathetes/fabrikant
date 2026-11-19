@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any, NoReturn
 
 from . import runstore
+from .i18n import t
 
 PROFILE_ENV = "FABRIK_PROFILE"
 
@@ -54,7 +55,7 @@ def resolve_profile(cli: str | None = None, env: Mapping[str, str] | None = None
         return Profile(raw.lower())
     except ValueError:
         allowed = ", ".join(p.value for p in Profile)
-        raise ProfileError(f"Ungültiges Profil {raw!r} (erlaubt: {allowed})") from None
+        raise ProfileError(t("profiles.invalid_profile_allowed", raw=raw, allowed=allowed)) from None
 
 
 def _local_storage() -> Any:
@@ -67,7 +68,7 @@ def _local_storage() -> Any:
 
 
 def _cloud_storage() -> NoReturn:
-    raise NotImplementedError("Cloud-Storage (Postgres) ist noch nicht implementiert — siehe Folge-Issues (#19, #28)")
+    raise NotImplementedError(t("profiles.cloud_storage_postgres_is_not"))
 
 
 Factory = Callable[[], Any]
@@ -83,7 +84,7 @@ class AdapterRegistry:
         """Adapter-Factory registrieren (Doppelregistrierung ist ein Fehler)."""
         key = (profile, port)
         if key in self._factories:
-            raise ProfileError(f"Adapter für {profile.value}/{port.value} bereits registriert")
+            raise ProfileError(t("profiles.adapter_for_already_registered", v1=profile.value, v2=port.value))
         self._factories[key] = factory
 
     def resolve(self, profile: Profile, port: Port | str) -> Any:
@@ -91,7 +92,7 @@ class AdapterRegistry:
         try:
             factory = self._factories[(profile, Port(port))]
         except (ValueError, KeyError):
-            raise ProfileError(f"Kein Adapter für Port {str(port)!r} im Profil {profile.value!r}") from None
+            raise ProfileError(t("profiles.no_adapter_for_port_in", v1=str(port), v2=profile.value)) from None
         return factory()
 
 

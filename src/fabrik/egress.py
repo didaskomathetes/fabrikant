@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import config
+from .i18n import t
 
 # ------------------------------------------------------------- Konstanten
 PROXY_CONTAINER = "fabrik-egress-proxy"
@@ -106,9 +107,9 @@ class EgressConfig:
         try:
             port = int(raw_port)
         except ValueError:
-            raise RuntimeError(f"{PORT_VAR} muss eine Zahl sein (aktuell: {raw_port!r})") from None
+            raise RuntimeError(t("egress.must_be_a_number_currently", v1=PORT_VAR, raw_port=raw_port)) from None
         if not 1 <= port <= 65535:
-            raise RuntimeError(f"{PORT_VAR} außerhalb 1-65535 (aktuell: {port})")
+            raise RuntimeError(t("egress.outside_1_65535_currently", v1=PORT_VAR, port=port))
         cfg = cls(
             port=port,
             image=env.get(IMAGE_VAR, "") or DEFAULT_IMAGE,
@@ -117,7 +118,7 @@ class EgressConfig:
             sandbox_subnet=_validated_subnet(SANDBOX_SUBNET_VAR, env.get(SANDBOX_SUBNET_VAR, "") or SANDBOX_SUBNET),
         )
         if ipaddress.ip_network(cfg.egress_subnet).overlaps(ipaddress.ip_network(cfg.sandbox_subnet)):
-            raise RuntimeError(f"{EGRESS_SUBNET_VAR} und {SANDBOX_SUBNET_VAR} dürfen sich nicht überlappen")
+            raise RuntimeError(t("egress.and_must_not_overlap", v1=EGRESS_SUBNET_VAR, v2=SANDBOX_SUBNET_VAR))
         return cfg
 
     @property
@@ -146,7 +147,7 @@ def _validated_subnet(var: str, value: str) -> str:
     try:
         return str(ipaddress.ip_network(value.strip(), strict=True))
     except ValueError as e:
-        raise RuntimeError(f"{var} ist kein gültiges CIDR-Subnetz ({value!r}): {e}") from None
+        raise RuntimeError(t("egress.is_not_a_valid_cidr", var=var, value=value, e=e)) from None
 
 
 def normalize_domain(raw: str) -> str:
@@ -156,7 +157,7 @@ def normalize_domain(raw: str) -> str:
     host = raw.strip().lower()
     host = host.removeprefix("*.").removeprefix(".")
     if not _HOST_RE.match(host):
-        raise RuntimeError(f"Ungültiger Allowlist-Eintrag {raw!r}: erwartet Hostname mit mind. 2 Labels")
+        raise RuntimeError(t("egress.invalid_allowlist_entry_expected_hostname", raw=raw))
     return host
 
 
@@ -195,7 +196,7 @@ def load_allowlist(env: Mapping[str, str] | None = None) -> list[str]:
     if file:
         p = Path(file)
         if not p.is_file():
-            raise RuntimeError(f"{ALLOWLIST_FILE_VAR}={file!r} ist keine Datei")
+            raise RuntimeError(t("egress.is_not_a_file", v1=ALLOWLIST_FILE_VAR, file=file))
         for h in parse_allowlist(p.read_text()):
             add(h)
     for h in env.get(ALLOWLIST_VAR, "").split(","):
@@ -238,13 +239,13 @@ def render_proxy_config(cfg: EgressConfig) -> str:
         "ConnectPort 443",
         "ConnectPort 80",
         "",
-        "# Clients: nur die gepinnten Bridge-Subnets (Sandbox + Egress)",
+        t("egress.clients_only_the_pinned_bridge"),
     ]
     for subnet in cfg.client_subnets:
         lines.append(f"Allow {subnet}")
     lines += [
         "",
-        "# Default-Deny: nur Domänen aus der Filter-Datei (inkl. Subdomänen)",
+        t("egress.default_deny_only_domains_from"),
         f'Filter "{FILTER_PATH}"',
         FILTER_TYPE_LINE,
         "FilterDefaultDeny Yes",
@@ -279,7 +280,7 @@ def _docker(*args: str) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=DOCKER_TIMEOUT)
     except FileNotFoundError:
-        raise RuntimeError("docker nicht gefunden (Egress-Proxy braucht Docker)") from None
+        raise RuntimeError(t("egress.docker_not_found_the_egress")) from None
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"docker {args[0]} Timeout nach {DOCKER_TIMEOUT}s") from None
 
@@ -327,9 +328,14 @@ def _ensure_network(name: str, subnet: str, *, internal: bool) -> None:
     is_internal, *subnets = r.stdout.split()
     if (is_internal == "true") != internal or subnet not in subnets:
         raise RuntimeError(
-            f"Netzwerk {name} existiert mit anderer Konfiguration (internal={is_internal}, "
-            f"Subnetze={subnets}; erwartet internal={str(internal).lower()}, {subnet}) — "
-            f"`docker network rm {name}` und neu starten"
+            t(
+                "egress.network_exists_with_a_different",
+                name=name,
+                is_internal=is_internal,
+                subnets=subnets,
+                v4=str(internal).lower(),
+                subnet=subnet,
+            )
         )
 
 
@@ -417,7 +423,9 @@ def _wait_ready(cfg: EgressConfig) -> None:
     logs = _docker("logs", "--tail", "20", PROXY_CONTAINER)
     detail = (logs.stdout + logs.stderr).strip()
     _docker("rm", "-f", PROXY_CONTAINER)
-    raise RuntimeError(f"{PROXY_CONTAINER} nicht erreichbar auf 127.0.0.1:{cfg.port}: {detail or 'kein Log'}")
+    raise RuntimeError(
+        t("egress.not_reachable_on_127_0", v1=PROXY_CONTAINER, v2=cfg.port, v3=detail or t("egress.no_log"))
+    )
 
 
 def stop() -> None:
@@ -433,11 +441,15 @@ def status() -> str:
     """Menschenlesbarer Status (CLI `fabrik egress status`)."""
     if is_running():
         cfg = EgressConfig.from_env()
-        return (
-            f"✔ {PROXY_CONTAINER} läuft auf 127.0.0.1:{cfg.port} "
-            f"(Netzwerke: {EGRESS_NET}, {SANDBOX_NET}; Allowlist: {len(cfg.allowlist)} Domänen)"
+        return t(
+            "egress.running_on_127_0_0",
+            v1=PROXY_CONTAINER,
+            v2=cfg.port,
+            v3=EGRESS_NET,
+            v4=SANDBOX_NET,
+            v5=len(cfg.allowlist),
         )
-    return f"✖ {PROXY_CONTAINER} läuft nicht (`fabrik egress start`)"
+    return t("egress.is_not_running_fabrik_egress", v1=PROXY_CONTAINER)
 
 
 # ------------------------------------------------------------- Denied-Log

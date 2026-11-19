@@ -21,6 +21,7 @@ from pathlib import Path
 
 from ..context import _substitute
 from ..filelock import locked
+from ..i18n import t
 
 _VALID_ACTIONS = ("get", "set", "add")
 
@@ -79,18 +80,20 @@ def _step_state(ctx: dict, step: dict, emit) -> dict:
     if action not in _VALID_ACTIONS:
         return {
             "ok": False,
-            "summary": f"state-Step: unbekannte action '{action}' (verfügbar: {', '.join(_VALID_ACTIONS)})",
+            "summary": t(
+                "steps.state.state_step_unknown_action_available", action=action, v2=", ".join(_VALID_ACTIONS)
+            ),
         }
     key = str(step.get("key", "")).strip()
     if not key:
-        return {"ok": False, "summary": "state-Step: key fehlt"}
+        return {"ok": False, "summary": t("steps.state.state_step_key_missing")}
 
     p = _state_file(ctx, step)
     root_res = Path(ctx.get("root", ".")).resolve()
     if root_res not in p.parents:
         return {
             "ok": False,
-            "summary": f"BLOCKED: State-Pfad {p} liegt außerhalb der Projekt-Root {root_res} (Path-Traversal-Schutz)",
+            "summary": t("steps.state.blocked_state_path_is_outside", p=p, root_res=root_res),
         }
 
     # Read-Modify-Write unter Datei-Lock: parallele Runs (ADR 0028) verlieren keine Updates.

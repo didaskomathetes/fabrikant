@@ -34,6 +34,7 @@ from .gitops import (
     project_github,
     run_worktree_path,
 )
+from .i18n import t as _t
 from .launcher import LauncherStatus, RunLauncher, create_launcher
 from .runmodel import FAILED_RUN_STATUSES, RunStatus, StepStatus
 from .runs import (
@@ -175,7 +176,7 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
     elif t == "issue":
         intent = _issue_intent(step)
     elif t == "human_gate":
-        intent = "Kritizitäts-Check (menschliche Freigabe bei kritisch)"
+        intent = _t("engine.criticality_check_human_approval_if")
     elif t == "report":
         intent = f"Report: {step.get('write', '(nur Log)')}"
     elif t == "notify":
@@ -226,7 +227,7 @@ def _approval_context(
             permissions=_format_permissions(step.get("permissions")),
         )
     if tier is not None:
-        req = replace(req, tier=tier, what=f"Tier {tier} — Loop endet erst nach Freigabe (irreversibel/Accountability)")
+        req = replace(req, tier=tier, what=_t("approval.tier_what", tier=tier))
     return req
 
 
@@ -332,7 +333,7 @@ def _pause_for_approval(rn: _Run, waiting_step: str, approval: ApprovalRequest, 
 
 
 def _approve_hint(rn: _Run, sname: str) -> str:
-    return f"⏸ {sname} wartet auf Approval: `fabrik approve {rn.project} {rn.run_id}`"
+    return _t("engine.waiting_for_approval_fabrik_approve", sname=sname, v2=rn.project, v3=rn.run_id)
 
 
 def _init_record(
@@ -362,9 +363,9 @@ def _init_record(
     if resume_id:
         record = get_run(resume_id, project_name)
         if not record:
-            raise RuntimeError(f"Resume: Run {resume_id} nicht gefunden")
+            raise RuntimeError(_t("engine.resume_run_not_found", resume_id=resume_id))
         if record["status"] != "needs_approval":
-            raise RuntimeError(f"Resume: Run {record['id']} ist '{record['status']}', nicht needs_approval")
+            raise RuntimeError(_t("engine.resume_run_is_not_needs", v1=record["id"], v2=record["status"]))
         run_id = record["id"]
         record.setdefault("started_by", None)
         record.setdefault("approved_by", None)
@@ -508,7 +509,7 @@ def _cleanup_worktree(project: str, run_id: str, emit: Callable[[str], None]) ->
     else:
         if removed:
             return None
-        message = f"⚠ Worktree-Cleanup unvollständig: {run_worktree_path(project, run_id)} besteht noch"
+        message = _t("engine.worktree_cleanup_incomplete_still_exists", v1=run_worktree_path(project, run_id))
     emit(message)
     return message
 
@@ -674,7 +675,7 @@ def _execute_step(rn: _Run, step: dict, i: int) -> str:
         step_record.update(status="error", duration_s=round(time.time() - t0, 2), summary=str(e))
         step_record.update(classify_exception(e).fields())
         rn.log.event("step_done", step_name=sname, step_type=step["type"], status="error")
-        rn.emit(f"✖ {sname} Fehler: {e}")
+        rn.emit(_t("engine.error", sname=sname, e=e))
         # Traceback ins Log: "Fehler: <msg>" allein sagt nicht, WO es hakt.
         rn.emit(traceback.format_exc(limit=5))
         return "error"
@@ -695,11 +696,11 @@ def _tier_gate(rn: _Run, loop: dict) -> dict | None:
             "name": "tier-approval",
             "type": "approval",
             "status": "waiting",
-            "summary": f"Tier {pol['tier']} — Freigabe benötigt",
+            "summary": _t("engine.tier_approval_required", v1=pol["tier"]),
         }
     )
     approval = _approval_context(rn.spec, rn.trigger, reason="tier", tier=pol["tier"], run_ctx=rn.ctx)
-    msg = f"⏸ Tier {pol['tier']}: PAUSE — Freigabe erforderlich: `fabrik approve {rn.run_id} --project {rn.project}`"
+    msg = _t("engine.tier_pause_approval_required_fabrik", v1=pol["tier"], v2=rn.run_id, v3=rn.project)
     return _pause_for_approval(rn, "tier-approval", approval, msg)
 
 
@@ -715,12 +716,12 @@ def _skip_remaining(rn: _Run, loop: dict, done_i: int) -> None:
                 "name": name,
                 "type": step["type"],
                 "status": STEP_SKIPPED,
-                "summary": f"übersprungen — {by} hat den Run beendet",
+                "summary": _t("engine.skipped_ended_the_run", by=by),
             },
         )
         rn.log.event("step_done", step_name=name, step_type=step["type"], status=STEP_SKIPPED)
     if done_i < len(loop["steps"]):
-        rn.emit(f"■ {by}: nichts mehr zu tun — {len(loop['steps']) - done_i} Step(s) übersprungen")
+        rn.emit(_t("engine.nothing_left_to_do_step", by=by, v2=len(loop["steps"]) - done_i))
 
 
 def _run_steps(rn: _Run, loop: dict, start_i: int, resuming: bool) -> dict | None:
@@ -784,7 +785,7 @@ def _scope_note(project: str, loop_name: str, loop: dict, held_scope: str | None
     current = loop_lock_key(project, loop_name, loop)
     if held_scope is None or held_scope == current:
         return []
-    return [f"Config geändert (Scope {held_scope!r} → {current!r}): Run folgt der aktuellen Spec"]
+    return [_t("engine.config_changed_scope_run_follows", held_scope=held_scope, current=current)]
 
 
 def run_loop(
@@ -818,12 +819,12 @@ def run_loop(
     = aus Spec + Trigger berechnen."""
     spec = load_projects().get(project_name)
     if not spec:
-        raise SetupError(f"Projekt unbekannt: {project_name}")
+        raise SetupError(_t("engine.unknown_project", project_name=project_name))
     if spec.get("_error"):
         raise SetupError(f"Spec defekt: {spec['_error']}")
     loop = spec["loops"].get(loop_name)
     if not loop:
-        raise SetupError(f"Loop unbekannt: {loop_name} (verfügbar: {list(spec['loops'])})")
+        raise SetupError(_t("engine.unknown_loop_available", loop_name=loop_name, v2=list(spec["loops"])))
 
     with project_github(spec):  # GitHub-Identitäten des Projekts (github_env_file)
         return _run_loop(
@@ -902,7 +903,7 @@ def _run_loop(
         record["status"] = "error"
         record["error"] = str(e)
         rn.abort_failure = classify_exception(e)
-        emit(f"✖ Run abgebrochen: {e}")
+        emit(_t("engine.run_aborted", e=e))
         emit(traceback.format_exc(limit=3))
 
     # Variablen immer persistieren (nicht nur an Approval-Gates): der Record
@@ -917,14 +918,14 @@ def _run_loop(
     except PreconditionError as e:
         # Ein Reaper/Stale-Check hat den Run inzwischen beendet (running → error) und dabei
         # Retry-Kette und Alerts bereits gebucht: dessen Record gilt, die Engine bucht nichts.
-        emit(f"⚠ Run-Record nicht geschrieben, Run wurde extern beendet: {e}")
+        emit(_t("engine.run_record_not_written_run", e=e))
         current = get_run(run_id, project_name) or record
         log.finish(current["status"], **session_totals(run_id))
         emit(f"■ {str(current['status']).upper()} — {loop_name}")
         return current
     except RunStoreError as e:
         # Defekter On-Disk-Stand / I/O: Log-Finish, Retry-Kette und Alerts laufen trotzdem.
-        emit(f"⚠ Run-Record nicht geschrieben: {e}")
+        emit(_t("engine.run_record_not_written", e=e))
     log.finish(record["status"], **session_totals(run_id))
     # Retry-Kette aktualisieren (ADR 0036): der Zustand steuert die Alert-Dämpfung
     # (run_failed wird unterdrückt, solange die Kette pending ist; run_exhausted
@@ -974,8 +975,7 @@ def _dispatch_step(ctx: dict, step: dict, emit) -> dict:
             if root_res not in p.parents:
                 return {
                     "ok": False,
-                    "summary": f"BLOCKED: Report-Pfad {p} liegt außerhalb "
-                    f"der Projekt-Root {root_res} (Path-Traversal-Schutz)",
+                    "summary": _t("engine.blocked_report_path_is_outside", p=p, root_res=root_res),
                 }
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(text + "\n", encoding="utf-8")

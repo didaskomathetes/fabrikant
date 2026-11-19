@@ -12,6 +12,8 @@ import math
 import re
 import threading
 
+from .i18n import t
+
 # Prometheus-Metrikname: [a-zA-Z_:][a-zA-Z0-9_:]* (OpenMetrics-Exposition).
 # Ungültige Namen würden den gesamten Text-Export ungültig machen.
 # `\Z` (nicht `$`): `$` matcht in Python auch vor einem abschließenden
@@ -50,15 +52,15 @@ class Counter:
         # ungültig machen. Alle Eingaben werden daher hier (am einzigen
         # Konstruktionspunkt) validiert, nicht erst beim Rendern.
         if not _METRIC_NAME_RE.match(name):
-            raise ValueError(f"Counter-Name {name!r} ist kein gültiger Prometheus-Metrikname")
+            raise ValueError(t("metrics.counter_name_is_not_a", name=name))
         if "\n" in help:
-            raise ValueError(f"HELP-Text von {name!r} darf keine Zeilenumbrüche enthalten")
+            raise ValueError(t("metrics.help_text_of_must_not", name=name))
         seen: set[str] = set()
         for label in labels:
             if not _LABEL_NAME_RE.match(label):
-                raise ValueError(f"Counter {name!r}: Label-Name {label!r} ist kein gültiger Prometheus-Labelname")
+                raise ValueError(t("metrics.counter_label_name_is_not", name=name, label=label))
             if label in seen:
-                raise ValueError(f"Counter {name!r}: Label-Name {label!r} ist doppelt")
+                raise ValueError(t("metrics.counter_label_name_is_duplicated", name=name, label=label))
             seen.add(label)
         self.name = name
         self.help = help
@@ -73,7 +75,7 @@ class Counter:
         unendliche `amount`-Werte werden mit `ValueError` abgelehnt.
         """
         if not math.isfinite(amount) or amount < 0:
-            raise ValueError(f"Counter {self.name}: amount muss endlich und >= 0 sein, got {amount!r}")
+            raise ValueError(t("metrics.counter_amount_must_be_finite", v1=self.name, amount=amount))
         key = tuple(str(labels.get(name, "")) for name in self.labels)
         with self._lock:
             self._values[key] = self._values.get(key, 0.0) + amount
@@ -115,7 +117,7 @@ def register(counter: Counter) -> Counter:
     """
     with _counters_guard:
         if any(c.name == counter.name for c in _counters):
-            raise ValueError(f"Counter {counter.name!r} ist bereits registriert")
+            raise ValueError(t("metrics.counter_is_already_registered", v1=counter.name))
         _counters.append(counter)
     return counter
 

@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from . import config
+from .i18n import t
 
 _SCRIPT_PATH_RE = re.compile(r"(?<![\w./-])(?:\./)?scripts/[\w./-]+")
 
@@ -45,7 +46,7 @@ def register_target(path: str | Path) -> Path:
     root = Path(path).expanduser().resolve()
     spec = root / config.TARGET_SPEC_RELPATH
     if not spec.is_file():
-        raise ValueError(f"Keine Spec gefunden: {spec}")
+        raise ValueError(t("spec_sources.no_spec_found", spec=spec))
     known = [str(p) for p in registered_targets()]
     if str(root) not in known:
         registry = config.REGISTRY_FILE

@@ -21,6 +21,7 @@ from typing import Protocol
 
 from .. import httpsafe, runs
 from ..failures import StepFailure, classify_exception, parse_retry_after
+from ..i18n import t
 from ..runmodel import FailureKind, Run, RunStatus, StepStatus
 from ..secrets import _redact
 from . import archive, status
@@ -184,7 +185,7 @@ def start_run(project: str, loop: str, issue: int, note: str) -> str:
         if isinstance(e, urllib.error.HTTPError):
             body = e.read().decode("utf-8", "replace").strip()[:200]
             raise RelayError(f"fabrik-API /api/runs: HTTP {e.code} {body}", failure.kind, failure.retry_after) from e
-        raise RelayError(f"fabrik-API {fabrik_url()}/api/runs nicht erreichbar: {e.reason}", failure.kind) from e
+        raise RelayError(t("relay.commands.fabrik_api_api_runs_not", v1=fabrik_url(), v2=e.reason), failure.kind) from e
 
 
 def relay_runs(project: str) -> list[Run]:
@@ -229,7 +230,9 @@ def _remote_handoff(ctx: RelayContext, issue: int, state: StatusState, from_arch
     if text is None and state.archive is not None and from_archive:
         text = ctx.archive(state.archive.method).read_handoff(state.archive)
         if text is None:
-            raise ArchiveError(f"Archiv {state.archive.name} enthält keinen Handoff ({state.archive.uri})")
+            raise ArchiveError(
+                t("relay.commands.archive_contains_no_handoff", v1=state.archive.name, v2=state.archive.uri)
+            )
     return Handoff.parse(text) if text is not None else None
 
 
@@ -248,7 +251,7 @@ def dispatch(ctx: RelayContext, start: Starter = start_run) -> str:
     """Alle Relay-Issues bewerten, Blocks anwenden, höchstens EINEN fälligen Run starten."""
     history = relay_runs(ctx.cfg.project)
     if busy := busy_runs(history):
-        return f"relay: läuft bereits — {', '.join(busy)}"
+        return t("relay.commands.relay_already_running", v1=", ".join(busy))
     outcomes = recent_outcomes(history)
     lines: list[str] = []
     due: list[tuple[datetime, Task, Handoff | None, Decision]] = []
@@ -257,14 +260,14 @@ def dispatch(ctx: RelayContext, start: Starter = start_run) -> str:
         try:
             handoff = _remote_handoff(ctx, task.number, state, from_archive=ctx.cfg.labels.done not in task.labels)
         except HandoffError as e:
-            handoff, d = None, Decision(Action.BLOCK, f"Handoff auf dem Branch ungültig: {e}")
+            handoff, d = None, Decision(Action.BLOCK, t("relay.commands.handoff_on_the_branch_invalid", e=e))
         except ArchiveError as e:
-            handoff, d = None, Decision(Action.BLOCK, f"Trail-Archiv nicht lesbar: {e}")
+            handoff, d = None, Decision(Action.BLOCK, t("relay.commands.trail_archive_unreadable", e=e))
         except GitHubError as e:
             # Transienter API-Fehler isoliert pro Task: loggen, Task überspringen (nächster
             # Tick erneut versuchen) — die übrigen Tasks im Tick werden weiterverarbeitet.
-            log.warning("relay #%s: GitHub-Fehler beim Handoff-Lesen: %s", task.number, e)
-            lines.append(f"#{task.number}: skip — GitHub-Fehler beim Handoff-Lesen (nächster Tick erneut)")
+            log.warning(t("relay.commands.relay_s_github_error_while"), task.number, e)
+            lines.append(t("relay.commands.skip_github_error_while_reading", v1=task.number))
             continue
         else:
             d = ctx.decide(task, handoff, state, outcomes.get(task.number))
@@ -282,14 +285,14 @@ def dispatch(ctx: RelayContext, start: Starter = start_run) -> str:
             )
             due.append((waited, task, handoff, d))
     if not due:
-        return "\n".join([*lines, "relay: nichts fällig"])
+        return "\n".join([*lines, t("relay.commands.relay_nothing_due")])
     _, task, handoff, d = min(due, key=lambda item: (item[0], item[1].number))
     if d.action is Action.SESSION:
         loop, note = LOOP_SESSION, f"relay #{task.number} s{(handoff.session if handoff else 0) + 1}"
     else:
         loop, note = LOOP_AUDIT, f"relay #{task.number} audit"
     run_id = start(ctx.cfg.project, loop, task.number, note)
-    return "\n".join([*lines, f"{note}: gestartet ({loop}, {run_id})"])
+    return "\n".join([*lines, t("relay.commands.started", note=note, loop=loop, run_id=run_id)])
 
 
 # ── Session ──────────────────────────────────────────────────────────────────
@@ -325,14 +328,14 @@ def checkout(ctx: RelayContext, issue: int) -> str:
     handoff = ws.read_handoff()
     d = ctx.decide(task, handoff, state)
     if d.action is not Action.SESSION:
-        raise RelayError(f"keine Session für #{issue}: {d.action} — {d.reason}")
+        raise RelayError(t("relay.commands.no_session_for", issue=issue, v2=d.action, v3=d.reason))
     brief = task.brief
     notes = []
     if handoff is None:
         handoff = Handoff.new(issue, task.title, brief.verify_sha256)
     if d.repin:
         handoff.verify_sha256 = brief.verify_sha256
-        notes.append("neue `## Verify`-Fassung übernommen")
+        notes.append(t("relay.commands.adopted_new_verify_version"))
     if handoff.status is not Status.ACTIVE:
         notes.append(f"fortgesetzt nach `{handoff.status}` (Label entfernt)")
         handoff.status, handoff.blocked_reason = Status.ACTIVE, ""
@@ -389,17 +392,17 @@ def checkin(ctx: RelayContext, issue: int, verify: Callable[[str, Path, int], st
     handoff, error = ws.read_handoff_or_none()
     if handoff is None:
         handoff = Handoff.parse(before.render())
-        handoff.block(f"Handoff nach der Session ungültig ({error}) — Stand vor der Session wiederhergestellt")
-        notes.append("Handoff ungültig")
+        handoff.block(t("relay.commands.handoff_invalid_after_the_session", error=error))
+        notes.append(t("relay.commands.handoff_invalid"))
         invalid = True
     else:
         invalid = False
     if tampered := handoff.adopt_harness_fields(before):
-        notes.append(f"Harness-Felder zurückgesetzt: {', '.join(tampered)}")
+        notes.append(t("relay.commands.harness_fields_reset", v1=", ".join(tampered)))
     if handoff.section(AUDIT_SECTION) != before.section(AUDIT_SECTION):
         # `## Audit` schreibt nur audit-publish; sonst stünde ein ungeprüftes Verdikt im Status-Kommentar.
         handoff.set_section(AUDIT_SECTION.title(), before.section(AUDIT_SECTION))
-        notes.append("`## Audit` zurückgesetzt")
+        notes.append(t("relay.commands.audit_reset"))
     # Ungültiger Handoff → sofort blocked; Verify (teuer, mit Seiteneffekten) entfällt.
     if plan.verify_command and not invalid:
         handoff.verify_result = verify(plan.verify_command, ws.root, ctx.cfg.verify_timeout)
@@ -407,20 +410,26 @@ def checkin(ctx: RelayContext, issue: int, verify: Callable[[str, Path, int], st
         unchanged = _evidence(handoff, bool(plan.verify_command)) == _evidence(before, bool(plan.verify_command))
         handoff.stalled = before.stalled + 1 if unchanged else 0
         if handoff.stalled >= STALL_LIMIT:
-            handoff.block(f"kein messbarer Fortschritt in {handoff.stalled} Sessions in Folge")
+            handoff.block(t("relay.commands.no_measurable_progress_in_sessions", v1=handoff.stalled))
     else:
         handoff.stalled = 0
     log = ws.session_log(plan.session)
     if not log.is_file():
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(f"# Session {plan.session}\n\n_No session log written (timeout or crash?)._\n", encoding="utf-8")
-        notes.append("kein Session-Log")
+        notes.append(t("relay.commands.no_session_log"))
     _, outside = ws.partition(plan.scope, plan.forbid)
     if outside:
         # Verwerfen, damit nach dem Entblocken nicht dieselben Pfade erneut blockieren.
         ws.revert(outside)
         more = f" (+{len(outside) - SCOPE_REASON_PATHS} weitere)" if len(outside) > SCOPE_REASON_PATHS else ""
-        handoff.block(f"Änderungen außerhalb des Scopes (verworfen): {', '.join(outside[:SCOPE_REASON_PATHS])}{more}")
+        handoff.block(
+            t(
+                "relay.commands.changes_outside_the_scope_discarded",
+                v1=", ".join(outside[:SCOPE_REASON_PATHS]),
+                more=more,
+            )
+        )
     if handoff.status is Status.ACTIVE and handoff.session >= plan.max_sessions:
         handoff.block(f"max_sessions ({plan.max_sessions}) erreicht")
     handoff.append_log(
@@ -447,7 +456,7 @@ def publish(ctx: RelayContext, issue: int) -> StepSummary:
     plan, _ = ws.load_plan()
     handoff = ws.read_handoff()
     if handoff is None:
-        raise RelayError("Handoff fehlt — lief checkin?")
+        raise RelayError(t("relay.commands.handoff_missing_did_checkin_run"))
     inside, _ = ws.partition(plan.scope, plan.forbid)
     sha = ctx.commit(ws, inside, f"relay #{issue}: session {plan.session} ({handoff.status})")
     ctx.push(ws)
@@ -496,16 +505,16 @@ def audit_prepare(ctx: RelayContext, issue: int) -> str:
     restore_trail(ctx, ws, state)
     handoff = ws.read_handoff()
     if handoff is None:
-        raise RelayError(f"#{issue}: kein Handoff auf dem Branch")
+        raise RelayError(t("relay.commands.no_handoff_on_the_branch", issue=issue))
     d = ctx.decide(task, handoff, state)
     if d.action is not Action.AUDIT:
-        raise RelayError(f"kein Audit für #{issue}: {d.action} — {d.reason}")
+        raise RelayError(t("relay.commands.no_audit_for", issue=issue, v2=d.action, v3=d.reason))
     ws.prepare()
     ws.save_snapshot(handoff)
     ws.write_text("AUDIT_BRIEF.md", _audit_brief(task, handoff))
     (ws.session / "audit" / "blind").mkdir(parents=True, exist_ok=True)
     hidden = ws.hide(ws.branch_changes(ctx.cfg.base), ctx.cfg.base)
-    return f"relay #{issue} audit: {len(hidden)} Branch-Datei(en) für die Blind-Phase ausgeblendet"
+    return t("relay.commands.relay_audit_branch_file_s", issue=issue, v2=len(hidden))
 
 
 def audit_reveal(ctx: RelayContext, issue: int) -> str:
@@ -533,7 +542,7 @@ def audit_publish(ctx: RelayContext, issue: int) -> StepSummary:
     handoff = ws.load_snapshot()
     report = ws.publish_audit()
     verdict = parse_verdict(report)
-    reason = "" if report else " (kein Report)"
+    reason = "" if report else t("relay.commands.no_report")
     handoff.append_log(f"audit · {format_time(ctx.now)} · {verdict}{reason}")
     summary = markdown_sections(report or "").get("summary", "")
     handoff.set_section(
@@ -588,9 +597,9 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
             raise ArchiveError(f"Hash des Archivs {ref.sha256[:12]}… ≠ gebunden {digest[:12]}…")
         archive.verify(archiver, ref)
     except (ArchiveError, StepFailure, urllib.error.URLError) as e:
-        log.warning("relay #%s: Trail nicht archiviert: %s", issue, e)
+        log.warning(t("relay.commands.relay_s_trail_not_archived"), issue, e)
         state.trail_warning = f"trail not archived ({_redact(str(e))[:RESULT_MAX_CHARS]}): the branch still contains it"
-        return "Trail nicht archiviert"
+        return t("relay.commands.trail_not_archived")
     removed = archive.remove_trail(ws)
     # Trail-Pfad explizit committen: `git add -A` stagen die Löschung deterministisch. Ohne Pfad
     # wäre der No-Op-Commit nur ein `_staged()`-Check auf den Index-Zustand nach `remove_trail`.
@@ -623,8 +632,8 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
             ctx.github.set_pr_body(pr, new)
         return f" · PR #{pr}: Trail-Link " + ("gesetzt" if ref else "entfernt")
     except (GitHubError, urllib.error.URLError) as e:
-        log.warning("relay #%s: PR-Body nicht aktualisiert: %s", issue, e)
-        return " · PR-Body nicht aktualisiert"
+        log.warning(t("relay.commands.relay_s_pr_body_not"), issue, e)
+        return t("relay.commands.pr_body_not_updated")
 
 
 def restore_trail(ctx: RelayContext, ws: Workspace, state: StatusState) -> str:
@@ -638,8 +647,10 @@ def restore_trail(ctx: RelayContext, ws: Workspace, state: StatusState) -> str:
     try:
         files = archive.verify(ctx.archive(ref.method, ws), ref)
     except (ArchiveError, StepFailure, urllib.error.URLError) as e:
-        raise RelayError(f"Trail-Archiv {ref.name} nicht wiederherstellbar: {e}", FailureKind.ENVIRONMENT) from e
+        raise RelayError(
+            t("relay.commands.trail_archive_cannot_be_restored", v1=ref.name, e=e), FailureKind.ENVIRONMENT
+        ) from e
     archive.write_tree(ws.relay, files)
     ctx.commit(ws, [f"{relay_dir(ws.issue)}/"], f"relay #{ws.issue}: restore trail from {ref.name}")
     # Der Trail liegt wieder auf dem Branch: der Archiv-Hinweis im PR wäre jetzt falsch.
-    return f"Trail aus {ref.name} wiederhergestellt" + sync_pr_trail(ctx, ws.issue, None)
+    return t("relay.commands.trail_restored_from", v1=ref.name) + sync_pr_trail(ctx, ws.issue, None)

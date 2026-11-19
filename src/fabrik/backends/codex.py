@@ -21,6 +21,7 @@ import json
 import os
 
 from ..agentenv import CODEX_AUTH_VARS, passthrough
+from ..i18n import t
 from ._oneshot import OneShotCliBackend
 
 _EVENT_TURN_COMPLETED = "turn.completed"
@@ -63,7 +64,7 @@ class CodexBackend(OneShotCliBackend):
         base = {"tokens": tokens, "cost": 0.0, "tools": []}
         if returncode == 0:
             return {**base, "status": "done", "text": text.strip()}
-        reason = error or err.strip() or out.strip() or "codex: kein Output"
+        reason = error or err.strip() or out.strip() or t("backends.codex.codex_no_output")
         return {**base, "status": "failed", "text": reason[:300]}
 
     @staticmethod

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 from . import config
+from .i18n import t
 
 VIEWER, OPERATOR, ADMIN = "viewer", "operator", "admin"
 ROLES = (VIEWER, OPERATOR, ADMIN)  # aufsteigende Rechte
@@ -67,7 +68,7 @@ def mode() -> str:
     """Aktiver Auth-Modus aus ``FABRIK_AUTH`` (Default ``none``)."""
     value = os.environ.get("FABRIK_AUTH", MODE_NONE).strip().lower() or MODE_NONE
     if value not in MODES:
-        raise AuthError(f"FABRIK_AUTH={value!r} unbekannt (erlaubt: {', '.join(MODES)})")
+        raise AuthError(t("auth.fabrik_auth_unknown_allowed", value=value, v2=", ".join(MODES)))
     return value
 
 
@@ -92,10 +93,7 @@ def is_loopback(host: str) -> bool:
 def check_bind(host: str) -> None:
     """Bind auf Nicht-Loopback ohne Auth verweigern (``AuthError``)."""
     if not is_loopback(host) and mode() == MODE_NONE:
-        raise AuthError(
-            f"Bind auf {host} verweigert: Nicht-Loopback braucht FABRIK_AUTH=local|oidc "
-            "(Benutzer anlegen: `fabrik user add <name>`)."
-        )
+        raise AuthError(t("auth.bind_to_refused_non_loopback", host=host))
 
 
 # ---------------------------------------------------------------- Passwörter
@@ -166,25 +164,25 @@ def _save_users(users: dict[str, UserEntry]) -> None:
 
 def _check_role(role: str) -> None:
     if role not in ROLES:
-        raise AuthError(f"Rolle '{role}' unbekannt (erlaubt: {', '.join(ROLES)})")
+        raise AuthError(t("auth.role_unknown_allowed", role=role, v2=", ".join(ROLES)))
 
 
 def _check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LEN:
-        raise AuthError(f"Passwort zu kurz (mindestens {MIN_PASSWORD_LEN} Zeichen)")
+        raise AuthError(t("auth.password_too_short_at_least", v1=MIN_PASSWORD_LEN))
 
 
 def add_user(name: str, password: str, role: str = VIEWER) -> None:
     """Benutzer anlegen (``AuthError`` bei ungültigem Namen/Passwort/Rolle oder Duplikat)."""
     name = name.strip()
     if not name or any(c.isspace() or c in ":/" for c in name):
-        raise AuthError("Benutzername ungültig (leer, Leerzeichen, ':' und '/' verboten)")
+        raise AuthError(t("auth.invalid_username_empty_spaces_and"))
     _check_role(role)
     _check_password(password)
     with _users_lock:
         users = load_users()
         if name in users:
-            raise AuthError(f"Benutzer '{name}' existiert bereits")
+            raise AuthError(t("auth.user_already_exists", name=name))
         users[name] = {"hash": hash_password(password), "role": role}
         _save_users(users)
 
@@ -194,7 +192,7 @@ def _update_user(name: str, *, hash: str | None = None, role: str | None = None)
     with _users_lock:
         users = load_users()
         if name not in users:
-            raise AuthError(f"Benutzer '{name}' unbekannt")
+            raise AuthError(t("auth.user_unknown", name=name))
         if hash is not None:
             users[name]["hash"] = hash
         if role is not None:

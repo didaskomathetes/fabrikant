@@ -17,6 +17,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from .i18n import t as _t
+
 try:
     import yaml
 except ImportError:
@@ -76,19 +78,19 @@ class SpecUpdate:
         ``max_paralell``-Feld nicht stumm ignoriert wird."""
         loops = payload.get("loops")
         if loops is not None and not isinstance(loops, dict):
-            raise ValueError("loops muss ein Objekt (Mapping Loop-Name → Definition) sein")
+            raise ValueError(_t("specs.loops_must_be_an_object"))
         remove = payload.get("remove_loops") or []
         if not isinstance(remove, list) or not all(isinstance(n, str) for n in remove):
-            raise ValueError("remove_loops muss eine Liste von Loop-Namen sein")
+            raise ValueError(_t("specs.remove_loops_must_be_a"))
         fields: dict[str, object] = {}
         for key in SPEC_EDITABLE_FIELDS:
             if key not in payload:
                 continue
             value = payload[key]
             if key == "description" and not isinstance(value, str):
-                raise ValueError("description muss ein String sein")
+                raise ValueError(_t("specs.description_must_be_a_string"))
             if key == "max_parallel" and (isinstance(value, bool) or not isinstance(value, int)):
-                raise ValueError("max_parallel muss eine ganze Zahl sein")
+                raise ValueError(_t("specs.max_parallel_must_be_an"))
             fields[key] = value
         unknown = sorted(set(payload) - {"loops", "remove_loops", *SPEC_EDITABLE_FIELDS})
         if unknown:
@@ -134,7 +136,7 @@ def load_spec_raw(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     data = yaml.safe_load(text) if yaml else json.loads(text)
     if not isinstance(data, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     return data
 
 
@@ -167,15 +169,15 @@ def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) ->
     """
     spec = load_projects().get(name)
     if not spec:
-        raise KeyError(f"unbekanntes Projekt: {name}")
+        raise KeyError(_t("specs.unknown_project", name=name))
     if spec.get("_error"):
-        raise ValueError(f"Projekt {name} hat eine defekte Spec: {spec['_error']}")
+        raise ValueError(_t("specs.project_has_a_broken_spec", name=name, v2=spec["_error"]))
     path = Path(spec["_path"]).resolve()
     if base_hash is not None and spec_hash(path) != base_hash:
-        raise SpecConflict("Spec wurde extern geändert (Hash-Mismatch) — Draft neu laden")
+        raise SpecConflict(_t("specs.spec_was_changed_externally_hash"))
     doc = _load_doc(path)
     if not isinstance(doc, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     if update.loops is not None:
         # Pro Loop mergen (unbekannte Schlüssel der bestehenden Definition
         # bleiben erhalten) statt die ganze Sektion zu ersetzen.
@@ -219,7 +221,7 @@ def load_spec(path: Path, *, check_root: bool = True) -> dict:
     text = path.read_text(encoding="utf-8")
     data = yaml.safe_load(text) if yaml else json.loads(text)
     if not isinstance(data, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     data = expand_spec(data, path)
     if not data.get("name"):
         data["name"] = spec_sources.default_name(path)
@@ -246,14 +248,14 @@ def _validate_approval_when(st: dict, where: str) -> list[str]:
     if cond is None:
         return []
     if st.get("approval"):
-        return [f"{where}: approval und approval_when schließen sich aus"]
+        return [_t("specs.approval_and_approval_when_are", where=where)]
     if not isinstance(cond, dict) or not cond:
-        return [f"{where}: approval_when muss ein nicht-leeres Mapping sein (Variable → Wert/Werte)"]
+        return [_t("specs.approval_when_must_be_a", where=where)]
     errs = []
     for var, allowed in cond.items():
         values = allowed if isinstance(allowed, list) else [allowed]
         if not values or not all(isinstance(v, (str, int, bool)) for v in values):
-            errs.append(f"{where}: approval_when.{var} muss Wert oder nicht-leere Werte-Liste sein")
+            errs.append(_t("specs.approval_when_must_be_a_2", where=where, var=var))
     return errs
 
 
@@ -275,7 +277,7 @@ def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
     """``worktree: false`` (ADR 0020) nur für Loops ohne Worktree-Steps."""
     wt = ldef.get("worktree", True)
     if not isinstance(wt, bool):
-        return [f"loop {lname}: worktree muss true/false sein (ist {wt!r})"]
+        return [_t("specs.loop_worktree_must_be_true", lname=lname, wt=wt)]
     if wt:
         return []
     needs = sorted(_worktree_types(steps))
@@ -287,10 +289,10 @@ def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
 def _validate_failure_kind(st: dict, where: str) -> list[str]:
     """`failure_kind` (ADR 0035): nur shell-Steps lesen es (Klasse für Exit-Codes ≠ 0); Wert aus SPEC_FAILURE_KINDS."""
     if st.get("type") != "shell":
-        return [f"{where}: failure_kind gilt nur für shell-Steps (ist {st.get('type')!r})"]
+        return [_t("specs.failure_kind_only_applies_to", where=where, v2=st.get("type"))]
     value = st["failure_kind"]
     if not isinstance(value, str) or value not in SPEC_FAILURE_KINDS:
-        return [f"{where}: failure_kind muss einer von {sorted(SPEC_FAILURE_KINDS)} sein (ist {value!r})"]
+        return [_t("specs.failure_kind_must_be_one", where=where, v2=sorted(SPEC_FAILURE_KINDS), value=value)]
     return []
 
 
@@ -300,7 +302,7 @@ def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
     known = known_backends()
     if value in (None, "") or value in known:
         return []
-    return [f"{where}: {label} '{value}' unbekannt (verfügbar: {', '.join(known)})"]
+    return [_t("specs.unknown_available", where=where, label=label, value=value, v4=", ".join(known))]
 
 
 def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[str]:
@@ -309,7 +311,7 @@ def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[st
     if value is None:
         return []
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        return [f"{where}: {key} muss int >= {minimum} sein (ist {value!r})"]
+        return [_t("specs.must_be_int_is", where=where, key=key, minimum=minimum, value=value)]
     return []
 
 
@@ -318,12 +320,12 @@ def _validate_pr_review_fix(st: dict, where: str) -> list[str]:
     ``fix_checks`` Liste nicht-leerer Strings."""
     errs = _validate_int_field(st, "fix_timeout", where, 1) + _validate_int_field(st, "fix_check_timeout", where, 1)
     if st.get("fix_variant") is not None and not isinstance(st["fix_variant"], str):
-        errs.append(f"{where}: fix_variant muss String sein (ist {st['fix_variant']!r})")
+        errs.append(_t("specs.fix_variant_must_be_a", where=where, v2=st["fix_variant"]))
     checks = st.get("fix_checks")
     if checks is not None and (
         not isinstance(checks, list) or not all(isinstance(c, str) and c.strip() for c in checks)
     ):
-        errs.append(f"{where}: fix_checks muss Liste nicht-leerer Shell-Kommandos sein (ist {checks!r})")
+        errs.append(_t("specs.fix_checks_must_be_a", where=where, checks=checks))
     return errs
 
 
@@ -363,41 +365,41 @@ def _validate_retry_cron(spec: dict, lname: str, ldef: dict) -> list[str]:
 
 def _validate_step_shell(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("cmd"):
-        return [f"{where}: shell ohne cmd"]
+        return [_t("specs.shell_without_cmd", where=where)]
     return []
 
 
 def _validate_step_http(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("url"):
-        return [f"{where}: http ohne url"]
+        return [_t("specs.http_without_url", where=where)]
     return []
 
 
 def _validate_step_llm(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("prompt"):
-        return [f"{where}: llm ohne prompt"]
+        return [_t("specs.llm_without_prompt", where=where)]
     return []
 
 
 def _validate_step_state(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if st.get("action") not in ("get", "set", "add"):
-        errs.append(f"{where}: state action muss get|set|add sein (ist {st.get('action')!r})")
+        errs.append(_t("specs.state_action_must_be_get", where=where, v2=st.get("action")))
     if not st.get("key"):
-        errs.append(f"{where}: state ohne key")
+        errs.append(_t("specs.state_without_key", where=where))
     return errs
 
 
 def _validate_step_verify(st: dict, where: str, spec: dict) -> list[str]:
     checks = st.get("checks")
     if not isinstance(checks, list):
-        return [f"{where}: verify braucht 'checks' als Liste"]
+        return [_t("specs.verify_needs_checks_as_a", where=where)]
     errs = []
     for j, chk in enumerate(checks):
         cwhere = f"{where}: verify-Check {j}"
         t = chk.get("type") if isinstance(chk, dict) else None
         if t not in config.STEP_TYPES:
-            errs.append(f"{cwhere} braucht 'type' in {list(config.STEP_TYPES)} (ist {t!r})")
+            errs.append(_t("specs.needs_type_in_is", cwhere=cwhere, v2=list(config.STEP_TYPES), t=t))
         # extra_context wirkt auch auf Checks (effective_step, ADR 0008): nur bei LLM-Step-Typen.
         if isinstance(chk, dict) and extra_context.KEY in chk:
             errs += extra_context.validate(chk[extra_context.KEY], cwhere, t)
@@ -407,29 +409,29 @@ def _validate_step_verify(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not (st.get("prompt") or st.get("prompt_file")):
-        errs.append(f"{where}: agent ohne prompt/prompt_file")
+        errs.append(_t("specs.agent_without_prompt_prompt_file", where=where))
     errs += _validate_backend(st, "backend", where, "agent backend")
     if st.get("variant") is not None and not isinstance(st["variant"], str):
-        errs.append(f"{where}: agent variant muss String sein (ist {st['variant']!r})")
+        errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
     gid = st.get("github_identity")
     if gid is not None and gid not in GH_TOKEN_ENV:
-        errs.append(f"{where}: github_identity muss einer von {sorted(GH_TOKEN_ENV)} sein (ist {gid!r})")
+        errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))
     if st.get("workdir") is not None and not isinstance(st["workdir"], str):
-        errs.append(f"{where}: agent workdir muss String sein")
+        errs.append(_t("specs.agent_workdir_must_be_a", where=where))
     if st.get("timeout") is not None:
         try:
             t = int(st["timeout"])
             if t <= 0:
                 raise ValueError
         except (TypeError, ValueError):
-            errs.append(f"{where}: agent timeout muss positive Zahl sein")
+            errs.append(_t("specs.agent_timeout_must_be_a", where=where))
     return errs
 
 
 def _validate_step_review(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not st.get("model"):
-        errs.append(f"{where}: review ohne model (Pflicht, ≠ Builder-Modell)")
+        errs.append(_t("specs.review_without_model_required_builder", where=where))
     errs += _validate_backend(st, "backend", where, "review backend")
     return errs
 
@@ -441,9 +443,9 @@ def _validate_step_alert_route(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_pr_review(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not st.get("repo"):
-        errs.append(f"{where}: pr_review ohne repo (owner/name)")
+        errs.append(_t("specs.pr_review_without_repo_owner", where=where))
     if not st.get("model"):
-        errs.append(f"{where}: pr_review ohne model (Pflicht, ≠ Builder-Modell)")
+        errs.append(_t("specs.pr_review_without_model_required", where=where))
     errs += _validate_backend(st, "backend", where, "pr_review backend")
     errs += _validate_backend(st, "fix_backend", where, "pr_review fix_backend")
     # max_rounds 0 = Review-only (keine Fix-Runden); max_findings >= 1 (ADR 0039).
@@ -475,45 +477,45 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     # Lock-Schlüssel "projekt::loop" (ADR 0020) bleibt nur eindeutig, wenn der Separator in Namen fehlt.
     for what, value in [("name", spec.get("name"))] + [("loop", ln) for ln in (spec.get("loops") or {})]:
         if isinstance(value, str) and LOCK_KEY_SEP in value:
-            errs.append(f"{what} {value!r}: darf {LOCK_KEY_SEP!r} nicht enthalten (Lock-Schlüssel)")
+            errs.append(_t("specs.must_not_contain_lock_key", what=what, value=value, v3=LOCK_KEY_SEP))
     if not spec.get("root") or (check_root and not Path(spec["root"]).is_dir()):
-        errs.append(f"root fehlt oder existiert nicht: {spec.get('root')!r}")
+        errs.append(_t("specs.root_missing_or_does_not", v1=spec.get("root")))
     gef = spec.get(SPEC_ENV_FILE_KEY)
     if gef is not None and (not isinstance(gef, str) or not gef.strip()):
-        errs.append(f"{SPEC_ENV_FILE_KEY} muss ein Pfad (String) sein (ist {gef!r})")
+        errs.append(_t("specs.must_be_a_path_string", v1=SPEC_ENV_FILE_KEY, gef=gef))
     elif gef is not None and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
-        errs.append(f"{SPEC_ENV_FILE_KEY} muss ein absoluter Pfad sein (ist {gef!r})")
+        errs.append(_t("specs.must_be_an_absolute_path", v1=SPEC_ENV_FILE_KEY, gef=gef))
     cvia = spec.get(SPEC_COMMIT_VIA_KEY)
     if cvia is not None and cvia not in COMMIT_VIA_MODES:
-        errs.append(f"{SPEC_COMMIT_VIA_KEY} muss einer von {COMMIT_VIA_MODES} sein (ist {cvia!r})")
+        errs.append(_t("specs.must_be_one_of_is", v1=SPEC_COMMIT_VIA_KEY, v2=COMMIT_VIA_MODES, cvia=cvia))
     if extra_context.KEY in spec:
         errs += extra_context.validate(spec[extra_context.KEY], "projekt", allow_false=False)
     mp = spec.get("max_parallel")
     if mp is not None and (isinstance(mp, bool) or not isinstance(mp, int) or mp < 1):
-        errs.append(f"max_parallel muss int >= 1 sein (ist {mp!r})")
+        errs.append(_t("specs.max_parallel_must_be_int", mp=mp))
     if spec.get("retry") is not None:
         errs += _validate_retry_block(spec["retry"], "retry")
     loops = spec.get("loops")
     if not isinstance(loops, dict) or not loops:
-        errs.append("loops: mindestens ein Loop nötig")
+        errs.append(_t("specs.loops_at_least_one_loop"))
     else:
         for lname, ldef in loops.items():
             if not isinstance(ldef, dict):
-                errs.append(f"loop {lname}: Mapping erwartet")
+                errs.append(_t("specs.loop_mapping_expected", lname=lname))
                 continue
             steps = ldef.get("steps")
             if not isinstance(steps, list) or not steps:
-                errs.append(f"loop {lname}: steps fehlt")
+                errs.append(_t("specs.loop_steps_missing", lname=lname))
                 continue
             for ti, trig in enumerate(ldef.get("triggers") or []):
                 if isinstance(trig, dict) and trig.get("type") == "on_webhook":
                     errs += webhook.validate_trigger(trig, f"loop {lname} trigger {ti}")
             tier = ldef.get("tier")
             if tier is not None and (not isinstance(tier, int) or not 1 <= tier <= 4):
-                errs.append(f"loop {lname}: tier muss int 1-4 sein (ist {tier!r})")
+                errs.append(_t("specs.loop_tier_must_be_int", lname=lname, tier=tier))
             for i, trig in enumerate(ldef.get("triggers") or []):
                 if not isinstance(trig, dict):
-                    errs.append(f"loop {lname} trigger {i}: Mapping erwartet")
+                    errs.append(_t("specs.loop_trigger_mapping_expected", lname=lname, i=i))
                     continue
                 errs.extend(_validate_trigger(lname, i, trig, spec))
             errs += _validate_worktree(lname, ldef, steps)
@@ -522,14 +524,14 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
                 if not isinstance(st, dict) or st.get("type") not in config.STEP_TYPES:
-                    errs.append(f"loop {lname} step {i}: type muss einer von {config.STEP_TYPES} sein")
+                    errs.append(_t("specs.loop_step_type_must_be", lname=lname, i=i, v3=config.STEP_TYPES))
                 if isinstance(st, dict):
                     where = f"loop {lname} step {i}"
                     errs += _validate_approval_when(st, where)
                     if extra_context.KEY in st:
                         errs += extra_context.validate(st[extra_context.KEY], where, st.get("type"))
                     if "approval_reason" in st and not isinstance(st["approval_reason"], str):
-                        errs.append(f"{where}: approval_reason muss ein String (Template) sein")
+                        errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
                     stype = st.get("type")
@@ -537,7 +539,7 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                     if validator is not None:
                         errs += validator(st, where, spec)
     if errs:
-        raise ValueError("Spec ungültig:\n  " + "\n  ".join(errs))
+        raise ValueError(_t("specs.spec_invalid") + "\n  ".join(errs))
 
 
 def _as_number(value: object) -> float:
@@ -559,7 +561,7 @@ def _validate_poll(value: object, where: str) -> list[str]:
         return []
     seconds = _as_number(value)
     if not math.isfinite(seconds) or seconds < 0:
-        return [f"{where}: poll muss eine endliche Zahl >= 0 (Sekunden) sein (ist {value!r})"]
+        return [_t("specs.poll_must_be_a_finite", where=where, value=value)]
     return []
 
 
@@ -570,7 +572,7 @@ def _validate_positive_int(trig: dict, key: str, where: str) -> list[str]:
         return []
     number = _as_number(value)
     if not math.isfinite(number) or number < 1 or not number.is_integer():
-        return [f"{where}: {key} muss eine ganze Zahl >= 1 sein (ist {value!r})"]
+        return [_t("specs.must_be_an_integer_1", where=where, key=key, value=value)]
     return []
 
 
@@ -583,7 +585,7 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
     errs = []
     ttype = trig.get("type")
     if ttype not in config.TRIGGER_TYPES:
-        errs.append(f"loop {lname} trigger {i}: type muss einer von {config.TRIGGER_TYPES} sein (ist {ttype!r})")
+        errs.append(_t("specs.loop_trigger_type_must_be", lname=lname, i=i, v3=config.TRIGGER_TYPES, ttype=ttype))
         return errs
     if ttype == "on_slack":
         errs += slack.validate_trigger(trig, f"loop {lname} trigger {i}")
@@ -592,30 +594,28 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
     if ttype in config.POLL_TRIGGER_TYPES:
         errs += _validate_poll(trig.get("poll"), f"loop {lname} trigger {i}")
     if ttype in ("on_issue", "on_pr") and not (trig.get("repo") or spec.get("github")):
-        errs.append(f"loop {lname} trigger {i}: {ttype} ohne repo (Trigger- oder Spec-Ebene)")
+        errs.append(_t("specs.loop_trigger_without_repo_trigger", lname=lname, i=i, ttype=ttype))
     if ttype == alerts.TRIGGER_TYPE:
         errs += alerts.validate_trigger(trig, f"loop {lname} trigger {i}")
     if trig.get("skip_blocked") and not (ttype == "on_issue" and trig.get("reconcile")):
         # Event-Modus feuert jedes Issue nur einmal — ein blockiertes Issue ginge
         # verloren statt nach dem Schließen des Blockers zu starten (ADR 0031).
-        errs.append(f"loop {lname} trigger {i}: skip_blocked nur für on_issue mit reconcile: true")
+        errs.append(_t("specs.loop_trigger_skip_blocked_only", lname=lname, i=i))
     on_start = trig.get("on_start")
     if on_start is not None and (ttype != "cron" or not isinstance(on_start, bool)):
-        errs.append(f"loop {lname} trigger {i}: on_start nur für cron und nur true/false (ist {on_start!r})")
+        errs.append(_t("specs.loop_trigger_on_start_only", lname=lname, i=i, on_start=on_start))
     if ttype == "on_pr":
         states = trig.get("states")
         if states is not None and (
             not isinstance(states, list) or not states or any(s not in config.PR_STATES for s in states)
         ):
             errs.append(
-                f"loop {lname} trigger {i}: on_pr states muss nicht-leere Liste aus {list(config.PR_STATES)} "
-                f"sein (ist {states!r})"
+                _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
         if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
             errs.append(
-                f"loop {lname} trigger {i}: on_pr reconcile muss true/false oder "
-                f"{config.RECONCILE_PER_HEAD!r} sein (ist {rec!r})"
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
             )
     return errs
 
@@ -637,7 +637,9 @@ def collect_projects(files: list[Path] | None = None, *, check_root: bool = True
             spec = {"name": spec_sources.default_name(f), "_error": str(e)}
         name = spec["name"]
         if name in projects:
-            conflicts.append(f"Projekt {name!r} mehrfach: {projects[name].get('_path') or '?'} (gewinnt) verdeckt {f}")
+            conflicts.append(
+                _t("specs.project_defined_more_than_once", name=name, v2=projects[name].get("_path") or "?", f=f)
+            )
             continue
         spec.setdefault("_path", str(f))
         projects[name] = spec

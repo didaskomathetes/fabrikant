@@ -43,6 +43,7 @@ from pathlib import Path
 
 from . import config, gitops
 from .failures import GitError, classify_exception, exit_code
+from .i18n import t
 from .secrets import _redact
 
 GIT_TIMEOUT_S = 300
@@ -86,7 +87,7 @@ def parse_diff_tree(raw: str) -> list[Change]:
             continue
         _old_mode, new_mode, _old_sha, new_sha, status = meta[1:].split(" ")
         if "\ufffd" in path:
-            msg = f"Pfad {path!r} ist nicht UTF-8 — per API nicht pushbar (commit_via: git nutzen)"
+            msg = t("apicommit.path_is_not_utf_8", path=path)
             raise GitError(msg, msg)
         changes.append(Change(path=path, mode=new_mode, sha=new_sha, deleted=status.startswith("D")))
     return changes
@@ -96,7 +97,7 @@ def repo_from_remote(url: str) -> str:
     """`https://github.com/o/r.git` oder `git@github.com:o/r` → `o/r`."""
     m = _GITHUB_REMOTE.search(url.strip())
     if not m:
-        raise ValueError(f"kein GitHub-Remote: {_redact(url)!r}")
+        raise ValueError(t("apicommit.no_github_remote", v1=_redact(url)))
     return m.group("repo")
 
 
@@ -158,7 +159,7 @@ class ApiPusher:
     def _blob(self, sha: str) -> bytes:
         p = self._run("cat-file", "blob", sha)
         if p.returncode != 0:
-            raise GitError(f"git cat-file {sha}: fehlt", p.stderr.decode(errors="replace"))
+            raise GitError(t("apicommit.git_cat_file_missing", sha=sha), p.stderr.decode(errors="replace"))
         return p.stdout
 
     # ── API ──────────────────────────────────────────────────────────────────
@@ -194,7 +195,7 @@ class ApiPusher:
                     self._sync_local(branch, remote)
                     return PushResult(branch=branch, sha=remote)
                 if not force:
-                    msg = f"{NON_FAST_FORWARD}: {branch} hat auf GitHub Commits, die lokal fehlen"
+                    msg = t("apicommit.has_commits_on_github_that", v1=NON_FAST_FORWARD, branch=branch)
                     raise GitError(msg, msg)
         exclude = [remote] if remote else []
         pending = self.git("rev-list", "--reverse", "--topo-order", head, "--not", "--remotes=origin", *exclude)
@@ -210,7 +211,7 @@ class ApiPusher:
     def _recreate(self, commit: str, result: PushResult) -> str:
         parents = self.git("rev-list", "--parents", "-n", "1", commit).split()[1:]
         if not parents:
-            msg = f"Root-Commit {commit[:7]} kann nicht per API gepusht werden"
+            msg = t("apicommit.root_commit_cannot_be_pushed", v1=commit[:7])
             raise GitError(msg, msg)
         tree = self.git("rev-parse", f"{commit}^{{tree}}").strip()
         changes = parse_diff_tree(self.git("diff-tree", "-r", "--raw", "-z", "--no-renames", parents[0], commit))
@@ -225,10 +226,7 @@ class ApiPusher:
             )
         except urllib.error.HTTPError as e:
             if e.code == HTTP_UNPROCESSABLE:
-                msg = (
-                    f"Commit {commit[:7]}: GitHub kennt einen Parent nicht (veralteter origin-Tracking-Ref? "
-                    "`git fetch --prune origin`)"
-                )
+                msg = t("apicommit.commit_github_does_not_know", v1=commit[:7])
                 raise GitError(msg, msg) from e
             raise
         result.verified = result.verified and bool((created.get("verification") or {}).get("verified"))
@@ -259,7 +257,7 @@ class ApiPusher:
                 self._api("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": sha})
         except urllib.error.HTTPError as e:
             if e.code == HTTP_UNPROCESSABLE:
-                msg = f"{NON_FAST_FORWARD}: Ref {branch} nicht gesetzt (HTTP 422)"
+                msg = t("apicommit.ref_not_set_http_422", v1=NON_FAST_FORWARD, branch=branch)
                 raise GitError(msg, msg) from e
             raise
 
@@ -296,7 +294,7 @@ def push_branch(
     Geschützte Branches (`protected`, Default `config.PROTECTED_DEFAULT`) und detached HEAD werden verweigert."""
     root = Path(root)
     if branch == "HEAD" or branch in (protected or config.PROTECTED_DEFAULT):
-        msg = f"BLOCKED: push auf geschützten Branch '{branch}' verweigert"
+        msg = t("apicommit.blocked_push_to_protected_branch", branch=branch)
         raise GitError(msg, msg)
     if gitops.commit_via() != gitops.COMMIT_VIA_API:
         _git(root, "push", *(["--force-with-lease"] if force else []), "origin", branch)
@@ -311,8 +309,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m fabrik.push", description=__doc__.splitlines()[0] if __doc__ else None
     )
-    parser.add_argument("--force", action="store_true", help="abweichenden Remote-Stand überschreiben")
-    parser.add_argument("--repo", help="owner/name (Default: aus origin)")
+    parser.add_argument("--force", action="store_true", help=t("apicommit.overwrite_diverging_remote_state"))
+    parser.add_argument("--repo", help=t("apicommit.owner_name_default_from_origin"))
     args = parser.parse_args(argv)
     root = Path.cwd()
     try:

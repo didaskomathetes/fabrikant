@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ..i18n import t
 from .inprocess import InProcessLauncher
 from .port import RunLauncher
 
@@ -35,5 +36,5 @@ def create_launcher(name: str, **kwargs: Any) -> RunLauncher:
     Substrate an. `kwargs` werden an die Adapter-Factory weitergereicht."""
     factory = ADAPTERS.get(name)
     if factory is None:
-        raise ValueError(f"run-launcher: unbekanntes Substrat '{name}' (verfügbar: {', '.join(known_launchers())})")
+        raise ValueError(t("launcher.registry.unknown_substrate", name=name, available=", ".join(known_launchers())))
     return factory(**kwargs)

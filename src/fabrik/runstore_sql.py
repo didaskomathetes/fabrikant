@@ -58,6 +58,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
 from . import config
+from .i18n import t as _t
 from .runmodel import FAILED_RUN_STATUSES, FailureKind, Run, RunStatus
 from .runquery import UTC_SORT_FORMAT, RunQuery, utc_sort_text
 from .runschema import (
@@ -186,7 +187,9 @@ def _scalar_columns(data: Mapping[str, Any], spec: Mapping[str, str], where: str
     for name, kind in spec.items():
         value = data.get(name)
         if value is not None and not _TYPE_CHECKS[kind](value):
-            raise InvalidRecordError(f"{where}.{name}: {kind} erwartet, ist {type(value).__name__}")
+            raise InvalidRecordError(
+                _t("runstore_sql.expected_is", where=where, name=name, kind=kind, v4=type(value).__name__)
+            )
         out[name] = float(value) if kind == _NUM and value is not None else value
     return out
 
@@ -201,7 +204,7 @@ def _as_mapping(value: Any, where: str) -> Mapping[str, Any] | None:
     if value is None:
         return None
     if not isinstance(value, Mapping):
-        raise InvalidRecordError(f"{where}: Objekt erwartet, ist {type(value).__name__}")
+        raise InvalidRecordError(_t("runstore_sql.object_expected_is", where=where, v2=type(value).__name__))
     return value
 
 
@@ -209,7 +212,7 @@ def _as_list(value: Any, where: str) -> list:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise InvalidRecordError(f"{where}: Liste erwartet, ist {type(value).__name__}")
+        raise InvalidRecordError(_t("runstore_sql.list_expected_is", where=where, v2=type(value).__name__))
     return value
 
 
@@ -218,13 +221,13 @@ def _pr_number(value: Any, where: str) -> int | None:
         return value
     if isinstance(value, str) and value.isdigit():
         return int(value)
-    raise InvalidRecordError(f"{where}.pr: PR-Nummer erwartet, ist {value!r}")
+    raise InvalidRecordError(_t("runstore_sql.pr_pr_number_expected_is", where=where, value=value))
 
 
 def _encode_var(value: Any, where: str) -> tuple[VarType, str]:
     var_type = _VAR_TYPES.get(type(value))
     if var_type is None:
-        raise InvalidRecordError(f"{where}: skalarer Wert erwartet, ist {type(value).__name__}")
+        raise InvalidRecordError(_t("runstore_sql.scalar_value_expected_is", where=where, v2=type(value).__name__))
     if var_type is VarType.BOOL:
         return var_type, "true" if value else "false"
     return var_type, value if var_type is VarType.STR else repr(value)
@@ -252,7 +255,7 @@ def _encode_step(rows: RecordRows, run_id: str, idx: int, step: Any) -> None:
     where = f"steps[{idx}]"
     data = _as_mapping(step, where)
     if data is None:
-        raise InvalidRecordError(f"{where}: Objekt erwartet, ist None")
+        raise InvalidRecordError(_t("runstore_sql.object_expected_is_none", where=where))
     _reject_unknown(data, (*_STEP_FIELDS, *_STEP_NESTED), where)
     key = {"run_id": run_id, "step_idx": idx}
     rows.children[steps].append({"run_id": run_id, "idx": idx, **_scalar_columns(data, _STEP_FIELDS, where)})
@@ -300,7 +303,9 @@ def encode_record(record: Mapping[str, Any], project: str, run_id: str) -> Recor
         )
         for seq, perm in enumerate(_as_list(approval.get("permissions"), "approval.permissions")):
             if not isinstance(perm, str):
-                raise InvalidRecordError(f"approval.permissions[{seq}]: Text erwartet, ist {type(perm).__name__}")
+                raise InvalidRecordError(
+                    _t("runstore_sql.approval_permissions_text_expected_is", seq=seq, v2=type(perm).__name__)
+                )
             rows.children[approval_permissions].append({"run_id": run_id, "seq": seq, "permission": perm})
     for scope in VarScope:
         variables = _as_mapping(record.get(scope.value), scope.value) or {}
@@ -481,7 +486,7 @@ def _db_errors() -> Iterator[None]:
     except IntegrityError as e:
         raise InvalidRecordError(f"DB-Constraint verletzt: {e.orig}") from e
     except SQLAlchemyError as e:
-        raise RunStoreError(f"DB-Fehler: {e}") from e
+        raise RunStoreError(_t("runstore_sql.db_error", e=e)) from e
 
 
 class SqlRunStore(BaseRunStore):
@@ -512,7 +517,9 @@ class SqlRunStore(BaseRunStore):
         with self.write_tx() as conn:
             current = self._locked_record(conn, run_id)
             if current is not None and current["project"] != project:
-                raise PreconditionError(f"Run {run_id} gehört zu Projekt {current['project']!r}, nicht {project!r}")
+                raise PreconditionError(
+                    _t("runstore_sql.run_belongs_to_project_not", run_id=run_id, v2=current["project"], project=project)
+                )
             record = mutate(current)
             encode_record(record, project, run_id)  # erst prüfen: die Redaction setzt typgerechte Records voraus
             _redact_record(record)
@@ -729,7 +736,9 @@ def store_for_url(url: str) -> SqlRunStore:
                 migrate(engine)
             except SQLAlchemyError as e:
                 engine.dispose()
-                raise RunStoreError(f"Run-Store-DB nicht nutzbar ({make_url(url).render_as_string()}): {e}") from e
+                raise RunStoreError(
+                    _t("runstore_sql.run_store_db_not_usable", v1=make_url(url).render_as_string(), e=e)
+                ) from e
             store = _STORES[url] = SqlRunStore(engine)
         return store
 

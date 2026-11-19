@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ..failures import classify_exception, exit_code
 from ..gitops import project_github
+from ..i18n import t
 from ..runmodel import FailureKind, verdict_line
 from . import commands
 from .config import RelayConfig, load
@@ -27,7 +28,7 @@ _ISSUE_COMMANDS = {
 
 def _issue(raw: str | None) -> int:
     if raw is None or not raw.isdigit():
-        raise SystemExit(f"--issue muss eine Issue-Nummer sein (ist {raw!r}; Run ohne issue_number gestartet?)")
+        raise SystemExit(t("relay.__main__.issue_must_be_an_issue", raw=raw))
     return int(raw)
 
 

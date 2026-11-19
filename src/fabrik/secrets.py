@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import config
+from .i18n import t
 
 log = logging.getLogger("fabrik.secrets")
 
@@ -169,5 +170,5 @@ def redact_log_tail(text: str) -> str:
     try:
         return redact_text(text)
     except Exception:
-        log.warning("log_tail-Redaction fehlgeschlagen — Alert wird unredigiert gesendet", exc_info=True)
+        log.warning(t("secrets.log_tail_redaction_failed_alert"), exc_info=True)
         return text

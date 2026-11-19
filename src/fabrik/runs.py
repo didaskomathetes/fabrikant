@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from . import config, metrics, sessionlog
+from .i18n import t
 from .runmodel import Run, RunStatus, StepStatus
 from .runstore import STORE, RecordError, RunStoreError, parse_run, valid_project, valid_run_id
 
@@ -341,9 +342,6 @@ def loop_run_triggers(project: str, loop: str, statuses: tuple[str, ...] | None 
     return STORE.loop_triggers(project, loop, statuses)
 
 
-RESTART_ERROR = "abgebrochen: fabrik serve neu gestartet"
-
-
 def reap_orphaned_runs() -> list[str]:
     """Server-Start: verwaiste 'running'-Records → error (kein Alert, nur Log).
 
@@ -360,14 +358,14 @@ def reap_orphaned_runs() -> list[str]:
     try:
         running = STORE.load_records(status=RunStatus.RUNNING)
     except (OSError, RunStoreError) as e:
-        print(f"[fabrik] verwaiste Runs nicht lesbar: {e}")
+        print(t("runs.fabrik_orphaned_runs_unreadable", e=e))
         running = []
     for r in running:
         project, run_id = r["project"], r.get("id", "")
         # Über den Store: Vorbedingung `running` — ein Run, der inzwischen einen
         # anderen Status hat, wird nicht überschrieben (PreconditionError → überspringen).
         try:
-            r = STORE.reap(project, run_id, error=RESTART_ERROR)
+            r = STORE.reap(project, run_id, error=t("runs.restart_error"))
         except (RunStoreError, OSError):
             continue
         sessionlog.finish_orphaned_run(run_id, r["finished"])
@@ -397,7 +395,7 @@ def get_run(run_id: str, project: str | None = None) -> dict | None:
         found = STORE.get_record(run_id, project) if project else None
         return found if found is not None else STORE.get_record(run_id)
     except RunStoreError as e:
-        print(f"[fabrik] Run {run_id} nicht lesbar: {e}")
+        print(t("runs.fabrik_run_unreadable", run_id=run_id, e=e))
         return None
 
 
@@ -420,7 +418,7 @@ def show_run(run_id: str, project: str | None = None) -> str | None:
         return None
     lines = [
         f"{rec['id']}  {rec['project']}/{rec['loop']}  {rec['status']}",
-        f"  gestartet: {rec.get('started', '')}  beendet: {rec.get('finished', '')}",
+        t("runs.started_ended", v1=rec.get("started", ""), v2=rec.get("finished", "")),
         f"  Trigger: {rec.get('trigger', '')}" + (f"  Notiz: {rec['note']}" if rec.get("note") else ""),
     ]
     for s in rec.get("steps", []):

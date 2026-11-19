@@ -47,6 +47,7 @@ from typing import cast
 from ..context import _cond_matches, _substitute
 from ..failures import ConfigError, Failure, classify_http, failed
 from ..gitops import _gh_api, _gh_dependencies, _gh_token
+from ..i18n import t
 from ..runmodel import FailureKind
 from .pr import _normalize_labels
 
@@ -91,7 +92,7 @@ def _skip_reason(ctx: dict, step: dict) -> str:
     """Grund für den No-Op (`only_if` unerfüllt / `skip_if_empty` alle leer) oder ''."""
     only_if = step.get("only_if")
     if only_if and not _cond_matches(only_if, ctx):
-        return "only_if nicht erfüllt"
+        return t("steps.issue.only_if_not_satisfied")
     names = step.get("skip_if_empty")
     if names:
         names = [names] if isinstance(names, str) else names
@@ -104,16 +105,19 @@ def _step_issue(ctx: dict, step: dict) -> dict:
     """Führt eine Issue-Action aus; Fehler → ok=False (kein Token im Text)."""
     skipped = _skip_reason(ctx, step)
     if skipped:
-        return {"ok": True, "summary": f"issue übersprungen ({skipped})"}
+        return {"ok": True, "summary": t("steps.issue.issue_skipped", skipped=skipped)}
     action = str(step.get("action") or "").strip().lower()
     if action not in ACTIONS:
-        return _fail(f"action '{action}' ungültig (erlaubt: {', '.join(ACTIONS)})", Failure(FailureKind.ENVIRONMENT))
+        return _fail(
+            t("steps.issue.action_invalid_allowed", action=action, v2=", ".join(ACTIONS)),
+            Failure(FailureKind.ENVIRONMENT),
+        )
     repo = _substitute(str(step.get("repo") or ""), ctx).strip()
     if not repo:
-        raise ConfigError("issue: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.issue.issue_repo_owner_name_missing"))
     number = _substitute(str(step.get("number") or ""), ctx).strip() or str(ctx.get("issue_number") or "").strip()
     if action not in _NUMBERLESS and not number.isdigit():
-        return _fail(f"number nicht auflösbar (number: {number!r})")
+        return _fail(t("steps.issue.number_cannot_be_resolved_number", number=number))
     token = _gh_token("dev")
     try:
         return _HANDLERS[action](ctx, step, repo, number, token)
@@ -145,7 +149,7 @@ def _inherited_labels(step: dict, repo: str, number: str, token: str, ctx: dict)
 def _create(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     title = (_text(step, "title", ctx) or "").strip()
     if not title:
-        return _fail("create: 'title' fehlt")
+        return _fail(t("steps.issue.create_title_missing"))
     payload: dict = {"title": title, "body": _text(step, "body", ctx) or ""}
     labels = _labels(step.get("labels"), ctx) + _inherited_labels(step, repo, number, token, ctx)
     if labels:
@@ -168,7 +172,7 @@ def _edit(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     if state is not None:
         state = state.strip().lower()
         if state not in _STATES:
-            return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
+            return _fail(t("steps.issue.state_invalid_allowed", state=state, v2=", ".join(_STATES)))
         payload["state"] = state
     body = _text(step, "body", ctx)
     if body is not None:
@@ -176,20 +180,20 @@ def _edit(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
             current = _gh_api("GET", url, token).get("body") or ""
             marker = _text(step, "unless_contains", ctx)
             if marker and marker in current:
-                return {"ok": True, "summary": f"Issue #{number} unverändert (Marker bereits vorhanden)"}
+                return {"ok": True, "summary": t("steps.issue.issue_unchanged_marker_already_present", number=number)}
             body = f"{current}\n\n{body}" if current else body
         payload["body"] = body
     if not payload:
-        return _fail("edit: nichts zu ändern (title/body/state fehlen)")
+        return _fail(t("steps.issue.edit_nothing_to_change_title"))
     _gh_api("PATCH", url, token, payload)
-    return {"ok": True, "summary": f"Issue #{number} geändert ({', '.join(payload)})"}
+    return {"ok": True, "summary": t("steps.issue.issue_changed", number=number, v2=", ".join(payload))}
 
 
 def _label(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     add = _labels(step.get("labels"), ctx)
     remove = _labels(step.get("remove_labels"), ctx)
     if not add and not remove:
-        return _fail("label: 'labels' oder 'remove_labels' fehlt")
+        return _fail(t("steps.issue.label_labels_or_remove_labels"))
     base = f"{_API}/{repo}/issues/{number}/labels"
     if add:  # GitHub legt unbekannte Labels beim Hinzufügen automatisch an
         _gh_api("POST", base, token, {"labels": add})
@@ -205,14 +209,14 @@ def _label(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
 def _close(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     reason = (_text(step, "state_reason", ctx) or "").strip().lower()
     if reason and reason not in _CLOSE_REASONS:
-        return _fail(f"state_reason '{reason}' ungültig (erlaubt: {', '.join(_CLOSE_REASONS)})")
+        return _fail(t("steps.issue.state_reason_invalid_allowed", reason=reason, v2=", ".join(_CLOSE_REASONS)))
     originals = _refs(_text(step, "duplicate_of", ctx) or "", number)
     payload: dict = {"state": "closed"}
     moved: list[str] = []
     if originals:
         original = _gh_api("GET", f"{_API}/{repo}/issues/{originals[0]}", token)
         if "pull_request" in original:
-            return _fail(f"close: duplicate_of #{originals[0]} ist ein PR")
+            return _fail(t("steps.issue.close_duplicate_of_is_a", v1=originals[0]))
         payload.update(state_reason="duplicate", duplicate_issue_id=original["id"])
         # Vor dem Schließen: schlägt das Umhängen fehl, bleibt das Issue offen.
         moved = _move_dependents(repo, number, original, token)
@@ -224,7 +228,7 @@ def _close(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     _gh_api("PATCH", f"{_API}/{repo}/issues/{number}", token, payload)
     summary = f"Issue #{number} geschlossen" + (f" ({payload['state_reason']})" if "state_reason" in payload else "")
     if moved:
-        summary += f"; Blocker umgehängt auf #{originals[0]}: {', '.join(moved)}"
+        summary += t("steps.issue.blockers_moved_to", v1=originals[0], v2=", ".join(moved))
     return {"ok": True, "summary": summary}
 
 
@@ -261,7 +265,7 @@ def _list(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     """Andere Issues (ohne PRs und ohne Issue `number`) als Textliste in `emit`."""
     state = (_text(step, "state", ctx) or "open").strip().lower()
     if state not in _STATES:
-        return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
+        return _fail(t("steps.issue.state_invalid_allowed", state=state, v2=", ".join(_STATES)))
     limit = max(1, int(step.get("limit", LIST_LIMIT)))
     query = {"state": state, "per_page": _PER_PAGE, "sort": "updated", "direction": "desc"}
     labels = _labels(step.get("labels"), ctx)
@@ -304,9 +308,9 @@ def _block(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     refs = blocked_by[:MAX_BLOCKERS]
     refs += [n for n in _refs(_text(step, "prerequisite", ctx) or "", number) if n not in refs]
     if not refs:
-        return {"ok": True, "summary": f"Issue #{number}: keine Blocker"}
+        return {"ok": True, "summary": t("steps.issue.issue_no_blockers", number=number)}
     existing = {b.get("number") for b in _gh_dependencies(repo, number, token)}
-    linked, skipped = [], [f"#{n} (über Limit {MAX_BLOCKERS})" for n in dropped]
+    linked, skipped = [], [t("steps.issue.over_limit", n=n, v2=MAX_BLOCKERS) for n in dropped]
     for ref in refs:
         if ref in existing:
             linked.append(f"#{ref}")
@@ -316,7 +320,7 @@ def _block(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
         except urllib.error.HTTPError as e:
             if e.code not in (404, 410):  # gelöscht/nicht vorhanden → halluzinierte Referenz
                 raise
-            skipped.append(f"#{ref} (nicht gefunden)")
+            skipped.append(t("steps.issue.not_found", ref=ref))
             continue
         if "pull_request" in blocker or blocker.get("state") != "open":
             skipped.append(f"#{ref} ({'PR' if 'pull_request' in blocker else 'geschlossen'})")
@@ -326,7 +330,7 @@ def _block(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     ctx["blockers"] = ", ".join(linked)
     summary = f"Issue #{number} blocked by: {', '.join(linked) or '—'}"
     if skipped:
-        summary += f"; übersprungen: {', '.join(skipped)}"
+        summary += t("steps.issue.skipped", v1=", ".join(skipped))
     return {"ok": True, "summary": summary}
 
 

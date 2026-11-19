@@ -1423,8 +1423,8 @@ function roFields(obj, skip) {
 function roSourceNote(name, loop) {
   const generated = loop in (graphGenerated[name] || {});
   const use = ((graphDrafts[name] || { loops: {} }).loops[loop] || {}).use;
-  const src = generated ? "generiert aus dem <code>relay:</code>-Block" : `vom Template <b>${esc(use || "?")}</b>`;
-  return `<div class="ge-empty">read-only — ${src}; ändern nur in der YAML</div>`;
+  const src = generated ? t("graph.roGenerated") : t("graph.roTemplate", { use: `<b>${esc(use || "?")}</b>` });
+  return `<div class="ge-empty">${t("graph.roNote", { src })}</div>`;
 }
 
 function generatedLoopCard(name, loop) {

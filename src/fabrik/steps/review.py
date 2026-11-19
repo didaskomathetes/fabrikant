@@ -22,6 +22,7 @@ import os
 
 from ..context import _substitute
 from ..failures import failed
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..spec_sources import resolve_relative
 from .agent import _step_agent_backend
@@ -105,11 +106,11 @@ def _check_cold_critic(model: str, ctx: dict, label: str) -> dict | None:
     ``label`` leitet die Fehlermeldung ein (``review-Step``, ``pr_review``).
     Liefert ein ``failed``-Result oder None, wenn das Modell passt."""
     if not model:
-        return failed(f"{label}: model fehlt (Pflicht)", FailureKind.ENVIRONMENT)
+        return failed(_t("steps.review.model_missing_required", label=label), FailureKind.ENVIRONMENT)
     builder_model = (ctx.get("last_agent_model") or "").strip()
     if builder_model and builder_model == model:
         return failed(
-            f"{label}: model muss ≠ Builder-Modell sein ({model}) — Cold Critic ist der Punkt",
+            _t("steps.review.model_must_be_builder_model", label=label, model=model),
             FailureKind.ENVIRONMENT,
         )
     return None
@@ -122,7 +123,7 @@ def _finding_label(f: dict) -> str:
 
 def _summarize_findings(findings: list[dict], n: int = SUMMARY_FINDINGS) -> str:
     """Die ersten ``n`` Findings einzeilig für die Step-Summary; leer → ``ohne Findings``."""
-    return "; ".join(_finding_label(f) for f in findings[:n]) or "ohne Findings"
+    return "; ".join(_finding_label(f) for f in findings[:n]) or _t("steps.review.without_findings")
 
 
 def _review_field(verdict: dict, model: str, **extra) -> dict:
@@ -149,12 +150,12 @@ def _step_review(ctx: dict, step: dict, emit) -> dict:
     if not target:
         target = (ctx.get("last_agent_output") or "").strip()
     if not target:
-        return failed("review-Step: nichts zu reviewen (kein target, kein Agent-Output davor)", FailureKind.ENVIRONMENT)
+        return failed(_t("steps.review.review_step_nothing_to_review"), FailureKind.ENVIRONMENT)
     target = _substitute(target, ctx)
     if step.get("prompt_file"):
         pf = resolve_relative(step["prompt_file"], ctx.get("spec_path"))
         if not pf.is_file():
-            return failed(f"review-Step: prompt_file fehlt: {pf}", FailureKind.ENVIRONMENT)
+            return failed(_t("steps.review.review_step_prompt_file_missing", pf=pf), FailureKind.ENVIRONMENT)
         prompt = _substitute(pf.read_text(encoding="utf-8").strip(), ctx)
     else:
         prompt = _REVIEW_TEMPLATE.replace("{target}", target)
@@ -166,7 +167,7 @@ def _step_review(ctx: dict, step: dict, emit) -> dict:
     if verdict is None:
         return {
             "ok": False,
-            "summary": "review-Step: kein JSON-Verdict im Agent-Output",
+            "summary": _t("steps.review.review_step_no_json_verdict"),
             "output": res.get("output", ""),
             "usage": res.get("usage"),
         }

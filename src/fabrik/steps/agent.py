@@ -13,6 +13,7 @@ from ..backends._oneshot import OneShotCliBackend
 from ..context import _cap, _substitute, step_workdir
 from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
 from ..gitops import github_env, subprocess_env, token_overrides
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..spec_sources import resolve_relative
@@ -32,10 +33,10 @@ def _step_agent(ctx: dict, step: dict, emit) -> dict:
     if not prompt and step.get("prompt_file"):
         pf = resolve_relative(step["prompt_file"], ctx.get("spec_path"))
         if not pf.is_file():
-            return failed(f"prompt_file fehlt: {pf}", FailureKind.ENVIRONMENT)
+            return failed(_t("steps.agent.prompt_file_missing", pf=pf), FailureKind.ENVIRONMENT)
         prompt = pf.read_text(encoding="utf-8").strip()
     if not prompt:
-        return failed("agent-step: prompt oder prompt_file fehlt", FailureKind.ENVIRONMENT)
+        return failed(_t("steps.agent.agent_step_prompt_or_prompt"), FailureKind.ENVIRONMENT)
     prompt = _substitute(prompt, ctx) + render_extra_context(ctx, step, emit)
     backend_name = (step.get("backend") or os.environ.get("FABRIK_AGENT_BACKEND", "")).strip()
     if backend_name:
@@ -43,7 +44,7 @@ def _step_agent(ctx: dict, step: dict, emit) -> dict:
     # Legacy: Agent-CLI via cmd (z.B. claude -p {prompt_file})
     cmd = (step.get("cmd") or "").strip()
     if not cmd:
-        emit("  ⚠ agent-step ohne cmd/backend — übersprungen (keine Agent-CLI konfiguriert)")
+        emit(_t("steps.agent.agent_step_without_cmd_backend"))
         return {"ok": True, "summary": "skipped (no agent backend)"}
     prompt_file = config.RUNS_DIR / ctx["project"] / f"{ctx['run_id']}-{step.get('name', 'agent')}.prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +204,7 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
             be.extra_env = {**token_overrides(), **subprocess_env()}
         return None
     if not isinstance(be, OneShotCliBackend):
-        return f"github_identity: nur für CLI-Backends (claude_code, codex, copilot), nicht {be.name}"
+        return _t("steps.agent.github_identity_only_for_cli", v1=be.name)
     try:
         be.extra_env = github_env(role)
     except (RuntimeError, ValueError) as e:
@@ -266,22 +267,25 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     stale_after = int(str(step.get("stale_after") or os.environ.get("FABRIK_AGENT_STALE_AFTER", 900)))
     if backend_name not in known_backends():
         raise ConfigError(
-            f"agent-step: unbekanntes Backend '{backend_name}' (verfügbar: {', '.join(known_backends())})"
+            _t(
+                "steps.agent.agent_step_unknown_backend_available",
+                backend_name=backend_name,
+                v2=", ".join(known_backends()),
+            )
         )
     endpoint = (step.get("endpoint") or os.environ.get("FABRIK_AGENT_ENDPOINT", "")).strip()
     model = (step.get("model") or os.environ.get("FABRIK_AGENT_MODEL", "")).strip()
     if backend_name == "opencode":
         if not endpoint or not model:
             return failed(
-                "opencode-Backend: endpoint/model fehlen "
-                "(step.endpoint/model oder FABRIK_AGENT_ENDPOINT + FABRIK_AGENT_MODEL)",
+                _t("steps.agent.opencode_backend_endpoint_model_missing"),
                 FailureKind.ENVIRONMENT,
             )
     elif backend_name not in ("codex", "copilot") and not model:
         # claude_code: endpoint ist irrelevant (CLI-Backend), nur model nötig
         # (codex/copilot: model optional — die CLI hat ein Default-Modell)
         return failed(
-            f"{backend_name}-Backend: model fehlt (step.model oder FABRIK_AGENT_MODEL)", FailureKind.ENVIRONMENT
+            _t("steps.agent.backend_model_missing_step_model", backend_name=backend_name), FailureKind.ENVIRONMENT
         )
     be: AgentBackend = create_backend(backend_name, step, endpoint, model, stale_after)
     identity_err = _apply_github_identity(be, step)
@@ -345,7 +349,14 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                     # erreicht ist, wird der Fehler gemeldet (ADR 0012).
                     err_streak += 1
                     last_err = str(e)
-                    emit(f"  ⚠ agent({backend_name}): Backend-Fehler ({str(e)[:80]}) — Retry (Fehler #{err_streak})")
+                    emit(
+                        _t(
+                            "steps.agent.agent_backend_error_retry_error",
+                            backend_name=backend_name,
+                            v2=str(e)[:80],
+                            err_streak=err_streak,
+                        )
+                    )
                     time.sleep(min(30, 5 * err_streak))
                     continue
                 err_streak = 0
@@ -362,9 +373,14 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                     if last.get("retryable") and attempt < max_retries:
                         wait = 5 * (attempt + 1)
                         emit(
-                            f"  ⚠ agent({backend_name}): transienter Fehler "
-                            f"({str(last.get('text', ''))[:80]}) — Retry in {wait}s "
-                            f"(Versuch {attempt + 2}/{max_retries + 1})"
+                            _t(
+                                "steps.agent.agent_transient_error_retry_in",
+                                backend_name=backend_name,
+                                v2=str(last.get("text", ""))[:80],
+                                wait=wait,
+                                v4=attempt + 2,
+                                v5=max_retries + 1,
+                            )
                         )
                         carry = _agent_usage(last, backend_name, model, carry)
                         time.sleep(wait)
@@ -394,7 +410,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 _record_cost(lg, sname, usage, last)
                 if last_err:
                     return failed(
-                        f"agent timeout nach {timeout}s (session {sid}) · Backend-Fehler: {last_err[:120]}",
+                        _t("steps.agent.agent_timeout_after_s_session", timeout=timeout, sid=sid, v3=last_err[:120]),
                         FailureKind.TRANSIENT,
                         usage=usage,
                     )
@@ -445,12 +461,12 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 "usage": usage,
             }
         # for-Loop ohne return beendet = unerreichbar (jeder Pfad bricht ab).
-        raise RuntimeError(f"agent({backend_name}): Retry-Loop ohne Ergebnis (session {sid})")
+        raise RuntimeError(_t("steps.agent.agent_retry_loop_without_result", backend_name=backend_name, sid=sid))
     except Exception:
         if sid:  # Orphan-Schutz: Exception mid-Run bricht die Session ab (H3)
             try:
                 be.cancel(sid, workdir)
-                emit(f"  ⚠ agent session {sid} nach Exception abgebrochen")
+                emit(_t("steps.agent.agent_session_aborted_after_exception", sid=sid))
             except Exception:
                 pass
         raise

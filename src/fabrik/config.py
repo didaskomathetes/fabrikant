@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .i18n import t
+
 # src/fabrik/config.py → 3 Ebenen hoch = Projekt-Root (fabrik/)
 FABRIK_HOME = Path(os.environ.get("FABRIK_HOME", Path(__file__).resolve().parent.parent.parent))
 
@@ -197,7 +199,9 @@ def run_store_backend() -> str:
     """Aktives Run-Store-Backend aus ``FABRIK_RUN_STORE`` (Default ``sql``); unbekannt → ValueError."""
     backend = os.environ.get(RUN_STORE_ENV, RUN_STORE_SQL).strip().lower() or RUN_STORE_SQL
     if backend not in RUN_STORE_BACKENDS:
-        raise ValueError(f"{RUN_STORE_ENV}={backend!r}: erwartet eines von {', '.join(RUN_STORE_BACKENDS)}")
+        raise ValueError(
+            t("config.expected_one_of", v1=RUN_STORE_ENV, backend=backend, v3=", ".join(RUN_STORE_BACKENDS))
+        )
     return backend
 
 

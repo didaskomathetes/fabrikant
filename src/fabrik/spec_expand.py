@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .i18n import t
+
 try:
     import yaml
 except ImportError:
@@ -103,13 +105,13 @@ def _check_vars(spec_vars) -> list[str]:
     if spec_vars is None:
         return []
     if not isinstance(spec_vars, dict):
-        return ["vars muss ein Mapping sein"]
+        return [t("spec_expand.vars_must_be_a_mapping")]
     errs = []
     for k in spec_vars:
         if not isinstance(k, str) or not _PLACEHOLDER_RE.fullmatch("{" + k + "}"):
-            errs.append(f"vars: Schlüssel {k!r} ist kein Identifikator")
+            errs.append(t("spec_expand.vars_key_is_not_an", k=k))
         elif k in RESERVED_VARS:
-            errs.append(f"vars: {k!r} ist eine reservierte Laufzeit-Variable")
+            errs.append(t("spec_expand.vars_is_a_reserved_runtime", k=k))
     return errs
 
 
@@ -130,19 +132,19 @@ def find_template(name: str, spec_path: Path | None) -> Path | None:
 def _load_template(name: str, spec_path: Path | None) -> dict:
     f = find_template(name, spec_path)
     if f is None:
-        raise ValueError(f"Template {name!r} nicht gefunden (Name: Buchstaben/Ziffern/_/-)")
+        raise ValueError(t("spec_expand.template_not_found_name_letters", name=name))
     data = yaml.safe_load(f.read_text()) if yaml else None
     if not isinstance(data, dict) or not isinstance(data.get("loop"), dict):
-        raise ValueError(f"Template {name!r} ({f}): Mapping mit 'loop:' erwartet")
+        raise ValueError(t("spec_expand.template_mapping_with_loop_expected", name=name, f=f))
     if not isinstance(data.get("params") or {}, dict):
-        raise ValueError(f"Template {name!r} ({f}): params muss ein Mapping sein")
+        raise ValueError(t("spec_expand.template_params_must_be_a", name=name, f=f))
     return data
 
 
 def _insert_steps(steps: list, insert, where: str) -> list:
     """`insert: [{after: <step>, steps: [...]}]` — Zusatz-Steps hinter benannte Template-Steps."""
     if not isinstance(insert, list):
-        raise ValueError(f"{where}: insert muss eine Liste sein")
+        raise ValueError(t("spec_expand.insert_must_be_a_list", where=where))
     steps = list(steps)
     for item in insert:
         if (
@@ -150,10 +152,10 @@ def _insert_steps(steps: list, insert, where: str) -> list:
             or not isinstance(item.get("after"), str)
             or not isinstance(item.get("steps"), list)
         ):
-            raise ValueError(f"{where}: insert erwartet {{after: <step>, steps: [...]}}")
+            raise ValueError(t("spec_expand.insert_expects", where=where))
         names = [s.get("name") if isinstance(s, dict) else None for s in steps]
         if item.get("after") not in names:
-            raise ValueError(f"{where}: insert.after {item.get('after')!r} ist kein Step des Templates")
+            raise ValueError(t("spec_expand.insert_after_is_not_a", where=where, v2=item.get("after")))
         i = names.index(item["after"]) + 1
         steps[i:i] = item["steps"]
     return steps
@@ -166,20 +168,22 @@ def expand_loop(lname: str, ldef: dict, spec_vars: dict, spec_path: Path | None)
     params = tpl.get("params") or {}
     given = ldef.get("with") or {}
     if not isinstance(given, dict):
-        raise ValueError(f"{where}: with muss ein Mapping sein")
+        raise ValueError(t("spec_expand.with_must_be_a_mapping", where=where))
     if "insert" in ldef and "steps" in ldef:
-        raise ValueError(f"{where}: insert kann nicht mit eigenen steps kombiniert werden")
+        raise ValueError(t("spec_expand.insert_cannot_be_combined_with", where=where))
     # Unbekannte with-Keys (Tippfehler) sonst: stiller Default oder Literal-{x} zur Laufzeit.
     unknown = sorted(set(given) - set(params) - placeholders(tpl["loop"]) - placeholders(ldef.get("insert")))
     if unknown:
-        raise ValueError(f"{where}: Template {ldef['use']!r} kennt with-Parameter nicht: {', '.join(unknown)}")
+        raise ValueError(
+            t("spec_expand.template_does_not_know_with", where=where, v2=ldef["use"], v3=", ".join(unknown))
+        )
     given = substitute(given, spec_vars)
     mapping = {k: v for k, v in params.items() if v is not None}
     mapping.update(spec_vars)
     mapping.update(given)
     missing = sorted(k for k, v in params.items() if v is None and k not in mapping)
     if missing:
-        raise ValueError(f"{where}: Template {ldef['use']!r} braucht Parameter: {', '.join(missing)}")
+        raise ValueError(t("spec_expand.template_needs_parameters", where=where, v2=ldef["use"], v3=", ".join(missing)))
     loop = substitute(tpl["loop"], mapping)
     if "insert" in ldef:
         loop["steps"] = _insert_steps(loop.get("steps") or [], substitute(ldef["insert"], mapping), where)
@@ -191,7 +195,7 @@ def expand_spec(data: dict, spec_path: Path | None = None) -> dict:
     """Templates expandieren, dann `vars` überall einsetzen. Gibt eine neue Spec zurück."""
     errs = _check_vars(data.get("vars"))
     if errs:
-        raise ValueError("Spec ungültig:\n  " + "\n  ".join(errs))
+        raise ValueError(t("spec_expand.spec_invalid") + "\n  ".join(errs))
     spec_vars = resolve_vars(data.get("vars") or {})
     loops = data.get("loops")
     out = dict(data)

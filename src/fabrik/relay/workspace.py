@@ -24,6 +24,7 @@ from pathlib import Path
 from .. import config, gitops
 from ..apicommit import ApiPusher
 from ..failures import GitError
+from ..i18n import t
 from ..secrets import _redact
 from .model import Handoff, HandoffError
 
@@ -161,11 +162,11 @@ class Workspace:
             if self.merge_head():
                 self.git("merge", "--quit")  # Soft-Reset ist mitten im Merge nicht erlaubt
             self.git("reset", "-q", "--soft", start)
-            notes.append("Agent-Commits in den Worktree zurückgeholt (fabrik committet)")
+            notes.append(t("relay.workspace.agent_commits_pulled_back_into"))
         merge = self.merge_head()
         if merge and not self._is_ancestor(merge, f"origin/{base}"):
             self.git("merge", "--quit")
-            notes.append(f"Merge von {merge[:8]} verworfen (kein Stand von origin/{base})")
+            notes.append(t("relay.workspace.merge_of_discarded_no_state", v1=merge[:8], base=base))
         return notes
 
     def _is_ancestor(self, rev: str, of: str) -> bool:
@@ -241,7 +242,9 @@ class Workspace:
         Projekt mit `commit_via: api`: von GitHub signierte API-Commits statt `git push`."""
         branch = branch_name(self.issue)
         if self.current_branch() != branch:
-            raise RuntimeError(f"Push verweigert: Worktree steht auf {self.current_branch()!r}, nicht {branch!r}")
+            raise RuntimeError(
+                t("relay.workspace.push_refused_worktree_is_on", v1=self.current_branch(), branch=branch)
+            )
         if gitops.commit_via() == gitops.COMMIT_VIA_API:
 
             def fetch(name: str) -> None:
@@ -327,7 +330,7 @@ class Workspace:
         """Harness-interne Datei (PRIVATE_DIR); fehlt sie, lief der vorherige Step nicht."""
         f = self.private / name
         if not f.is_file():
-            raise RuntimeError(f"{PRIVATE_DIR}/{name} fehlt — lief der vorherige Relay-Step?")
+            raise RuntimeError(t("relay.workspace.missing_did_the_previous_relay", v1=PRIVATE_DIR, name=name))
         return f
 
     def _write_json(self, name: str, data: object) -> None:
@@ -365,7 +368,7 @@ class Workspace:
             handoff = self.read_handoff()
         except HandoffError as e:
             return None, str(e)
-        return (handoff, None) if handoff else (None, "Datei fehlt")
+        return (handoff, None) if handoff else (None, t("relay.workspace.file_missing"))
 
     # ── Audit (Blind-Phase) ──────────────────────────────────────────────────
     def hide(self, paths: list[str], base: str) -> list[str]:
@@ -436,18 +439,18 @@ def copy_evidence(src: Path, dest: Path) -> list[str]:
     skipped: list[str] = []
     for entry in sorted(src.iterdir()):
         if entry.name == SKIPPED_EVIDENCE_FILE:
-            skipped.append(f"`{entry.name}`: Manifest-Name (wird durch diese Liste ersetzt)")
+            skipped.append(t("relay.workspace.manifest_name_replaced_by_this", v1=entry.name))
         elif entry.is_symlink():
             skipped.append(f"`{entry.name}`: Symlink")
         elif entry.is_dir():
-            skipped.append(f"`{entry.name}/`: Ordner (Arbeitskopie, nicht veröffentlicht)")
+            skipped.append(t("relay.workspace.directory_working_copy_not_published", v1=entry.name))
         elif not entry.is_file():
-            skipped.append(f"`{entry.name}`: keine reguläre Datei")
+            skipped.append(t("relay.workspace.not_a_regular_file", v1=entry.name))
         elif (size := entry.stat().st_size) > MAX_EVIDENCE_FILE_BYTES:
             skipped.append(f"`{entry.name}`: {size} B > {MAX_EVIDENCE_FILE_BYTES} B")
         else:
             shutil.copy2(entry, dest / entry.name)
     if skipped:
         lines = "\n".join(f"- {s}" for s in skipped)
-        (dest / SKIPPED_EVIDENCE_FILE).write_text(f"# Nicht veröffentlicht\n\n{lines}\n", encoding="utf-8")
+        (dest / SKIPPED_EVIDENCE_FILE).write_text(t("relay.workspace.not_published", lines=lines), encoding="utf-8")
     return skipped

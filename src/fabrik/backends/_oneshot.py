@@ -39,6 +39,7 @@ import uuid
 
 from .. import procs, sandbox
 from ..agentenv import build_agent_env
+from ..i18n import t
 from ..runmodel import FailureKind
 
 # Ende von stderr, das ein `failed`-Ergebnis mitnimmt — groß genug für einen Crash-Banner samt
@@ -120,7 +121,7 @@ class OneShotCliBackend:
 
     def diagnose(self) -> str | None:
         cli = self._cli()
-        return None if shutil.which(cli) else f"{self.name}-Backend: CLI '{cli}' nicht im PATH"
+        return None if shutil.which(cli) else t("backends._oneshot.backend_cli_not_in_path", v1=self.name, cli=cli)
 
     def unhealthy_kind(self) -> FailureKind:
         return FailureKind.ENVIRONMENT  # unhealthy heißt hier: CLI nicht im PATH
@@ -133,7 +134,7 @@ class OneShotCliBackend:
     def send_prompt(self, session_id: str, prompt: str, directory: str) -> None:
         s = self._sessions[session_id]
         if s["proc"] is not None:
-            raise RuntimeError(f"{self.name}: One-Shot-Backend — genau ein Prompt pro Session")
+            raise RuntimeError(t("backends._oneshot.one_shot_backend_exactly_one", v1=self.name))
         kwargs: dict = dict(
             cwd=directory,
             stdin=subprocess.PIPE,
@@ -157,7 +158,7 @@ class OneShotCliBackend:
             raise
         procs.track(proc)  # Server-Ende beendet die Gruppe mit (eigene Session: kein Ctrl+C)
         if proc.stdin is None:  # pragma: no cover — stdin=PIPE, nur Typsicherheit
-            raise RuntimeError(f"{self.name}: Popen ohne stdin")
+            raise RuntimeError(t("backends._oneshot.popen_without_stdin", v1=self.name))
         proc.stdin.write(prompt.encode())
         proc.stdin.close()
         # stdin ist zu (EOF für die CLI). Auf None setzen, damit poll()s
@@ -192,7 +193,7 @@ class OneShotCliBackend:
                         **base,
                         "status": "failed",
                         "retryable": True,
-                        "text": f"{self.name} inaktiv seit {int(age)}s (keine Aktivität)",
+                        "text": t("backends._oneshot.inactive_for_s_no_activity", v1=self.name, v2=int(age)),
                     }
             return {**base, "status": "running", "text": ""}
         procs.untrack(proc)

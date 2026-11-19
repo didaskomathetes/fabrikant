@@ -26,6 +26,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import RowMapping, delete, insert, select, update
 
 from . import config, secrets
+from .i18n import t as _t
 from .runschema import connections as connections_table
 
 log = logging.getLogger("fabrik.connections")
@@ -77,20 +78,24 @@ class Connection:
         from .backends.registry import known_backends
 
         if not NAME_RE.match(self.name):
-            raise InvalidConnection("Name: 1-48 Zeichen aus Buchstaben, Ziffern, '.', '_', '-' (nicht am Anfang)")
+            raise InvalidConnection(_t("connections.name_1_48_characters_from"))
         if self.kind is ConnectionKind.AGENT:
             if self.driver not in known_backends():
-                raise InvalidConnection(f"Backend '{self.driver}' unbekannt (verfügbar: {', '.join(known_backends())})")
+                raise InvalidConnection(
+                    _t("connections.backend_unknown_available", v1=self.driver, v2=", ".join(known_backends()))
+                )
             if self.driver == "opencode" and not (self.endpoint and self.model):
-                raise InvalidConnection("opencode braucht endpoint und model")
+                raise InvalidConnection(_t("connections.opencode_needs_endpoint_and_model"))
         elif self.driver in llm_cli.CLIS:
             if not self.model:
-                raise InvalidConnection("model fehlt")
+                raise InvalidConnection(_t("connections.model_missing"))
         elif self.driver == DRIVER_HTTP:
             if not (self.endpoint and self.model):
-                raise InvalidConnection("http-Provider brauchen endpoint und model")
+                raise InvalidConnection(_t("connections.http_providers_need_endpoint_and"))
         else:
-            raise InvalidConnection(f"LLM-Treiber '{self.driver}' unbekannt (http, {', '.join(llm_cli.CLIS)})")
+            raise InvalidConnection(
+                _t("connections.llm_driver_unknown_http", v1=self.driver, v2=", ".join(llm_cli.CLIS))
+            )
 
     def public(self) -> dict[str, Any]:
         """API-Form ohne Secret (``secret_set`` zeigt nur, OB eines gesetzt ist)."""
@@ -119,7 +124,7 @@ class Connection:
         try:
             parsed_kind = ConnectionKind(kind)
         except ValueError:
-            raise InvalidConnection(f"kind muss 'llm' oder 'agent' sein, nicht '{kind}'") from None
+            raise InvalidConnection(_t("connections.kind_must_be_llm_or", kind=kind)) from None
 
         def text(key: str) -> str:
             return str(data.get(key) or "").strip()
@@ -185,7 +190,7 @@ def decrypt(token: str) -> str:
         return Fernet(_load_key()).decrypt(token.encode()).decode()
     except (InvalidToken, ValueError) as e:
         raise UndecryptableSecret(
-            f"Secret nicht entschlüsselbar (falscher {SECRET_KEY_ENV} / {SECRET_KEY_FILE}?) — neu eintragen"
+            _t("connections.secret_cannot_be_decrypted_wrong", v1=SECRET_KEY_ENV, v2=SECRET_KEY_FILE)
         ) from e
 
 
@@ -218,9 +223,7 @@ def _from_row(row: RowMapping, *, with_secret: bool = True) -> Connection:
         secret = decrypt(row["secret"]) if with_secret else ""
     except UndecryptableSecret:
         unreadable = True
-        log.warning(
-            "Connection '%s': Secret nicht entschlüsselbar (%s / %s?)", row["name"], SECRET_KEY_ENV, SECRET_KEY_FILE
-        )
+        log.warning(_t("connections.connection_s_secret_cannot_be"), row["name"], SECRET_KEY_ENV, SECRET_KEY_FILE)
     return Connection(
         name=row["name"],
         kind=ConnectionKind(row["kind"]),
@@ -312,7 +315,7 @@ def save_connection(conn: Connection, *, keep_secret: bool = False) -> Connectio
     with _store().write_tx() as db:
         existing = db.execute(select(t.c.kind, t.c.secret).where(t.c.name == conn.name)).mappings().first()
         if existing and existing["kind"] != conn.kind.value:
-            raise InvalidConnection(f"'{conn.name}' existiert bereits als {existing['kind']}-Verbindung")
+            raise InvalidConnection(_t("connections.already_exists_as_a_connection", v1=conn.name, v2=existing["kind"]))
         values["secret"] = existing["secret"] if (keep_secret and existing) else encrypt(conn.secret)
         if conn.is_default:
             db.execute(update(t).where(t.c.kind == conn.kind.value).values(is_default=False))
@@ -349,7 +352,7 @@ def secret_values() -> list[str]:
         _secret_cache_at = now
     except Exception:
         _secret_cache_failed_at = now
-        log.warning("Connection-Secrets fürs Masking nicht ladbar — Masking lückenhaft", exc_info=True)
+        log.warning(_t("connections.connection_secrets_could_not_be"), exc_info=True)
         return []
     return _secret_cache
 
@@ -372,7 +375,11 @@ def unknown_references(spec: Mapping[str, Any]) -> list[str]:
     if not refs:
         return []
     known = {c.name for c in list_connections(ConnectionKind.AGENT, with_secret=False)}
-    return [f"{loop}/{step}: Agent-Verbindung '{name}' unbekannt" for loop, step, name in refs if name not in known]
+    return [
+        _t("connections.agent_connection_unknown", loop=loop, step=step, name=name)
+        for loop, step, name in refs
+        if name not in known
+    ]
 
 
 # ---------------------------------------------------------------- Auflösung im Step
@@ -391,15 +398,17 @@ def apply_to_step(step: dict, *, with_secret: bool = True) -> dict:
     if name:
         conn = get_connection(name, ConnectionKind.AGENT, with_secret=with_secret)
         if conn is None:
-            raise InvalidConnection(f"Agent-Verbindung '{name}' unbekannt")
+            raise InvalidConnection(_t("connections.agent_connection_unknown_2", name=name))
         if step.get("backend") and step["backend"] != conn.driver:
-            raise InvalidConnection(f"backend '{step['backend']}' passt nicht zur Verbindung '{name}' ({conn.driver})")
+            raise InvalidConnection(
+                _t("connections.backend_does_not_match_connection", v1=step["backend"], name=name, v3=conn.driver)
+            )
     else:
         conn = default_connection(ConnectionKind.AGENT, with_secret=with_secret)
         if conn is None or (step.get("backend") and step["backend"] != conn.driver):
             return step
     if conn.secret_unreadable:
-        raise UndecryptableSecret(f"Verbindung '{conn.name}': Secret nicht entschlüsselbar — neu eintragen")
+        raise UndecryptableSecret(_t("connections.connection_secret_cannot_be_decrypted", v1=conn.name))
     out = dict(step)
     for step_key, attr in _STEP_FIELDS:
         value = getattr(conn, attr)

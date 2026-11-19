@@ -13,6 +13,7 @@ from .. import config
 from ..context import _substitute
 from ..failures import parse_kind
 from ..gitops import _gh_api, _gh_token, _http_post
+from ..i18n import t as _t
 from ..runmodel import FAILED_RUN_STATUSES, FAILED_STEP_STATUSES, FailureKind
 from ..secrets import redact_log_tail
 
@@ -143,13 +144,12 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
 
 
 # Umgebungsfehler löst nur ein Mensch — im Alert sofort erkennbar machen (ADR 0035 Nr. 5).
-_NEEDS_HUMAN = "⚠ environment — braucht einen Menschen"
 
 
 def _kind_label(kind: FailureKind) -> str:
     """Fehlerklasse für den Alert-Text; ``environment`` hervorgehoben. Der Issue-Titel
     nutzt den kurzen ``kind.value`` (dort wäre der lange Label zu plump)."""
-    return _NEEDS_HUMAN if kind is FailureKind.ENVIRONMENT else kind.value
+    return _t("notify.needs_human") if kind is FailureKind.ENVIRONMENT else kind.value
 
 
 def _failure_reason(record: dict) -> tuple[str, str]:
@@ -196,14 +196,14 @@ def _find_open_alert(gh: str, labels: list[str], marker: str, tok: str) -> int |
         issues: object = _gh_api("GET", f"https://api.github.com/repos/{gh}/issues?{q}", tok)
         if not isinstance(issues, list):  # `_gh_api` ist auf dict typisiert, die Liste-API liefert list
             log.warning(
-                "Alert-Lookup: unerwartete API-Antwort (erwartet list, erhalten %s) — kein Match",
+                _t("steps.notify.alert_lookup_unexpected_api_response"),
                 type(issues).__name__,
             )
             return None
         for it in issues:
             if not isinstance(it, dict):  # unerwartetes Element (Shape-Change) → überspringen
                 log.warning(
-                    "Alert-Lookup: unerwartetes Listenelement (%s) — übersprungen",
+                    _t("steps.notify.alert_lookup_unexpected_list_item"),
                     type(it).__name__,
                 )
                 continue
@@ -215,7 +215,7 @@ def _find_open_alert(gh: str, labels: list[str], marker: str, tok: str) -> int |
             return None
         if page >= config.ALERT_LOOKUP_MAX_PAGES:  # Rate-Limit-Schutz: Lookup abbrechen
             log.warning(
-                "Alert-Lookup: %d Seiten (%d Issues) ohne Match — Lookup abgebrochen, Duplikat möglich",
+                _t("steps.notify.alert_lookup_d_pages_d"),
                 page,
                 page * per_page,
             )
@@ -251,7 +251,7 @@ def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
         # Fail-safe: Lookup kaputt (API-Fehler) → lieber Duplikat als
         # verlorener Alert (Stacktrace wird geloggt, Exception nicht
         # verschluckt).
-        log.exception("Alert-Lookup fehlgeschlagen (Repo %s) — Duplikat möglich", gh)
+        log.exception(_t("steps.notify.alert_lookup_failed_repo_s"), gh)
         existing = None
     if existing is not None:
         try:
@@ -276,9 +276,12 @@ def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
                     f"{step}: {_sanitize_title(reason)}"
                 ),
                 "body": (
-                    f"{run_info}\n\n"
-                    f"Weitere Runs mit demselben Fehlerbild werden hier kommentiert.\n"
-                    f"Run: `fabrik runs --project {record['project']}`\n\n{marker}"
+                    _t(
+                        "steps.notify.further_runs_with_the_same",
+                        run_info=run_info,
+                        v2=record["project"],
+                        marker=marker,
+                    )
                 ),
                 "labels": labels,
             },
@@ -288,7 +291,7 @@ def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
         return f"issue:error({e})"
     num = res.get("number") if isinstance(res, dict) else None
     if num is None:  # API-Antwort ohne Issue-Nummer (Shape-Change, Fehler-Body)
-        return "issue:error(keine Issue-Nummer in API-Antwort)"
+        return _t("steps.notify.issue_error_no_issue_number")
     return f"issue#{num}"
 
 
@@ -298,8 +301,8 @@ def _step_notify(ctx: dict, step: dict, emit) -> dict:
     slack = step.get("slack")
     webhooks = step.get("webhooks") or []
     if not slack and not webhooks:
-        emit(f"  ℹ notify: keine Kanäle konfiguriert — '{msg}' nur im Log")
-        return {"ok": True, "summary": "log only (keine Kanäle)"}
+        emit(_t("steps.notify.notify_no_channels_configured_only", msg=msg))
+        return {"ok": True, "summary": _t("steps.notify.log_only_no_channels")}
     codes = []
     if slack:
         url = slack["url"] if isinstance(slack, dict) else str(slack)

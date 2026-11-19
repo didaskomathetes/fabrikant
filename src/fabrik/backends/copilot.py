@@ -27,6 +27,7 @@ import json
 import os
 
 from ..agentenv import COPILOT_AUTH_VARS, passthrough
+from ..i18n import t as _t
 from ._oneshot import OneShotCliBackend
 
 # JSONL-Event-Typen des Copilot-CLI-Schemas (defensiv gelesen — das Schema ist
@@ -100,13 +101,13 @@ class CopilotBackend(OneShotCliBackend):
                     **base,
                     "status": "failed",
                     "retryable": True,
-                    "text": "copilot: Session endete ohne finale Antwort (JSONL ohne result-Event) — möglicher API-Ausfall oder abgeschnittener Stream",
+                    "text": _t("backends.copilot.copilot_session_ended_without_a"),
                 }
             return {**base, "status": "done", "text": text}
         # Exit ≠ 0: der eigentliche Grund steht oft im `session.error`-Event des
         # JSONL-Streams (z. B. Quota/HTTP 402), nicht in stderr — den voranstellen,
         # damit die Fehlermeldung die Ursache zeigt statt nur der ersten stdout-Zeile.
-        detail = (err.strip() or out.strip() or "copilot: kein Output")[:300]
+        detail = (err.strip() or out.strip() or _t("backends.copilot.copilot_no_output"))[:300]
         reason = self._session_error_reason(out)
         text = f"copilot: {reason}\n{detail}" if reason else detail
         return {**base, "status": "failed", "text": text}

@@ -80,3 +80,9 @@ def test_lines_pr_with_and_without_title():
 def test_from_dict_roundtrips_pr_fields():
     d = {"reason": "step", "pr": "http://p", "pr_title": "T"}
     assert ApprovalRequest.from_dict(d).to_dict() == d
+
+
+def test_lines_follow_fabrik_lang(monkeypatch):
+    req = ApprovalRequest(reason="step", condition="c", why="w", what="x", permissions=["p"])
+    monkeypatch.setenv("FABRIK_LANG", "en")
+    assert req.lines() == ["condition: c", "why: w", "what: x", "permissions: p"]
