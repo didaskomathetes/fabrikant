@@ -1,13 +1,13 @@
-"""`on_slack`-Trigger: Slack-Channels pollen, Signatur matchen, deduplizieren (ADR 0040).
+"""`on_slack` trigger: poll Slack channels, match signature, deduplicate (ADR 0040).
 
-Reine Logik hinter einem kleinen Client-Port (`SlackClient`); der Scheduler
-startet den Run danach über dieselbe Funktion wie `on_issue` (`_safe_run` mit
-Initial-Variablen) — kein eigener Run-Pfad. Das Bot-Token kommt nur aus der
-Env-Variable `token_env`; es steht weder in Spec, State noch Logs.
+Pure logic behind a small client port (`SlackClient`); the scheduler
+then starts the run via the same function as `on_issue` (`_safe_run` with
+initial variables) — no separate run path. The bot token comes only from the
+env variable `token_env`; it appears neither in spec, state nor logs.
 
-`alert_text` ist untrusted (beliebige Slack-Nutzer): in `llm`-Steps nur über
-`untrusted: [alert_text]`, in `shell`-Steps nur über `env:` verwenden (ADR 0008).
-`alert_channel` (Whitelist) und `alert_ts` (Format-geprüft) sind unkritisch."""
+`alert_text` is untrusted (arbitrary Slack users): in `llm` steps use it only via
+`untrusted: [alert_text]`, in `shell` steps only via `env:` (ADR 0008).
+`alert_channel` (whitelist) and `alert_ts` (format-checked) are uncritical."""
 
 from __future__ import annotations
 
@@ -30,21 +30,21 @@ DEFAULT_POLL_S = 60
 HISTORY_LIMIT = 100  # Nachrichten pro conversations.history-Aufruf
 HTTP_TIMEOUT_S = 15
 SEEN_MAX = 500  # Retention der Dedup-Historie pro Channel
-ACCEPTED_SUBTYPES = (None, "bot_message")  # Joins, Edits, Deletes usw. sind keine Alerts
+ACCEPTED_SUBTYPES = (None, "bot_message")  # Joins, edits, deletes etc. are not alerts
 TRIGGER_PREFIX = "on_slack:"
 VAR_TEXT, VAR_CHANNEL, VAR_TS = "alert_text", "alert_channel", "alert_ts"
 ALERT_VARS = (VAR_TEXT, VAR_CHANNEL, VAR_TS)  # Laufzeit-Variablen eines on_slack-Runs
 SLACK_TS_RE = re.compile(r"^\d{1,12}\.\d{1,9}$")  # Slack-`ts`, z. B. "1729650000.000100"
 CHANNEL_ID_RE = re.compile(r"^[A-Z0-9]{2,32}$")  # Channel-/DM-ID, z. B. "C0123ALERTS"
 
-# Scheduler-Thread (poll) und Worker-Threads (mark_started) schreiben dieselbe
-# State-Datei; ohne Lock gehen Updates verloren (→ Doppel-Run eines pending Alerts).
+# Scheduler thread (poll) and worker threads (mark_started) write the same
+# state file; without a lock updates are lost (→ double run of a pending alert).
 _state_lock = threading.Lock()
 log = logging.getLogger("fabrik.slack")
 
 
 class SlackError(Exception):
-    """Slack-API-Fehler (ohne Token im Text)."""
+    """Slack API error (without token in the text)."""
 
 
 @dataclass(frozen=True)
@@ -67,20 +67,20 @@ class Alert:
 
 @dataclass
 class History:
-    """Ergebnis eines History-Abrufs; `complete=False` = Seitenlimit erreicht, ältere fehlen."""
+    """Result of a history fetch; `complete=False` = page limit reached, older ones missing."""
 
     messages: list[dict] = field(default_factory=list)
     complete: bool = True
 
 
 class SlackClient(Protocol):
-    """Port für Slack; in Tests durch einen Fake ersetzt."""
+    """Port for Slack; replaced by a fake in tests."""
 
     def history(self, channel: str, oldest: str, *, latest: str | None, max_pages: int) -> History:
-        """Nachrichten von `channel` mit `oldest` < `ts` < `latest`, neueste zuerst (wie Slack).
+        """Messages of `channel` with `oldest` < `ts` < `latest`, newest first (like Slack).
 
-        Höchstens `max_pages` Seiten; wurde abgebrochen, ist `complete` False und es
-        fehlen die ältesten Nachrichten des Bereichs."""
+        At most `max_pages` pages; if aborted, `complete` is False and the oldest
+        messages of the range are missing."""
         ...
 
 
@@ -106,7 +106,7 @@ class WebApiClient:
         return list(data.get("messages") or []), next_cursor
 
     def history(self, channel: str, oldest: str, *, latest: str | None, max_pages: int) -> History:
-        """Folgt Slacks `next_cursor` (neueste zuerst) bis zur letzten Seite oder `max_pages`."""
+        """Follows Slack's `next_cursor` (newest first) to the last page or `max_pages`."""
         result = History()
         cursor = ""
         for _ in range(max_pages):
@@ -119,12 +119,12 @@ class WebApiClient:
 
 
 def token_from_env(trig: dict) -> str:
-    """Bot-Token aus der in `token_env` benannten Env-Variable (leer = nicht gesetzt)."""
+    """Bot token from the env variable named in `token_env` (empty = not set)."""
     return os.environ.get(str(trig.get("token_env") or ""), "")
 
 
 def matches(text: str, pattern: str | None) -> bool:
-    """Signatur-Match: Regex-Suche; ohne Pattern passt jede Nachricht."""
+    """Signature match: regex search; without a pattern every message matches."""
     return pattern is None or re.search(pattern, text) is not None
 
 
@@ -133,7 +133,7 @@ def _valid_ts(value: object) -> bool:
 
 
 def _ts_float(value: object) -> float:
-    """`ts` als Zahl für Vergleiche; ungültig → 0.0."""
+    """`ts` as a number for comparisons; invalid → 0.0."""
     return float(value) if _valid_ts(value) else 0.0  # type: ignore[arg-type]
 
 
@@ -143,12 +143,12 @@ def max_pages(trig: dict) -> int:
 
 
 def max_alert_chars(trig: dict) -> int:
-    """Längenlimit für `alert_text` (`max_alert_chars`, validiert in specs)."""
+    """Length limit for `alert_text` (`max_alert_chars`, validated in specs)."""
     return int(float(trig.get("max_alert_chars", config.SLACK_DEFAULT_MAX_ALERT_CHARS)))  # "20"/"20.0" aus `vars`
 
 
 def cap_text(text: str, limit: int) -> str:
-    """`text` auf `limit` Zeichen kürzen, mit Marker samt Originallänge."""
+    """Truncate `text` to `limit` characters, with a marker including the original length."""
     if len(text) <= limit:
         return text
     return text[:limit] + t("slack.truncation_marker", total=len(text))
@@ -159,7 +159,7 @@ def _is_alert(msg: dict) -> bool:
 
 
 def validate_trigger(trig: dict, where: str) -> list[str]:
-    """Spec-Validierung eines `on_slack`-Triggers."""
+    """Spec validation of an `on_slack` trigger."""
     errs = []
     if "token" in trig:
         errs.append(t("slack.on_slack_token_does_not", where=where))
@@ -212,24 +212,24 @@ def poll(
     include_pending: bool = False,
     defer_seen: bool = False,
 ) -> list[Alert]:
-    """Neue passende Alerts aller Whitelist-Channels, älteste zuerst.
+    """New matching alerts of all whitelist channels, oldest first.
 
-    State pro Channel: `cursor` (höchster gesehener `ts`), `pending` (noch nicht
-    erfolgreich geclaimte Alerts, nur mit `defer_seen`) und `seen` (gestartete
-    `ts`). Erster Poll eines Channels setzt nur den Cursor auf `now_ts` (kein
-    Backlog-Run). Mit `defer_seen` bleibt ein Treffer in `pending`, bis
-    `mark_started` ihn übernimmt; `include_pending` liefert ihn bei jedem Poll
-    erneut (verworfene Runs werden so wiederholt). Fehler eines Channels brechen
-    die anderen nicht ab (Cursor bleibt dort stehen).
+    State per channel: `cursor` (highest seen `ts`), `pending` (alerts not yet
+    successfully claimed, only with `defer_seen`) and `seen` (started
+    `ts`). The first poll of a channel only sets the cursor to `now_ts` (no
+    backlog run). With `defer_seen` a hit stays in `pending` until
+    `mark_started` takes it over; `include_pending` returns it again on every poll
+    (discarded runs are thus repeated). An error of one channel does not abort
+    the others (cursor stays there).
 
-    Seitenlimit (`max_pages`): Slack liefert neueste zuerst. Wird das Limit
-    erreicht, verarbeitet der Poll die gelieferten (neuesten) Nachrichten, lässt
-    `cursor` stehen und merkt sich die Lücke (`gap_latest` = ältester gelieferter
-    `ts`, `gap_high` = neuester). Folge-Polls lesen nur die Lücke
-    (`cursor` < ts < `gap_latest`), bis sie vollständig ist; erst dann springt
-    `cursor` auf `gap_high`. So geht keine Nachricht verloren. Der Slack-Abruf läuft
-    außerhalb des State-Locks; die Ergebnisse werden in den frisch geladenen
-    State gemischt, damit parallele `mark_started`-Updates nicht verloren gehen."""
+    Page limit (`max_pages`): Slack returns newest first. If the limit is
+    reached, the poll processes the delivered (newest) messages, leaves
+    `cursor` and remembers the gap (`gap_latest` = oldest delivered
+    `ts`, `gap_high` = newest). Follow-up polls read only the gap
+    (`cursor` < ts < `gap_latest`) until it is complete; only then
+    `cursor` jumps to `gap_high`. This way no message is lost. The Slack fetch runs
+    outside the state lock; the results are merged into the freshly loaded
+    state so parallel `mark_started` updates are not lost."""
     channels = list(dict.fromkeys(str(c) for c in trig.get("channels") or []))
     with _state_lock:
         state = _load(path)
@@ -272,10 +272,10 @@ def _channel_state(state: dict, channel: str) -> dict:
     if not isinstance(st, dict):
         st = state[channel] = {}
     if st.get("cursor") is not None and not _valid_ts(st["cursor"]):
-        st["cursor"] = None  # defekter Cursor → wie Erstpoll (kein Backlog-Run)
+        st["cursor"] = None  # broken cursor → like first poll (no backlog run)
     st.setdefault("cursor", None)
     if st["cursor"] is None or not (_valid_ts(st.get("gap_latest")) and _valid_ts(st.get("gap_high"))):
-        st.pop("gap_latest", None)  # Lücke nur gültig mit Cursor und beiden Grenzen
+        st.pop("gap_latest", None)  # gap only valid with cursor and both bounds
         st.pop("gap_high", None)
     for key in ("seen", "pending"):
         if not isinstance(st.get(key), list):
@@ -293,7 +293,7 @@ def _pending_alerts(st: dict, channel: str) -> dict[str, Alert]:
 
 @dataclass(frozen=True)
 class _MatchRules:
-    """Filter/Format eines Polls: Signatur, Textlimit, pending- oder seen-Modus."""
+    """Filter/format of a poll: signature, text limit, pending or seen mode."""
 
     pattern: str | None
     max_chars: int
@@ -303,11 +303,11 @@ class _MatchRules:
 def _merge_history(
     st: dict, channel: str, history: History, pending: dict[str, Alert], rules: _MatchRules
 ) -> list[Alert]:
-    """Abgerufene Nachrichten in den Channel-State übernehmen; liefert die neuen Alerts.
+    """Take fetched messages into the channel state; returns the new alerts.
 
-    Vollständiger Abruf → `cursor` auf den neuesten bekannten `ts` (inkl. `gap_high`),
-    Lücke erledigt. Seitenlimit erreicht → `cursor` bleibt, Lücke bis zum ältesten
-    gelieferten `ts` wird gemerkt (siehe `poll`)."""
+    Complete fetch → `cursor` to the newest known `ts` (incl. `gap_high`),
+    gap done. Page limit reached → `cursor` stays, gap up to the oldest
+    delivered `ts` is remembered (see `poll`)."""
     msgs = sorted(
         (m for m in history.messages if isinstance(m, dict) and _valid_ts(m.get("ts"))),
         key=lambda m: _ts_float(m["ts"]),
@@ -333,7 +333,7 @@ def _merge_history(
 
 
 def _accept(st: dict, channel: str, msg: dict, pending: dict[str, Alert], rules: _MatchRules) -> Alert | None:
-    """Eine Nachricht prüfen und als Alert in `pending` bzw. `seen` vermerken (sonst None)."""
+    """Check a message and record it as an alert in `pending` or `seen` (otherwise None)."""
     ts = msg["ts"]
     if ts in st["seen"] or ts in pending or not _is_alert(msg) or not matches(msg["text"], rules.pattern):
         return None
@@ -350,7 +350,7 @@ def _accept(st: dict, channel: str, msg: dict, pending: dict[str, Alert], rules:
 
 
 def mark_started(path: Path, alert: Alert) -> None:
-    """Geclaimten Alert von `pending` nach `seen` (persistente Dedup) verschieben."""
+    """Move a claimed alert from `pending` to `seen` (persistent dedup)."""
     with _state_lock:
         state = _load(path)
         st = state.get(alert.channel)

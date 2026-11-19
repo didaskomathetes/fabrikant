@@ -1,27 +1,26 @@
-"""Step: pr (GitHub-PR anlegen).
+"""Step: pr (create a GitHub PR).
 
-Idempotent (Duplikat-Schutz): existiert für den Head-Branch bereits ein
-offener PR, wird er wiederverwendet — GitHub erlaubt ohnehin nur einen
-offenen PR pro Head-Branch, der Create-Call würde also fehlschlagen.
-Wichtig für Re-Runs/Resumes desselben Issues.
+Idempotent (duplicate protection): if an open PR already exists for the head
+branch, it is reused — GitHub allows only one open PR per head branch
+anyway, so the create call would fail. Important for re-runs/resumes of the same issue.
 
-Leerer Head: hat `head` keine Commits vor `base` (z. B. Agent fand nichts zu
-tun, `ship` war ein No-Op), lehnt GitHub den Create mit 422 ab. Der Step prüft
-das vorher über die Compare-API und beendet den Run dann erfolgreich (`done`)
-statt mit Fehler — Folge-Steps (Review, Merge) hätten keinen PR.
+Empty head: if `head` has no commits ahead of `base` (e.g. the agent found nothing to
+do, `ship` was a no-op), GitHub rejects the create with 422. The step checks
+this beforehand via the compare API and then ends the run successfully (`done`)
+instead of with an error — subsequent steps (review, merge) would have no PR.
 
-Labels: `POST /pulls` kennt keinen labels-Parameter (GitHub ignoriert ihn
-stillschweigend) — sie werden danach über den Issues-Endpunkt gesetzt, auch
-für wiederverwendete PRs (additiv, idempotent; heilt PRs ohne Label).
+Labels: `POST /pulls` has no labels parameter (GitHub silently
+ignores it) — they are set afterwards via the issues endpoint, also
+for reused PRs (additive, idempotent; heals PRs without labels).
 
-Step-Def:
+Step def:
     type: pr
-    repo: <Pflicht, "owner/name">
-    base: <optional, Default: main>
-    head: <optional, Default: aktueller Branch>
-    title: <optional, {vars}-substituiert>
-    body: <optional, {vars}-substituiert>
-    labels: <optional, Liste; z. B. [fabrik] — Review-Loops filtern oft nach Label>
+    repo: <required, "owner/name">
+    base: <optional, default: main>
+    head: <optional, default: current branch>
+    title: <optional, {vars}-substituted>
+    body: <optional, {vars}-substituted>
+    labels: <optional, list; e.g. [fabrik] — review loops often filter by label>
 """
 
 from __future__ import annotations
@@ -53,8 +52,8 @@ def _step_pr(ctx: dict, step: dict) -> dict:
     )
     validate_branch_name(base_branch)
     validate_branch_name(head_branch)
-    # Duplikat-Check vor dem Create: offener PR mit gleichem Head-Branch →
-    # wiederverwenden (Re-Runs/Resumes legen keinen zweiten PR an).
+    # Duplicate check before create: open PR with the same head branch →
+    # reuse (re-runs/resumes do not create a second PR).
     labels = _normalize_labels(step.get("labels") or [])
     existing = _find_open_pr(repo_cfg, head_branch, token)
     if existing is not None:
@@ -81,8 +80,8 @@ def _step_pr(ctx: dict, step: dict) -> dict:
 
 
 def _export_pr(ctx: dict, pr: dict) -> None:
-    """PR-Daten für Folge-Steps (pr_review, pr_merge, human_gate) in den ctx:
-    ``pr_number``, ``pr_url`` und ``pr_title`` (Approval-Kontext, ADR 0011)."""
+    """PR data for subsequent steps (pr_review, pr_merge, human_gate) into the ctx:
+    ``pr_number``, ``pr_url`` and ``pr_title`` (approval context, ADR 0011)."""
     ctx["pr_number"] = str(pr["number"])
     if pr.get("html_url"):
         ctx["pr_url"] = pr["html_url"]
@@ -91,16 +90,16 @@ def _export_pr(ctx: dict, pr: dict) -> None:
 
 
 def _add_labels(repo_cfg: str, number: Any, labels: list[str], token: str) -> None:
-    """Labels an PR #number hängen (Issues-API; PRs sind Issues). Leer → kein Call."""
+    """Attach labels to PR #number (issues API; PRs are issues). Empty → no call."""
     if labels:
         _gh_api("POST", f"https://api.github.com/repos/{repo_cfg}/issues/{number}/labels", token, {"labels": labels})
 
 
 def _find_open_pr(repo_cfg: str, head_branch: str, token: str) -> dict | None:
-    """Ersten offenen PR mit Head-Branch `<owner>:<head_branch>` suchen.
+    """Find the first open PR with head branch `<owner>:<head_branch>`.
 
-    Deterministischer Duplikat-Check vor dem Create (GitHub erlaubt genau
-    einen offenen PR pro Head-Branch). None, wenn keiner existiert.
+    Deterministic duplicate check before create (GitHub allows exactly
+    one open PR per head branch). None if none exists.
     """
     owner = repo_cfg.split("/", 1)[0]
     res = _gh_api(
@@ -114,13 +113,13 @@ def _find_open_pr(repo_cfg: str, head_branch: str, token: str) -> dict | None:
 
 
 def _commits_ahead(repo_cfg: str, base_branch: str, head_branch: str, token: str) -> int | None:
-    """Anzahl Commits von `head_branch` vor `base_branch` (Compare-API), None wenn unbekannt.
+    """Number of commits of `head_branch` ahead of `base_branch` (compare API), None if unknown.
 
-    Branch-Namen werden vollständig percent-encoded (`safe=""`): ein `/` im
-    Namen (z. B. `release/1.0`) wäre im Compare-Pfad sonst ein zweites
-    Pfad-Segment → 404. HTTP-Fehler (z. B. 404, weil der Head-Branch auf dem
-    Remote nicht existiert) → None: der Create-Pfad liefert dann die klarere
-    GitHub-Fehlermeldung."""
+    Branch names are fully percent-encoded (`safe=""`): a `/` in the
+    name (e.g. `release/1.0`) would otherwise be a second path segment in the
+    compare path → 404. HTTP errors (e.g. 404 because the head branch does not exist
+    on the remote) → None: the create path then delivers the clearer
+    GitHub error message."""
     try:
         res = _gh_api(
             "GET",
@@ -134,11 +133,11 @@ def _commits_ahead(repo_cfg: str, base_branch: str, head_branch: str, token: str
 
 
 def _normalize_labels(labels: Iterable[Any]) -> list[str]:
-    """labels-Config → API-Liste: als Strings, leer gefiltert, dedupliziert.
+    """labels config → API list: as strings, empties filtered, deduplicated.
 
-    Reihenfolge bleibt erhalten; nicht-String-Werte (z. B. Zahlen, None,
-    Dicts aus YAML) werden per `str()` coerced. Leere Liste → kein
-    Labels-Call.
+    Order is preserved; non-string values (e.g. numbers, None,
+    dicts from YAML) are coerced via `str()`. Empty list → no
+    labels call.
     """
     seen: set[str] = set()
     out: list[str] = []

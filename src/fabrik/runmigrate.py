@@ -1,19 +1,19 @@
-"""Einmaliger Import der Run-JSON und des Session-Logs in den SQL-Run-Store (ADR 0034 Nr. 8, #278).
+"""One-off import of the run JSON and the session log into the SQL run store (ADR 0034 no. 8, #278).
 
-Quelle: die JSON-Records unter ``runs/`` (:meth:`fabrik.runstore.RunStore.raw_records`) und die
-Datei ``sessionlog.db`` (nur lesend). Ziel: der SQL-Store unter der DB-URL.
+Source: the JSON records under ``runs/`` (:meth:`fabrik.runstore.RunStore.raw_records`) and the
+file ``sessionlog.db`` (read only). Target: the SQL store under the DB URL.
 
-- Idempotent: Runs, die im Ziel schon existieren, werden übersprungen; Session-Log-Einträge nur
-  für Runs übernommen, die im Ziel noch keine Events haben.
-- Nie still: jeder nicht abbildbare Record (defektes JSON, Schema-/Constraint-Verletzung, doppelte
-  Id) und jede Abweichung zwischen JSON und gespeichertem Run (typisiert verglichen) steht mit
-  Run-Id und Grund im :class:`MigrationReport`. Sessions ohne Run-Record werden gezählt.
-- ``dry_run``: derselbe Import in eine In-Memory-DB (volle Constraint-Prüfung); das Ziel wird nur
-  gelesen, und nur wenn es schon existiert.
-- Archivierung: nach einem echten Import werden die übernommenen Run-JSON nach ``archive_dir``
-  verschoben (Layout wie ``runs/``) — nie gelöscht; defekte/abweichende Records bleiben liegen.
+- Idempotent: runs that already exist in the target are skipped; session-log entries are only
+  taken over for runs that have no events in the target yet.
+- Never silent: every record that cannot be mapped (broken JSON, schema/constraint violation, duplicate
+  id) and every discrepancy between JSON and stored run (compared typed) is listed with
+  run id and reason in the :class:`MigrationReport`. Sessions without a run record are counted.
+- ``dry_run``: the same import into an in-memory DB (full constraint check); the target is only
+  read, and only if it already exists.
+- Archiving: after a real import the imported run JSON is moved to ``archive_dir``
+  (layout like ``runs/``) — never deleted; broken/deviating records stay.
 
-Run-Logs bleiben Dateien.
+Run logs remain files.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ _ARTIFACT_COLS = ("step_name", "kind", "path", "created_at")
 
 @dataclass(frozen=True)
 class MigrationIssue:
-    """Ein nicht (oder abweichend) übernommener Record."""
+    """A record that was not (or only deviatingly) imported."""
 
     run_id: str
     source: str
@@ -71,7 +71,7 @@ class MigrationReport:
 
     @property
     def ok(self) -> bool:
-        """True, wenn jeder gefundene Run übernommen wurde bzw. schon existierte, ohne Abweichung."""
+        """True if every found run was imported or already existed, without discrepancy."""
         return not self.issues
 
     def lines(self) -> list[str]:
@@ -105,7 +105,7 @@ def _run_diff(before, after) -> list[str]:
 
 
 def _target_state(url: str) -> tuple[set[str], set[str]]:
-    """(Run-Ids, Run-Ids mit Events) eines bestehenden Ziels, nur lesend; fehlt es → leer."""
+    """(run ids, run ids with events) of an existing target, read only; if it is missing → empty."""
     parsed = make_url(url)
     if parsed.get_backend_name() == "sqlite" and not (parsed.database and Path(parsed.database).is_file()):
         return set(), set()
@@ -124,11 +124,11 @@ def _target_state(url: str) -> tuple[set[str], set[str]]:
 def _import_runs(
     source: RunStore, store: SqlRunStore, existing: set[str], report: MigrationReport
 ) -> tuple[set[str], set[Path]]:
-    """JSON-Records → Store; liefert (Ids aller Runs im Ziel, Pfade der archivierbaren JSON-Dateien).
+    """JSON records → store; returns (ids of all runs in the target, paths of the archivable JSON files).
 
-    Archivierbar ist nur, was im Ziel steht und ohne Abweichung importiert wurde (oder schon
-    vorhanden war). Defekte/abweichende Records und Dubletten bleiben liegen (exakte Pfade,
-    nicht nur Ids — eine Dublette teilt die Id mit einem archivierbaren Record)."""
+    Only what is in the target and was imported without discrepancy (or already
+    existed) is archivable. Broken/deviating records and duplicates stay (exact paths,
+    not just ids — a duplicate shares the id with an archivable record)."""
     present = set(existing)
     archivable: set[Path] = set()
     seen: dict[str, str] = {}
@@ -169,10 +169,10 @@ def _import_runs(
 
 
 def archive_runs(runs_dir: Path, archive_dir: Path, archivable: set[Path]) -> tuple[int, list[MigrationIssue]]:
-    """Archivierbare Run-JSON nach ``archive_dir`` verschieben (Layout wie ``runs/``); nie löschen.
+    """Move archivable run JSON to ``archive_dir`` (layout like ``runs/``); never delete.
 
-    Kollision am Ziel (Datei liegt schon dort) → Quelle bleibt liegen + Issue.
-    Liefert (Anzahl verschobener Dateien, Issues)."""
+    Collision at the target (file already there) → source stays + issue.
+    Returns (number of moved files, issues)."""
     moved = 0
     issues: list[MigrationIssue] = []
     for path in sorted(archivable):
@@ -202,7 +202,7 @@ def _rows(conn: sqlite3.Connection, sql: str, session_id: str, cols: tuple[str, 
 def _import_session_log(
     sessionlog_path: Path, store: SqlRunStore, present: set[str], with_events: set[str], report: MigrationReport
 ) -> None:
-    """Events/Checkpoints/Artefakte aus ``sessionlog.db`` für Runs im Ziel (ohne eigene Events)."""
+    """Events/checkpoints/artifacts from ``sessionlog.db`` for runs in the target (without own events)."""
     if not sessionlog_path.is_file():
         return
     src = sqlite3.connect(f"file:{sessionlog_path}?mode=ro", uri=True)
@@ -260,10 +260,10 @@ def migrate_runs(
     dry_run: bool = False,
     archive_dir: Path | None = None,
 ) -> MigrationReport:
-    """Run-JSON + Session-Log nach ``db_url`` importieren (bzw. Probelauf in eine In-Memory-DB).
+    """Import run JSON + session log to ``db_url`` (or dry run into an in-memory DB).
 
-    ``archive_dir``: danach werden die übernommenen Run-JSON dorthin verschoben (nie gelöscht) —
-    nur im echten Import, nicht im Probelauf."""
+    ``archive_dir``: afterwards the imported run JSON is moved there (never deleted) —
+    only in the real import, not in the dry run."""
     report = MigrationReport(dry_run=dry_run, target=make_url(db_url).render_as_string())
     existing, with_events = _target_state(db_url)
     if dry_run:

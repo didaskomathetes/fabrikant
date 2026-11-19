@@ -1,25 +1,25 @@
-"""fabrik — die Software-Fabrik.
+"""fabrik — the software factory.
 
-Dev-Loops als deklarativer Code: Specs (YAML) → Engine (Steps) → Runs (JSON).
-P0: lokal, dateibasiert, stateless pro Run. P1: Agent-Backends + SQLite.
-P2: Postgres + Queue + stateless Worker. P3: ECS/GKE.
+Dev loops as declarative code: specs (YAML) → engine (steps) → runs (JSON).
+P0: local, file-based, stateless per run. P1: agent backends + SQLite.
+P2: Postgres + queue + stateless workers. P3: ECS/GKE.
 
-Modul-Layout:
-  config    Pfade, Konstanten, Env-Loading, Zeit, Locks
-  secrets   Secret-Masking (env + Env-Dateien + Spec-env)
-  context   Output-Cap, Variable-Substitution, Risk-Tier-Policy
-  specs     Spec-Loading & -Validierung
-  branches  Branch-Overrides (state/branch-overrides.json, ADR 0004)
-  gitops    Git-Worktrees, GitHub-API, HTTP-POST
-  runs      Run-Records (runs/<projekt>/<id>.json)
-  runsearch Run-Historie: Filter, Freitext, Cursor-Paginierung (Issue #163, ADR 0034)
-  backends/ Agent-Backends (opencode)
-  steps/    Step-Implementierungen (shell, git, pr, agent, http, llm, notify)
-  engine    run_loop, Step-Dispatch, Worker-Pool
-  scheduler Cron + on_file + on_issue + on_pr
-  chat      Chat-Befehle + LLM-Copilot
+Module layout:
+  config    paths, constants, env loading, time, locks
+  secrets   secret masking (env + env files + spec env)
+  context   output cap, variable substitution, risk-tier policy
+  specs     spec loading & validation
+  branches  branch overrides (state/branch-overrides.json, ADR 0004)
+  gitops    git worktrees, GitHub API, HTTP POST
+  runs      run records (runs/<project>/<id>.json)
+  runsearch run history: filters, full-text, cursor pagination (issue #163, ADR 0034)
+  backends/ agent backends (opencode)
+  steps/    step implementations (shell, git, pr, agent, http, llm, notify)
+  engine    run_loop, step dispatch, worker pool
+  scheduler cron + on_file + on_issue + on_pr
+  chat      chat commands + LLM copilot
   server    HTTP API + UI
-  cli       Kommandozeile
+  cli       command line
 """
 
 from . import config, llm

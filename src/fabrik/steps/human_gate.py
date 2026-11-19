@@ -1,30 +1,30 @@
-"""Step: human_gate — Kritizitäts-Check am PR-Diff, Pause bei kritisch (ADR 0010).
+"""Step: human_gate — criticality check on the PR diff, pause if critical (ADR 0010).
 
-Menschliche Freigabe NUR bei kritischen Entscheidungen: ADR-Änderung, großes
-Refactoring/Architektur-Change, Datenverlust, GDPR, …. Nicht kritisch →
-der Loop läuft autonom weiter (Auto-Merge).
+Human approval ONLY for critical decisions: ADR change, large
+refactoring/architecture change, data loss, GDPR, …. Not critical →
+the loop continues autonomously (auto-merge).
 
-Erkennung (kombiniert, fail-closed):
-  - Heuristiken: ADR-Pfade, Diff-Größe (Dateien/Zeilen), Keywords
-  - LLM-Meinung: Verdict-JSON {"gate_critical", "gate_reason"}; Provider per
-    ``provider:`` pinnen (sonst der aktive Chat-Provider, UI-umschaltbar)
-  - Statisch "immer menschlich" bleibt `approval: true` in der Loop-Spec.
+Detection (combined, fail-closed):
+  - Heuristics: ADR paths, diff size (files/lines), keywords
+  - LLM opinion: verdict JSON {"gate_critical", "gate_reason"}; pin the provider via
+    ``provider:`` (otherwise the active chat provider, switchable in the UI)
+  - Statically "always human" remains `approval: true` in the loop spec.
 
-Kritisch → Step liefert `needs_approval` → Engine pausiert den Run
-(needs_approval). Der ctx-Flag `human_gate_passed` wird vor der Pause
-persistiert; beim Resume erkenne ich den Flag und lasse den Run durch,
-ohne den Check zu wiederholen.
+Critical → the step returns `needs_approval` → the engine pauses the run
+(needs_approval). The ctx flag `human_gate_passed` is persisted before the pause;
+on resume I recognize the flag and let the run through
+without repeating the check.
 
-Step-Def:
+Step def:
     type: human_gate
     repo: owner/name
-    pr: {pr_number}        # optional; Default: ctx-Variable pr_number (pr-Step)
-    adr_paths: [docs/adr]  # Default: config.HUMAN_GATE_ADR_PATHS
-    max_files: 40          # Default: config.HUMAN_GATE_MAX_FILES
-    max_lines: 1500        # Default: config.HUMAN_GATE_MAX_LINES
-    keywords: [...]        # Default: config.HUMAN_GATE_KEYWORDS
-    llm: true              # LLM-Meinung (Default true)
-    provider: claude       # optional, wie llm-Step; ebenso model, max_tokens, timeout
+    pr: {pr_number}        # optional; default: ctx variable pr_number (pr step)
+    adr_paths: [docs/adr]  # default: config.HUMAN_GATE_ADR_PATHS
+    max_files: 40          # default: config.HUMAN_GATE_MAX_FILES
+    max_lines: 1500        # default: config.HUMAN_GATE_MAX_LINES
+    keywords: [...]        # default: config.HUMAN_GATE_KEYWORDS
+    llm: true              # LLM opinion (default true)
+    provider: claude       # optional, like llm step; likewise model, max_tokens, timeout
 """
 
 from __future__ import annotations
@@ -37,12 +37,12 @@ from ..i18n import t
 from .llm import _step_llm
 from .pr_review import _resolve_pr_number
 
-# Step-Keys, die an den llm-Step durchgereicht werden (Provider-Pinning, Budget).
+# Step keys passed on to the llm step (provider pinning, budget).
 _LLM_PASSTHROUGH_KEYS = ("provider", "model", "max_tokens", "timeout", "extra_context")
 
 
 def _heuristic_reasons(files: list[dict], step: dict) -> list[str]:
-    """Diff-Heuristiken: ADR-Pfade, Größe, Keywords. Liefert Gründe (leer = ok)."""
+    """Diff heuristics: ADR paths, size, keywords. Returns reasons (empty = ok)."""
     adr_paths = [str(p) for p in (step.get("adr_paths") or config.HUMAN_GATE_ADR_PATHS)]
     max_files = int(step.get("max_files", config.HUMAN_GATE_MAX_FILES))
     max_lines = int(step.get("max_lines", config.HUMAN_GATE_MAX_LINES))
@@ -90,7 +90,7 @@ def _llm_reason(files: list[dict], diff: str, ctx: dict, step: dict, emit) -> tu
 
 
 def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
-    # Resume nach menschlicher Freigabe: Flag aus record["vars"] — Check überspringen.
+    # Resume after human approval: flag from record["vars"] — skip the check.
     if str(ctx.get("human_gate_passed", "")) == "true":
         return {"ok": True, "summary": "human_gate: freigegeben (Resume)"}
     repo = str(step.get("repo") or "").strip()
@@ -109,7 +109,7 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
         llm_reason, res = _llm_reason(files, diff, ctx, step, emit)
         usage = res.get("usage")
         if not res.get("ok"):
-            # Fail-closed: ohne LLM-Meinung kein Auto-Merge.
+            # Fail-closed: without an LLM opinion no auto-merge.
             return failed(
                 f"human_gate: LLM-Check fehlgeschlagen (fail-closed): {res.get('summary', '')}",
                 from_result(res),
@@ -125,8 +125,8 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
             "summary": t("steps.human_gate.human_gate_pr_not_critical", pr_number=pr_number),
             "usage": usage,
         }
-    # Kritisch: Flag VOR der Pause setzen (wird per record["vars"] persistiert,
-    # damit der Resume-Run den Check nicht wiederholt).
+    # Critical: set the flag BEFORE the pause (persisted via record["vars"],
+    # so the resume run does not repeat the check).
     ctx["human_gate_passed"] = "true"
     what = t("human_gate.critical", reasons=" · ".join(reasons))
     emit(f"  ⚠ kritisch: {what}")

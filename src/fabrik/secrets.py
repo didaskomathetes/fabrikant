@@ -1,4 +1,4 @@
-"""Secret-Masking für Logs & Run-Records (env + Env-Dateien + Spec-env)."""
+"""Secret masking for logs & run records (env + env files + spec env)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ _EXTRA_SECRET_FILES = [
     config.FABRIK_HOME / "fabrik.env",
     Path(os.environ.get("FABRIK_ENV_FILE", "/root/.hermes/.env")),
 ]
-# Kürzere Werte werden nicht maskiert (sonst träfe das Masking beliebige kurze Wörter im Log).
+# Shorter values are not masked (otherwise the masking would hit arbitrary short words in the log).
 MIN_SECRET_LEN = 8
 _extra_secrets_cache: list[str] | None = None
 _env_lock = threading.Lock()
@@ -28,24 +28,24 @@ _sources: list[Callable[[], list[str]]] = []  # weitere Secret-Quellen (z. B. UI
 
 
 def register_source(source: Callable[[], list[str]]) -> None:
-    """Zusätzliche Quelle für Secret-Werte registrieren (idempotent)."""
+    """Register an additional source for secret values (idempotent)."""
     if source not in _sources:
         _sources.append(source)
 
 
 def _scan_environ() -> list[str]:
-    """Secret-Werte aus os.environ lesen (iteriert die Umgebung — nur zu ruhigen Zeitpunkten aufrufen)."""
+    """Read secret values from os.environ (iterates the environment — call only at quiet moments)."""
     return [v for k, v in os.environ.items() if v and len(v) >= MIN_SECRET_LEN and _SECRET_NAME_RE.search(k)]
 
 
-_env_secrets: list[str] = _scan_environ()  # Snapshot beim Import (Prozessstart, noch single-threaded)
+_env_secrets: list[str] = _scan_environ()  # Snapshot at import (process start, still single-threaded)
 
 
 def refresh_env_secrets() -> None:
-    """Env-Snapshot explizit neu einlesen (z. B. nach bewusstem Setzen eines Secrets in os.environ).
+    """Explicitly re-read the env snapshot (e.g. after deliberately setting a secret in os.environ).
 
-    Nicht im Hotpath aufrufen: die Iteration über os.environ ist nicht thread-sicher gegenüber
-    parallelen putenv/setenv-Aufrufen anderer Threads.
+    Do not call in the hot path: iterating over os.environ is not thread-safe against
+    parallel putenv/setenv calls of other threads.
     """
     global _env_secrets
     snapshot = _scan_environ()
@@ -54,9 +54,9 @@ def refresh_env_secrets() -> None:
 
 
 def _secrets() -> list[str]:
-    """Secret-Werte für Log-/Record-Masking (Env-Snapshot + Env-Dateien + Spec-env, gecacht).
+    """Secret values for log/record masking (env snapshot + env files + spec env, cached).
 
-    Iteriert os.environ bewusst NICHT (Segfault-Hazard bei parallelem setenv, Issue #13).
+    Deliberately does NOT iterate os.environ (segfault hazard with parallel setenv, issue #13).
     """
     global _extra_secrets_cache
     vals = list(_env_secrets)
@@ -85,14 +85,14 @@ def _redact(s: str) -> str:
 
 
 def _redact_record(record: dict) -> dict:
-    """Secrets in Record-Feldern maskieren, BEVOR der Record als JSON geschrieben
-    wird (Run-JSON ist per /api/run/{id} im UI lesbar — darf kein Token tragen)."""
+    """Mask secrets in record fields BEFORE the record is written as JSON
+    (run JSON is readable in the UI via /api/run/{id} — must carry no token)."""
     for s in record.get("steps", []):
         for k in ("summary", "output"):
             if s.get(k):
                 s[k] = _redact(s[k])
-        # Nested verify-Checks: Pro-Check-Output ist ein eigener Datapfad
-        # (z. B. Shell-Output mit Secrets) — muss mitgemasckt werden.
+        # Nested verify checks: per-check output is its own data path
+        # (e.g. shell output with secrets) — must be masked too.
         for v in s.get("verify") or []:
             for k in ("output", "summary"):
                 if v.get(k):
@@ -100,9 +100,9 @@ def _redact_record(record: dict) -> dict:
     for k in ("error", "note"):
         if record.get(k):
             record[k] = _redact(record[k])
-    # Approval-Kontext (was/Rechte/Issue): String-Werte maskieren, damit kein
-    # Secret (z. B. aus step.permissions oder einem cmd) in die UI-lesbare JSON
-    # gelangt.
+    # Approval context (what/permissions/issue): mask string values so no
+    # secret (e.g. from step.permissions or a cmd) ends up in the UI-readable
+    # JSON.
     appr = record.get("approval")
     if isinstance(appr, dict):
         for k, v in appr.items():
@@ -110,9 +110,9 @@ def _redact_record(record: dict) -> dict:
                 appr[k] = _redact(v)
             elif isinstance(v, list):
                 appr[k] = [_redact(x) if isinstance(x, str) else x for x in v]
-    # Run-Variablen (record['vars']): String-Werte maskieren — Variablen können
-    # Secrets tragen (z. B. Spec-env-Werte), der Record ist per /api/run/{id}
-    # im UI lesbar.
+    # Run variables (record['vars']): mask string values — variables can
+    # carry secrets (e.g. spec env values), the record is readable in the UI via
+    # /api/run/{id}.
     vars_ = record.get("vars")
     if isinstance(vars_, dict):
         for k, v in vars_.items():
@@ -122,19 +122,19 @@ def _redact_record(record: dict) -> dict:
 
 
 REDACTED = "[REDACTED]"
-# Pattern-basierte Redaction für Freitext (z. B. Alert-`log_tail`); ergänzt das
-# Wert-basierte `_redact`. Reihenfolge relevant: Private-Key-Blöcke zuerst.
+# Pattern-based redaction for free text (e.g. alert `log_tail`); complements the
+# value-based `_redact`. Order matters: private-key blocks first.
 _REDACT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # Private-Key-Block (auch abgeschnitten: ohne END-Zeile bis Textende)
+    # Private-key block (also truncated: without END line until end of text)
     (
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S),
         REDACTED,
     ),
-    # Bearer-Tokens (Authorization-Header o. ä.)
+    # Bearer tokens (Authorization header or similar)
     (re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1" + REDACTED),
     # AWS-Access-Key-IDs
     (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), REDACTED),
-    # Bekannte API-Key-Präfixe (OpenAI/Anthropic sk-, GitHub, Slack)
+    # Known API-key prefixes (OpenAI/Anthropic sk-, GitHub, Slack)
     (
         re.compile(
             r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|xox[abprs]-[A-Za-z0-9-]{10,})"
@@ -153,18 +153,18 @@ _REDACT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 
 
 def redact_text(text: str) -> str:
-    """Maskiert typische Secret-Muster (Bearer, API-/AWS-Keys, Private-Key-Blöcke,
-    key=/token=-Assignments) in Freitext durch `[REDACTED]`. Kann Fehlalarme
-    liefern (lieber zu viel als zu wenig maskieren)."""
+    """Masks typical secret patterns (bearer, API/AWS keys, private-key blocks,
+    key=/token= assignments) in free text with `[REDACTED]`. May produce
+    false positives (better to mask too much than too little)."""
     for pat, repl in _REDACT_PATTERNS:
         text = pat.sub(repl, text)
     return text
 
 
 def redact_log_tail(text: str) -> str:
-    """`redact_text` gesteuert über `config.ALERT_LOG_REDACTION`. Fail-safe: bei
-    einem Redaction-Fehler wird unredigiert zurückgegeben (+ Warning), damit
-    ein Alert nie verloren geht."""
+    """`redact_text` controlled via `config.ALERT_LOG_REDACTION`. Fail-safe: on
+    a redaction error the text is returned unredacted (+ warning), so
+    an alert is never lost."""
     if not config.ALERT_LOG_REDACTION:
         return text
     try:

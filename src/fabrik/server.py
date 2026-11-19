@@ -64,14 +64,14 @@ from .scheduler import Scheduler
 from .spec_expand import _load_template
 from .specs import SpecConflict, SpecUpdate, load_projects, load_spec_raw, save_spec, spec_hash, spec_path
 
-# Parameter, die GET /api/runs in den paginierten Such-Modus schalten.
+# Parameters that switch GET /api/runs into the paginated search mode.
 _RUN_SEARCH_PARAMS = ("q", "from", "to", "status", "loop", "cursor", "failure_kind")
 LEGACY_RUNS_LIMIT = 50  # Default `limit` der einfachen /api/runs-Liste
 
 
 def _chains_or_empty() -> list[retry_chains.RetryChain]:
-    """Alle Retry-Ketten für die Übersicht; ein unlesbarer Store (ADR 0036)
-    legt das Dashboard nicht lahm — leer + Log."""
+    """All retry chains for the overview; an unreadable store (ADR 0036)
+    does not cripple the dashboard — empty + log."""
     try:
         return retry_chains.ChainStore().all()
     except (OSError, ValueError) as e:
@@ -79,12 +79,12 @@ def _chains_or_empty() -> list[retry_chains.RetryChain]:
         return []
 
 
-# Routen mit eigener HMAC-Auth, die über den Tunnel-Host erreichbar bleiben.
+# Routes with their own HMAC auth that stay reachable via the tunnel host.
 INTAKE_PATH_PREFIXES = (webhook.WEBHOOK_PATH_PREFIX, alerts.ALERT_PATH_PREFIX)
 
 
 class RunStartResult(NamedTuple):
-    """Antwort von `_start_run`: JSON-Payload und HTTP-Status."""
+    """Response of `_start_run`: JSON payload and HTTP status."""
 
     payload: dict[str, Any]
     status: int
@@ -93,7 +93,7 @@ class RunStartResult(NamedTuple):
 class FabrikHandler(BaseHTTPRequestHandler):
     server_version = "fabrik/0.3"
 
-    def log_message(self, format: str, *args: object) -> None:  # leiser (Name wie in der Basisklasse)
+    def log_message(self, format: str, *args: object) -> None:  # quieter (name as in the base class)
         pass
 
     _who: auth.Principal | None = None  # Aufrufer des aktuellen Requests (None = auth none/anonym)
@@ -107,21 +107,21 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self._cors_headers()
         self.end_headers()
-        # Client hat die Verbindung schon geschlossen (z. B. Cancel)
+        # Client has already closed the connection (e.g. cancel)
         with contextlib.suppress(BrokenPipeError, ConnectionResetError):
             self.wfile.write(body)
 
     def _read_json(self) -> dict[str, Any] | None:
-        """Request-Body als JSON-Objekt lesen (leer → ``{}``).
+        """Read the request body as a JSON object (empty → ``{}``).
 
-        Bei ungültigem JSON oder ungültigem ``Content-Length`` (nichtnumerisch/negativ)
-        wird selbst ein 400 gesendet und ``None`` geliefert."""
+        On invalid JSON or an invalid ``Content-Length`` (non-numeric/negative)
+        a 400 is sent itself and ``None`` returned."""
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length < 0:
                 raise ValueError(length)
             payload = json.loads(self.rfile.read(length).decode() or "{}")
-        except (ValueError, UnicodeDecodeError):  # JSONDecodeError ist ein ValueError
+        except (ValueError, UnicodeDecodeError):  # JSONDecodeError is a ValueError
             self._json({"error": t("api.invalid_json")}, 400)
             return None
         if not isinstance(payload, dict):
@@ -130,16 +130,16 @@ class FabrikHandler(BaseHTTPRequestHandler):
         return payload
 
     def _query_params(self) -> dict[str, str]:
-        """Query-String des Requests als dict (URL-dekodiert, letzter Wert gewinnt)."""
+        """Query string of the request as dict (URL-decoded, last value wins)."""
         return dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query, keep_blank_values=True))
 
     def _origin_ok(self) -> bool:
-        """POST-Requests nur aus dem eigenen Origin (oder mit Token) zulassen.
+        """Allow POST requests only from the own origin (or with token).
 
-        Schützt die lokale API gegen Drive-by-RCE: eine beliebige Webseite im
-        Browser des Operators könnte sonst `fetch('http://localhost:PORT/api/runs')`
-        feuern und Shell-Steps auslösen. Ohne CORS-Header blockiert der Browser
-        Cross-Origin-POSTs (same-origin policy)."""
+        Protects the local API against drive-by RCE: any web page in the
+        operator's browser could otherwise fire `fetch('http://localhost:PORT/api/runs')`
+        and trigger shell steps. Without CORS headers the browser blocks
+        cross-origin POSTs (same-origin policy)."""
         origin = self.headers.get("Origin", "")
         if not origin:
             return True  # CLI / curl / Same-Origin ohne Origin-Header
@@ -150,11 +150,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
             return False
 
     def _tunnel_blocked(self, path: str) -> bool:
-        """Requests über den Tunnel-Host erreichen nur die Webhook-Route."""
+        """Requests via the tunnel host reach only the webhook route."""
         return webhook.tunnel_matches(self.headers.get("Host", "")) and not path.startswith(INTAKE_PATH_PREFIXES)
 
     def _cors_headers(self):
-        """CORS nur für den konfigurierten Tunnel-Origin (nie `*`)."""
+        """CORS only for the configured tunnel origin (never `*`)."""
         allowed = webhook.tunnel_origin()
         on_webhook = self.path.startswith(webhook.WEBHOOK_PATH_PREFIX)
         if allowed and on_webhook and self.headers.get("Origin", "").rstrip("/") == allowed:
@@ -162,7 +162,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Origin")
 
     def do_OPTIONS(self):
-        """CORS-Preflight: nur für die Webhook-Route und den Tunnel-Origin."""
+        """CORS preflight: only for the webhook route and the tunnel origin."""
         path = self.path.split("?")[0]
         if self._tunnel_blocked(path):
             self._json({"error": t("api.unknown_route")}, 404)
@@ -177,8 +177,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _read_intake(self, path: str, prefix: str) -> tuple[str, str, bytes]:
-        """Gemeinsamer Intake-Kopf für Webhook/Alert: `<prefix><projekt>/<loop>` zerlegen
-        und den Raw-Body lesen. Ungültiger Pfad → 401 (kein Orakel, wie fehlende Auth)."""
+        """Shared intake head for webhook/alert: split `<prefix><project>/<loop>`
+        and read the raw body. Invalid path → 401 (no oracle, like missing auth)."""
         parts = path[len(prefix) :].split("/")
         length = webhook.parse_content_length(self.headers.get("Content-Length"))
         body = self.rfile.read(length) if length else b""
@@ -187,7 +187,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         return parts[0], parts[1], body
 
     def _webhook(self, path: str):
-        """POST /api/webhook/<projekt>/<loop>: HMAC prüfen, Payload mappen, Run starten."""
+        """POST /api/webhook/<project>/<loop>: verify HMAC, map payload, start run."""
         try:
             name, lname, body = self._read_intake(path, webhook.WEBHOOK_PATH_PREFIX)
             found = webhook.find_trigger(load_projects().get(name), lname)
@@ -206,7 +206,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         self._json(*self._start_run(name, lname, "webhook", vars_ or None, "on_webhook", actor="webhook"))
 
     def _alert(self, path: str):
-        """POST /api/alert/<projekt>/<loop>: HMAC prüfen, Alert normalisieren, Triage-Run starten."""
+        """POST /api/alert/<project>/<loop>: verify HMAC, normalize alert, start triage run."""
         try:
             name, lname, body = self._read_intake(path, alerts.ALERT_PATH_PREFIX)
             found = alerts.find_trigger(load_projects().get(name), lname)
@@ -235,19 +235,19 @@ class FabrikHandler(BaseHTTPRequestHandler):
 
     @property
     def _actor(self) -> str | None:
-        """Audit-Name des Aufrufers (``started_by``/``approved_by``); None ohne Auth."""
+        """Audit name of the caller (``started_by``/``approved_by``); None without auth."""
         return self._who.name if self._who else None
 
     @property
     def _audit_actor(self) -> str:
-        """Auslöser für Audit-Logs: ``user:<name>``, ohne Auth ``api:<ip>``."""
+        """Trigger for audit logs: ``user:<name>``, without auth ``api:<ip>``."""
         return f"user:{self._actor}" if self._actor else f"api:{self.client_address[0]}"
 
     def _gate(self, method: str, path: str) -> bool:
-        """Auth + Rolle prüfen (ADR 0030) und ``self._who`` setzen.
+        """Check auth + role (ADR 0030) and set ``self._who``.
 
-        Sendet bei Ablehnung selbst 401/403 und liefert dann False.
-        Modus ``none``: GET offen, POST wie bisher Origin + optionales Token."""
+        Sends 401/403 itself on rejection and then returns False.
+        Mode ``none``: GET open, POST as before origin + optional token."""
         self._who = auth.token_principal(self.headers.get("Authorization", ""))
         if path.startswith(INTAKE_PATH_PREFIXES):
             # Webhooks/Alerts use their own raw-body HMAC authentication (ADR 0027/0030),
@@ -259,7 +259,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 self._json({"error": "zugriff verweigert (Origin/Token)"}, 403)
                 return False
             return True
-        # Token-Aufrufer (CLI/Automation) sind kein Browser: kein Origin-/CSRF-Zwang.
+        # Token callers (CLI/automation) are not a browser: no origin/CSRF requirement.
         if writes and self._who is None and not self._origin_ok():
             self._json({"error": "zugriff verweigert (Origin)"}, 403)
             return False
@@ -308,7 +308,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         )
 
     def _redirect(self, location: str, cookies: tuple[str, ...] = ()):
-        """302 auf ``location``; ``cookies`` sind ``Set-Cookie``-Werte (je ein Header)."""
+        """302 to ``location``; ``cookies`` are ``Set-Cookie`` values (one header each)."""
         self.send_response(302)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
@@ -325,7 +325,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 502)
 
     def _oidc_callback(self):
-        """GET /api/oidc/callback?code&state → Session-Cookie + 302 auf die UI."""
+        """GET /api/oidc/callback?code&state → session cookie + 302 to the UI."""
         params = self._query_params()
         if params.get("error"):
             self._json(
@@ -363,31 +363,31 @@ class FabrikHandler(BaseHTTPRequestHandler):
         trigger: str,
         actor: str | None = None,
     ) -> RunStartResult:
-        """Run mit Initial-Variablen starten (einzige interne Start-Funktion).
+        """Start a run with initial variables (the only internal start function).
 
-        Gemeinsam für `POST /api/runs` und `on_webhook` (kein eigener Webhook-
-        Code-Pfad, framework-v1-draft §1.3). Gibt `(payload, http_code)` zurück."""
-        # Run-Id VOR dem Worker-Start generieren: der Response geht raus,
-        # bevor der Worker den Record auf Disk schreibt. Die UI braucht die
-        # Id, um den neuen Run per /api/run/<id> zu verfolgen — sonst
-        # findet ihr "neuester Run des Loops" im Race den ALTEN Run.
+        Shared for `POST /api/runs` and `on_webhook` (no separate webhook
+        code path, framework-v1-draft §1.3). Returns `(payload, http_code)`."""
+        # Generate the run id BEFORE the worker start: the response goes out
+        # before the worker writes the record to disk. The UI needs the
+        # id to follow the new run via /api/run/<id> — otherwise its
+        # "newest run of the loop" finds the OLD run in a race.
         run_id = f"{config.now_id()}-{lname}"
-        # Belegtes Projekt → einreihen statt 409; der Run wartet mit Vorrang
-        # vor Trigger-Runs (ADR 0015).
+        # Busy project → queue instead of 409; the run waits with priority
+        # over trigger runs (ADR 0015).
         try:
             queued = start_priority_run(
                 name, lname, trigger, run_id=run_id, note=note, initial_vars=initial_vars, actor=actor
             )
         except RuntimeError as e:
-            # 5xx mit klarer Nachricht, damit Clients deterministisch reagieren.
+            # 5xx with a clear message so clients react deterministically.
             return RunStartResult({"error": f"Worker-Start fehlgeschlagen: {e}"}, 500)
         payload = {"started": not queued, "queued": queued, "project": name, "loop": lname, "run_id": run_id}
         return RunStartResult(payload, 202 if queued else 200)
 
     def _static(self, rel: str):
         f = config.WEB_DIR / (rel or "index.html")
-        # is_relative_to: `parent !=` würde auch Unterverzeichnisse unter WEB_DIR
-        # verweigern (z. B. web/css/app.css).
+        # is_relative_to: `parent !=` would also refuse subdirectories under WEB_DIR
+        # (e.g. web/css/app.css).
         if not f.is_file() or not f.resolve().is_relative_to(config.WEB_DIR.resolve()):
             self.send_response(404)
             self.end_headers()
@@ -397,10 +397,10 @@ class FabrikHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        # Dev-Tool: UI-Dateien (app.js, style.css, …) nie heuristisch cachen,
-        # sonst läuft der Browser nach einem Code-Change weiter mit der alten
-        # Version, bis man manuell hart neu lädt. no-cache → bei jedem Load
-        # neu validieren (ohne Validator hier: kompletter Re-Fetch, lokal schnell).
+        # Dev tool: never cache UI files (app.js, style.css, …) heuristically,
+        # otherwise the browser keeps running the old version after a code change
+        # until someone hard-reloads manually. no-cache → revalidate on every load
+        # (without a validator here: complete re-fetch, fast locally).
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         with contextlib.suppress(BrokenPipeError, ConnectionResetError):
@@ -430,9 +430,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/run/") and path.endswith("/transcript"):
             self._run_transcript(path[len("/api/run/") : -len("/transcript")])
         elif path.startswith("/api/run/") and path.endswith("/log"):
-            # Rohes Run-Log (aus runs/<projekt>/<id>.log) als Plain-Text.
-            # Muss VOR dem generischen /api/run/<id>-Zweig geprüft werden.
-            # Optional ?lines=N → nur die letzten N Zeilen (Tail).
+            # Raw run log (from runs/<project>/<id>.log) as plain text.
+            # Must be checked BEFORE the generic /api/run/<id> branch.
+            # Optional ?lines=N → only the last N lines (tail).
             rid = path[len("/api/run/") : -len("/log")]
             log = get_run_log(rid, self._query_param("project"))
             if log is None:
@@ -475,7 +475,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         elif path == "/api/health":
             self._json({"ok": True, "time": config.utcnow().isoformat()})
         elif path == "/api/metrics":
-            # KPI-Export (Prometheus-Textformat) für Scrape-Tools.
+            # KPI export (Prometheus text format) for scrape tools.
             body = metrics.render().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -508,9 +508,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             p = spec_path(name, specs)
             if self._query_params().get("raw") == "1":
-                # Rohe (nicht expandierte) Spec als Draft-Quelle für den
-                # UI-Graph-Editor: vars wörtlich, use:/insert: un-inlined, alle
-                # Loop-Schlüssel erhalten. + _hash für den Optimistischen Lock.
+                # Raw (non-expanded) spec as draft source for the
+                # UI graph editor: vars literal, use:/insert: un-inlined, all
+                # loop keys preserved. + _hash for the optimistic lock.
                 if not p.is_file():
                     self._json({"error": t("api.unknown_project")}, 404)
                     return
@@ -522,10 +522,10 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 expanded["_hash"] = spec_hash(p)
                 self._json(expanded)
         elif path.startswith("/api/templates/") and path.endswith("/params"):
-            # Template-Parameter (params-Block) für den UI-Graph-Editor:
-            # zeigt welche with:-Keys ein Template kennt + deren Defaults.
-            # ?project=<name> → Template-Auflösung wie bei der Expansion
-            # (projektlokale <spec-ordner>/templates haben Vorrang).
+            # Template parameters (params block) for the UI graph editor:
+            # shows which with: keys a template knows + their defaults.
+            # ?project=<name> → template resolution as in expansion
+            # (project-local <spec folder>/templates take precedence).
             tname = path[len("/api/templates/") : -len("/params")]
             q = self._query_params()
             proj = q.get("project")
@@ -549,8 +549,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
             b = branches.list_branches(spec["root"]) if repo else []
             self._json({"branches": b, "current": repo.get("branch", "-")})
         elif path == "/api/retry-chains":
-            # Retry-Ketten (ADR 0036) für die UI ("Abgelegt"-Liste). Optional
-            # ?project=<name> filtert; ?state=<state> filtert den Zustand.
+            # Retry chains (ADR 0036) for the UI ("Filed away" list). Optional
+            # ?project=<name> filters; ?state=<state> filters the state.
             params = self._query_params()
             proj = params.get("project")
             state = params.get("state")
@@ -572,7 +572,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         if path.startswith(webhook.WEBHOOK_PATH_PREFIX):
-            # Eigene Auth (HMAC) statt Origin/Token — Aufrufer sind Server, keine Browser.
+            # Own auth (HMAC) instead of origin/token — callers are servers, not browsers.
             self._webhook(path)
             return
         if path.startswith(alerts.ALERT_PATH_PREFIX):
@@ -596,11 +596,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 self._json({"error": t("api.project_loop_required")}, 400)
                 return
             note = payload.get("note", "")
-            # Optionale Initiale-Variablen (K=V), z. B. issue_number für
-            # issue-gesteuerte Loops — manuelle Runs haben sonst keinen
-            # Issue-Kontext (der on_issue-Trigger liefert die Variablen).
-            # Validierung VOR dem Claim: ein 400 darf nie einen Run-Slot
-            # halten (der Handler-Thread würde sonst ohne Release sterben).
+            # Optional initial variables (K=V), e.g. issue_number for
+            # issue-driven loops — manual runs otherwise have no
+            # issue context (the on_issue trigger provides the variables).
+            # Validation BEFORE the claim: a 400 must never hold a run slot
+            # (the handler thread would otherwise die without release).
             raw_vars = payload.get("vars")
             if raw_vars is not None and not isinstance(raw_vars, dict):
                 self._json({"error": _t("server.vars_must_be_an_object")}, 400)
@@ -639,11 +639,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
             if not msg:
                 self._json({"error": t("api.message_required")}, 400)
                 return
-            # Client kann eigene req_id mitschicken (damit er sofort canceln kann,
-            # bevor die Antwort da ist); sonst generieren wir eine.
+            # The client may send its own req_id (so it can cancel immediately
+            # before the response is there); otherwise we generate one.
             req_id = str(payload.get("req_id", "")).strip() or config.now_id()
             project = str(payload.get("project", ""))
-            cancel_event = _register_chat(req_id)  # sofort cancelbar, auch vor dem LLM-Start
+            cancel_event = _register_chat(req_id)  # cancellable immediately, even before the LLM start
             reply: str | None = None
             who = self._who
             done = threading.Event()
@@ -659,8 +659,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
                     _finish_chat(req_id)
 
             threading.Thread(target=work, daemon=True).start()
-            # Auf den Worker warten, aber sofort aussteigen, wenn der User cancelt.
-            # (Der LLM-Call läuft im Hintergrund zu Ende — Daemon-Thread, Ergebnis verworfen.)
+            # Wait for the worker, but exit immediately if the user cancels.
+            # (The LLM call runs to completion in the background — daemon thread, result discarded.)
             while not done.wait(timeout=0.2):
                 if cancel_event.is_set():
                     self._json({"reply": t("chat.cancelled"), "req_id": req_id})
@@ -689,11 +689,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json({"error": str(e)}, 400)
                 return
-            # resumed: True nur, wenn der Resume-Worker gestartet wurde.
-            # Die UI pollt den Run danach (mit needs_approval-Grace), weil der
-            # Worker "running" erst kurz nach diesem Response auf Disk schreibt.
-            # Projekt am Limit (max_parallel) → Freigabe wird eingereiht (ADR 0015), resumed
-            # bleibt True. False (Thread-Start-Fehler) → UI zeigt die Begründung.
+            # resumed: True only if the resume worker was started.
+            # The UI then polls the run (with needs_approval grace), because the
+            # worker writes "running" to disk only shortly after this response.
+            # Project at its limit (max_parallel) → approval is queued (ADR 0015), resumed
+            # stays True. False (thread start error) → the UI shows the reason.
             self._json({"ok": True, "reply": reply, "resumed": resumed})
         elif path == "/api/llm":
             payload = self._read_json()
@@ -771,7 +771,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "chain": asdict(chain)})
             else:
                 try:
-                    # Bare Name wie bei POST /api/runs: landet in started_by (ADR 0030).
+                    # Bare name as with POST /api/runs: ends up in started_by (ADR 0030).
                     run_id = retry_chains.retry_now(name, lname, tkey, actor=self._actor)
                 except retry_chains.RetryBlocked as e:
                     self._json({"error": str(e)}, 409)
@@ -791,10 +791,10 @@ class FabrikHandler(BaseHTTPRequestHandler):
         if not self._gate("PUT", path):
             return
         if path.startswith("/api/projects/") and path.endswith("/spec"):
-            # Spec-Edit (Graph-View): Loops pro Loop mergen + löschen +
-            # Top-Level-Felder (description, max_parallel) aktualisieren.
-            # Validierung + atomarer Write + Optimistischer Lock liegen in
-            # specs.save_spec (Kommentare bleiben erhalten).
+            # Spec edit (graph view): merge loops per loop + delete +
+            # update top-level fields (description, max_parallel).
+            # Validation + atomic write + optimistic lock live in
+            # specs.save_spec (comments are preserved).
             name = path[len("/api/projects/") : -len("/spec")]
             payload = self._read_json()
             if payload is None:
@@ -851,8 +851,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._json({"error": t("api.unknown_route")}, 404)
 
     def _connection_put(self, name: str) -> None:
-        """PUT /api/connections/<name>: anlegen/ändern. Fehlendes ``secret`` behält das gespeicherte,
-        ``clear_secret: true`` löscht es."""
+        """PUT /api/connections/<name>: create/change. A missing ``secret`` keeps the stored one,
+        ``clear_secret: true`` deletes it."""
         payload = self._read_json()
         if payload is None:
             return
@@ -867,12 +867,12 @@ class FabrikHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _connections_payload() -> dict:
-        """Verbindungsliste (Secrets nie ausgeben) + wählbare Treiber je Art für die UI."""
+        """Connection list (never emit secrets) + selectable drivers per kind for the UI."""
         from . import llm_cli
         from .backends.registry import known_backends
 
         return {
-            # Entschlüsselt (nur so ist `secret_unreadable` erkennbar); public() gibt kein Secret aus.
+            # Decrypted (only this way `secret_unreadable` is detectable); public() emits no secret.
             "connections": [c.public() for c in connections.list_connections()],
             "min_masked_secret_len": secrets.MIN_SECRET_LEN,
             "drivers": {
@@ -882,11 +882,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
         }
 
     def _run_stream(self, rid: str):
-        """GET /api/run/<id>/stream: Log + Status als Server-Sent Events.
+        """GET /api/run/<id>/stream: log + status as server-sent events.
 
-        Reconnect über ``Last-Event-ID`` (Header, sonst ``?offset=``) = Byte-Offset."""
+        Reconnect via ``Last-Event-ID`` (header, otherwise ``?offset=``) = byte offset."""
         project = self._query_param("project")
-        # Nur Existenz prüfen (Pfad), nicht die ganze Log-Datei einlesen.
+        # Only check existence (path), do not read the whole log file.
         if get_run(rid, project) is None and get_run_log_path(rid, project) is None:
             self._json({"error": t("api.run_not_found")}, 404)
             return
@@ -904,7 +904,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
 
     def _run_transcript(self, rid: str):
-        """GET /api/run/<id>/transcript?after=<event-id>&limit=N: Agent-Turns aus dem SessionLog."""
+        """GET /api/run/<id>/transcript?after=<event-id>&limit=N: agent turns from the SessionLog."""
         if get_run(rid, self._query_param("project")) is None:
             self._json({"error": t("api.run_not_found")}, 404)
             return
@@ -922,13 +922,13 @@ class FabrikHandler(BaseHTTPRequestHandler):
         self._json({"entries": [e.to_dict() for e in entries], "next_after": entries[-1].id if entries else after})
 
     def _query_param(self, name: str) -> str | None:
-        """Letzter Wert des Query-Parameters `name` (URL-dekodiert) oder None."""
+        """Last value of the query parameter `name` (URL-decoded) or None."""
         vals = parse_qs(urlsplit(self.path).query).get(name)
         return vals[-1] or None if vals else None
 
     def _runs_response(self):
-        """GET /api/runs. Ohne Such-/Filter-/Cursor-Parameter die einfache Liste (`limit`);
-        sonst die paginierte Suche (`runsearch`) → {"runs", "next_cursor"}."""
+        """GET /api/runs. Without search/filter/cursor parameters the simple list (`limit`);
+        otherwise the paginated search (`runsearch`) → {"runs", "next_cursor"}."""
         qs = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
         params = {k: v[-1] for k, v in qs.items()}
         proj = params.get("project") or None
@@ -959,7 +959,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 400)
 
     def _llm_payload(self):
-        """Provider-Liste (Key nie ausgeben) + aktiver Provider für die UI."""
+        """Provider list (never emit keys) + active provider for the UI."""
         active = llm_registry.active_name()
         providers = [
             {
@@ -974,11 +974,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
         return {"providers": providers, "active": active}
 
     def _chain_payload(self, chain: retry_chains.RetryChain) -> dict:
-        """Eine Retry-Kette für die UI (ADR 0036, Entscheidung 6).
+        """A retry chain for the UI (ADR 0036, decision 6).
 
-        Die Kette selbst hält nur Zustand; Klasse, letzter Fehler und
-        Versuchszahl stehen am letzten Run (``last_run_id``) und werden hier
-        nachgeladen — die „Abgelegt“-Liste zeigt sie ohne zweiten Fetch."""
+        The chain itself holds only state; class, last error and
+        attempt count are on the last run (``last_run_id``) and are reloaded
+        here — the "Filed away" list shows them without a second fetch."""
         last = get_run(chain.last_run_id, chain.project) if chain.last_run_id else None
         return {
             "loop": chain.loop,
@@ -994,14 +994,14 @@ class FabrikHandler(BaseHTTPRequestHandler):
         }
 
     def _run_retry_info(self, r: dict) -> dict | None:
-        """Retry-Ketten-Info für einen Run (ADR 0036, Entscheidung 6).
+        """Retry-chain info for a run (ADR 0036, decision 6).
 
-        Zustand + nächster Versuch, damit das Modal „Versuch n/max, nächster
-        um …“ zeigen kann. None, wenn der Run keine Kette hat (kein
-        kanonischer Trigger), die Kette bereits beendet ist oder der Run
-        nicht der aktuelle Versuch der Kette ist (``last_run_id``/
-        ``claimed_run_id``) — ältere Versuche desselben Schlüssels zeigen
-        keine Ketten-Info."""
+        State + next attempt, so the modal can show "Attempt n/max, next
+        at …". None if the run has no chain (no
+        canonical trigger), the chain has already ended or the run
+        is not the chain's current attempt (``last_run_id``/
+        ``claimed_run_id``) — older attempts of the same key show
+        no chain info."""
         project = str(r.get("project") or "")
         loop = str(r.get("loop") or "")
         spec = load_projects().get(project)
@@ -1034,9 +1034,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
             if spec.get("_error"):
                 projects.append({"name": name, "error": spec["_error"]})
                 continue
-            # Records einmal lesen (der Poll läuft alle paar Sekunden pro Tab):
-            # letzter Run je Loop typisiert, offene Freigaben roh — der Approval-
-            # Kontext enthält Felder (pr, pr_title), die runmodel.Approval nicht führt.
+            # Read records once (the poll runs every few seconds per tab):
+            # last run per loop typed, open approvals raw — the approval
+            # context contains fields (pr, pr_title) that runmodel.Approval does not carry.
             records = load_records(name)
             last = last_run_per_loop(parse_runs(records, name))
             loops = []
@@ -1053,9 +1053,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
                     }
                 )
             repo = spec.get("repo") or {}
-            # Offene Freigabe-Anfragen (needs_approval) für den Projekt-View:
-            # Anzahl + aufklappbare Liste (neueste zuerst). Kompakte Projektion
-            # — das volle Record kommt per /api/run/<id>, wenn das Modal öffnet.
+            # Open approval requests (needs_approval) for the project view:
+            # count + expandable list (newest first). Compact projection
+            # — the full record comes via /api/run/<id> when the modal opens.
             approvals = [
                 {
                     "id": r["id"],
@@ -1066,8 +1066,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 }
                 for r in select_pending_approvals(records)
             ]
-            # Erschöpfte Retry-Ketten („Abgelegt“, ADR 0036, Entscheidung 6):
-            # analog Freigaben — Anzahl + aufklappbare Liste mit Aktionen.
+            # Exhausted retry chains ("Filed away", ADR 0036, decision 6):
+            # analogous to approvals — count + expandable list with actions.
             shelved = [self._chain_payload(c) for c in exhausted_by_project.get(name, [])]
             projects.append(
                 {
@@ -1086,15 +1086,15 @@ class FabrikHandler(BaseHTTPRequestHandler):
         return projects
 
     def _queue_payload(self, records: list[dict], specs: dict[str, dict]) -> dict:
-        """Queue-Snapshot (Schedule-View): Cron-Zeiten sind nur der Plan — hier ist
-        zu sehen, was tatsächlich wartet.
+        """Queue snapshot (schedule view): cron times are only the plan — this shows
+        what is actually waiting.
 
-        `running` = aktive Runs (Elapsed), `queued` = eingereihte Runs mit
-        Einreichungszeit + grober Start-Einschätzung: `now` (Slot/Worker frei),
-        `worker` (Warteschleife im Worker-Pool), `slot` (Claim: max_parallel oder
-        aktiver Run desselben Loops/Issues). `approval` = pausierte Runs, die auf
-        Freigabe warten. `pool`/`projects` = Worker- und Slot-Kontext.
-        `records`/`specs` reicht der Aufrufer durch (ein Ladevorgang pro Poll)."""
+        `running` = active runs (elapsed), `queued` = queued runs with
+        submission time + rough start estimate: `now` (slot/worker free),
+        `worker` (queue in the worker pool), `slot` (claim: max_parallel or
+        active run of the same loop/issue). `approval` = paused runs waiting for
+        approval. `pool`/`projects` = worker and slot context.
+        `records`/`specs` are passed through by the caller (one load per poll)."""
         pool = pool_status()
         snap = slot_snapshot()
         now_ts = time.time()
@@ -1153,8 +1153,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
 
         running.sort(key=lambda e: e["started"], reverse=True)
 
-        # Pool-Queue: Trigger-Runs ohne Record (Cron/Datei/Issue/PR warten auf Worker).
-        # FIFO: Position + belegte Worker < Pool-Größe → startet sofort, sonst Warteschlange.
+        # Pool queue: trigger runs without a record (cron/file/issue/PR waiting for a worker).
+        # FIFO: position + busy workers < pool size → starts immediately, otherwise queue.
         seen = {(e["project"], e["loop"], e["trigger"]) for e in queued}
         pos = 0
         for entry in queued_trigger_snapshot():
@@ -1204,11 +1204,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
         }
 
     def _schedule_payload(self) -> dict:
-        """GET /api/schedule: Cron-Ausblick + One-time-Overrides (Schedule-View).
+        """GET /api/schedule: cron outlook + one-time overrides (schedule view).
 
-        `loops` = alle Loops mit cron-Trigger: nächste Fire-Zeiten (Cron-Semantik
-        wie der Scheduler), letzter Run, effektiver State, angesetzter One-time.
-        Sortiert nach nächstem Run; `onetime` = alle angesetzt Overrides."""
+        `loops` = all loops with a cron trigger: next fire times (cron semantics
+        like the scheduler), last run, effective state, scheduled one-time.
+        Sorted by next run; `onetime` = all scheduled overrides."""
         now_local = datetime.now()
         onetime = schedule.list_onetimes()
         onetime_by_loop = {(e["project"], e["loop"]): e for e in onetime}
@@ -1252,8 +1252,8 @@ EXIT_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
 
 
 def _exit_on_signals() -> None:
-    """SIGTERM/SIGHUP (systemd-Stop, Terminal geschlossen) → `SystemExit`, damit `finally`/
-    `atexit` laufen; der Python-Default würde den Prozess ohne Aufräumen beenden."""
+    """SIGTERM/SIGHUP (systemd stop, terminal closed) → `SystemExit`, so `finally`/
+    `atexit` run; the Python default would end the process without cleanup."""
 
     def _exit(signum, _frame):
         raise SystemExit(128 + signum)
@@ -1264,21 +1264,21 @@ def _exit_on_signals() -> None:
 
 def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
     """Server starten. Nicht-Loopback-Bind ohne Auth wirft ``auth.AuthError`` (ADR 0030)."""
-    # Signal-Handler so früh wie möglich: auch ein SIGTERM/SIGHUP während des Setups
-    # (Auth-Check, Worktree-Cleanup, Requeue) soll ein geregeltes Ende auslösen.
+    # Signal handlers as early as possible: even a SIGTERM/SIGHUP during setup
+    # (auth check, worktree cleanup, requeue) should trigger an orderly end.
     _exit_on_signals()
     host = host or os.environ.get("FABRIK_HOST", "").strip() or config.DEFAULT_HOST
     auth.check_bind(host)
     if auth.mode() == auth.MODE_OIDC:
-        oidc.check_ready()  # fehlendes Extra/Config früh melden statt beim ersten Login
+        oidc.check_ready()  # report a missing extra/config early instead of at the first login
     server = ThreadingHTTPServer((host, port), FabrikHandler)
     if sandbox.sandbox_enabled() and (n := sandbox.sweep_stale_containers()):
         print(f"[fabrik] {n} verwaiste Sandbox-Container entfernt")
-    reap_orphaned_runs()  # vor Scheduler/Worker: keine 'running'-Leichen aus dem Vorlauf
+    reap_orphaned_runs()  # before scheduler/worker: no 'running' corpses from the previous run
     for wt in cleanup_orphaned_worktrees():  # Reste gecrashter Runs (ADR 0028)
         print(f"[fabrik] verwaisten Worktree entfernt: {wt}")
-    # Erst die Vorrang-Warter registrieren, DANN den Scheduler starten — sonst
-    # schnappt dessen erster Poll den Lock vor den eingereihten Runs.
+    # Register the priority waiters first, THEN start the scheduler — otherwise
+    # its first poll grabs the lock before the queued runs.
     for rid in requeue_approved_runs():
         print(t("server.approval_still_waiting", run_id=rid))
     for rid in requeue_queued_runs():
@@ -1293,7 +1293,7 @@ def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
         with contextlib.suppress(KeyboardInterrupt):
             server.serve_forever()
     finally:
-        # Step-Prozesse laufen in eigener Prozessgruppe (procs): ohne das liefen sie
-        # nach Ctrl+C/Terminal-Ende verwaist weiter.
+        # Step processes run in their own process group (procs): without that they would keep running
+        # orphaned after Ctrl+C/terminal end.
         if n := procs.kill_all():
             print(f"[fabrik] {n} laufende Step-Prozessgruppe(n) beendet")

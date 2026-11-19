@@ -1,12 +1,12 @@
-"""Adapter-Registry: Backend-Name → Adapter-Klasse + Factory.
+"""Adapter registry: backend name → adapter class + factory.
 
-Lässt `steps/agent.py` port-only bleiben: der Dispatcher importiert nur
-`create_backend` (und den Port `AgentBackend`), nie konkrete Adapter. Neue
-Adapter registrieren sich hier — der Dispatcher ändert sich nicht.
+Lets `steps/agent.py` stay port-only: the dispatcher only imports
+`create_backend` (and the port `AgentBackend`), never concrete adapters. New
+adapters register here — the dispatcher does not change.
 
-Jeder Adapter implementiert `create(step, endpoint, model, stale_after)`
-(see `port.AgentBackend`), der seine spezifischen Optionen (z. B. codex
-`sandbox`, copilot `tools`) selbst aus dem Step/Env extrahiert.
+Every adapter implements `create(step, endpoint, model, stale_after)`
+(see `port.AgentBackend`), which extracts its specific options (e.g. codex
+`sandbox`, copilot `tools`) from the step/env itself.
 """
 
 from __future__ import annotations
@@ -32,10 +32,10 @@ def known_backends() -> list[str]:
 
 
 def create_backend(backend_name: str, step: dict, endpoint: str, model: str, stale_after: int) -> AgentBackend:
-    """Instanziiert den Adapter für `backend_name` (port-typisiert).
+    """Instantiates the adapter for `backend_name` (port-typed).
 
-    Wirft `ValueError` für unbekannte Namen — der Dispatcher zeigt die
-    verfügbaren Backends an.
+    Raises `ValueError` for unknown names — the dispatcher shows the
+    available backends.
     """
     cls = ADAPTERS.get(backend_name)
     if cls is None:

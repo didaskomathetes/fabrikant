@@ -1,7 +1,7 @@
-"""``urlopen`` nur für http(s): URLs aus Spec/Config/Env dürfen nicht auf ``file:`` o. Ä. zeigen.
+"""``urlopen`` for http(s) only: URLs from spec/config/env must not point to ``file:`` or similar.
 
-Zentrale Stelle statt verstreuter ``# nosec B310`` (Bandit/SAST): jeder HTTP-Call der Fabrik
-läuft hierüber, die Scheme-Prüfung passiert genau einmal.
+Central place instead of scattered ``# nosec B310`` (Bandit/SAST): every HTTP call of the factory
+goes through here, the scheme check happens exactly once.
 """
 
 from __future__ import annotations
@@ -17,14 +17,14 @@ ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 def urlopen(req: urllib.request.Request | str, timeout: float) -> HTTPResponse:
-    """Wie ``urllib.request.urlopen``, aber nur für ``http``/``https``.
+    """Like ``urllib.request.urlopen``, but only for ``http``/``https``.
 
     Raises:
-        ConfigError: anderes Scheme (``file:``, ``ftp:``, ohne Scheme) — Konfigurationsfehler, kein Netz-Flake.
+        ConfigError: other scheme (``file:``, ``ftp:``, no scheme) — configuration error, not a network flake.
     """
     url = req.full_url if isinstance(req, urllib.request.Request) else req
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme not in ALLOWED_SCHEMES:
         raise ConfigError(t("httpsafe.url_scheme_not_allowed_http", v1=scheme or "(leer)", url=url))
-    # Attribut-Lookup zur Laufzeit (nicht `from urllib.request import urlopen`): Tests patchen urllib.request.urlopen.
-    return urllib.request.urlopen(req, timeout=timeout)  # nosec B310 # Scheme oben geprüft
+    # Attribute lookup at runtime (not `from urllib.request import urlopen`): tests patch urllib.request.urlopen.
+    return urllib.request.urlopen(req, timeout=timeout)  # nosec B310 # scheme checked above

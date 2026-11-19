@@ -1,26 +1,26 @@
-"""SQL-Run-Store (ADR 0034, Schritt 3): SQLAlchemy Core auf dem Schema aus :mod:`fabrik.runschema`.
+"""SQL run store (ADR 0034, step 3): SQLAlchemy Core on the schema from :mod:`fabrik.runschema`.
 
-Gleiche Operationen und Vorbedingungen wie das JSON-Backend (:class:`~fabrik.runstore.BaseRunStore`);
-jede Write-Operation ist eine DB-Transaktion: Run-Zeile exklusiv lesen (SQLite: ``BEGIN IMMEDIATE``,
-sonst ``SELECT … FOR UPDATE``) → Vorbedingung prüfen → Run-Zeile aktualisieren und seine Kind-Zeilen
-ersetzen. Das Session-Log (ADR 0002) liegt in denselben Tabellen-Raum (:class:`SqlSessionLog`).
+Same operations and preconditions as the JSON backend (:class:`~fabrik.runstore.BaseRunStore`);
+every write operation is a DB transaction: read run row exclusively (SQLite: ``BEGIN IMMEDIATE``,
+otherwise ``SELECT … FOR UPDATE``) → check precondition → update run row and replace its child
+rows. The session log (ADR 0002) lives in the same table space (:class:`SqlSessionLog`).
 
-Record ↔ Zeilen (:func:`encode_record`, :func:`decode_record`): Der Store nimmt die Run-Records der
-Engine (``dict``) strikt an — ein unbekanntes Feld oder ein falscher Typ wirft
-:class:`InvalidRecordError` statt still verloren zu gehen; Status, Pflichtfelder und Fremdschlüssel
-prüft zusätzlich die DB (``CHECK``/``NOT NULL``/``FOREIGN KEY``). Abweichungen vom JSON-Format:
+Record ↔ rows (:func:`encode_record`, :func:`decode_record`): the store accepts the engine's run records
+(``dict``) strictly — an unknown field or a wrong type raises
+:class:`InvalidRecordError` instead of being silently lost; status, mandatory fields and foreign keys
+are additionally checked by the DB (``CHECK``/``NOT NULL``/``FOREIGN KEY``). Deviations from the JSON format:
 
-- ``None`` und fehlende Felder sind gleichwertig (``NULL``); gelesen fehlt das Feld. Ausnahmen:
-  ``started`` (``""``), ``steps`` (``[]``) und ``started_by``/``approved_by``/``rejected_by`` (``None``)
-  sind immer da.
-- ``steps_output`` (Altbestand) wird verworfen. Review-Findings und Verify-Checks behalten nur die
-  Modellfelder (``severity``/``text``/``suggestion`` bzw. ``name``/``ok``/``output``) — es sind
-  Fremd-Payloads (LLM).
-- ``review.pr`` als numerischer String wird zur Zahl; leere Listen (``verify``, ``permissions``) und
-  leere Variablen-Dicts entfallen.
+- ``None`` and missing fields are equivalent (``NULL``); when read, the field is missing. Exceptions:
+  ``started`` (``""``), ``steps`` (``[]``) and ``started_by``/``approved_by``/``rejected_by`` (``None``)
+  are always present.
+- ``steps_output`` (legacy) is discarded. Review findings and verify checks keep only the
+  model fields (``severity``/``text``/``suggestion`` or ``name``/``ok``/``output``) — they are
+  foreign payloads (LLM).
+- ``review.pr`` as a numeric string becomes a number; empty lists (``verify``, ``permissions``) and
+  empty variable dicts are dropped.
 
-SQLite: WAL, ``busy_timeout`` und Fremdschlüssel werden pro Verbindung gesetzt; ``lower()`` ist
-durch Pythons ``str.lower`` ersetzt (Unicode, wie die Referenzsuche in :mod:`fabrik.runquery`).
+SQLite: WAL, ``busy_timeout`` and foreign keys are set per connection; ``lower()`` is
+replaced by Python's ``str.lower`` (Unicode, like the reference search in :mod:`fabrik.runquery`).
 """
 
 from __future__ import annotations
@@ -99,14 +99,14 @@ _WRITE_OPTION = "fabrik_write"  # Execution-Option: Transaktion als Schreib-Tran
 
 
 class InvalidRecordError(RunStoreError):
-    """Der Record lässt sich nicht ins relationale Schema abbilden (unbekanntes Feld, falscher Typ,
-    DB-Constraint verletzt). Nichts wird geschrieben."""
+    """The record cannot be mapped into the relational schema (unknown field, wrong type,
+    DB constraint violated). Nothing is written."""
 
 
 # ---------------------------------------------------------------- Record → Zeilen
 _TEXT, _OPT_TEXT, _BOOL, _INT, _NUM = "text", "opt_text", "bool", "int", "num"
 
-# Skalare Run-Felder → Spaltentyp (Spaltenname = Feldname). id/project/status kommen aus der Operation.
+# Scalar run fields → column type (column name = field name). id/project/status come from the operation.
 _RUN_FIELDS: Mapping[str, str] = {
     "loop": _TEXT,
     "status": _TEXT,
@@ -133,7 +133,7 @@ _RUN_FIELDS: Mapping[str, str] = {
 }
 _RUN_NESTED = ("steps", "approval", *VarScope)
 _RUN_IGNORED = frozenset({"id", "project", "steps_output"})
-_ALWAYS_PRESENT = ("started_by", "approved_by", "rejected_by")  # gelesen auch als None
+_ALWAYS_PRESENT = ("started_by", "approved_by", "rejected_by")  # read also as None
 
 _STEP_FIELDS: Mapping[str, str] = {
     "name": _TEXT,
@@ -182,7 +182,7 @@ _VAR_TYPES: Mapping[type, VarType] = {bool: VarType.BOOL, int: VarType.INT, floa
 
 
 def _scalar_columns(data: Mapping[str, Any], spec: Mapping[str, str], where: str) -> dict[str, Any]:
-    """Skalare Felder laut ``spec`` typgeprüft übernehmen (``None`` = NULL)."""
+    """Take over scalar fields per ``spec`` type-checked (``None`` = NULL)."""
     out: dict[str, Any] = {}
     for name, kind in spec.items():
         value = data.get(name)
@@ -245,7 +245,7 @@ def _decode_var(var_type: str, value: str) -> str | int | float | bool:
 
 @dataclass
 class RecordRows:
-    """Ein Run-Record als Zeilen je Tabelle (Run-Zeile + Kind-Zeilen in Einfüge-Reihenfolge)."""
+    """A run record as rows per table (run row + child rows in insertion order)."""
 
     run: dict[str, Any]
     children: dict[Table, list[dict[str, Any]]] = field(default_factory=lambda: {t: [] for t in RECORD_CHILD_TABLES})
@@ -282,9 +282,9 @@ def _encode_step(rows: RecordRows, run_id: str, idx: int, step: Any) -> None:
 
 
 def encode_record(record: Mapping[str, Any], project: str, run_id: str) -> RecordRows:
-    """Run-Record → :class:`RecordRows`; :class:`InvalidRecordError` bei unbekannten Feldern/falschen Typen.
+    """Run record → :class:`RecordRows`; :class:`InvalidRecordError` on unknown fields/wrong types.
 
-    ``project``/``run_id`` kommen aus der Operation (Ablageort); ein abweichendes ``id`` im Record wird abgelehnt."""
+    ``project``/``run_id`` come from the operation (storage location); a deviating ``id`` in the record is rejected."""
     if record.get("id") not in (None, run_id):
         raise InvalidRecordError(f"Record-id {record.get('id')!r} ≠ Run-Id {run_id!r}")
     _reject_unknown(record, (*_RUN_FIELDS, *_RUN_NESTED, *_RUN_IGNORED), "run")
@@ -345,7 +345,7 @@ class _Children:
 
     @classmethod
     def fetch(cls, conn: Connection, run_ids: Any) -> _Children:
-        """Alle Kind-Zeilen der Runs aus ``run_ids`` (Liste oder Subquery) laden."""
+        """Load all child rows of the runs from ``run_ids`` (list or subquery)."""
         c = cls()
 
         def rows(table: Table, *order: Any) -> Iterator[Mapping]:
@@ -404,11 +404,11 @@ class _Children:
         return rec
 
 
-_MAX_IN_LIST = 500  # bis zu so vielen Run-Ids als IN-Liste, darüber als Subquery
+_MAX_IN_LIST = 500  # up to this many run ids as IN list, above that as subquery
 
 
 def decode_records(conn: Connection, where: ColumnElement[bool], order: Sequence[Any] = ()) -> list[dict]:
-    """Records aller Runs, die ``where`` erfüllen (Kind-Zeilen per Subquery, ein Query je Tabelle)."""
+    """Records of all runs that satisfy ``where`` (child rows via subquery, one query per table)."""
     run_rows = conn.execute(select(runs).where(where).order_by(*order)).mappings().all()
     if not run_rows:
         return []
@@ -423,8 +423,8 @@ def _sqlite_lower(value: Any) -> Any:
 
 
 def _configure_sqlite(engine: Engine) -> None:
-    """Pro Verbindung: WAL, busy_timeout, Fremdschlüssel, Unicode-``lower``; Transaktionen selbst steuern
-    (``BEGIN IMMEDIATE`` für Writes — der Lock gilt ab Transaktionsbeginn, kein Upgrade-Deadlock)."""
+    """Per connection: WAL, busy_timeout, foreign keys, Unicode ``lower``; control transactions ourselves
+    (``BEGIN IMMEDIATE`` for writes — the lock applies from transaction start, no upgrade deadlock)."""
 
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_conn: Any, _record: Any) -> None:
@@ -443,9 +443,9 @@ def _configure_sqlite(engine: Engine) -> None:
 
 
 def make_engine(url: str) -> Engine:
-    """Engine für ``url``; SQLite-Dateien bekommen ihr Verzeichnis und die Verbindungs-Pragmas.
+    """Engine for ``url``; SQLite files get their directory and the connection pragmas.
 
-    In-Memory-SQLite (``sqlite://``) teilt eine einzige Verbindung (sonst sähe jede ihre eigene leere DB)."""
+    In-memory SQLite (``sqlite://``) shares a single connection (otherwise each would see its own empty DB)."""
     parsed = make_url(url)
     is_sqlite = parsed.get_backend_name() == "sqlite"
     in_memory = is_sqlite and parsed.database in (None, "", ":memory:")
@@ -461,7 +461,7 @@ def make_engine(url: str) -> Engine:
 
 
 def alembic_config() -> Config:
-    """Alembic-Konfiguration ohne ``alembic.ini``: Skripte aus ``fabrik/migrations``."""
+    """Alembic configuration without ``alembic.ini``: scripts from ``fabrik/migrations``."""
     cfg = Config()
     cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
     return cfg
@@ -480,7 +480,7 @@ def migrate(engine: Engine, revision: str = "head") -> None:
 # ---------------------------------------------------------------- Store
 @contextlib.contextmanager
 def _db_errors() -> Iterator[None]:
-    """SQLAlchemy-Fehler als Store-Fehler melden (Aufrufer fangen nur :class:`RunStoreError`)."""
+    """Report SQLAlchemy errors as store errors (callers catch only :class:`RunStoreError`)."""
     try:
         yield
     except IntegrityError as e:
@@ -490,7 +490,7 @@ def _db_errors() -> Iterator[None]:
 
 
 class SqlRunStore(BaseRunStore):
-    """Run-Store auf einer SQL-DB (SQLite im Homelab; Postgres folgt, #279)."""
+    """Run store on an SQL DB (SQLite in the homelab; Postgres follows, #279)."""
 
     def __init__(self, engine: Engine):
         self.engine = engine
@@ -498,8 +498,8 @@ class SqlRunStore(BaseRunStore):
 
     @contextlib.contextmanager
     def write_tx(self) -> Iterator[Connection]:
-        """Schreib-Transaktion (SQLite: ``BEGIN IMMEDIATE``). Integritätsfehler → :class:`InvalidRecordError`,
-        andere DB-Fehler → :class:`RunStoreError`; Fehler rollen die Transaktion zurück."""
+        """Write transaction (SQLite: ``BEGIN IMMEDIATE``). Integrity errors → :class:`InvalidRecordError`,
+        other DB errors → :class:`RunStoreError`; errors roll the transaction back."""
         with _db_errors(), self.engine.connect() as conn:
             conn.execution_options(**{_WRITE_OPTION: True})
             with conn.begin():
@@ -507,7 +507,7 @@ class SqlRunStore(BaseRunStore):
 
     @contextlib.contextmanager
     def read_tx(self) -> Iterator[Connection]:
-        """Lese-Transaktion (konsistenter Snapshot über mehrere Queries); DB-Fehler → :class:`RunStoreError`."""
+        """Read transaction (consistent snapshot over several queries); DB errors → :class:`RunStoreError`."""
         with _db_errors(), self.engine.connect() as conn, conn.begin():
             yield conn
 
@@ -521,7 +521,7 @@ class SqlRunStore(BaseRunStore):
                     _t("runstore_sql.run_belongs_to_project_not", run_id=run_id, v2=current["project"], project=project)
                 )
             record = mutate(current)
-            encode_record(record, project, run_id)  # erst prüfen: die Redaction setzt typgerechte Records voraus
+            encode_record(record, project, run_id)  # check first: the redaction assumes correctly typed records
             _redact_record(record)
             self._save(conn, encode_record(record, project, run_id), exists=current is not None)
         return record
@@ -536,7 +536,7 @@ class SqlRunStore(BaseRunStore):
         run_id = rows.run["id"]
         if exists:
             conn.execute(update(runs).where(runs.c.id == run_id).values(**rows.run))
-            # Kind-Zeilen ersetzen; Usage/Reviews/Checks/Rechte hängen per ON DELETE CASCADE daran.
+            # Replace child rows; usage/reviews/checks/permissions hang off it via ON DELETE CASCADE.
             for table in (steps, approvals, run_vars):
                 conn.execute(delete(table).where(table.c.run_id == run_id))
         else:
@@ -575,7 +575,7 @@ class SqlRunStore(BaseRunStore):
         for rec in self.load_records(project):
             try:
                 out.append(parse_run(rec, rec["project"]))
-            except RecordError as e:  # DB-Constraints schließen das aus; nie still verlieren
+            except RecordError as e:  # DB constraints rule this out; never lose silently
                 report.failures.append(LoadFailure(Path(rec["project"], rec["id"]), str(e)))
         report.loaded = len(out)
         return out, report
@@ -588,7 +588,7 @@ class SqlRunStore(BaseRunStore):
             return {t for (t,) in conn.execute(select(func.coalesce(runs.c.trigger, "")).where(where).distinct())}
 
     def search(self, query: RunQuery) -> list[Run]:
-        """Indiziertes ``SELECT`` mit derselben Semantik wie :meth:`RunQuery.matches`."""
+        """Indexed ``SELECT`` with the same semantics as :meth:`RunQuery.matches`."""
         order = (runs.c.started.desc(), runs.c.project.desc(), runs.c.id.desc())
         with self.read_tx() as conn:
             ids = [
@@ -602,7 +602,7 @@ class SqlRunStore(BaseRunStore):
 
 
 def _word_filter(word: str) -> ColumnElement[bool]:
-    """Wort als Teilstring (case-insensitiv) in Id, Loop, Trigger, Status, Notiz oder einer Step-Summary."""
+    """Word as substring (case-insensitive) in id, loop, trigger, status, note or a step summary."""
     cols = (runs.c.id, runs.c.loop, runs.c.trigger, runs.c.status, runs.c.note)
     in_run = [func.lower(c).contains(word, autoescape=True) for c in cols]
     in_steps = exists().where(steps.c.run_id == runs.c.id, func.lower(steps.c.summary).contains(word, autoescape=True))
@@ -631,17 +631,17 @@ def _search_filter(q: RunQuery) -> ColumnElement[bool]:
 
 
 class SqlSessionLog:
-    """Session-Log (ADR 0002) im SQL-Store: Events, Artefakte, Checkpoints hängen am Run.
+    """Session log (ADR 0002) in the SQL store: events, artifacts, checkpoints hang off the run.
 
-    Der Session-Status und die Token-Summen stehen nicht doppelt hier: Status ist der des Runs,
-    Summen kommen aus den ``step_done``-Events. Fehler propagieren (:class:`RunStoreError`) — die
-    Best-effort-Behandlung macht :mod:`fabrik.sessionlog`."""
+    The session status and the token sums are not duplicated here: status is that of the run,
+    sums come from the ``step_done`` events. Errors propagate (:class:`RunStoreError`) — the
+    best-effort handling is done by :mod:`fabrik.sessionlog`."""
 
     def __init__(self, store: SqlRunStore):
         self._store = store
 
     def last_seq(self, run_id: str) -> int:
-        """Höchste Event-Sequenz eines Runs (0 = keine Events)."""
+        """Highest event sequence of a run (0 = no events)."""
         with self._store.read_tx() as conn:
             seq = conn.execute(
                 select(func.coalesce(func.max(run_events.c.seq), 0)).where(run_events.c.run_id == run_id)
@@ -653,7 +653,7 @@ class SqlSessionLog:
             conn.execute(insert(table).values(**values))
 
     def event(self, run_id: str, seq: int, ts: str, kind: str, step_name: str, step_type: str, status: str, data: str):
-        """Event anhängen (``data``: opaker, redigierter JSON-Text)."""
+        """Append an event (``data``: opaque, redacted JSON text)."""
         self._insert(
             run_events,
             run_id=run_id,
@@ -671,7 +671,7 @@ class SqlSessionLog:
         self._insert(run_artifacts, run_id=run_id, step_name=step_name, kind=kind, path=path, created_at=created_at)
 
     def checkpoint(self, run_id: str, step_idx: int, step_name: str, status: str, data: str) -> None:
-        """Checkpoint anhängen; ein zweiter für denselben Step verletzt den Primärschlüssel (append-only)."""
+        """Append a checkpoint; a second one for the same step violates the primary key (append-only)."""
         self._insert(run_checkpoints, run_id=run_id, step_idx=step_idx, step_name=step_name, status=status, data=data)
 
     def event_data(self, run_id: str, kind: str) -> list[str]:
@@ -685,7 +685,7 @@ class SqlSessionLog:
             return list(conn.execute(stmt).scalars())
 
     def events(self, run_id: str, after: int, kinds: Sequence[str], limit: int) -> list[tuple]:
-        """(id, ts, kind, step_name, data) der Events ``kinds`` mit ``id > after``, höchstens ``limit``."""
+        """(id, ts, kind, step_name, data) of the events ``kinds`` with ``id > after``, at most ``limit``."""
         stmt = (
             select(run_events.c.id, run_events.c.ts, run_events.c.kind, run_events.c.step_name, run_events.c.data)
             .where(run_events.c.run_id == run_id, run_events.c.id > after, run_events.c.kind.in_(kinds))
@@ -696,8 +696,8 @@ class SqlSessionLog:
             return [tuple(r) for r in conn.execute(stmt)]
 
     def dump(self, run_id: str) -> dict:
-        """Vollständiges Session-Log eines Runs als JSON-fähiges Dict
-        (``events``/``checkpoints``/``artifacts``, je Zeile ein Dict)."""
+        """Complete session log of a run as a JSON-capable dict
+        (``events``/``checkpoints``/``artifacts``, one dict per row)."""
         with self._store.read_tx() as conn:
             events = [
                 dict(r)
@@ -727,7 +727,7 @@ _STORES_GUARD = threading.Lock()
 
 
 def store_for_url(url: str) -> SqlRunStore:
-    """Store je DB-URL (einmal angelegt und auf ``head`` migriert, dann wiederverwendet)."""
+    """Store per DB URL (created once and migrated to ``head``, then reused)."""
     with _STORES_GUARD:
         store = _STORES.get(url)
         if store is None:
@@ -744,7 +744,7 @@ def store_for_url(url: str) -> SqlRunStore:
 
 
 def dispose_stores() -> None:
-    """Alle gecachten Stores schließen (Tests, Prozessende)."""
+    """Close all cached stores (tests, process end)."""
     with _STORES_GUARD:
         for store in _STORES.values():
             store.engine.dispose()

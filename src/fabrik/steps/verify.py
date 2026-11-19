@@ -1,18 +1,17 @@
-"""Step: verify — Check-Liste-Semantik (Issue #13).
+"""Step: verify — check-list semantics (issue #13).
 
-Eine `verify`-Step ist eine Liste von Checks (`type: shell|http|...`), die
-alle grün sein müssen. Jeder Check ist ein normales Step-Def und wird über
-das gewöhnliche Step-Dispatch ausgeführt. Bewusst nicht "deterministisch-only"
-— LLM-Judges und Screenshot-Diffs können später als Check-Typen dazukommen,
-ohne die Semantik zu forken.
+A `verify` step is a list of checks (`type: shell|http|...`) that must
+all be green. Each check is a normal step def and is executed via
+the ordinary step dispatch. Deliberately not "deterministic-only"
+— LLM judges and screenshot diffs can be added later as check types
+without forking the semantics.
 
-Semantik:
-- Alle Checks werden durchlaufen (Checkliste, kein Fail-Fast), pro Check wird
-  Output gesammelt.
-- Alle grün → `pass`; mindestens einer rot → `fail` mit Check-Name + Output.
-- Leere/fehlende `checks` → vacuous `pass` (mit Hinweis im Summary).
+Semantics:
+- All checks are run (checklist, no fail-fast), output is collected per check.
+- All green → `pass`; at least one red → `fail` with check name + output.
+- Empty/missing `checks` → vacuous `pass` (with a note in the summary).
 
-Der pro-Check-Output landet im Run-Record unter dem Key `verify`.
+The per-check output lands in the run record under the key `verify`.
 """
 
 from __future__ import annotations
@@ -24,8 +23,8 @@ from ..runmodel import FailureKind
 
 
 def _step_verify(ctx: dict, step: dict, emit) -> dict:
-    # Lazy-Import: engine importiert steps bei Modul-Load; hier nur zur Laufzeit,
-    # um den zirkulären Import (engine → steps → engine) zu vermeiden.
+    # Lazy import: engine imports steps at module load; here only at runtime,
+    # to avoid the circular import (engine → steps → engine).
     from ..engine import _dispatch_step
 
     checks = step.get("checks") or []
@@ -49,7 +48,7 @@ def _step_verify(ctx: dict, step: dict, emit) -> dict:
         emit(f"  verify [{name}] ({chk['type']})")
         try:
             res = _dispatch_step(ctx, dict(chk), emit)
-        except Exception as e:  # noqa: BLE001 — ein Check-Fehler darf den Loop nicht crashen
+        except Exception as e:  # noqa: BLE001 — a check error must not crash the loop
             res = {"ok": False, "output": f"Exception: {e}", "summary": f"Exception: {e}"}
             kinds.append(classify_exception(e))  # unklassifizierte Exception bleibt unknown (ADR 0035 Nr. 4)
         else:
@@ -73,8 +72,8 @@ def _step_verify(ctx: dict, step: dict, emit) -> dict:
     }
 
 
-# Welche Klasse eines roten Checks den verify-Step bestimmt: was einen Menschen braucht vor dem, was ein
-# Retry heilen könnte, vor einem echten Ergebnis; unknown zuletzt. Muss jede FailureKind enthalten.
+# Which class of a red check determines the verify step: what needs a human before what a
+# retry could heal, before a real result; unknown last. Must contain every FailureKind.
 _KIND_PRIORITY = (
     FailureKind.ENVIRONMENT,
     FailureKind.INTERRUPTED,
@@ -85,11 +84,11 @@ _KIND_PRIORITY = (
 
 
 def _check_failure(res: object) -> Failure:
-    """Klasse eines regulär rot gemeldeten Checks; ohne Angabe ein unerfülltes Kriterium → ``outcome``."""
+    """Class of a regularly reported red check; without specification an unmet criterion → ``outcome``."""
     reported = from_result(res) if isinstance(res, dict) else Failure()
     return Failure(FailureKind.OUTCOME) if reported.kind is FailureKind.UNKNOWN else reported
 
 
 def _verify_failure(kinds: list[Failure]) -> Failure:
-    """Klasse eines roten verify-Steps: die vorrangigste Klasse der roten Checks (:data:`_KIND_PRIORITY`)."""
+    """Class of a red verify step: the highest-priority class of the red checks (:data:`_KIND_PRIORITY`)."""
     return min(kinds, key=lambda f: _KIND_PRIORITY.index(f.kind), default=Failure())

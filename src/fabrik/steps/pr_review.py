@@ -1,68 +1,68 @@
-"""Step: pr_review — LLM-Review des PR-Diffs + GitHub-Review via Reviewer-Token.
+"""Step: pr_review — LLM review of the PR diff + GitHub review via reviewer token.
 
-Dual-Identity-Pipeline (ADR 0010): Der Reviewer ist der **persönliche User**
-(PAT, `GITHUB_REVIEWER_TOKEN`) — GitHub verbietet Self-Approval, daher muss
-die Review-Identity von der PR-Autorin (GitHub-App) verschieden sein.
+Dual-identity pipeline (ADR 0010): the reviewer is the **personal user**
+(PAT, `GITHUB_REVIEWER_TOKEN`) — GitHub forbids self-approval, so
+the review identity must differ from the PR author (GitHub app).
 
-Ablauf pro Runde:
-  1. PR-Diff holen
-  2. Cross-Model-LLM-Review (Verdict-Vertrag aus ADR 0003)
-  3. Verdict als GitHub-Review posten (APPROVE / REQUEST_CHANGES)
-  4. changes_requested → Developer-Agent fixt im Worktree, pusht, Re-Review
-     (bounded: `max_rounds` Fix-Runden, danach Step fail)
+Flow per round:
+  1. Fetch the PR diff
+  2. Cross-model LLM review (verdict contract from ADR 0003)
+  3. Post the verdict as a GitHub review (APPROVE / REQUEST_CHANGES)
+  4. changes_requested → developer agent fixes in the worktree, pushes, re-review
+     (bounded: `max_rounds` fix rounds, then step fail)
 
-Konvergenz (ADR 0039): Der Reviewer meldet höchstens `max_findings` Findings
-(schwerste zuerst). Ab Runde 2 bekommt er die Findings der Vorrunde und prüft
-zuerst, ob sie behoben sind; neue Findings zählen dann nur noch, wenn sie
-high sind oder eine Regression der Fixes. Findings dürfen eine `suggestion`
-tragen, die der Developer als Hinweis bekommt.
+Convergence (ADR 0039): the reviewer reports at most `max_findings` findings
+(most severe first). From round 2 on it gets the previous round's findings and checks
+first whether they are fixed; new findings then only count if they
+are high or a regression of the fixes. Findings may carry a `suggestion`
+that the developer receives as a hint.
 
-JSON-Verdikt-Vertrag (Absicherung für lokale Modelle, vgl. #80): Lokale
-Reviewer-Modelle (z. B. Qwen via opencode/llama.cpp) liefern gelegentlich kein
-gültiges JSON-Verdict (unescapte Zeichen im JSON). `_parse_verdict` ist tolerant
-(erstes `{` bis letztes `}`); zusätzlich wird ein unparsierbares Verdict begrenzt
-retried (`VERDICT_RETRIES`), bevor die Runde als fehlgeschlagen gilt. Ein
-Backend-Fehler wird nicht retried (eigene Retry-Logik, ADR 0012).
+JSON verdict contract (safeguard for local models, cf. #80): local
+reviewer models (e.g. Qwen via opencode/llama.cpp) occasionally deliver no
+valid JSON verdict (unescaped characters in the JSON). `_parse_verdict` is tolerant
+(first `{` to last `}`); additionally an unparseable verdict is retried a bounded
+number of times (`VERDICT_RETRIES`) before the round counts as failed. A
+backend error is not retried (own retry logic, ADR 0012).
 
-Die Fix-Runden schreibt der **Builder** (ADR 0010), nicht der Reviewer:
-Backend/Modell/Variante des letzten Agent-Steps (`last_agent_backend`/`last_agent_model`/
-`last_agent_variant`), überschreibbar per `fix_backend`/`fix_model`/`fix_variant`.
+The fix rounds are written by the **builder** (ADR 0010), not the reviewer:
+backend/model/variant of the last agent step (`last_agent_backend`/`last_agent_model`/
+`last_agent_variant`), overridable via `fix_backend`/`fix_model`/`fix_variant`.
 
-Liegt Issue-Kontext vor (`issue_number`/`issue_title`/`issue_body`), prüft der
-Reviewer den Diff gegen die Acceptance Criteria — ohne ihn bewertet er nur die
-innere Konsistenz des Diffs (PR #201: README beschrieb einen Workflow, der nie
-committet wurde, und wurde approved). Das Issue wird als untrusted Daten
-markiert (§1.4).
+If issue context is present (`issue_number`/`issue_title`/`issue_body`), the
+reviewer checks the diff against the acceptance criteria — without it it only judges the
+inner consistency of the diff (PR #201: README described a workflow that was never
+committed and was approved). The issue is marked as untrusted data
+(§1.4).
 
-AC-Verifikation (ADR 0013 Stufe 2): Der Verdict trägt pro Kriterium
-`acceptance: [{criterion, status: met|unmet|unverifiable, evidence}]` (im
-Run-Record unter `step.review`). Mindestens ein `unmet` erzwingt
-`changes_requested` (deterministisch, auch gegen ein `approved`-Verdict) →
-bounded Fix-Runden. `unverifiable` blockiert nicht, ist aber im Review-Text
-und im Run-Record nachvollziehbar. Ungültiges `acceptance`-JSON wird
-abgelehnt (kein Verdict → Step fail), nicht still ignoriert.
+AC verification (ADR 0013 stage 2): the verdict carries per criterion
+`acceptance: [{criterion, status: met|unmet|unverifiable, evidence}]` (in the
+run record under `step.review`). At least one `unmet` forces
+`changes_requested` (deterministically, even against an `approved` verdict) →
+bounded fix rounds. `unverifiable` does not block, but is traceable in the review text
+and in the run record. Invalid `acceptance` JSON is
+rejected (no verdict → step fail), not silently ignored.
 
-Nach einem Fix-Push wartet die nächste Runde, bis GitHub den PR-Head auf dem
-gepushten Commit meldet. GitHub aktualisiert den PR asynchron — ohne Warten
-reviewt die Runde den alten Diff und meldet bereits gefixte Findings erneut.
+After a fix push the next round waits until GitHub reports the PR head on the
+pushed commit. GitHub updates the PR asynchronously — without waiting
+the round would review the old diff and report already fixed findings again.
 
-Step-Def:
+Step def:
     type: pr_review
     repo: owner/name
-    pr: {pr_number}        # optional; Default: ctx-Variable pr_number (pr-Step)
-    model: <Pflicht, Review-Modell — Cold Critic, ≠ Builder-Modell>
-    max_rounds: 2          # Fix-Runden nach changes_requested (Default 2)
-    max_findings: 5        # Obergrenze Findings pro Runde (Default 5)
-    fix_backend: …         # optional; Default: Backend des Builder-Agent-Steps
-    fix_model: …           # optional; Default: Modell des Builder-Agent-Steps
-    fix_variant: …         # optional; Default: `variant` des Builder-Agent-Steps (opencode)
-    fix_timeout: 1800      # optional; Timeout der Fix-Runden-Agent-Session in s (Default 1800)
-    fix_checks: [cmd, …]   # optional; Shell-Checks (z. B. Lint/Test) nach dem Fix, VOR Commit/Push
-    fix_check_timeout: 900 # optional; Timeout je Fix-Check in s (Default 900)
+    pr: {pr_number}        # optional; default: ctx variable pr_number (pr step)
+    model: <required, review model — cold critic, ≠ builder model>
+    max_rounds: 2          # fix rounds after changes_requested (default 2)
+    max_findings: 5        # upper bound of findings per round (default 5)
+    fix_backend: …         # optional; default: backend of the builder agent step
+    fix_model: …           # optional; default: model of the builder agent step
+    fix_variant: …         # optional; default: `variant` of the builder agent step (opencode)
+    fix_timeout: 1800      # optional; timeout of the fix-round agent session in s (default 1800)
+    fix_checks: [cmd, …]   # optional; shell checks (e.g. lint/test) after the fix, BEFORE commit/push
+    fix_check_timeout: 900 # optional; timeout per fix check in s (default 900)
 
-`fix_checks` laufen im Step-Workdir, nachdem der Fix-Agent Änderungen gemacht hat. Schlägt
-einer fehl, wird nichts committet oder gepusht und der Step scheitert (`outcome`) mit dem
-Output-Ende des Checks — so geht nach `ship` kein ungeprüfter Builder-Code mehr auf den PR.
+`fix_checks` run in the step workdir after the fix agent has made changes. If
+one fails, nothing is committed or pushed and the step fails (`outcome`) with the
+output tail of the check — so after `ship` no unchecked builder code reaches the PR any more.
 """
 
 from __future__ import annotations
@@ -116,12 +116,12 @@ _PREVIOUS_TEMPLATE = (
 )
 
 DEFAULT_MAX_FINDINGS = 5
-# Lokale Modelle (z. B. Qwen) liefern gelegentlich kein gültiges JSON-Verdict (#80:
-# unescapte Zeichen im JSON). Ein begrenzter Retry heilt das, ohne die Runde zu verwerfen.
+# Local models (e.g. Qwen) occasionally deliver no valid JSON verdict (#80:
+# unescaped characters in the JSON). A bounded retry heals this without discarding the round.
 VERDICT_RETRIES = 1
-DEFAULT_FIX_TIMEOUT_S = 1800  # Agent-Session einer Fix-Runde (statt Agent-Default; lokale Modelle sind langsam)
+DEFAULT_FIX_TIMEOUT_S = 1800  # Agent session of a fix round (instead of agent default; local models are slow)
 DEFAULT_FIX_CHECK_TIMEOUT_S = 900  # je fix_checks-Kommando (Lint/Test)
-_CHECK_TAIL_LINES = 15  # Output-Ende eines gescheiterten Checks in der Fehlermeldung
+_CHECK_TAIL_LINES = 15  # Output tail of a failed check in the error message
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
 _REQUIREMENTS_TEMPLATE = (
@@ -138,13 +138,13 @@ _REQUIREMENTS_TEMPLATE = (
 
 
 def _requirements(ctx: dict) -> str:
-    """Issue-/AC-Block für Review- und Fix-Prompt; leer ohne Issue-Kontext."""
+    """Issue/AC block for review and fix prompt; empty without issue context."""
     title = str(ctx.get("issue_title") or "").strip()
     body = str(ctx.get("issue_body") or "").strip()
     if not (title or body):
         return ""
-    # format_map substituiert in einem Durchgang — ein {body} im Titel würde
-    # bei verketteten .replace() durch den Body-Text ersetzt.
+    # format_map substitutes in a single pass — a {body} in the title would
+    # be replaced by the body text with chained .replace().
     return _REQUIREMENTS_TEMPLATE.format_map(
         {
             "number": str(ctx.get("issue_number") or "?"),
@@ -155,7 +155,7 @@ def _requirements(ctx: dict) -> str:
 
 
 def _format_findings(findings: list[dict]) -> str:
-    """Findings als Markdown-Liste (inkl. Suggestion) für Review-Body und Prompts."""
+    """Findings as a markdown list (incl. suggestion) for review body and prompts."""
     lines = []
     for f in findings:
         lines.append(f"- {_finding_label(f)}")
@@ -165,15 +165,15 @@ def _format_findings(findings: list[dict]) -> str:
 
 
 def _rank_findings(findings: list[dict], limit: int) -> list[dict]:
-    """Schwerste zuerst (stabil), auf ``limit`` gekappt — falls der Reviewer das Limit ignoriert."""
+    """Most severe first (stable), capped at ``limit`` — in case the reviewer ignores the limit."""
     return sorted(findings, key=lambda f: _SEVERITY_RANK.get(str(f.get("severity")), len(_SEVERITY_RANK)))[:limit]
 
 
 def _apply_acceptance_gate(verdict: dict) -> None:
-    """ADR 0013 Stufe 2: ≥ 1 `unmet`es AC → `changes_requested` — deterministisch,
-    unabhängig vom Reviewer-Verdict. Jedes unmet-Kriterium wird als
-    high-Severity-Finding ergänzt, damit die bounded Fix-Runden (ADR 0010)
-    es adressieren. `unverifiable` blockiert nicht (nur Run-Record/Review-Text)."""
+    """ADR 0013 stage 2: ≥ 1 `unmet` AC → `changes_requested` — deterministically,
+    independent of the reviewer verdict. Every unmet criterion is added as a
+    high-severity finding so the bounded fix rounds (ADR 0010)
+    address it. `unverifiable` does not block (run record/review text only)."""
     unmet = [a for a in verdict.get("acceptance", []) if a["status"] == "unmet"]
     if not unmet:
         return
@@ -183,8 +183,8 @@ def _apply_acceptance_gate(verdict: dict) -> None:
 
 
 def _format_acceptance(acceptance: list[dict]) -> str:
-    """AC-Verifikation (ADR 0013) als Markdown-Block für den GitHub-Review-Body;
-    leer, wenn der Verdict keine AC-Prüfung enthält."""
+    """AC verification (ADR 0013) as a markdown block for the GitHub review body;
+    empty if the verdict contains no AC check."""
     if not acceptance:
         return ""
     lines = ["Acceptance criteria:"]
@@ -197,7 +197,7 @@ def _format_acceptance(acceptance: list[dict]) -> str:
 
 
 def _fix_step(ctx: dict, step: dict) -> dict:
-    """Step-Def der Fix-Runde: Builder-Backend/-Modell statt Reviewer (ADR 0010)."""
+    """Step def of the fix round: builder backend/model instead of reviewer (ADR 0010)."""
     backend = (
         step.get("fix_backend")
         or ctx.get("last_agent_backend")
@@ -205,7 +205,7 @@ def _fix_step(ctx: dict, step: dict) -> dict:
         or step.get("backend")
         or DEFAULT_REVIEW_BACKEND
     )
-    # Leeres Modell → _step_agent_backend fällt auf FABRIK_AGENT_MODEL zurück.
+    # Empty model → _step_agent_backend falls back to FABRIK_AGENT_MODEL.
     model = step.get("fix_model") or ctx.get("last_agent_model") or ""
     variant = step.get("fix_variant") or ctx.get("last_agent_variant") or ""
     return {
@@ -217,8 +217,8 @@ def _fix_step(ctx: dict, step: dict) -> dict:
     }
 
 
-# GitHub braucht nach einem Push typischerweise einige Sekunden, bis der PR-Head
-# (und damit der Diff) aktualisiert ist.
+# After a push GitHub typically needs a few seconds until the PR head
+# (and thereby the diff) is updated.
 _HEAD_SYNC_TIMEOUT_S = 90
 _HEAD_SYNC_INTERVAL_S = 3
 
@@ -249,7 +249,7 @@ def _post_review(repo: str, pr_number: int, token: str, event: str, body: str) -
 
 
 def _wait_for_head(repo: str, pr_number: int, sha: str, token: str) -> bool:
-    """Pollt den PR, bis GitHub ``sha`` als Head meldet. False = Timeout."""
+    """Polls the PR until GitHub reports ``sha`` as head. False = timeout."""
     deadline = time.monotonic() + _HEAD_SYNC_TIMEOUT_S
     while True:
         pr = _gh_api("GET", f"https://api.github.com/repos/{repo}/pulls/{pr_number}", token)
@@ -263,9 +263,9 @@ def _wait_for_head(repo: str, pr_number: int, sha: str, token: str) -> bool:
 def _review_diff(
     diff: str, ctx: dict, step: dict, emit, previous: list[dict] | None = None
 ) -> tuple[dict | None, dict]:
-    """Cross-Model-Review des Diffs. Liefert (verdict|None, backend-result).
+    """Cross-model review of the diff. Returns (verdict|None, backend result).
 
-    ``previous``: Findings der Vorrunde — der Reviewer verifiziert sie zuerst."""
+    ``previous``: findings of the previous round — the reviewer verifies them first."""
     model = (step.get("model") or "").strip()
     if err := _check_cold_critic(model, ctx, "pr_review"):
         return None, err
@@ -279,16 +279,16 @@ def _review_diff(
     )
     backend = _resolve_backend(step)
     res: dict = {}
-    # Ein unparsierbares Verdict (kein/defektes JSON) wird begrenzt retried —
-    # lokale Modelle liefern das gelegentlich (#80). Ein Backend-Fehler (ok: False)
-    # wird NICHT retried (der Agent-Step hat seine eigene Retry-Logik, ADR 0012).
+    # An unparseable verdict (no/broken JSON) is retried a bounded number of times —
+    # local models occasionally deliver this (#80). A backend error (ok: False)
+    # is NOT retried (the agent step has its own retry logic, ADR 0012).
     for attempt in range(1 + VERDICT_RETRIES):
         res = _step_agent_backend(ctx, step, emit, backend, prompt)
         if not res.get("ok"):
             return None, res
         verdict = _parse_verdict(res.get("output", ""))
         if verdict:
-            _apply_acceptance_gate(verdict)  # unmet → changes_requested (ADR 0013), vor dem Finding-Cap
+            _apply_acceptance_gate(verdict)  # unmet → changes_requested (ADR 0013), before the finding cap
             verdict["findings"] = _rank_findings(verdict["findings"], max_findings)
             return verdict, res
         emit(t("steps.pr_review.no_valid_json_verdict_attempt", v1=attempt + 1, v2=1 + VERDICT_RETRIES))
@@ -296,10 +296,10 @@ def _review_diff(
 
 
 def _run_fix_checks(ctx: dict, step: dict, emit) -> dict | None:
-    """``fix_checks`` im Workdir ausführen. None = alle grün (oder keine); sonst das Fehler-Result.
+    """Run ``fix_checks`` in the workdir. None = all green (or none); otherwise the error result.
 
-    Nutzt den shell-Step (Redaction, Timeout-Gruppe, Exit-Code-Klassen); ein roter Check ist ein
-    echtes Ergebnis (``outcome``), Umgebungsfehler (126/127/75/78) behalten ihre Klasse."""
+    Uses the shell step (redaction, timeout group, exit-code classes); a red check is a
+    real result (``outcome``), environment errors (126/127/75/78) keep their class."""
     timeout = int(step.get("fix_check_timeout") or DEFAULT_FIX_CHECK_TIMEOUT_S)
     for cmd in step.get("fix_checks") or []:
         res = _step_shell(ctx, {"cmd": str(cmd), "timeout": timeout, "failure_kind": "outcome"}, emit)
@@ -315,7 +315,7 @@ def _run_fix_checks(ctx: dict, step: dict, emit) -> dict | None:
 
 
 def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> dict:
-    """Developer-Agent (Builder) fixt die Findings im Worktree + commit + push (→ ``sha``)."""
+    """Developer agent (builder) fixes the findings in the worktree + commit + push (→ ``sha``)."""
     flist = _format_findings(findings) or t("steps.pr_review.no_findings")
     prompt = (
         _FIX_TEMPLATE.replace("{findings}", flist).replace("{diff}", _cap(diff))
@@ -332,14 +332,14 @@ def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> 
         return failed(t("steps.pr_review.pr_review_fix_round_without"), FailureKind.OUTCOME)
     if bad := _run_fix_checks(ctx, step, emit):
         return bad
-    # Repo-weit stagen: workdir kann ein Monorepo-Subpfad sein (`.` verfehlt z. B. `.github/`).
+    # Stage repo-wide: workdir can be a monorepo subpath (`.` misses e.g. `.github/`).
     _git(ctx, base, "add", STAGE_ALL)
     _git(ctx, base, "commit", "-m", _substitute(step.get("fix_commit", "fabrik: review fixes ({run_id})"), ctx))
     branch = _git(ctx, base, "rev-parse", "--abbrev-ref", "HEAD")
     if branch in (step.get("protected") or config.PROTECTED_DEFAULT) or branch == "HEAD":
         return failed(t("steps.pr_review.pr_review_blocked_fix_push", branch=branch), FailureKind.ENVIRONMENT)
     pushed = push_branch(base, branch, protected=step.get("protected") or config.PROTECTED_DEFAULT)
-    sha = _git(ctx, base, "rev-parse", "HEAD")  # nach API-Push: der signierte Commit
+    sha = _git(ctx, base, "rev-parse", "HEAD")  # after API push: the signed commit
     return {"ok": True, "sha": sha, "summary": f"Fix-Runde: commit + {pushed}"}
 
 
@@ -351,7 +351,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     reviewer_token = _gh_token("reviewer")
     pr_number = _resolve_pr_number(ctx, step, repo, dev_token)
     max_rounds = max(0, int(step.get("max_rounds", 2)))
-    pushed_sha = ""  # Head nach der letzten Fix-Runde; leer = Runde 1
+    pushed_sha = ""  # Head after the last fix round; empty = round 1
     previous: list[dict] = []  # Findings der Vorrunde (Konvergenz, ADR 0039)
 
     for round_i in range(max_rounds + 1):
@@ -375,7 +375,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
                     v1=round_i + 1,
                     v2=res.get("summary", "unlesbarer Output"),
                 ),
-                from_result(res),  # Klasse des Agent-Steps; lesbarer, aber unparsbarer Output → unknown
+                from_result(res),  # Class of the agent step; readable but unparseable output → unknown
                 output=res.get("output", ""),
                 usage=res.get("usage"),
             )
@@ -420,5 +420,5 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
             )
         pushed_sha = fix["sha"]
         previous = verdict["findings"]
-    # unerreicht (max_rounds >= 0 garantiert Rückgabe oben)
+    # unreachable (max_rounds >= 0 guarantees a return above)
     return {"ok": False, "summary": "pr_review: unerwarteter Ablauf"}

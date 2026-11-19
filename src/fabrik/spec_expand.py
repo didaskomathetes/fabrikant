@@ -1,8 +1,8 @@
-"""Spec-Expansion: Loop-Templates (`use:`) und Variablen (`vars:`) — ADR 0047.
+"""Spec expansion: loop templates (`use:`) and variables (`vars:`) — ADR 0047.
 
-Reihenfolge in `expand_spec`: erst Templates, dann `vars` über die ganze Spec.
-Nur Schlüssel aus `vars`/`with` werden ersetzt; alle anderen `{name}` bleiben
-Laufzeit-Variablen der Engine (`{issue_number}`, `{root}`, …).
+Order in `expand_spec`: first templates, then `vars` over the whole spec.
+Only keys from `vars`/`with` are replaced; all other `{name}` stay
+runtime variables of the engine (`{issue_number}`, `{root}`, …).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from . import config
 from .context import _PLACEHOLDER_RE
 from .slack import ALERT_VARS
 
-# Von der Engine gesetzte Laufzeit-Variablen: ein `vars`-Schlüssel gleichen Namens würde sie verdecken.
+# Runtime variables set by the engine: a `vars` key of the same name would shadow them.
 RESERVED_VARS = frozenset(
     {
         "project",
@@ -55,10 +55,10 @@ _USE_KEYS = ("use", "with", "insert")
 
 
 def substitute(obj: Any, mapping: dict) -> Any:
-    """Ersetzt `{key}` (nur Schlüssel aus `mapping`) rekursiv in allen Strings.
+    """Replaces `{key}` (only keys from `mapping`) recursively in all strings.
 
-    Besteht ein String nur aus einem Platzhalter, wird der Wert typgetreu eingesetzt
-    (Liste, Zahl — als Kopie, damit Loops sich keine Container teilen); sonst als Text."""
+    If a string consists of a single placeholder only, the value is inserted type-preserved
+    (list, number — as a copy, so loops do not share containers); otherwise as text."""
     if isinstance(obj, str):
         m = _PLACEHOLDER_RE.fullmatch(obj)
         if m and m.group(1) in mapping:
@@ -72,7 +72,7 @@ def substitute(obj: Any, mapping: dict) -> Any:
 
 
 def placeholders(obj) -> set[str]:
-    """Alle `{name}`-Platzhalter in den Strings von `obj` (rekursiv)."""
+    """All `{name}` placeholders in the strings of `obj` (recursively)."""
     if isinstance(obj, str):
         return set(_PLACEHOLDER_RE.findall(obj))
     if isinstance(obj, list):
@@ -83,7 +83,7 @@ def placeholders(obj) -> set[str]:
 
 
 def resolve_vars(spec_vars: dict) -> dict:
-    """`vars`, die andere `vars` referenzieren (`a: "{b}"`), auflösen; Zyklen → ValueError."""
+    """Resolve `vars` that reference other `vars` (`a: "{b}"`); cycles → ValueError."""
     resolved: dict = {}
 
     def resolve(key: str, chain: tuple[str, ...]):
@@ -162,7 +162,7 @@ def _insert_steps(steps: list, insert, where: str) -> list:
 
 
 def expand_loop(lname: str, ldef: dict, spec_vars: dict, spec_path: Path | None) -> dict:
-    """Ein `use:`-Loop → konkreter Loop (Template-Defaults < vars < with; Loop-Keys überschreiben)."""
+    """A `use:` loop → concrete loop (template defaults < vars < with; loop keys override)."""
     where = f"loop {lname}"
     tpl = _load_template(ldef["use"], spec_path)
     params = tpl.get("params") or {}
@@ -171,7 +171,7 @@ def expand_loop(lname: str, ldef: dict, spec_vars: dict, spec_path: Path | None)
         raise ValueError(t("spec_expand.with_must_be_a_mapping", where=where))
     if "insert" in ldef and "steps" in ldef:
         raise ValueError(t("spec_expand.insert_cannot_be_combined_with", where=where))
-    # Unbekannte with-Keys (Tippfehler) sonst: stiller Default oder Literal-{x} zur Laufzeit.
+    # Unknown with keys (typos) otherwise: silent default or literal {x} at runtime.
     unknown = sorted(set(given) - set(params) - placeholders(tpl["loop"]) - placeholders(ldef.get("insert")))
     if unknown:
         raise ValueError(
@@ -192,7 +192,7 @@ def expand_loop(lname: str, ldef: dict, spec_vars: dict, spec_path: Path | None)
 
 
 def expand_spec(data: dict, spec_path: Path | None = None) -> dict:
-    """Templates expandieren, dann `vars` überall einsetzen. Gibt eine neue Spec zurück."""
+    """Expand templates, then insert `vars` everywhere. Returns a new spec."""
     errs = _check_vars(data.get("vars"))
     if errs:
         raise ValueError(t("spec_expand.spec_invalid") + "\n  ".join(errs))

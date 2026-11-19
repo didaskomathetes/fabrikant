@@ -1,18 +1,18 @@
-"""codex-Adapter: OpenAI Codex CLI (`codex exec`, One-Shot pro Prompt).
+"""codex adapter: OpenAI Codex CLI (`codex exec`, one-shot per prompt).
 
-One-Shot-Modell (Mechanik in `OneShotCliBackend`): Prompt über STDIN
-(keine ARG-Limits, kein Shell-Interpolation). Sandbox: Default
-`workspace-write` (Codex-Sandbox, bubblewrap-basiert); `step.sandbox` /
-`FABRIK_CODEX_SANDBOX` als Override — in Gateway-/Service-Kontexten ohne
-bubblewrap oft `danger-full-access` notwendig (Containment dann über
-User/VM, nicht über die Sandbox).
+One-shot model (mechanics in `OneShotCliBackend`): prompt via STDIN
+(no ARG limits, no shell interpolation). Sandbox: default
+`workspace-write` (Codex sandbox, bubblewrap-based); `step.sandbox` /
+`FABRIK_CODEX_SANDBOX` as override — in gateway/service contexts without
+bubblewrap `danger-full-access` is often necessary (containment then via
+user/VM, not via the sandbox).
 
-Usage: `codex exec --json` streamt JSONL; `turn.completed.usage`
-(`input_tokens`, `cached_input_tokens`, `output_tokens`) wird über alle Turns
-summiert (`input_tokens` enthält bereits den gecachten Anteil). Die finale
-Antwort ist die letzte `item.completed`/`agent_message`; Fehler stehen in
-`turn.failed`/`error`. Keine Kosten in USD — die CLI liefert keine (`cost`
-bleibt 0.0). Ohne JSON im stdout (ältere CLI) gilt der rohe stdout als Antwort.
+Usage: `codex exec --json` streams JSONL; `turn.completed.usage`
+(`input_tokens`, `cached_input_tokens`, `output_tokens`) is summed over all turns
+(`input_tokens` already includes the cached share). The final
+answer is the last `item.completed`/`agent_message`; errors are in
+`turn.failed`/`error`. No cost in USD — the CLI provides none (`cost`
+stays 0.0). Without JSON in stdout (older CLI) the raw stdout counts as the answer.
 """
 
 from __future__ import annotations
@@ -69,10 +69,10 @@ class CodexBackend(OneShotCliBackend):
 
     @staticmethod
     def _read_events(out: str) -> tuple[str, dict, str]:
-        """JSONL-stdout → (finaler Agent-Text, {input, output}, Fehlermeldung).
+        """JSONL stdout → (final agent text, {input, output}, error message).
 
-        Defensiv: Nicht-JSON-Zeilen und unbekannte Events werden ignoriert; liegt gar kein JSON
-        vor, ist der rohe stdout der Text (Schema-Fallback)."""
+        Defensive: non-JSON lines and unknown events are ignored; if there is no JSON
+        at all, the raw stdout is the text (schema fallback)."""
         text, error = "", ""
         tokens = {"input": 0, "output": 0}
         parsed_json = False
@@ -101,5 +101,5 @@ class CodexBackend(OneShotCliBackend):
 
 
 def _count(value) -> int:
-    """Token-Zähler aus einem JSON-Wert (nur nicht-negative ints, sonst 0)."""
+    """Token counter from a JSON value (only non-negative ints, otherwise 0)."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0

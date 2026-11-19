@@ -1,7 +1,7 @@
-"""Relay-Subcommands = die Shell-Steps der generierten Loops (ADR 0037).
+"""Relay subcommands = the shell steps of the generated loops (ADR 0037).
 
-Jeder Command liefert eine Zusammenfassung; die letzte Zeile landet als Step-Summary in der
-durchsuchbaren Run-Historie (`relay #<N> s<k> …`).
+Every command returns a summary; the last line lands as step summary in the
+searchable run history (`relay #<N> s<k> …`).
 """
 
 from __future__ import annotations
@@ -58,20 +58,20 @@ from .workspace import (
 
 log = logging.getLogger("fabrik.relay")
 
-# Session hört so viele Minuten vor dem harten Ende auf, neue Arbeitseinheiten zu beginnen.
+# The session stops starting new work units this many minutes before the hard end.
 WRAP_UP_MINUTES = 10
-# Run-Status, in denen ein Relay-Run den Dispatcher blockiert (einer pro Projekt).
+# Run statuses in which a relay run blocks the dispatcher (one per project).
 BUSY_STATUSES = frozenset({RunStatus.RUNNING, RunStatus.NEEDS_APPROVAL, RunStatus.QUEUED})
 PUBLISH_STEPS = ("publish", "audit-publish")
-SCOPE_REASON_PATHS = 5  # so viele verworfene Pfade nennt der Block-Grund, der Rest als Anzahl
+SCOPE_REASON_PATHS = 5  # this many discarded paths are named in the block reason, the rest as a count
 RESULT_MAX_CHARS = 200
 _VERDICT_RE = re.compile(r"<!--\s*relay-audit\s+verdict=(pass|fail)\s*-->")
 
 
 class StepSummary(str):
-    """Step-Summary (der Text) plus fachliches Verdikt, das `__main__` als Verdikt-Zeile meldet.
+    """Step summary (the text) plus domain verdict, which `__main__` reports as a verdict line.
 
-    Ein `str`, damit Aufrufer und Tests die Summary weiter wie Text behandeln."""
+    A `str`, so callers and tests keep treating the summary like text."""
 
     verdict: str
 
@@ -82,11 +82,11 @@ class StepSummary(str):
 
 
 class RelayError(StepFailure, RuntimeError):
-    """Ein Relay-Step darf nicht weiterlaufen (Grund steht in der Meldung); Klasse nach ADR 0035."""
+    """A relay step must not continue (reason in the message); class per ADR 0035."""
 
 
 class GitHubPort(Protocol):
-    """Was die Commands von GitHub brauchen (Fake in Tests)."""
+    """What the commands need from GitHub (fake in tests)."""
 
     def tasks(self, label: str) -> list[Task]: ...
     def task(self, number: int, label: str) -> Task: ...
@@ -144,9 +144,9 @@ class RelayContext:
         return ws.commit(paths, message, self.github.commit_identity())
 
     def archive(self, method: str, ws: Workspace | None = None) -> TrailArchive:
-        """Archiv-Methode `method` (aus der Config oder aus einem vorhandenen `TrailRef`).
+        """Archive method `method` (from the config or from an existing `TrailRef`).
 
-        Ohne `ws` (Dispatcher, kein Worktree) kann `git-ref` nur lesen, nicht wiederherstellen."""
+        Without `ws` (dispatcher, no worktree) `git-ref` can only read, not restore."""
         if method == archive.METHOD_LOCAL:
             return archive.LocalArchive(self.cfg.project)
         if method == archive.METHOD_GIT_REF:
@@ -156,7 +156,7 @@ class RelayContext:
         raise RelayError(f"unbekannte Archiv-Methode {method!r}", FailureKind.ENVIRONMENT)
 
     def trail_warning(self, issue: int) -> str:
-        """Warnung für den Status-Kommentar: PR vom Relay-Branch enthält den Trail (kein Archiv)."""
+        """Warning for the status comment: the relay branch's PR contains the trail (no archive)."""
         if self.cfg.trail_archive is not None:
             return ""
         pr = self.github.open_pr(branch_name(issue))
@@ -169,7 +169,7 @@ class RelayContext:
 
 
 def start_run(project: str, loop: str, issue: int, note: str) -> str:
-    """Run über die laufende fabrik-API starten/einreihen (der Dispatcher-Step endet sofort)."""
+    """Start/queue a run via the running fabrik API (the dispatcher step ends immediately)."""
     payload = {"project": project, "loop": loop, "note": note, "vars": {"issue_number": str(issue)}}
     headers = {"Content-Type": "application/json", "User-Agent": "fabrik-relay"}
     if token := os.environ.get("FABRIK_TOKEN", "").strip():
@@ -180,7 +180,7 @@ def start_run(project: str, loop: str, issue: int, note: str) -> str:
     try:
         with httpsafe.urlopen(req, timeout=30) as r:
             return str(json.loads(r.read().decode()).get("run_id", "?"))
-    except urllib.error.URLError as e:  # HTTPError ist eine URLError
+    except urllib.error.URLError as e:  # HTTPError is a URLError
         failure = classify_exception(e)
         if isinstance(e, urllib.error.HTTPError):
             body = e.read().decode("utf-8", "replace").strip()[:200]
@@ -189,28 +189,28 @@ def start_run(project: str, loop: str, issue: int, note: str) -> str:
 
 
 def relay_runs(project: str) -> list[Run]:
-    """Alle Relay-Runs des Projekts (komplette Historie, ein Scan pro Dispatcher-Tick).
+    """All relay runs of the project (complete history, one scan per dispatcher tick).
 
-    Kein Fenster der neuesten N: ein laufender Relay-Run fiele bei vielen Runs anderer Loops
-    heraus, und der Dispatcher startete einen zweiten."""
+    No window of the newest N: a running relay run would drop out with many runs of other loops,
+    and the dispatcher would start a second one."""
     return [r for r in runs.load_runs(project) if r.loop in RUN_LOOPS]
 
 
 def busy_runs(history: list[Run]) -> list[str]:
-    """Aktive/wartende Relay-Runs (höchstens einer gleichzeitig pro Projekt)."""
+    """Active/waiting relay runs (at most one at a time per project)."""
     return [f"{r.id} ({r.status})" for r in history if r.status in BUSY_STATUSES]
 
 
 def _outcome(run: Run) -> RunOutcome:
     published = any(s.name in PUBLISH_STEPS and s.status is StepStatus.PASS for s in run.steps)
-    # Tolerant parsen (ungültig → None): ein kaputter Record darf den Dispatcher nicht stoppen.
+    # Parse tolerantly (invalid → None): a broken record must not stop the dispatcher.
     return RunOutcome(
         run.id, published, run.failure_kind, parse_retry_after(run.finished), parse_retry_after(run.retry_after)
     )
 
 
 def recent_outcomes(history: list[Run]) -> dict[int, list[RunOutcome]]:
-    """Beendete Relay-Runs pro Issue (für die Fehlerbremse)."""
+    """Finished relay runs per issue (for the failure brake)."""
     by_issue: dict[int, list[RunOutcome]] = {}
     for run in history:
         issue = str(run.vars.get("issue_number", ""))
@@ -220,12 +220,12 @@ def recent_outcomes(history: list[Run]) -> dict[int, list[RunOutcome]]:
 
 
 def _remote_handoff(ctx: RelayContext, issue: int, state: StatusState, from_archive: bool = True) -> Handoff | None:
-    """Handoff vom Branch; ist der Trail archiviert (und vom Branch entfernt), aus dem Archiv.
+    """Handoff from the branch; if the trail is archived (and removed from the branch), from the archive.
 
-    `from_archive=False` für erledigte Tasks: deren Entscheidung hängt nicht am Handoff, ein
-    Archiv-Lesezugriff pro Tick wäre verschwendet.
+    `from_archive=False` for finished tasks: their decision does not depend on the handoff, an
+    archive read per tick would be wasted.
 
-    `ArchiveError`, wenn der Zustandsblock ein Archiv nennt, das nicht lesbar ist."""
+    `ArchiveError` if the state block names an archive that is not readable."""
     text = ctx.github.file(handoff_path(issue), branch_name(issue))
     if text is None and state.archive is not None and from_archive:
         text = ctx.archive(state.archive.method).read_handoff(state.archive)
@@ -248,7 +248,7 @@ def _apply_block(ctx: RelayContext, task: Task, handoff: Handoff | None, state: 
 
 
 def dispatch(ctx: RelayContext, start: Starter = start_run) -> str:
-    """Alle Relay-Issues bewerten, Blocks anwenden, höchstens EINEN fälligen Run starten."""
+    """Evaluate all relay issues, apply blocks, start at most ONE due run."""
     history = relay_runs(ctx.cfg.project)
     if busy := busy_runs(history):
         return t("relay.commands.relay_already_running", v1=", ".join(busy))
@@ -264,8 +264,8 @@ def dispatch(ctx: RelayContext, start: Starter = start_run) -> str:
         except ArchiveError as e:
             handoff, d = None, Decision(Action.BLOCK, t("relay.commands.trail_archive_unreadable", e=e))
         except GitHubError as e:
-            # Transienter API-Fehler isoliert pro Task: loggen, Task überspringen (nächster
-            # Tick erneut versuchen) — die übrigen Tasks im Tick werden weiterverarbeitet.
+            # Transient API error isolated per task: log, skip the task (try again
+            # on the next tick) — the remaining tasks in the tick are processed further.
             log.warning(t("relay.commands.relay_s_github_error_while"), task.number, e)
             lines.append(t("relay.commands.skip_github_error_while_reading", v1=task.number))
             continue
@@ -319,7 +319,7 @@ def _session_md(cfg: RelayConfig, task: Task, plan: SessionPlan) -> str:
 
 
 def checkout(ctx: RelayContext, issue: int) -> str:
-    """Session vorbereiten: Autorisierung erneut prüfen, Handoff fortschreiben, Session-Dateien."""
+    """Prepare the session: re-check authorization, advance the handoff, session files."""
     task = ctx.github.task(issue, ctx.cfg.label)
     ws = ctx.workspace(issue)
     state = ctx.github.status_state(issue)
@@ -366,7 +366,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
 
 
 def run_verify(command: str, cwd: Path, timeout: int) -> str:
-    """Verify-Kommando ausführen → letzte Ausgabezeile (Fortschritts-Evidenz), redacted."""
+    """Run the verify command → last output line (progress evidence), redacted."""
     try:
         p = subprocess.run(["sh", "-c", command], cwd=cwd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -385,7 +385,7 @@ def _evidence(handoff: Handoff, has_verify: bool) -> str:
 
 
 def checkin(ctx: RelayContext, issue: int, verify: Callable[[str, Path, int], str] = run_verify) -> str:
-    """Nach der Agent-Session: Handoff prüfen/reparieren, Verify, Stall, Scope, Log-Zeile."""
+    """After the agent session: check/repair handoff, verify, stall, scope, log line."""
     ws = ctx.workspace(issue)
     plan, before = ws.load_plan()
     notes: list[str] = ws.settle_session(plan.head, ctx.cfg.base)
@@ -400,10 +400,10 @@ def checkin(ctx: RelayContext, issue: int, verify: Callable[[str, Path, int], st
     if tampered := handoff.adopt_harness_fields(before):
         notes.append(t("relay.commands.harness_fields_reset", v1=", ".join(tampered)))
     if handoff.section(AUDIT_SECTION) != before.section(AUDIT_SECTION):
-        # `## Audit` schreibt nur audit-publish; sonst stünde ein ungeprüftes Verdikt im Status-Kommentar.
+        # Only audit-publish writes `## Audit`; otherwise an unchecked verdict would stand in the status comment.
         handoff.set_section(AUDIT_SECTION.title(), before.section(AUDIT_SECTION))
         notes.append(t("relay.commands.audit_reset"))
-    # Ungültiger Handoff → sofort blocked; Verify (teuer, mit Seiteneffekten) entfällt.
+    # Invalid handoff → blocked immediately; verify (expensive, with side effects) is skipped.
     if plan.verify_command and not invalid:
         handoff.verify_result = verify(plan.verify_command, ws.root, ctx.cfg.verify_timeout)
     if handoff.status is Status.ACTIVE:
@@ -420,7 +420,7 @@ def checkin(ctx: RelayContext, issue: int, verify: Callable[[str, Path, int], st
         notes.append(t("relay.commands.no_session_log"))
     _, outside = ws.partition(plan.scope, plan.forbid)
     if outside:
-        # Verwerfen, damit nach dem Entblocken nicht dieselben Pfade erneut blockieren.
+        # Discard, so the same paths do not block again after unblocking.
         ws.revert(outside)
         more = f" (+{len(outside) - SCOPE_REASON_PATHS} weitere)" if len(outside) > SCOPE_REASON_PATHS else ""
         handoff.block(
@@ -451,7 +451,7 @@ def _sync_status_labels(ctx: RelayContext, task: Task, st: Status) -> None:
 
 
 def publish(ctx: RelayContext, issue: int) -> StepSummary:
-    """In-Scope-Änderungen committen, als Builder pushen, Labels + Status-Kommentar setzen."""
+    """Commit in-scope changes, push as builder, set labels + status comment."""
     ws = ctx.workspace(issue)
     plan, _ = ws.load_plan()
     handoff = ws.read_handoff()
@@ -498,7 +498,7 @@ def _audit_brief(task: Task, handoff: Handoff) -> str:
 
 
 def audit_prepare(ctx: RelayContext, issue: int) -> str:
-    """Blind-Phase vorbereiten: Audit-Brief schreiben, alle Branch-Änderungen ausblenden."""
+    """Prepare the blind phase: write the audit brief, hide all branch changes."""
     task = ctx.github.task(issue, ctx.cfg.label)
     ws = ctx.workspace(issue)
     state = ctx.github.status_state(issue)
@@ -529,15 +529,15 @@ def parse_verdict(report: str | None) -> str:
 
 
 def audit_publish(ctx: RelayContext, issue: int) -> StepSummary:
-    """Report committen + pushen; pass → `relay: audited`, fail → zurück auf blocked.
+    """Commit + push the report; pass → `relay: audited`, fail → back to blocked.
 
-    Der Prüfer schreibt nur den Report: Handoff ist der Stand vor dem Audit (Snapshot aus
-    `audit-prepare`), alle übrigen Änderungen im Worktree werden verworfen. Mit Report wird das
-    Verdikt an den Trail-Hash gebunden (letzte Zeile von AUDIT.md, Zustandsblock); bei `pass` und
-    konfiguriertem `relay.trail_archive` wird der Trail archiviert und vom Branch entfernt."""
+    The reviewer writes only the report: the handoff is the state before the audit (snapshot from
+    `audit-prepare`), all other changes in the worktree are discarded. With a report the
+    verdict is bound to the trail hash (last line of AUDIT.md, state block); on `pass` and
+    configured `relay.trail_archive` the trail is archived and removed from the branch."""
     ws = ctx.workspace(issue)
     if ws.merge_head():
-        # Ein vom Prüfer hinterlassener Merge würde sonst komplett als "audit"-Commit committet.
+        # A merge left behind by the reviewer would otherwise be committed entirely as an "audit" commit.
         ws.git("merge", "--quit")
     handoff = ws.load_snapshot()
     report = ws.publish_audit()
@@ -581,10 +581,10 @@ def audit_publish(ctx: RelayContext, issue: int) -> StepSummary:
 
 
 def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, digest: str | None) -> str:
-    """Gepushten Audit-Commit archivieren, Archiv prüfen, dann den Trail per Lösch-Commit entfernen.
+    """Archive the pushed audit commit, verify the archive, then remove the trail via a delete commit.
 
-    Entfernt wird nur nach verifiziertem Archiv; scheitert das Archiv, bleibt der Trail auf dem
-    Branch und der Status-Kommentar warnt (das Audit-Verdikt bleibt gültig)."""
+    Removal happens only after a verified archive; if the archive fails, the trail stays on the
+    branch and the status comment warns (the audit verdict stays valid)."""
     cfg_archive = ctx.cfg.trail_archive
     assert cfg_archive is not None
     issue = ws.issue
@@ -601,8 +601,8 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
         state.trail_warning = f"trail not archived ({_redact(str(e))[:RESULT_MAX_CHARS]}): the branch still contains it"
         return t("relay.commands.trail_not_archived")
     removed = archive.remove_trail(ws)
-    # Trail-Pfad explizit committen: `git add -A` stagen die Löschung deterministisch. Ohne Pfad
-    # wäre der No-Op-Commit nur ein `_staged()`-Check auf den Index-Zustand nach `remove_trail`.
+    # Commit the trail path explicitly: `git add -A` stages the deletion deterministically. Without a path
+    # the no-op commit would only be a `_staged()` check on the index state after `remove_trail`.
     state.last_commit = ctx.commit(
         ws,
         [relay_dir(issue)] if removed else [],
@@ -614,10 +614,10 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
 
 
 def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
-    """Trail-Block im offenen PR des Relay-Branches setzen (`ref`) bzw. entfernen (`None`).
+    """Set (`ref`) or remove (`None`) the trail block in the relay branch's open PR.
 
-    Nur Hinweis für Menschen und Bots: Scheitert das Schreiben, bleibt das Archiv gültig (Status-
-    Kommentar verlinkt es ohnehin), der Step läuft weiter."""
+    Only a hint for humans and bots: if writing fails, the archive stays valid (the status
+    comment links it anyway), the step continues."""
     try:
         pr = ctx.github.open_pr(branch_name(issue))
         if pr is None:
@@ -637,10 +637,10 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
 
 
 def restore_trail(ctx: RelayContext, ws: Workspace, state: StatusState) -> str:
-    """Archivierten Trail zurück auf den Branch (Commit), wenn der Handoff fehlt; Hash wird geprüft.
+    """Restore the archived trail onto the branch (commit) if the handoff is missing; the hash is checked.
 
-    Ohne lesbares oder mit verändertem Archiv scheitert der Step (`environment`), statt mit einem
-    anderen Trail weiterzuarbeiten."""
+    Without a readable archive or with a modified one, the step fails (`environment`) instead of continuing
+    with a different trail."""
     ref: TrailRef | None = state.archive
     if ref is None or ws.handoff_file.is_file():
         return ""
@@ -652,5 +652,5 @@ def restore_trail(ctx: RelayContext, ws: Workspace, state: StatusState) -> str:
         ) from e
     archive.write_tree(ws.relay, files)
     ctx.commit(ws, [f"{relay_dir(ws.issue)}/"], f"relay #{ws.issue}: restore trail from {ref.name}")
-    # Der Trail liegt wieder auf dem Branch: der Archiv-Hinweis im PR wäre jetzt falsch.
+    # The trail is back on the branch: the archive note in the PR would now be wrong.
     return t("relay.commands.trail_restored_from", v1=ref.name) + sync_pr_trail(ctx, ws.issue, None)

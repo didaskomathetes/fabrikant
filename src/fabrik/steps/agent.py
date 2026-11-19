@@ -22,12 +22,12 @@ from .shell import _step_shell
 
 
 def _step_agent(ctx: dict, step: dict, emit) -> dict:
-    """Agent-Schritt: pluggables Backend (z.B. opencode) oder Legacy-CLI (cmd).
+    """Agent step: pluggable backend (e.g. opencode) or legacy CLI (cmd).
 
-    Backend-Wahl: step['backend'] > FABRIK_AGENT_BACKEND.
-    opencode: endpoint/model aus step oder FABRIK_AGENT_ENDPOINT / FABRIK_AGENT_MODEL.
-    Prompt: step['prompt'] (inline) oder step['prompt_file'] (Datei, relativ zur Spec,
-    Fallback fabrik-Root — ADR 0047; {vars} werden substituiert).
+    Backend choice: step['backend'] > FABRIK_AGENT_BACKEND.
+    opencode: endpoint/model from step or FABRIK_AGENT_ENDPOINT / FABRIK_AGENT_MODEL.
+    Prompt: step['prompt'] (inline) or step['prompt_file'] (file, relative to the spec,
+    fallback fabrik root — ADR 0047; {vars} are substituted).
     """
     prompt = (step.get("prompt") or "").strip()
     if not prompt and step.get("prompt_file"):
@@ -54,8 +54,8 @@ def _step_agent(ctx: dict, step: dict, emit) -> dict:
 
 
 def _emit_agent_prompt(emit, prompt: str) -> None:
-    """Agent-Prompt (Input) ins Run-Log — gekappt, damit große Prompts das
-    Log nicht sprengen (Volltext bleibt in der Session / prompt-Datei)."""
+    """Agent prompt (input) into the run log — capped so large prompts do not
+    blow up the log (full text stays in the session / prompt file)."""
     p = prompt.strip()
     if not p:
         return
@@ -86,12 +86,12 @@ def _emit_agent_message(emit, m: dict) -> None:
 
 
 def _emit_new_agent_messages(emit, msgs: list[dict], emitted_n: int, flush: bool = False) -> int:
-    """Neue, ABGESCHLOSSENE Assistant-Messages ins Run-Log emittieren.
+    """Emit new, COMPLETED assistant messages into the run log.
 
-    Die letzte Message wird als "in Progress" gehalten (finish=None/
-    "tool-calls"), bis eine Folge-Message kommt ODER `flush=True`
-    (Session-Ende) — sonst würde ein noch wachsendes Tool-Teil nur halb
-    emittiert. Liefert die neue Anzahl emittierter Messages.
+    The last message is held as "in progress" (finish=None/
+    "tool-calls") until a follow-up message arrives OR `flush=True`
+    (session end) — otherwise a still-growing tool part would be only half
+    emitted. Returns the new count of emitted messages.
     """
     complete_n = len(msgs)
     if not flush and msgs:
@@ -128,8 +128,8 @@ def _record_agent_messages(lg, msgs: list[dict], recorded_n: int, step_name: str
 
 
 def _session_failure(last: dict) -> Failure:
-    """Klasse einer `failed`-Session (ADR 0035): Angabe des Backends, sonst `retryable` → transient,
-    sonst Text-Fallback für die Agent-CLI-Ausgabe."""
+    """Class of a `failed` session (ADR 0035): the backend's statement, otherwise `retryable` → transient,
+    otherwise text fallback for the agent CLI output."""
     reported = from_result(last)
     if reported.kind is not FailureKind.UNKNOWN:
         return reported
@@ -139,9 +139,9 @@ def _session_failure(last: dict) -> Failure:
 
 
 def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
-    """Step-Result einer gescheiterten Session. Exit-Code (mit Signalname) in die Summary, das Ende
-    von stderr (One-Shot-CLIs: `stderr_tail`) redigiert ins Run-Log und als `output` in den Record —
-    bei einem Absturz steht die Ursache dort, nicht im gekürzten `text`."""
+    """Step result of a failed session. Exit code (with signal name) into the summary, the end
+    of stderr (one-shot CLIs: `stderr_tail`) redacted into the run log and as `output` into the record —
+    on a crash the cause is there, not in the truncated `text`."""
     code = last.get("exit_code")
     exit_note = f" ({describe_exit(code)})" if isinstance(code, int) else ""
     extra: dict = {"exit_code": code} if isinstance(code, int) else {}
@@ -159,7 +159,7 @@ def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
 
 
 class _Progress:
-    """Fortschritt einer Session (neue Messages/Tools/Text) für die Timeout-Klasse (ADR 0035 Nr. 2)."""
+    """Progress of a session (new messages/tools/text) for the timeout class (ADR 0035 no. 2)."""
 
     def __init__(self, started: float):
         self.started = started
@@ -171,8 +171,8 @@ class _Progress:
         sig = (len(messages), len(last.get("tools") or []), last.get("text") or "")
         if sig == self._sig:
             return
-        # Erster Stand: das Transcript enthält schon den gesendeten Prompt — Fortschritt nur, wenn der Agent
-        # bereits Tools/Text geliefert hat; sonst wäre eine Session ohne jede Antwort „am Arbeiten“.
+        # First state: the transcript already contains the sent prompt — progress only if the agent
+        # has already delivered tools/text; otherwise a session without any answer would be "working".
         progressed = self._sig is not None or any(sig[1:])
         self._sig = sig
         if progressed:
@@ -180,10 +180,10 @@ class _Progress:
             self.seen_any = True
 
     def timeout_kind(self, now: float, window: int, observable: bool) -> FailureKind:
-        """Timeout ohne Fortschritt im letzten `window` (s) bzw. ganz ohne Fortschritt → transient (hängende
-        Session); Agent arbeitete noch → outcome. Ohne beobachtbaren Fortschritt (One-Shot-CLI ohne
-        Transcript) → unknown. `window` ist höchstens die Laufzeit seit Start — sonst wäre eine Session, die
-        nie etwas geliefert hat, bei `timeout < window` „noch am Arbeiten“."""
+        """Timeout without progress in the last `window` (s) or without any progress → transient (hanging
+        session); agent was still working → outcome. Without observable progress (one-shot CLI without
+        transcript) → unknown. `window` is at most the runtime since start — otherwise a session that
+        never delivered anything would be "still working" at `timeout < window`."""
         if not self.seen_any:
             return FailureKind.TRANSIENT if observable else FailureKind.UNKNOWN
         stalled = now - self.last_change >= min(window, now - self.started)
@@ -191,16 +191,16 @@ class _Progress:
 
 
 def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
-    """`github_identity: dev|reviewer` → `gh` im Agent-Prozess läuft als diese Identity (ADR 0010).
+    """`github_identity: dev|reviewer` → `gh` in the agent process runs as this identity (ADR 0010).
 
-    Nur One-Shot-CLI-Backends: `opencode serve` ist ein fremder Prozess, dessen Env
-    der Step nicht setzen kann. Ohne Identity bekommen One-Shot-Agents trotzdem die
-    Projekt-Einstellungen (Token-Datei, `commit_via` für `python -m fabrik.push`).
-    Liefert eine Fehlermeldung oder None."""
+    One-shot CLI backends only: `opencode serve` is a foreign process whose env
+    the step cannot set. Without an identity, one-shot agents still get the
+    project settings (token file, `commit_via` for `python -m fabrik.push`).
+    Returns an error message or None."""
     role = str(step.get("github_identity") or "").strip()
     if not role:
         if isinstance(be, OneShotCliBackend):
-            # Geerbte globale Tokens überlagern (leer = `gh` ignoriert sie), sonst läuft `gh` als falsche Identität.
+            # Override inherited global tokens (empty = `gh` ignores them), otherwise `gh` runs as the wrong identity.
             be.extra_env = {**token_overrides(), **subprocess_env()}
         return None
     if not isinstance(be, OneShotCliBackend):
@@ -213,10 +213,10 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
 
 
 def _agent_usage(last: dict, backend_name: str, model: str, carry: dict | None = None) -> dict:
-    """Usage-Dict (Tokens, Kosten) aus dem letzten Poll-Ergebnis.
+    """Usage dict (tokens, costs) from the last poll result.
 
-    ``carry`` = Verbrauch früherer, neu gestarteter Versuche — auch fehlgeschlagene
-    und abgebrochene Sessions kosten Tokens und gehören in die Summen."""
+    ``carry`` = consumption of earlier, restarted attempts — failed
+    and aborted sessions also cost tokens and belong in the sums."""
     tok = last.get("tokens") or {}
     carry = carry or {}
     t_in = int(tok.get("input", 0) or 0) + int(carry.get("prompt_tokens", 0))
@@ -235,9 +235,9 @@ def _agent_usage(last: dict, backend_name: str, model: str, carry: dict | None =
 
 
 def _record_cost(lg, step_name: str, usage: dict, last: dict | None = None) -> None:
-    """``cost``-Event ins Session-Log (Telemetrie, nicht Summand — siehe sessionlog).
+    """``cost`` event into the session log (telemetry, not a summand — see sessionlog).
 
-    ``last``: Poll-Ergebnis; ein ``premium_requests``-Zähler (copilot) wandert mit ins Event."""
+    ``last``: poll result; a ``premium_requests`` counter (copilot) goes into the event too."""
     if lg is not None:
         extra = {}
         if (premium := (last or {}).get("premium_requests")) is not None:
@@ -254,15 +254,15 @@ def _record_cost(lg, step_name: str, usage: dict, last: dict | None = None) -> N
 
 
 def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: str) -> dict:
-    """Agent-Step über ein pluggables Backend (opencode, copilot, …).
+    """Agent step via a pluggable backend (opencode, copilot, …).
 
-    Robustheit gegen transiente Backend-Fehler (ADR 0012):
-    - **Transport-Fehler** während des Pollings (`be.poll()`/`be.transcript()`
-      werfen, z. B. opencode serve down/Restart) killen den Run NICHT — der
-      Step pollt mit Backoff weiter, bis das Step-Timeout erreicht ist. Erst
-      dann wird der anhaltende Fehler gemeldet.
-    - **Status-Fehler** (`poll()` → `failed` + `retryable`) starten die Session
-      neu (`step.retries`, Default 2 → max. 3 Versuche, Backoff 5s, 15s, …).
+    Robustness against transient backend errors (ADR 0012):
+    - **Transport errors** during polling (`be.poll()`/`be.transcript()`
+      raise, e.g. opencode serve down/restart) do NOT kill the run — the
+      step keeps polling with backoff until the step timeout is reached. Only
+      then is the persistent error reported.
+    - **Status errors** (`poll()` → `failed` + `retryable`) restart the session
+      (`step.retries`, default 2 → max. 3 attempts, backoff 5s, 15s, …).
     """
     stale_after = int(str(step.get("stale_after") or os.environ.get("FABRIK_AGENT_STALE_AFTER", 900)))
     if backend_name not in known_backends():
@@ -282,8 +282,8 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 FailureKind.ENVIRONMENT,
             )
     elif backend_name not in ("codex", "copilot") and not model:
-        # claude_code: endpoint ist irrelevant (CLI-Backend), nur model nötig
-        # (codex/copilot: model optional — die CLI hat ein Default-Modell)
+        # claude_code: endpoint is irrelevant (CLI backend), only model needed
+        # (codex/copilot: model optional — the CLI has a default model)
         return failed(
             _t("steps.agent.backend_model_missing_step_model", backend_name=backend_name), FailureKind.ENVIRONMENT
         )
@@ -292,15 +292,15 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     if identity_err:
         return failed(identity_err, FailureKind.ENVIRONMENT)
     if not be.health():
-        # diagnose() nennt die Ursache (falscher Port, 401/Passwort, CLI nicht
-        # im PATH) — statt nur "unhealthy" zu melden.
+        # diagnose() names the cause (wrong port, 401/password, CLI not
+        # in PATH) — instead of just reporting "unhealthy".
         return failed(be.diagnose() or f"{backend_name} unhealthy: {endpoint}", be.unhealthy_kind())
     workdir = step_workdir(ctx, step)
     timeout = int(step.get("timeout", 1800))
-    # Transiente Backend-Fehler (z. B. copilot: Model-Call stirbt ohne finale
-    # Antwort → API-Ausfall) werden neu gestartet, statt den Run zu killen.
-    # `step.retries` = Anzahl der NEUSTARTS nach dem ersten Versuch (Default 2
-    # → max. 3 Versuche). Backoff zwischen den Versuchen: 5s, 15s, …
+    # Transient backend errors (e.g. copilot: model call dies without final
+    # answer → API outage) are restarted instead of killing the run.
+    # `step.retries` = number of RESTARTS after the first attempt (default 2
+    # → max. 3 attempts). Backoff between attempts: 5s, 15s, …
     max_retries = max(0, int(step.get("retries", 2)))
     lg = ctx.get("log")
     sname = step.get("name", "agent")
@@ -317,14 +317,14 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
             be.send_prompt(sid, prompt, workdir)
             if attempt == 0:
                 _emit_agent_prompt(emit, prompt)  # Prompt nur 1× loggen
-                if lg is not None:  # Volltext fürs Transkript (UI), redigiert im SessionLog
+                if lg is not None:  # Full text for the transcript (UI), redacted in the SessionLog
                     lg.event("prompt", step_name=sname, step_type="agent", text=prompt)
             last: dict = {}
             emitted_n = 0
             recorded_n = 0
             fallback_tool_n = 0
             last_err = ""  # letzter Backend-/Transport-Fehler (leer = gesund)
-            err_streak = 0  # aufeinanderfolgende Poll-Fehler (für Backoff)
+            err_streak = 0  # consecutive poll errors (for backoff)
             progress = _Progress(started=t0)
             while time.time() < t0 + timeout:
                 try:
@@ -339,14 +339,14 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                         if not messages:
                             for tool in tools[fallback_tool_n:]:
                                 lg.event("tool_call", step_name=sname, step_type="agent", tool=tool)
-                        # Auch fortschreiben, wenn die Messages die Tools schon tragen:
-                        # sonst loggt ein späterer leerer Transcript-Poll alles erneut.
+                        # Also advance if the messages already carry the tools:
+                        # otherwise a later empty transcript poll logs everything again.
                         fallback_tool_n = max(fallback_tool_n, len(tools))
                 except Exception as e:
-                    # Transienter Backend-/Transport-Fehler (z. B. opencode serve
-                    # down/Restart): den Run NICHT killen, sondern innerhalb des
-                    # Step-Timeouts weiterpollen (Backoff). Erst wenn das Timeout
-                    # erreicht ist, wird der Fehler gemeldet (ADR 0012).
+                    # Transient backend/transport error (e.g. opencode serve
+                    # down/restart): do NOT kill the run, keep polling within the
+                    # step timeout (backoff). Only when the timeout
+                    # is reached is the error reported (ADR 0012).
                     err_streak += 1
                     last_err = str(e)
                     emit(
@@ -369,7 +369,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                     _emit_new_agent_messages(emit, messages, emitted_n, flush=True)
                     if lg is not None:
                         _record_agent_messages(lg, messages, recorded_n, sname, flush=True)
-                    # Transienter Fehler + Versuche übrig → neu starten.
+                    # Transient error + attempts left → restart.
                     if last.get("retryable") and attempt < max_retries:
                         wait = 5 * (attempt + 1)
                         emit(
@@ -384,28 +384,28 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                         )
                         carry = _agent_usage(last, backend_name, model, carry)
                         time.sleep(wait)
-                        break  # → nächste for-Iteration (neue Session)
+                        break  # → next for iteration (new session)
                     usage = _agent_usage(last, backend_name, model, carry)
                     _record_cost(lg, sname, usage, last)
                     return _session_failed(last, sid, usage, emit)
                 time.sleep(15)
             else:
-                # Timeout (while-Condition false) — kein Retry: eine hängende
-                # Session neu zu starten würde nur die Wartezeit verdoppeln.
+                # Timeout (while condition false) — no retry: restarting a hanging
+                # session would only double the wait time.
                 be.cancel(sid, workdir)
-                # Rest der Konversation ins Log (letzte Message war "in Progress").
-                # suppress: im Timeout-Fall ist das Backend ggf. weg — ein
-                # Transcript-Fehler darf den (ohnehin fehlgeschlagenen) Step
-                # nicht noch zusätzlich crashen.
+                # Rest of the conversation into the log (last message was "in progress").
+                # suppress: in the timeout case the backend may be gone — a
+                # transcript error must not additionally crash the (already failed)
+                # step.
                 with contextlib.suppress(Exception):
                     messages = be.transcript(sid, workdir)
                     _emit_new_agent_messages(emit, messages, emitted_n, flush=True)
                     if lg is not None:
                         _record_agent_messages(lg, messages, recorded_n, sname, flush=True)
-                # Timeout-Output brauchbar machen: letzter bekannter Text + Tools,
-                # damit man sieht, WORAUF die Session gewartet hat (statt nur
-                # "timeout nach 1800s"). Bei anhaltendem Backend-Fehler die
-                # Ursache nennen (ADR 0012).
+                # Make the timeout output usable: last known text + tools,
+                # so one sees WHAT the session was waiting for (instead of just
+                # "timeout after 1800s"). On a persistent backend error name
+                # the cause (ADR 0012).
                 usage = _agent_usage(last, backend_name, model, carry)
                 _record_cost(lg, sname, usage, last)
                 if last_err:
@@ -427,15 +427,15 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                     usage=usage,
                 )
             if last["status"] != "done":
-                continue  # Retry-Pfad (transienter Fehler) → nächste for-Iteration
+                continue  # Retry path (transient error) → next for iteration
             # done: Rest der Konversation ins Log (letzte Message war "in Progress").
             messages = be.transcript(sid, workdir)
             _emit_new_agent_messages(emit, messages, emitted_n, flush=True)
             if lg is not None:
                 _record_agent_messages(lg, messages, recorded_n, sname, flush=True)
-            # Finale Antwort ins Run-Log: One-Shot-Backends (copilot/codex) haben
-            # kein Transcript — ohne diese Zeile ist ein 'pass'-Run, der nichts
-            # getan hat, im Log nicht erkennbar (Regression: review-pr 2026-10-18).
+            # Final answer into the run log: one-shot backends (copilot/codex) have
+            # no transcript — without this line a 'pass' run that did nothing
+            # is not recognizable in the log (regression: review-pr 2026-10-18).
             final_txt = (last.get("text") or "").strip()
             if lg is not None and final_txt and not messages:
                 lg.event("message", step_name=sname, step_type="agent", text=final_txt)
@@ -460,7 +460,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 "agent_session": sid,
                 "usage": usage,
             }
-        # for-Loop ohne return beendet = unerreichbar (jeder Pfad bricht ab).
+        # for loop ended without return = unreachable (every path breaks off).
         raise RuntimeError(_t("steps.agent.agent_retry_loop_without_result", backend_name=backend_name, sid=sid))
     except Exception:
         if sid:  # Orphan-Schutz: Exception mid-Run bricht die Session ab (H3)

@@ -1,11 +1,11 @@
-"""Benannte Verbindungen (ADR 0052): LLM-Provider und Agent-Backends, in der UI verwaltet.
+"""Named connections (ADR 0052): LLM providers and agent backends, managed in the UI.
 
-Eine :class:`Connection` bündelt Treiber, Endpoint, Modell und Zugang unter einem Namen. Sie liegt in
-der Tabelle ``connections`` des SQL-Stores (Secret Fernet-verschlüsselt, Schlüssel aus
-``FABRIK_SECRET_KEY`` oder ``state/secret.key``). Env-Konfiguration (``FABRIK_LLM_*``,
-``FABRIK_AGENT_*``) bleibt gültig und erscheint als schreibgeschützte Verbindung; bei Namensgleichheit
-gewinnt die UI-Verbindung. Aufgelöst wird vor dem Dispatch: :func:`apply_to_step` trägt die
-Verbindungswerte in einen Agent-Step ein, sodass die Backends unverändert bleiben.
+A :class:`Connection` bundles driver, endpoint, model and access under one name. It lives in
+the ``connections`` table of the SQL store (secret Fernet-encrypted, key from
+``FABRIK_SECRET_KEY`` or ``state/secret.key``). Env configuration (``FABRIK_LLM_*``,
+``FABRIK_AGENT_*``) stays valid and appears as a read-only connection; on name clashes
+the UI connection wins. Resolution happens before dispatch: :func:`apply_to_step` writes the
+connection values into an agent step so the backends stay unchanged.
 """
 
 from __future__ import annotations
@@ -35,16 +35,16 @@ SECRET_KEY_ENV = "FABRIK_SECRET_KEY"
 SECRET_KEY_FILE = "secret.key"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
 ENV_AGENT_NAME = "env"
-DRIVER_HTTP = "http"  # LLM: OpenAI-kompatibler Endpoint (Gegenstück zu den CLI-Treibern)
+DRIVER_HTTP = "http"  # LLM: OpenAI-compatible endpoint (counterpart to the CLI drivers)
 AGENT_STEP_TYPES = frozenset({"agent", "review", "pr_review"})
 
 
 class InvalidConnection(ValueError):
-    """Ungültige oder unbekannte Verbindung."""
+    """Invalid or unknown connection."""
 
 
 class UndecryptableSecret(InvalidConnection):
-    """Gespeichertes Secret ist mit dem aktuellen Schlüssel nicht entschlüsselbar."""
+    """Stored secret cannot be decrypted with the current key."""
 
 
 class ConnectionKind(StrEnum):
@@ -70,10 +70,10 @@ class Connection:
     secret: str = field(default="", repr=False)
     is_default: bool = False
     source: Source = Source.DB
-    secret_unreadable: bool = False  # gespeichert, aber nicht entschlüsselbar (Schlüssel gewechselt/verloren)
+    secret_unreadable: bool = False  # stored but not decryptable (key changed/lost)
 
     def validate(self) -> None:
-        """Pflichtfelder je Art/Treiber prüfen; wirft :class:`InvalidConnection`."""
+        """Check required fields per kind/driver; raises :class:`InvalidConnection`."""
         from . import llm_cli
         from .backends.registry import known_backends
 
@@ -98,7 +98,7 @@ class Connection:
             )
 
     def public(self) -> dict[str, Any]:
-        """API-Form ohne Secret (``secret_set`` zeigt nur, OB eines gesetzt ist)."""
+        """API form without secret (``secret_set`` only shows WHETHER one is set)."""
         return {
             "name": self.name,
             "kind": self.kind.value,
@@ -113,7 +113,7 @@ class Connection:
         }
 
     def as_llm_provider(self) -> dict[str, str]:
-        """Provider-Dict im Format von :mod:`fabrik.llm` (``cli`` oder ``url``)."""
+        """Provider dict in the format of :mod:`fabrik.llm` (``cli`` or ``url``)."""
         if self.driver == DRIVER_HTTP:
             return {"name": self.name, "url": self.endpoint, "model": self.model, "key": self.secret}
         return {"name": self.name, "url": "", "cli": self.driver, "model": self.model, "key": ""}
@@ -141,7 +141,7 @@ class Connection:
         )
 
 
-# ---------------------------------------------------------------- Verschlüsselung
+# ---------------------------------------------------------------- encryption
 _fernet_guard = threading.Lock()
 
 
@@ -150,23 +150,23 @@ def _key_file() -> Path:
 
 
 def _create_key_file(path: Path) -> None:
-    """Key-File atomar anlegen: erst vollständig in eine Temp-Datei (0600) schreiben, dann per
-    ``os.link`` veröffentlichen. So sieht kein paralleler Prozess eine leere Datei, und ein
-    gleichzeitiger Gewinner (``FileExistsError``) ist kein Fehler."""
+    """Create the key file atomically: first write completely to a temp file (0600), then publish via
+    ``os.link``. This way no parallel process sees an empty file, and a
+    simultaneous winner (``FileExistsError``) is not an error."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(Fernet.generate_key())
-        with contextlib.suppress(FileExistsError):  # anderer Prozess war schneller — dessen Schlüssel gilt
+        with contextlib.suppress(FileExistsError):  # another process was faster — its key applies
             os.link(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
 
 
 def _load_key() -> bytes:
-    """Fernet-Schlüssel: ``FABRIK_SECRET_KEY``, sonst Key-File (beim ersten Bedarf mit 0600 erzeugt)."""
+    """Fernet key: ``FABRIK_SECRET_KEY``, otherwise key file (created with 0600 on first need)."""
     env = os.environ.get(SECRET_KEY_ENV, "").strip()
     if env:
         return env.encode()
@@ -183,7 +183,7 @@ def encrypt(plain: str) -> str:
 
 
 def decrypt(token: str) -> str:
-    """Fernet-Token → Klartext. Nicht entschlüsselbar (Schlüssel gewechselt) → :class:`UndecryptableSecret`."""
+    """Fernet token → plaintext. Not decryptable (key changed) → :class:`UndecryptableSecret`."""
     if not token:
         return ""
     try:
@@ -196,16 +196,16 @@ def decrypt(token: str) -> str:
 
 # ---------------------------------------------------------------- Persistenz
 def _store():
-    from .runstore_sql import store_for_url  # lokal: SQLAlchemy nur laden, wenn genutzt
+    from .runstore_sql import store_for_url  # local: load SQLAlchemy only when used
 
     return store_for_url(config.db_url())
 
 
 _secret_cache: list[str] | None = None
 _secret_cache_at = 0.0  # monotonic; Zeitpunkt des letzten erfolgreichen Ladens
-_secret_cache_failed_at: float | None = None  # monotonic; gesetzt, wenn das Laden zuletzt scheiterte
-SECRET_CACHE_TTL_S = 30.0  # andere fabrik-Prozesse auf derselben DB sehen Änderungen spätestens dann
-SECRET_RETRY_S = 30.0  # nach einem Fehler so lange nicht erneut die DB fragen (Masking läuft pro Log-Zeile)
+_secret_cache_failed_at: float | None = None  # monotonic; set when loading last failed
+SECRET_CACHE_TTL_S = 30.0  # other fabrik processes on the same DB see changes at the latest then
+SECRET_RETRY_S = 30.0  # after an error, do not query the DB again for this long (masking runs per log line)
 
 
 def _invalidate() -> None:
@@ -215,9 +215,9 @@ def _invalidate() -> None:
 
 
 def _from_row(row: RowMapping, *, with_secret: bool = True) -> Connection:
-    """DB-Zeile → Verbindung. Ein nicht entschlüsselbares Secret bricht Listen nicht ab, sondern wird
-    als ``secret_unreadable`` markiert (``apply_to_step`` weist es dann mit klarer Meldung ab).
-    ``with_secret=False`` entschlüsselt gar nicht (Secret leer) — für reine Anzeige."""
+    """DB row → connection. An undecryptable secret does not abort listings but is
+    marked as ``secret_unreadable`` (``apply_to_step`` then rejects it with a clear message).
+    ``with_secret=False`` does not decrypt at all (secret empty) — for display only."""
     secret, unreadable = "", False
     try:
         secret = decrypt(row["secret"]) if with_secret else ""
@@ -238,7 +238,7 @@ def _from_row(row: RowMapping, *, with_secret: bool = True) -> Connection:
 
 
 def db_connections(kind: ConnectionKind | None = None, *, with_secret: bool = True) -> list[Connection]:
-    """UI-verwaltete Verbindungen (Secret entschlüsselt, außer ``with_secret=False``), nach Name sortiert."""
+    """UI-managed connections (secret decrypted unless ``with_secret=False``), sorted by name."""
     q = select(connections_table).order_by(connections_table.c.name)
     if kind is not None:
         q = q.where(connections_table.c.kind == kind.value)
@@ -247,7 +247,7 @@ def db_connections(kind: ConnectionKind | None = None, *, with_secret: bool = Tr
 
 
 def env_connections() -> list[Connection]:
-    """Schreibgeschützte Verbindungen aus der Env-Konfiguration (Agent ``env`` + LLM-Provider)."""
+    """Read-only connections from the env configuration (agent ``env`` + LLM providers)."""
     from . import llm
 
     out = [
@@ -280,7 +280,7 @@ def env_connections() -> list[Connection]:
 
 
 def list_connections(kind: ConnectionKind | None = None, *, with_secret: bool = True) -> list[Connection]:
-    """Alle Verbindungen: Env zuerst, UI-Verbindungen ersetzen gleichnamige Env-Einträge."""
+    """All connections: env first, UI connections replace env entries of the same name."""
     merged: dict[tuple[ConnectionKind, str], Connection] = {}
     for c in env_connections() + db_connections(with_secret=with_secret):
         if kind is None or c.kind is kind:
@@ -293,14 +293,14 @@ def get_connection(name: str, kind: ConnectionKind, *, with_secret: bool = True)
 
 
 def default_connection(kind: ConnectionKind, *, with_secret: bool = True) -> Connection | None:
-    """Als Default markierte UI-Verbindung der Art (``None`` → Env-/Legacy-Konfiguration gilt)."""
+    """UI connection of the kind marked as default (``None`` → env/legacy configuration applies)."""
     return next((c for c in db_connections(kind, with_secret=with_secret) if c.is_default), None)
 
 
 def save_connection(conn: Connection, *, keep_secret: bool = False) -> Connection:
-    """Verbindung anlegen/ersetzen (nach Validierung). ``keep_secret``: bestehendes Secret behalten.
+    """Create/replace a connection (after validation). ``keep_secret``: keep the existing secret.
 
-    Ein Default pro Art: ``is_default`` löscht die Markierung bei den anderen."""
+    One default per kind: ``is_default`` clears the mark on the others."""
     conn.validate()
     values = {
         "kind": conn.kind.value,
@@ -329,7 +329,7 @@ def save_connection(conn: Connection, *, keep_secret: bool = False) -> Connectio
 
 
 def delete_connection(name: str) -> bool:
-    """UI-Verbindung löschen; ``False`` = gab es nicht (Env-Verbindungen sind nicht löschbar)."""
+    """Delete a UI connection; ``False`` = did not exist (env connections cannot be deleted)."""
     with _store().write_tx() as db:
         deleted = db.execute(delete(connections_table).where(connections_table.c.name == name)).rowcount
     _invalidate()
@@ -337,10 +337,10 @@ def delete_connection(name: str) -> bool:
 
 
 def secret_values() -> list[str]:
-    """Entschlüsselte Secrets aller UI-Verbindungen — für das Log-/Record-Masking (:data:`SECRET_CACHE_TTL_S` gecacht).
+    """Decrypted secrets of all UI connections — for log/record masking (cached for :data:`SECRET_CACHE_TTL_S`).
 
-    Fehler (DB/Schlüssel) brechen den Aufrufer nie; sie werden negativ gecacht (:data:`SECRET_RETRY_S`)
-    und einmal je Fenster geloggt, damit nicht jede Log-Zeile die DB anfragt."""
+    Errors (DB/key) never abort the caller; they are cached negatively (:data:`SECRET_RETRY_S`)
+    and logged once per window, so not every log line queries the DB."""
     global _secret_cache, _secret_cache_at, _secret_cache_failed_at
     now = time.monotonic()
     if _secret_cache is not None and now - _secret_cache_at < SECRET_CACHE_TTL_S:
@@ -361,10 +361,10 @@ secrets.register_source(secret_values)
 
 
 def unknown_references(spec: Mapping[str, Any]) -> list[str]:
-    """Agent-Steps der Spec, deren ``connection:`` es nicht gibt (für ``fabrik validate``).
+    """Agent steps of the spec whose ``connection:`` does not exist (for ``fabrik validate``).
 
-    Host-abhängig (DB + Env dieses Hosts) — daher Warnung, kein Spec-Fehler. Werte mit
-    Platzhaltern (``{var}``) werden erst zur Laufzeit aufgelöst und nicht geprüft."""
+    Host-dependent (DB + env of this host) — therefore a warning, not a spec error. Values with
+    placeholders (``{var}``) are only resolved at runtime and not checked."""
     refs = [
         (loop_name, str(step.get("name") or "?"), str(step["connection"]).strip())
         for loop_name, loop in (spec.get("loops") or {}).items()
@@ -382,16 +382,16 @@ def unknown_references(spec: Mapping[str, Any]) -> list[str]:
     ]
 
 
-# ---------------------------------------------------------------- Auflösung im Step
+# ---------------------------------------------------------------- resolution in the step
 _STEP_FIELDS = (("backend", "driver"), ("endpoint", "endpoint"), ("model", "model"), ("username", "username"))
 
 
 def apply_to_step(step: dict, *, with_secret: bool = True) -> dict:
-    """Agent-Step um Verbindungswerte ergänzen (Step-Felder gewinnen, Env bleibt Fallback).
+    """Complement an agent step with connection values (step fields win, env stays fallback).
 
-    ``connection: <name>`` im Step wählt explizit (unbekannt oder abweichendes ``backend`` → Fehler);
-    ohne Angabe greift die Default-Verbindung, sofern ihr Backend zum Step passt.
-    ``with_secret=False``: nur Anzeigefelder (kein Entschlüsseln, kein ``password``) — z. B. für den Step-Intent."""
+    ``connection: <name>`` in the step selects explicitly (unknown or differing ``backend`` → error);
+    without it the default connection applies, provided its backend matches the step.
+    ``with_secret=False``: display fields only (no decrypting, no ``password``) — e.g. for the step intent."""
     if step.get("type") not in AGENT_STEP_TYPES:
         return step
     name = str(step.get("connection") or "").strip()

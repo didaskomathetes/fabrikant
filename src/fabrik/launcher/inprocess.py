@@ -1,14 +1,14 @@
-"""In-Prozess-Run-Launcher: Worker-Pool + Daemon-Threads (heutiges Verhalten).
+"""In-process run launcher: worker pool + daemon threads (today's behavior).
 
-Das Substrat, das fabrik heute nutzt: Trigger-Runs laufen in einem bounded
-Worker-Pool (``FABRIK_WORKERS``), Vorrang-Runs in eigenen Daemon-Threads. Der
-Launcher ist ein dünner Wrapper um den bestehenden Pool des Core
-(``engine._get_run_pool``) — er besitzt den Pool nicht, sondern delegiert, damit
-die Scheduling-Policy und die bestehenden Tests (``engine._run_pool``) unverändert
-bleiben.
+The substrate fabrik uses today: trigger runs run in a bounded
+worker pool (``FABRIK_WORKERS``), priority runs in their own daemon threads. The
+launcher is a thin wrapper around the core's existing pool
+(``engine._get_run_pool``) — it does not own the pool but delegates, so
+the scheduling policy and the existing tests (``engine._run_pool``) stay
+unchanged.
 
-Kein Import von ``engine`` (Import-Zyklus): der Core injiziert die Pool-Zugriffe
-als Callables beim Aufbau des Launchers (``engine._get_launcher``).
+No import of ``engine`` (import cycle): the core injects the pool accessors
+as callables when building the launcher (``engine._get_launcher``).
 """
 
 from __future__ import annotations
@@ -22,14 +22,14 @@ from .port import LauncherStatus
 
 
 class InProcessLauncher:
-    """Run-Launcher, der Work in diesem Prozess ausführt (Port: :class:`RunLauncher`)."""
+    """Run launcher that executes work in this process (port: :class:`RunLauncher`)."""
 
     name = "inprocess"
 
     def __init__(self, pool_factory: Callable[[], Any], pool_or_none: Callable[[], Any | None]):
-        # pool_factory: liefert den (ggf. neu angelegten) Pool — für submit.
-        # pool_or_none: liefert den aktuellen Pool oder None — für status/shutdown
-        #               (legt bei None bewusst keinen Pool an).
+        # pool_factory: returns the (possibly newly created) pool — for submit.
+        # pool_or_none: returns the current pool or None — for status/shutdown
+        # (deliberately creates no pool if None).
         self._pool_factory = pool_factory
         self._pool_or_none = pool_or_none
 
@@ -37,14 +37,14 @@ class InProcessLauncher:
         self._pool_factory().submit(work)
 
     def submit_priority(self, work: Callable[[], None]) -> None:
-        # RuntimeError (z. B. Thread-Start scheitert) wird an den Core
-        # weitergereicht, der dort Claim/Wartezähler aufräumt.
+        # RuntimeError (e.g. thread start fails) is passed on to the core,
+        # which cleans up claim/wait counter there.
         threading.Thread(target=work, daemon=True).start()
 
     def status(self) -> LauncherStatus:
         pool = self._pool_or_none()
         if pool is None:
-            # Pool noch nicht angelegt: konfigurierte Größe melden (nicht 0).
+            # Pool not yet created: report the configured size (not 0).
             return {"workers": config.configured_workers(), "busy": 0, "queue": 0}
         return {"workers": pool.size, "busy": pool.busy, "queue": pool.waiting}
 

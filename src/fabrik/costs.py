@@ -1,8 +1,8 @@
-"""Kosten-Rollup aus den ``step_usage``-Daten der Runs (Issue #126).
+"""Cost rollup from the runs' ``step_usage`` data (issue #126).
 
-Rein lesend und store-neutral: arbeitet auf typisierten :class:`~fabrik.runmodel.Run`-Objekten.
-Ein Step ohne ``usage`` (z. B. Shell) zählt nicht; ein Usage ohne ``cost_usd`` (Backend liefert
-keine Kosten) trägt Tokens bei und erhöht ``unpriced_steps`` — die Summe ist dann eine Untergrenze.
+Read-only and store-neutral: works on typed :class:`~fabrik.runmodel.Run` objects.
+A step without ``usage`` (e.g. shell) does not count; a usage without ``cost_usd`` (backend provides
+no costs) contributes tokens and increases ``unpriced_steps`` — the sum is then a lower bound.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class CostSummary(TypedDict):
 
 @dataclass(slots=True)
 class CostTotals:
-    """Summe von Token-/Kostenwerten. ``cost_usd`` zählt nur bekannte Kosten."""
+    """Sum of token/cost values. ``cost_usd`` counts only known costs."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -39,7 +39,7 @@ class CostTotals:
     unpriced_steps: int = 0
 
     def add(self, usage: Usage) -> None:
-        """Addiert ein Step-Usage; ``total_tokens`` fällt auf prompt+completion zurück, wenn 0."""
+        """Adds a step usage; ``total_tokens`` falls back to prompt+completion if 0."""
         self.prompt_tokens += usage.prompt_tokens
         self.completion_tokens += usage.completion_tokens
         self.total_tokens += usage.total_tokens or usage.prompt_tokens + usage.completion_tokens
@@ -69,14 +69,14 @@ class CostTotals:
 
 @dataclass(slots=True)
 class RunCost:
-    """Kosten eines Runs: Gesamtsumme, je Step und je Backend (``usage.provider``)."""
+    """Costs of a run: total, per step and per backend (``usage.provider``)."""
 
     totals: CostTotals = field(default_factory=CostTotals)
     steps: list[dict] = field(default_factory=list)
     by_backend: dict[str, CostTotals] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        """JSON-Form für ``GET /api/run/<id>``."""
+        """JSON form for ``GET /api/run/<id>``."""
         return {
             **self.totals.as_dict(),
             "steps": self.steps,
@@ -85,7 +85,7 @@ class RunCost:
 
 
 def run_cost(run: Run) -> RunCost:
-    """Kosten-Rollup eines Runs; ein Run ohne Usage-Steps ergibt Nullsummen."""
+    """Cost rollup of a run; a run without usage steps yields zero sums."""
     out = RunCost()
     for step in run.steps:
         usage = step.usage
@@ -101,7 +101,7 @@ def run_cost(run: Run) -> RunCost:
 
 
 def kpi_costs(runs: Iterable[Run]) -> dict:
-    """Kosten je Projekt (mit Run-Zahl und Backend-Aufschlüsselung) und insgesamt."""
+    """Costs per project (with run count and backend breakdown) and in total."""
     projects: dict[str, dict] = {}
     total = CostTotals()
     for run in runs:
@@ -126,9 +126,9 @@ def kpi_costs(runs: Iterable[Run]) -> dict:
 
 
 def costs_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
-    """``GET /api/kpis/costs``: Kosten je Projekt im Zeitraum (``from``/``to`` wie in der Run-Suche).
+    """``GET /api/kpis/costs``: costs per project in the period (``from``/``to`` as in the run search).
 
-    ValueError bei ungültigem Datum."""
+    ValueError on an invalid date."""
     lower, upper, upper_exclusive = date_bounds(date_from, date_to)
     query = RunQuery(project=project, lower=lower, upper=upper, upper_exclusive=upper_exclusive)
     return kpi_costs(r for r in STORE.load_all(project) if query.matches(r))

@@ -1,14 +1,14 @@
-"""Run-Launcher-Port (Ports & Adapters / Hexagonal).
+"""Run launcher port (ports & adapters / hexagonal).
 
-Der Port ist der vom Core (``engine.py``) definierte Vertrag für das
-**Ausführungs-Substrat**: *wo* ein vollständig spezifizierter Run-Work-Call
-ausgeführt wird. Die **Scheduling-Policy** (Claim, Dedup, Vorrang,
-``queued``-Records) lebt im Core und bleibt substrat-unabhängig; der Launcher
-entscheidet nur, ob das Work in einem Thread (in-process), einem k8s-Job oder
-einer ECS-Task läuft.
+The port is the contract defined by the core (``engine.py``) for the
+**execution substrate**: *where* a fully specified run-work call
+is executed. The **scheduling policy** (claim, dedup, priority,
+``queued`` records) lives in the core and stays substrate-independent; the launcher
+only decides whether the work runs in a thread (in-process), a k8s job or
+an ECS task.
 
-Strukturell (Duck-Typing) — Adapter müssen nicht erben, sie müssen nur die
-Signatur erfüllen (wie :class:`fabrik.backends.port.AgentBackend`).
+Structural (duck typing) — adapters do not have to inherit, they only have to fulfill the
+signature (like :class:`fabrik.backends.port.AgentBackend`).
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from typing import Protocol, TypedDict, runtime_checkable
 
 
 class LauncherStatus(TypedDict):
-    """Substrat-Beobachtbarkeit: Pool-Größe (`workers`), belegte Worker (`busy`),
-    eingereihtes Work (`queue`). In-process: der Worker-Pool; Remote-Substrate
-    melden die entsprechenden Kapazitäts-Größen."""
+    """Substrate observability: pool size (`workers`), busy workers (`busy`),
+    queued work (`queue`). In-process: the worker pool; remote substrates
+    report the corresponding capacity figures."""
 
     workers: int
     busy: int
@@ -29,29 +29,29 @@ class LauncherStatus(TypedDict):
 
 @runtime_checkable
 class RunLauncher(Protocol):
-    """Substrat, das Run-Work ausführt (in-process Threads, k8s-Jobs, ECS-Tasks).
+    """Substrate that executes run work (in-process threads, k8s jobs, ECS tasks).
 
-    `name` ist ein Class-Attribut (Substrat-Identifikator, z. B. "inprocess").
-    Work-Callables sind Zero-Arg-Closures, die der Core baut (Claim + ``run_loop``
-    + Release); der Launcher führt sie aus und weiß nichts über Runs.
+    `name` is a class attribute (substrate identifier, e.g. "inprocess").
+    Work callables are zero-arg closures built by the core (claim + ``run_loop``
+    + release); the launcher executes them and knows nothing about runs.
     """
 
     name: str
 
     def submit(self, work: Callable[[], None]) -> None:
-        """Fire-and-forget Work-Item (Trigger-Runs, Retry-Versuche).
+        """Fire-and-forget work item (trigger runs, retry attempts).
 
-        In-process: in den Worker-Pool einreihen. Remote: Job/Task dispatchen.
-        Darf für eine normale Einreichung nicht werfen."""
+        In-process: queue into the worker pool. Remote: dispatch job/task.
+        Must not raise for a normal submission."""
         ...
 
     def submit_priority(self, work: Callable[[], None]) -> None:
-        """Work-Item mit Vorrang, das auf Kapazität warten darf, in einem
-        isolierten Kontext (manuelle/Resume-Runs).
+        """Work item with priority that may wait for capacity, in an
+        isolated context (manual/resume runs).
 
-        In-process: eigener Daemon-Thread (blockiert auf den Slot, belegt keinen
-        Pool-Worker). Startet der Kontext nicht, wird ``RuntimeError``
-        weitergereicht — der Core räumt dann Claim/Wartezähler auf."""
+        In-process: own daemon thread (blocks on the slot, occupies no
+        pool worker). If the context does not start, ``RuntimeError`` is
+        passed on — the core then cleans up claim/wait counter."""
         ...
 
     def status(self) -> LauncherStatus:
@@ -59,5 +59,5 @@ class RunLauncher(Protocol):
         ...
 
     def shutdown(self) -> None:
-        """Substrat drainen (Server-Ende). Idempotent, No-Op wenn nichts läuft."""
+        """Drain the substrate (server end). Idempotent, no-op if nothing is running."""
         ...

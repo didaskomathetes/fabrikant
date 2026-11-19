@@ -1,26 +1,26 @@
-"""Step: alert_route — deterministisches Routing Triage-Kategorie → Hotfix-Loop (ADR 0045).
+"""Step: alert_route — deterministic routing triage category → hotfix loop (ADR 0045).
 
-Step-Def:
+Step def:
     type: alert_route
-    routes: {bug: hotfix}      # Kategorie → Loop desselben Projekts
-    fallback: <optional>       # Loop für ungemappte Kategorien; Default: kein Hotfix
+    routes: {bug: hotfix}      # category → loop of the same project
+    fallback: <optional>       # loop for unmapped categories; default: no hotfix
 
-Liest `{category}` (vom vorherigen `llm`-Step, enum-validiert), keine LLM-/Tool-Nutzung.
-Gleiche Kategorie → gleicher Loop. Der Hotfix läuft als eigener Run (eigener Record,
-eigene Tier-/Approval-Gates) und bekommt die `alert_*`-Variablen + `category`."""
+Reads `{category}` (from the previous `llm` step, enum-validated), no LLM/tool use.
+Same category → same loop. The hotfix runs as its own run (own record,
+own tier/approval gates) and gets the `alert_*` variables + `category`."""
 
 from __future__ import annotations
 
 from ..alerts import CATEGORY_UNKNOWN, ROUTE_NONE, VAR_PREFIX, route
 from ..i18n import t
 
-# Terminal-Status des Hotfix-Runs, die den Triage-Run nicht scheitern lassen
-# (needs_approval = Hotfix wartet auf Freigabe, das ist der gewollte Normalfall).
+# Terminal statuses of the hotfix run that do not make the triage run fail
+# (needs_approval = hotfix waits for approval, that is the intended normal case).
 _OK_STATUSES = ("pass", "needs_approval")
 
 
 def _step_alert_route(ctx: dict, step: dict, emit) -> dict:
-    # Lazy-Import: engine importiert steps bei Modul-Load (zirkulär).
+    # Lazy import: engine imports steps at module load (circular).
     from ..engine import run_loop
 
     category = str(ctx.get("category") or CATEGORY_UNKNOWN)

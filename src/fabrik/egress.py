@@ -1,14 +1,14 @@
-"""Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy (ADR 0051).
+"""Egress default-deny — agent internet access only via the allowlist proxy (ADR 0051).
 
-Eine Prompt-Injection (OWASP ASI01/ASI05) kann den Agent-Prozess zu Datenabfluss
-auffordern (HTTP-/DNS-Tunneling), arbitrary APIs aufrufen oder Cloud-Metadaten lesen
-(`169.254.169.254`). Die Kontrolle sitzt nicht im Prompt, sondern in der Plattform:
-Der Agent-Container hängt an `fabrik-sandbox` (Docker `internal` — kein direkter
-Internetzugang), und der gesamte Egress läuft durch einen Tinyproxy-Container mit
-Default-Deny-Domänenfilter. Jede Denied-Request wird geloggt und ist ein
-Injection-Signal → Alert (siehe `collect_denied`).
+A prompt injection (OWASP ASI01/ASI05) can make the agent process exfiltrate data
+(HTTP/DNS tunneling), call arbitrary APIs or read cloud metadata
+(`169.254.169.254`). The control is not in the prompt but in the platform:
+the agent container is attached to `fabrik-sandbox` (Docker `internal` — no direct
+internet access), and all egress goes through a Tinyproxy container with a
+default-deny domain filter. Every denied request is logged and is an
+injection signal → alert (see `collect_denied`).
 
-Deployment: `fabrik egress start` legt die Netzwerke an und startet den Proxy.
+Deployment: `fabrik egress start` creates the networks and starts the proxy.
 """
 
 from __future__ import annotations
@@ -28,14 +28,14 @@ from .i18n import t
 
 # ------------------------------------------------------------- Konstanten
 PROXY_CONTAINER = "fabrik-egress-proxy"
-EGRESS_NET = "fabrik-egress"  # Bridge mit Internet (Proxy-Container lebt hier)
+EGRESS_NET = "fabrik-egress"  # Bridge with internet (the proxy container lives here)
 SANDBOX_NET = "fabrik-sandbox"  # internal: kein direkter Internetzugang (Agent-Container)
 PROXY_PORT_IN_CONTAINER = 8888
 PROXY_MEMORY = "256m"
 PROXY_PIDS_LIMIT = 128
 
-# Gepinnte Subnets (bei `docker network create --subnet` fixiert — die
-# gerenderten `Allow`-Zeilen referenzieren genau diese Werte).
+# Pinned subnets (fixed at `docker network create --subnet` — the
+# rendered `Allow` lines reference exactly these values).
 EGRESS_SUBNET = "172.27.0.0/16"  # Bridge: Host-Clienten via published Port kommen aus diesem Netz
 SANDBOX_SUBNET = "172.28.0.0/16"  # internal: Agent-Container
 
@@ -47,9 +47,9 @@ LOG_NAME = "tinyproxy.log"
 
 # Basis-Allowlist (sicherer Minimal-Default; Deployment darf erweitern).
 BUILTIN_ALLOWLIST: tuple[str, ...] = (
-    "github.com",  # API, Clone, releases (inkl. api.github.com als Subdomäne)
+    "github.com",  # API, clone, releases (incl. api.github.com as subdomain)
     "models.dev",  # opencode: Model-Metadaten
-    "api.anthropic.com",  # claude-code (Subdomänen inklusive)
+    "api.anthropic.com",  # claude-code (subdomains included)
     "api.openai.com",  # codex
 )
 
@@ -60,38 +60,38 @@ ALLOWLIST_FILE_VAR = "FABRIK_EGRESS_ALLOWLIST_FILE"
 EGRESS_SUBNET_VAR = "FABRIK_EGRESS_SUBNET"
 SANDBOX_SUBNET_VAR = "FABRIK_SANDBOX_SUBNET"
 DEFAULT_PORT = 8899
-# Per Digest gepinnt (tinyproxy 1.11.0; Config-Direktiven sind versionsabhängig, und der
-# Proxy ist sicherheitskritisch). Neuer Digest = bewusstes Update samt Test mit echtem Proxy.
+# Pinned by digest (tinyproxy 1.11.0; config directives are version-dependent, and the
+# proxy is security-critical). New digest = deliberate update including a test with a real proxy.
 DEFAULT_IMAGE = "vimagick/tinyproxy@sha256:72b441b95ee1e641af948f68f09492f9f795ead72b73954414e339168c98ad8c"
 DOCKER_TIMEOUT = 60  # s, pro docker-Aufruf
-READY_TIMEOUT = 15.0  # s, so lange wartet `start` auf den Proxy-Port
+READY_TIMEOUT = 15.0  # s, how long `start` waits for the proxy port
 READY_POLL_INTERVAL = 0.25  # s
 
-# Echtes Tinyproxy-Logformat (1.11): Quell-IP steht in der „Connect"-Zeile, die Domäne in der
-# „refused"-Zeile; beide hängen über den File-Descriptor der „Request"-Zeile zusammen.
+# Real Tinyproxy log format (1.11): the source IP is in the "Connect" line, the domain in the
+# "refused" line; both are linked via the file descriptor of the "Request" line.
 _CONNECT_RE = re.compile(r"^CONNECT\s+(.+?) \[\d+\]: Connect \(file descriptor (\d+)\): (\S+)")
 _REQUEST_RE = re.compile(r"^CONNECT\s+.+? \[\d+\]: Request \(file descriptor (\d+)\):")
 _REFUSED_RE = re.compile(r'^NOTICE\s+(.+?) \[\d+\]: Proxying refused on filtered domain "([^"]*)"')
-_MAX_TARGET_LEN = 253  # DNS-Maximum; das Ziel stammt vom (nicht vertrauenswürdigen) Agent
+_MAX_TARGET_LEN = 253  # DNS maximum; the target comes from the (untrusted) agent
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
-# Hostname: mind. zwei LDH-Labels, TLD beginnt mit Buchstaben (schließt IP-Literale und
-# TLD-only-Einträge wie `com` aus — die würden ganze TLDs freigeben).
+# Hostname: at least two LDH labels, TLD starts with a letter (excludes IP literals and
+# TLD-only entries like `com` — those would allow entire TLDs).
 _HOST_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 @dataclass
 class DeniedEvent:
-    """Eine Denied-Request im Proxy-Log — ein Injection-Signal."""
+    """A denied request in the proxy log — an injection signal."""
 
     ts: str
-    source: str  # Quell-IP, "" wenn nicht zuordenbar
+    source: str  # Source IP, "" if not attributable
     target: str
 
 
 @dataclass
 class EgressConfig:
-    """Proxy-Konfiguration (Env-Überschreibungen in `from_env`)."""
+    """Proxy configuration (env overrides in `from_env`)."""
 
     port: int = DEFAULT_PORT
     image: str = DEFAULT_IMAGE
@@ -123,14 +123,14 @@ class EgressConfig:
 
     @property
     def client_subnets(self) -> tuple[str, ...]:
-        """Erlaubte *Clients*: Sandbox-Netz (Agent-Container) + Egress-Bridge
-        (Host-Clienten via published Port — die Verbindung kommt aus dem
-        Bridge-Gateway, nicht aus 127.0.0.1)."""
+        """Allowed *clients*: sandbox network (agent containers) + egress bridge
+        (host clients via published port — the connection comes from the
+        bridge gateway, not from 127.0.0.1)."""
         return (self.sandbox_subnet, self.egress_subnet)
 
     @property
     def agent_proxy_url(self) -> str:
-        """Proxy-URL aus Sicht der Agent-Container (Name im Sandbox-Netz, Container-Port)."""
+        """Proxy URL from the agent containers' point of view (name in the sandbox network, container port)."""
         return agent_proxy_url()
 
     @property
@@ -139,7 +139,7 @@ class EgressConfig:
 
 
 def agent_proxy_url() -> str:
-    """`HTTP(S)_PROXY` für Agent-Container: der Proxy-Container im Sandbox-Netz."""
+    """`HTTP(S)_PROXY` for agent containers: the proxy container in the sandbox network."""
     return f"http://{PROXY_CONTAINER}:{PROXY_PORT_IN_CONTAINER}"
 
 
@@ -151,9 +151,9 @@ def _validated_subnet(var: str, value: str) -> str:
 
 
 def normalize_domain(raw: str) -> str:
-    """Allowlist-Eintrag → validierter, kleingeschriebener Hostname. `*.`/`.`-Präfix wird
-    toleriert (Subdomänen sind ohnehin inklusive). Raises RuntimeError bei ungültigen Einträgen
-    — fail-closed beim Start statt still zu breite oder wirkungslose Filter."""
+    """Allowlist entry → validated, lowercase hostname. A `*.`/`.` prefix is
+    tolerated (subdomains are included anyway). Raises RuntimeError on invalid entries
+    — fail-closed at start instead of silently too wide or ineffective filters."""
     host = raw.strip().lower()
     host = host.removeprefix("*.").removeprefix(".")
     if not _HOST_RE.match(host):
@@ -163,7 +163,7 @@ def normalize_domain(raw: str) -> str:
 
 # ------------------------------------------------------------- Allowlist
 def parse_allowlist(text: str) -> list[str]:
-    """Allowlist-Text → Domänen (Kommentare `#`/Leerzeilen weg, Duplikate raus, Reihenfolge)."""
+    """Allowlist text → domains (comments `#`/blank lines removed, duplicates dropped, order kept)."""
     out: list[str] = []
     seen: set[str] = set()
     for line in text.splitlines():
@@ -175,9 +175,9 @@ def parse_allowlist(text: str) -> list[str]:
 
 
 def load_allowlist(env: Mapping[str, str] | None = None) -> list[str]:
-    """Basis-Allowlist + Datei (`FABRIK_EGRESS_ALLOWLIST_FILE`, optional; Vorlage:
-    `deploy/egress-allowlist.txt`) + Env (`FABRIK_EGRESS_ALLOWLIST`, kommasetrennt).
-    Alle Einträge werden validiert (`normalize_domain`)."""
+    """Base allowlist + file (`FABRIK_EGRESS_ALLOWLIST_FILE`, optional; template:
+    `deploy/egress-allowlist.txt`) + env (`FABRIK_EGRESS_ALLOWLIST`, comma-separated).
+    All entries are validated (`normalize_domain`)."""
     env = os.environ if env is None else env
     hosts: list[str] = []
     seen: set[str] = set()
@@ -204,32 +204,32 @@ def load_allowlist(env: Mapping[str, str] | None = None) -> list[str]:
     return hosts
 
 
-# ------------------------------------------------------------- Proxy-Config
-# Filter-Muster sind POSIX-ERE. Tinyproxy 1.11.0 kennt dafür `FilterExtended Yes`
-# (`FilterType ere` ist erst später dazugekommen und scheitert dort mit „Syntax error").
+# ------------------------------------------------------------- proxy config
+# Filter patterns are POSIX ERE. Tinyproxy 1.11.0 knows `FilterExtended Yes` for this
+# (`FilterType ere` was added later and fails there with "Syntax error").
 FILTER_TYPE_LINE = "FilterExtended Yes"
 
 
 def _filter_pattern(domain: str) -> str:
-    """Tinyproxy-Filter-Muster (ERE, exakt + Subdomänen, ohne Suffix-Überschneidung:
-    `github.com` darf `github.com.attacker.net` NICHT matchen). Tinyproxy macht
-    substring-Matching → beide Enden ankern."""
+    """Tinyproxy filter pattern (ERE, exact + subdomains, without suffix overlap:
+    `github.com` must NOT match `github.com.attacker.net`). Tinyproxy does
+    substring matching → anchor both ends."""
     esc = re.sub(r"([.*+?^${}()|\\])", r"\\\1", domain)
     return f"^([a-z0-9-]+\\.)*{esc}$"
 
 
 def render_filter_file(cfg: EgressConfig) -> str:
-    """Tinyproxy-Filter-DATEI (eine ERE pro Zeile). `Filter` in der Config zeigt
-    auf diese Datei — Inline-`Filter "domain"` wäre ein (falscher) Dateipfad."""
+    """Tinyproxy filter FILE (one ERE per line). `Filter` in the config points
+    to this file — an inline `Filter "domain"` would be a (wrong) file path."""
     return "\n".join(_filter_pattern(h) for h in cfg.allowlist) + "\n"
 
 
 def render_proxy_config(cfg: EgressConfig) -> str:
-    """Tinyproxy-Config. Default-Deny = `FilterDefaultDeny Yes` + Filter-Datei
-    (ohne beides würde Tinyproxy ALLES erlauben). `FilterExtended Yes` ist Pflicht:
-    Tinyproxys Default ist BRE, dort sind `(`, `)` und `+` Literale — die Muster
-    aus `_filter_pattern` träfen keinen Host, alles wäre gesperrt. `Allow`
-    beschränkt die *Clients* auf die gepinnten Bridge-Subnets."""
+    """Tinyproxy config. Default deny = `FilterDefaultDeny Yes` + filter file
+    (without both, Tinyproxy would allow EVERYTHING). `FilterExtended Yes` is mandatory:
+    Tinyproxy's default is BRE, where `(`, `)` and `+` are literals — the patterns
+    from `_filter_pattern` would match no host, everything would be blocked. `Allow`
+    restricts the *clients* to the pinned bridge subnets."""
     lines = [
         f"Port {PROXY_PORT_IN_CONTAINER}",
         "Listen 0.0.0.0",
@@ -254,13 +254,13 @@ def render_proxy_config(cfg: EgressConfig) -> str:
 
 
 def write_proxy_config(cfg: EgressConfig) -> tuple[Path, Path, Path]:
-    """(tinyproxy.conf, filter.txt, log-Dir) schreiben — alles 0600/0700 beim Host-User.
+    """Write (tinyproxy.conf, filter.txt, log dir) — all 0600/0700 owned by the host user.
 
-    Der Proxy-Container läuft als derselbe uid:gid (`start`), ohne Capabilities: er liest
-    Config/Filter und schreibt das Log als Eigentümer. (Als root ohne `CAP_DAC_OVERRIDE`
-    könnte er das 0700-Verzeichnis nicht betreten — das Log bliebe stumm leer; und ein
-    nicht lesbarer Filter + Default-Deny sperrt still alles. Beides mit echtem Proxy beobachtet.)
-    Die Logdatei wird vorab angelegt, damit fabrik sie auch dann lesen kann."""
+    The proxy container runs as the same uid:gid (`start`), without capabilities: it reads
+    config/filter and writes the log as owner. (As root without `CAP_DAC_OVERRIDE` it
+    could not enter the 0700 directory — the log would stay silently empty; and an
+    unreadable filter + default deny silently blocks everything. Both observed with a real proxy.)
+    The log file is created beforehand so fabrik can read it as well."""
     cfg.conf_dir.mkdir(parents=True, exist_ok=True)
     conf = cfg.conf_dir / "tinyproxy.conf"
     conf.write_text(render_proxy_config(cfg))
@@ -286,9 +286,9 @@ def _docker(*args: str) -> subprocess.CompletedProcess:
 
 
 def _docker_rootless() -> bool:
-    """Läuft der Docker-Daemon rootless? (`docker info` → SecurityOptions `name=rootless`).
+    """Does the Docker daemon run rootless? (`docker info` → SecurityOptions `name=rootless`).
 
-    Fehler (kein docker, Timeout) → False: dann gilt das rootful-Verhalten."""
+    Error (no docker, timeout) → False: then rootful behavior applies."""
     try:
         p = subprocess.run(
             ["docker", "info", "--format", "{{json .SecurityOptions}}"],
@@ -302,20 +302,20 @@ def _docker_rootless() -> bool:
 
 
 def proxy_user(rootless: bool | None = None) -> str:
-    """`-u` für den Proxy-Container: er muss seine Mounts (Config/Filter `0600`, Log-Ordner `0700`,
-    Eigentümer = Host-User) lesen bzw. schreiben können.
+    """`-u` for the proxy container: it must be able to read or write its mounts (config/filter `0600`, log folder `0700`,
+    owner = host user).
 
-    rootful: Host-uid:gid (im Container = derselbe User). rootless: `0:0` — im User-Namespace des
-    rootless Daemons IST Container-root der Host-User; eine andere uid landete auf einer subuid ohne
-    Zugriff auf die Mounts. Ohne Capabilities (`--cap-drop ALL`) hat dieser root keine Sonderrechte."""
+    rootful: host uid:gid (inside the container = same user). rootless: `0:0` — in the user namespace of the
+    rootless daemon container root IS the host user; any other uid would land on a subuid without
+    access to the mounts. Without capabilities (`--cap-drop ALL`) this root has no special rights."""
     if rootless is None:
         rootless = _docker_rootless()
     return "0:0" if rootless else f"{os.getuid()}:{os.getgid()}"
 
 
 def _ensure_network(name: str, subnet: str, *, internal: bool) -> None:
-    """Netzwerk anlegen; existiert es schon, MUSS es zu Subnetz und `internal` passen —
-    sonst stünde die Isolation (oder die `Allow`-Zeilen) auf einem fremden Netz."""
+    """Create a network; if it already exists, it MUST match subnet and `internal` —
+    otherwise the isolation (or the `Allow` lines) would rest on a foreign network."""
     flags = ["--internal"] if internal else []
     r = _docker("network", "create", *flags, "--subnet", subnet, name)
     if r.returncode == 0:
@@ -340,10 +340,10 @@ def _ensure_network(name: str, subnet: str, *, internal: bool) -> None:
 
 
 def ensure_networks(cfg: EgressConfig) -> None:
-    """`fabrik-egress` (Bridge) + `fabrik-sandbox` (internal) anlegen bzw. prüfen.
-    Subnets sind GEPINNT — die `Allow`-Zeilen in der Proxy-Config referenzieren
-    genau diese Werte (ohne Pin allokiert Docker aus dem Default-Pool, und
-    gerenderte `Allow`-Zeilen träfen nie die echten Container-IPs)."""
+    """Create or check `fabrik-egress` (bridge) + `fabrik-sandbox` (internal).
+    Subnets are PINNED — the `Allow` lines in the proxy config reference
+    exactly these values (without a pin Docker allocates from the default pool, and
+    rendered `Allow` lines would never hit the real container IPs)."""
     _ensure_network(EGRESS_NET, cfg.egress_subnet, internal=False)
     _ensure_network(SANDBOX_NET, cfg.sandbox_subnet, internal=True)
 
@@ -360,8 +360,8 @@ def start(cfg: EgressConfig) -> str:
         PROXY_CONTAINER,
         "--restart",
         "unless-stopped",
-        # Der Proxy verarbeitet untrusted Verkehr: gleiche Härtung wie die Agent-Container;
-        # läuft als Host-User (liest/schreibt seine Mounts als Eigentümer), ohne Capabilities.
+        # The proxy processes untrusted traffic: same hardening as the agent containers;
+        # runs as host user (reads/writes its mounts as owner), without capabilities.
         "-u",
         proxy_user(),
         "--cap-drop",
@@ -370,7 +370,7 @@ def start(cfg: EgressConfig) -> str:
         "no-new-privileges",
         "--read-only",
         "--tmpfs",
-        "/tmp:size=16m",  # nosec B108 # tmpfs im Proxy-Container, nicht das Host-/tmp
+        "/tmp:size=16m",  # nosec B108 # tmpfs in the proxy container, not the host /tmp
         "--memory",
         PROXY_MEMORY,
         "--pids-limit",
@@ -389,7 +389,7 @@ def start(cfg: EgressConfig) -> str:
     )
     if r.returncode != 0:
         raise RuntimeError(f"docker run {PROXY_CONTAINER} fehlgeschlagen: {r.stderr.strip()}")
-    # Zweites Netz nachträglich (`docker run` nimmt nur ein --network): Proxy hört auch im Sandbox-Netz.
+    # Second network afterwards (`docker run` takes only one --network): the proxy also listens in the sandbox network.
     r = _docker("network", "connect", SANDBOX_NET, PROXY_CONTAINER)
     if r.returncode != 0:
         _docker("rm", "-f", PROXY_CONTAINER)
@@ -407,10 +407,10 @@ def _port_open(port: int) -> bool:
 
 
 def _wait_ready(cfg: EgressConfig) -> None:
-    """Health-Check nach `docker run -d`: Container läuft UND Proxy-Port antwortet.
+    """Health check after `docker run -d`: container runs AND the proxy port answers.
 
-    Sonst fail-loud (mit Container-Log) und Container entfernen — ein toter Proxy darf nicht
-    still als „Egress aktiv" gelten."""
+    Otherwise fail loudly (with container log) and remove the container — a dead proxy must not
+    silently count as "egress active"."""
     deadline = time.monotonic() + READY_TIMEOUT
     while True:
         if not is_running():
@@ -454,16 +454,16 @@ def status() -> str:
 
 # ------------------------------------------------------------- Denied-Log
 def _clean_target(raw: str) -> str:
-    """Das Ziel stammt vom Agent (untrusted): Steuerzeichen raus, Länge begrenzt — bevor es
-    in Alerts/Triage-Prompts landet."""
+    """The target comes from the agent (untrusted): control characters removed, length limited — before it
+    lands in alerts/triage prompts."""
     return _CTRL_RE.sub("", raw)[:_MAX_TARGET_LEN]
 
 
 def parse_denied(lines: list[str]) -> list[DeniedEvent]:
-    """Tinyproxy-Log-Zeilen → Denied-Events (andere Zeilen werden ignoriert).
+    """Tinyproxy log lines → denied events (other lines are ignored).
 
-    Die Quell-IP wird best effort über den File-Descriptor zugeordnet (letzte
-    Request-Zeile vor der „refused"-Zeile); bei stark verschränkten Zeilen kann sie fehlen."""
+    The source IP is assigned best effort via the file descriptor (last
+    request line before the "refused" line); with heavily interleaved lines it may be missing."""
     out: list[DeniedEvent] = []
     fd_source: dict[str, str] = {}
     last_fd = ""
@@ -485,12 +485,12 @@ def _read_offset(state_file: Path) -> int:
 
 
 def collect_denied(log_path: Path, state_file: Path, max_events: int = 50) -> list[DeniedEvent]:
-    """Neue Denied-Events seit letztem Abgleich (Byte-Offset in `state_file`), dedupliziert
-    pro (Quell-IP, Ziel) innerhalb des Abgleichs. Ohne Log-Datei: leer.
+    """New denied events since the last reconciliation (byte offset in `state_file`), deduplicated
+    per (source IP, target) within the reconciliation. Without a log file: empty.
 
-    Nur vollständige Zeilen werden verbraucht (eine halb geschriebene Zeile bleibt für den
-    nächsten Abgleich liegen). Ein nicht lesbares Log ist ein Fehler (OSError), kein stilles
-    „nichts passiert"."""
+    Only complete lines are consumed (a half-written line stays for the
+    next reconciliation). An unreadable log is an error (OSError), not a silent
+    "nothing happened"."""
     offset = _read_offset(state_file)
     events: list[DeniedEvent] = []
     if log_path.is_file():

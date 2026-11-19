@@ -1,22 +1,22 @@
-"""Step: pr_merge — PR mergen (Developer-Token, Default squash).
+"""Step: pr_merge — merge a PR (developer token, default squash).
 
-Dual-Identity-Pipeline (ADR 0010): Die App (Developer) mergt nach der
-Reviewer-Approval. Branch-Protection ("require 1 review") ist damit die
-harte Merge-Gate, die GitHub selbst erzwingt.
+Dual-identity pipeline (ADR 0010): the app (developer) merges after the
+reviewer approval. Branch protection ("require 1 review") is thus the
+hard merge gate, which GitHub itself enforces.
 
-Step-Def:
+Step def:
     type: pr_merge
     repo: owner/name
-    pr: {pr_number}        # optional; Default: ctx-Variable pr_number (pr-Step)
-    method: squash         # squash | merge | rebase (Default: squash)
-    update_branch: false   # true: PR-Branch vor dem Merge auf die Base nachziehen (Default false)
+    pr: {pr_number}        # optional; default: ctx variable pr_number (pr step)
+    method: squash         # squash | merge | rebase (default: squash)
+    update_branch: false   # true: bring the PR branch up to the base before merging (default false)
 
-`update_branch`: Fällt der PR-Branch hinter die Base zurück (z. B. während ein human_gate wartet),
-ruft der Step `PUT /pulls/{n}/update-branch` (mit `expected_head_sha`) auf, wartet begrenzt, bis
-GitHub den neuen Head und die Mergebarkeit meldet, und mergt dann. Ein echter Konflikt (HTTP 422
-bzw. `mergeable: false`) macht den Step rot (`outcome`) mit Nachricht samt PR — ein Mensch löst
-ihn auf, es gibt kein automatisches Routing. Trade-off: der dabei entstehende Update-Merge-Commit
-wird **nicht** erneut gelintet/getestet; die Branch-Protection der Base bleibt das Gate.
+`update_branch`: if the PR branch falls behind the base (e.g. while a human_gate waits),
+the step calls `PUT /pulls/{n}/update-branch` (with `expected_head_sha`), waits a bounded time until
+GitHub reports the new head and mergeability, and then merges. A real conflict (HTTP 422
+or `mergeable: false`) makes the step red (`outcome`) with a message including the PR — a human resolves
+it, there is no automatic routing. Trade-off: the resulting update-merge commit
+is **not** linted/tested again; the base's branch protection remains the gate.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from ..i18n import t
 from ..runmodel import FailureKind
 
 _MERGE_METHODS = ("squash", "merge", "rebase")
-_MERGE_REFUSED_STATUSES = frozenset({405, 409})  # GitHub: nicht mergebar bzw. Konflikt/Head geändert
+_MERGE_REFUSED_STATUSES = frozenset({405, 409})  # GitHub: not mergeable or conflict/head changed
 _UPDATE_CONFLICT_STATUS = 422  # update-branch: Merge-Konflikt bzw. expected_head_sha veraltet
 _UPDATE_WAIT_TIMEOUT_S = 120  # GitHub berechnet Head/Mergebarkeit nach update-branch asynchron
 _UPDATE_POLL_INTERVAL_S = 3
@@ -40,7 +40,7 @@ _API = "https://api.github.com/repos"
 
 
 class _UpdateBranchError(Exception):
-    """update-branch gescheitert; ``failure`` ist das fertige Step-Result."""
+    """update-branch failed; ``failure`` is the finished step result."""
 
     def __init__(self, failure: dict):
         super().__init__(failure.get("summary", ""))
@@ -55,9 +55,9 @@ def _conflict(repo: str, pr_number: int, why: str) -> dict:
 
 
 def _wait_for_updated_head(repo: str, pr_number: int, old_sha: str, token: str) -> str:
-    """Pollt den PR, bis GitHub einen neuen Head mit berechneter Mergebarkeit meldet; liefert den neuen Head.
+    """Polls the PR until GitHub reports a new head with computed mergeability; returns the new head.
 
-    Konflikt (``mergeable: false``) → :class:`_UpdateBranchError`; Timeout → transient."""
+    Conflict (``mergeable: false``) → :class:`_UpdateBranchError`; timeout → transient."""
     deadline = time.monotonic() + _UPDATE_WAIT_TIMEOUT_S
     while True:
         pr = _gh_api("GET", f"{_API}/{repo}/pulls/{pr_number}", token) or {}
@@ -79,9 +79,9 @@ def _wait_for_updated_head(repo: str, pr_number: int, old_sha: str, token: str) 
 
 
 def _update_branch_if_behind(repo: str, pr_number: int, token: str) -> str:
-    """PR-Branch auf die Base nachziehen, falls er dahinter liegt. Liefert den neuen Head ("" = unverändert).
+    """Bring the PR branch up to the base if it is behind. Returns the new head ("" = unchanged).
 
-    Konflikt/Timeout → :class:`_UpdateBranchError`."""
+    Conflict/timeout → :class:`_UpdateBranchError`."""
     pr = _gh_api("GET", f"{_API}/{repo}/pulls/{pr_number}", token) or {}
     head = (pr.get("head") or {}).get("sha") or ""
     if pr.get("mergeable") is False or pr.get("mergeable_state") == "dirty":
@@ -114,14 +114,14 @@ def _step_pr_merge(ctx: dict, step: dict) -> dict:
     token = _gh_token("dev")
     raw = _substitute(str(step.get("pr") or ""), ctx).strip() or str(ctx.get("pr_number") or "").strip()
     if not raw.isdigit():
-        # Kommt meist aus dem Kontext (z. B. kein PR im Vorlauf erstellt) — kein Umgebungsfehler.
+        # Mostly comes from the context (e.g. no PR created beforehand) — no environment error.
         return failed(t("steps.pr_merge.pr_merge_pr_number_cannot", raw=raw), FailureKind.UNKNOWN)
     pr_number = int(raw)
     payload: dict = {"merge_method": method}
     if step.get("update_branch"):
         try:
             if new_head := _update_branch_if_behind(repo, pr_number, token):
-                payload["sha"] = new_head  # nur den frisch aktualisierten Head mergen
+                payload["sha"] = new_head  # merge only the freshly updated head
         except _UpdateBranchError as e:
             return e.failure
         except urllib.error.HTTPError as e:
@@ -145,6 +145,6 @@ def _step_pr_merge(ctx: dict, step: dict) -> dict:
 
 
 def _merge_refusal(e: urllib.error.HTTPError) -> Failure:
-    """Merge-API-Fehler → Klasse: 405 (nicht mergebar) / 409 (Konflikt, Head geändert) sind ein echtes
-    Ergebnis (``outcome``); sonst die HTTP-Klasse (5xx/429 transient, 401/403 environment)."""
+    """Merge API error → class: 405 (not mergeable) / 409 (conflict, head changed) are a real
+    result (``outcome``); otherwise the HTTP class (5xx/429 transient, 401/403 environment)."""
     return Failure(FailureKind.OUTCOME) if e.code in _MERGE_REFUSED_STATUSES else classify_http(e.code, e.headers)

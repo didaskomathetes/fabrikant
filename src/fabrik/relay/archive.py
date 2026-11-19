@@ -1,12 +1,12 @@
-"""Archiv des Relay-Trails (ADR 0037, Nachtrag 2026-11-03): archivieren, prüfen, wiederherstellen.
+"""Archive of the relay trail (ADR 0037, addendum 2026-11-03): archive, verify, restore.
 
-Der Trail (`.fabrik/relay/<N>/`) ist die Evidenz, auf die sich ein Audit-Verdikt bezieht. Nach einem
-`pass` wird er archiviert und erst dann per Lösch-Commit vom Relay-Branch entfernt, damit PR-Diff
-und Merge nur die eigentliche Änderung enthalten. Austauschbar ist allein der Ablageort
-(:class:`TrailArchive`); das Verdikt bindet an den kanonischen Inhalts-Hash (:func:`trail_digest`).
+The trail (`.fabrik/relay/<N>/`) is the evidence an audit verdict refers to. After a
+`pass` it is archived and only then removed from the relay branch by a delete commit, so that PR diff
+and merge contain only the actual change. Only the storage location is replaceable
+(:class:`TrailArchive`); the verdict binds to the canonical content hash (:func:`trail_digest`).
 
-Methoden: `git-ref` (versteckter Ref `refs/fabrik/relay/<N>/audit-<k>`, GitHub) und `local`
-(Verzeichnis unter `FABRIK_DATA/relay-archive/`, nur Entwicklung/Tests). `s3` ist vorgesehen.
+Methods: `git-ref` (hidden ref `refs/fabrik/relay/<N>/audit-<k>`, GitHub) and `local`
+(directory under `FABRIK_DATA/relay-archive/`, development/tests only). `s3` is planned.
 """
 
 from __future__ import annotations
@@ -32,34 +32,34 @@ METHOD_LOCAL = "local"
 METHOD_S3 = "s3"
 METHODS = (METHOD_GIT_REF, METHOD_LOCAL)
 PLANNED_METHODS = (METHOD_S3,)
-# Obergrenze beim Suchen der nächsten freien Archiv-Nummer (Schutz vor Endlosschleifen).
+# Upper bound when searching for the next free archive number (protection against infinite loops).
 MAX_ARCHIVE_PROBES = 50
 LOCAL_ARCHIVE_DIR = "relay-archive"
 LOCAL_MANIFEST = "manifest.json"
 HTTP_UNPROCESSABLE = 422
-# Hash-Zeile, die audit-publish an AUDIT.md anhängt; für den Hash selbst wird sie ignoriert.
+# Hash line that audit-publish appends to AUDIT.md; it is ignored for the hash itself.
 _TRAILER_PREFIX = "<!-- relay-trail sha256="
 _TRAILER_RE = re.compile(r"^" + re.escape(_TRAILER_PREFIX) + r"[0-9a-f]{64} -->\n\Z", re.M)
 
 
 class ArchiveError(RuntimeError):
-    """Archiv nicht anlegbar, nicht lesbar oder Inhalt weicht vom gebundenen Hash ab."""
+    """Archive cannot be created, not readable, or content deviates from the bound hash."""
 
 
 class ArchiveExists(ArchiveError):
-    """Unter dieser Archiv-Nummer liegt schon ein Archiv (Archive sind unveränderlich)."""
+    """An archive already exists under this archive number (archives are immutable)."""
 
 
 def audit_trailer(digest: str) -> str:
-    """Letzte Zeile von AUDIT.md: an welchen Trail-Hash das Verdikt gebunden ist.
+    """Last line of AUDIT.md: to which trail hash the verdict is bound.
 
-    Der Report muss vor dem Hashen mit `\n` enden (:func:`normalize_report`), sonst stimmt der Hash
-    nach dem Anhängen nicht mehr."""
+    The report must end with `\n` before hashing (:func:`normalize_report`), otherwise the hash
+    no longer matches after appending."""
     return f"{_TRAILER_PREFIX}{digest} -->\n"
 
 
 def normalize_report(text: str) -> str:
-    """Report so normalisieren, dass Anhängen + Entfernen der Hash-Zeile verlustfrei ist."""
+    """Normalize the report so that appending + removing the hash line is lossless."""
     return text if text.endswith("\n") else text + "\n"
 
 
@@ -70,10 +70,10 @@ def _canonical(rel: str, data: bytes) -> bytes:
 
 
 def trail_digest(files: dict[str, bytes]) -> str:
-    """Kanonischer Hash: sortierte Pfade (relativ zum Trail) + SHA-256 je Datei.
+    """Canonical hash: sorted paths (relative to the trail) + SHA-256 per file.
 
-    AUDIT.md zählt ohne die angehängte Hash-Zeile — sonst könnte der Report den Hash, an den er das
-    Verdikt bindet, nicht enthalten."""
+    AUDIT.md counts without the appended hash line — otherwise the report could not contain the hash it
+    binds the verdict to."""
     h = hashlib.sha256()
     for rel in sorted(files):
         h.update(f"{rel}\0{hashlib.sha256(_canonical(rel, files[rel])).hexdigest()}\n".encode())
@@ -81,7 +81,7 @@ def trail_digest(files: dict[str, bytes]) -> str:
 
 
 def read_tree(root: Path) -> dict[str, bytes]:
-    """Alle regulären Dateien unter `root` (Pfade relativ, `/`-getrennt); fehlt `root` → leer."""
+    """All regular files under `root` (paths relative, `/`-separated); missing `root` → empty."""
     if not root.is_dir():
         return {}
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
@@ -95,27 +95,27 @@ def write_tree(root: Path, files: dict[str, bytes]) -> None:
 
 
 class TrailArchive(Protocol):
-    """Pflicht-Interface jeder Archiv-Methode. Archive sind unveränderlich: `archive` überschreibt nie."""
+    """Mandatory interface of every archive method. Archives are immutable: `archive` never overwrites."""
 
     method: str
 
     def archive(self, ws: Workspace, commit: str, index: int, now: datetime) -> TrailRef:
-        """Trail von `commit` unter Nummer `index` ablegen; :class:`ArchiveExists`, wenn belegt."""
+        """Store the trail of `commit` under number `index`; :class:`ArchiveExists` if occupied."""
         ...
 
     def restore(self, ref: TrailRef) -> dict[str, bytes]:
-        """Dateien des Archivs (Pfade relativ zum Trail)."""
+        """Files of the archive (paths relative to the trail)."""
         ...
 
     def exists(self, ref: TrailRef) -> bool: ...
 
     def read_handoff(self, ref: TrailRef) -> str | None:
-        """Nur `HANDOFF.md` des Archivs (günstig, für den Dispatcher); fehlt → None."""
+        """Only the archive's `HANDOFF.md` (cheap, for the dispatcher); missing → None."""
         ...
 
 
 def archive_next(archiver: TrailArchive, ws: Workspace, commit: str, start: int, now: datetime) -> TrailRef:
-    """Unter der nächsten freien Nummer ab `start` archivieren (belegte Nummern werden übersprungen)."""
+    """Archive under the next free number from `start` (occupied numbers are skipped)."""
     for index in range(start, start + MAX_ARCHIVE_PROBES):
         try:
             return archiver.archive(ws, commit, index, now)
@@ -125,7 +125,7 @@ def archive_next(archiver: TrailArchive, ws: Workspace, commit: str, start: int,
 
 
 def verify(archiver: TrailArchive, ref: TrailRef) -> dict[str, bytes]:
-    """Archiv vorhanden und Inhalt == gebundener Hash; liefert die Dateien."""
+    """Archive present and content == bound hash; returns the files."""
     if not archiver.exists(ref):
         raise ArchiveError(t("relay.archive.archive_not_found", v1=ref.name, v2=ref.uri))
     files = archiver.restore(ref)
@@ -143,11 +143,11 @@ class GitHubRefs(Protocol):
 
 
 class GitRefArchive:
-    """Versteckter Ref `refs/fabrik/relay/<N>/audit-<k>` auf den auditierten Commit.
+    """Hidden ref `refs/fabrik/relay/<N>/audit-<k>` to the audited commit.
 
-    Erscheint nicht in Tag-/Branch-Listen, wird ohne expliziten Refspec nicht geholt und hält den
-    Commit auch nach dem Löschen des Branches erreichbar. `fetch(ws, refspec)` holt den Ref beim
-    Wiederherstellen (authentifiziert); liegt der Commit lokal schon vor, entfällt das."""
+    Does not appear in tag/branch lists, is not fetched without an explicit refspec and keeps the
+    commit reachable even after the branch is deleted. `fetch(ws, refspec)` fetches the ref when
+    restoring (authenticated); if the commit is already present locally, that is skipped."""
 
     method = METHOD_GIT_REF
 
@@ -237,7 +237,7 @@ def _has_commit(root: Path, sha: str) -> bool:
 
 
 def _files_at(root: Path, commit: str, rel_dir: str) -> dict[str, bytes]:
-    """Dateien unter `rel_dir` im Commit (Pfade relativ zu `rel_dir`), direkt aus Git gelesen."""
+    """Files under `rel_dir` in the commit (paths relative to `rel_dir`), read directly from git."""
     listing = _git_bytes(root, "ls-tree", "-r", "-z", "--full-tree", commit, "--", rel_dir).decode()
     files: dict[str, bytes] = {}
     for entry in filter(None, listing.split("\0")):
@@ -249,9 +249,9 @@ def _files_at(root: Path, commit: str, rel_dir: str) -> dict[str, bytes]:
 
 
 def bind_report(ws: Workspace, paths: list[str]) -> str:
-    """`paths` stagen, Hash des Trails im Index berechnen und als letzte Zeile an AUDIT.md hängen.
+    """Stage `paths`, compute the trail hash in the index and append it as the last line to AUDIT.md.
 
-    Der Index ist genau das, was der Audit-Commit enthält; AUDIT.md zählt ohne die Hash-Zeile."""
+    The index is exactly what the audit commit contains; AUDIT.md counts without the hash line."""
     report = ws.relay / AUDIT_REPORT
     report.write_text(normalize_report(report.read_text(encoding="utf-8")), encoding="utf-8")
     if paths:
@@ -273,11 +273,11 @@ def _files_in_index(root: Path, rel_dir: str) -> dict[str, bytes]:
 
 
 def remove_trail(ws: Workspace) -> list[str]:
-    """Trail aus dem Arbeitsbaum entfernen; die Löschung stagen + committen tut der Aufrufer.
+    """Remove the trail from the working tree; staging + committing the deletion is up to the caller.
 
-    Bewusst kein `git rm`: Der Aufrufer committet den Trail-Pfad, dessen `git add -A` die Löschung
-    deterministisch stagen. Ein `git rm` hier würde den Pfad aus Index *und* Arbeitsbaum nehmen,
-    sodass ein nachfolgendes `git add -A` auf den Pfad fehlschlagen würde (pathspec matcht nichts)."""
+    Deliberately no `git rm`: the caller commits the trail path, whose `git add -A` stages the deletion
+    deterministically. A `git rm` here would take the path out of index *and* working tree,
+    so a subsequent `git add -A` on the path would fail (pathspec matches nothing)."""
     rel = relay_dir(ws.issue)
     removed = [p for p in ws.git("ls-files", "-z", "--", rel).split("\0") if p]
     shutil.rmtree(ws.relay, ignore_errors=True)

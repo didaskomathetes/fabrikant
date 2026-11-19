@@ -1,12 +1,12 @@
-"""Retry-Policy (`retry: {max, backoff, on, max_wait}`) nach ADR 0036 (Run-Retry).
+"""Retry policy (`retry: {max, backoff, on, max_wait}`) per ADR 0036 (run retry).
 
-Geteilt, damit Relay-Tasks (ADR 0037) und der Run-Retry (#290) dieselbe Semantik haben:
-- `max`: Anzahl **zusätzlicher** Versuche nach dem ersten Run (`max: 3` → höchstens 4 Runs);
-  `max: 0` = kein Retry.
-- `backoff`: Wartezeit vor Versuch 1..n; der letzte Wert gilt für alle weiteren.
-- `on`: Fehlerklassen (ADR 0035), die wiederholt werden dürfen — nur `interrupted`/`transient`.
-  `unknown` und Runs ohne Klasse werden nie automatisch wiederholt.
-- `max_wait`: Obergrenze für ein gemeldetes `retry_after` (z. B. Reset eines Rate-Limits).
+Shared so relay tasks (ADR 0037) and run retry (#290) have the same semantics:
+- `max`: number of **additional** attempts after the first run (`max: 3` → at most 4 runs);
+  `max: 0` = no retry.
+- `backoff`: wait before attempt 1..n; the last value applies to all further ones.
+- `on`: failure classes (ADR 0035) that may be retried — only `interrupted`/`transient`.
+  `unknown` and runs without a class are never retried automatically.
+- `max_wait`: upper bound for a reported `retry_after` (e.g. reset of a rate limit).
 """
 
 from __future__ import annotations
@@ -59,8 +59,8 @@ class RetryPolicy:
         return self.backoff[min(attempt, len(self.backoff)) - 1]
 
     def next_attempt_at(self, attempt: int, finished: datetime, retry_after: datetime | None = None) -> datetime:
-        """Frühester Start von Versuch `attempt`: Backoff ab Ende des vorherigen Runs; ein gemeldetes
-        `retry_after` (auf `max_wait` gekappt) verschiebt ihn nach hinten (ADR 0036, Entscheidung 1)."""
+        """Earliest start of attempt `attempt`: backoff from the end of the previous run; a reported
+        `retry_after` (capped at `max_wait`) pushes it back (ADR 0036, decision 1)."""
         due = finished + self.delay(attempt)
         if retry_after is None:
             return due
@@ -68,11 +68,11 @@ class RetryPolicy:
 
     @classmethod
     def parse(cls, raw: Any, where: str, errs: list[str]) -> RetryPolicy | None:
-        """`retry:`-Mapping → Policy; Fehler landen in `errs`. None = kein Retry."""
+        """`retry:` mapping → policy; errors land in `errs`. None = no retry."""
         if raw is None:
             return None
         if isinstance(raw, dict) and True in raw and "on" not in raw:
-            # PyYAML (YAML 1.1) liest den unquotierten Key `on` als bool True.
+            # PyYAML (YAML 1.1) reads the unquoted key `on` as bool True.
             raw = {("on" if k is True else k): v for k, v in raw.items()}
         if not isinstance(raw, dict) or set(raw) - _KEYS:
             errs.append(t("retry.mapping_with_expected", where=where, v2="/".join(sorted(_KEYS))))

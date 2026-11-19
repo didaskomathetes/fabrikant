@@ -1,14 +1,14 @@
-"""Agent-Env-Allowlist — Agent-Prozesse bekommen nur Variablen, die sie brauchen (ADR 0050).
+"""Agent env allowlist — agent processes only get the variables they need (ADR 0050).
 
-Begründung: Eine Prompt-Injection kann den Agent-Prozessen eigene Umgebungsvariablen
-auslesen und exfiltrieren. Vor ADR 0050 erbt jeder CLI-Agent-Prozess das komplette
-`os.environ` — darunter `GITHUB_TOKEN` und Provider-API-Keys. Jetzt bekommen Agent-Prozesse
-nur die Allowlist plus die Variablen, die pro Step explizit übergeben werden
-(`extra_env`, z. B. die `gh`-Identität eines `github_identity:`-Steps).
+Rationale: a prompt injection can read and exfiltrate the agent processes' own environment
+variables. Before ADR 0050 every CLI agent process inherited the complete
+`os.environ` — including `GITHUB_TOKEN` and provider API keys. Now agent processes get
+only the allowlist plus the variables passed explicitly per step
+(`extra_env`, e.g. the `gh` identity of a `github_identity:` step).
 
-Der geteilte `opencode serve`-Prozess wird nicht von fabrik gestartet — für ihn gibt
-`fabrik agent-env` die gescrubte Env als `KEY=VALUE`-Zeilen aus (nutzbar als
-systemd-`EnvironmentFile` oder Docker `--env-file`).
+The shared `opencode serve` process is not started by fabrik — for it,
+`fabrik agent-env` prints the scrubbed env as `KEY=VALUE` lines (usable as a
+systemd `EnvironmentFile` or Docker `--env-file`).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-# Namen, die Agent-Prozesse immer bekommen (bewusst ohne Secrets/Provider-Keys).
+# Names agent processes always get (deliberately without secrets/provider keys).
 AGENT_ENV_ALLOWLIST: tuple[str, ...] = (
     "PATH",
     "HOME",
@@ -38,36 +38,36 @@ AGENT_ENV_ALLOWLIST: tuple[str, ...] = (
     "XDG_STATE_HOME",
 )
 
-# Eigene Auth-Variablen der Agent-CLIs (ihre Arbeits-Identität, keine geerbten fabrik-Secrets).
-# Backends reichen sie über `_env()` explizit durch (`passthrough`) — nie `GITHUB_TOKEN`
-# (das ist fabriks API-Token).
+# The agent CLIs' own auth variables (their working identity, no inherited fabrik secrets).
+# Backends pass them through explicitly via `_env()` (`passthrough`) — never `GITHUB_TOKEN`
+# (that is fabrik's API token).
 CLAUDE_AUTH_VARS: tuple[str, ...] = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 CODEX_AUTH_VARS: tuple[str, ...] = ("OPENAI_API_KEY",)
 COPILOT_AUTH_VARS: tuple[str, ...] = ("COPILOT_GITHUB_TOKEN",)
 
-# Env-Name für die Operator-Ergänzung (kommagetrennte Namen).
+# Env name for the operator addition (comma-separated names).
 EXTRA_ALLOWLIST_VAR = "FABRIK_AGENT_ENV_EXTRA"
 
 
 def extra_allowlist_names() -> frozenset[str]:
-    """Zusätzliche Allowlist-Namen aus `FABRIK_AGENT_ENV_EXTRA` (kommagetrennt, exakt)."""
+    """Additional allowlist names from `FABRIK_AGENT_ENV_EXTRA` (comma-separated, exact)."""
     raw = os.environ.get(EXTRA_ALLOWLIST_VAR, "")
     return frozenset(n.strip() for n in raw.split(",") if n.strip())
 
 
 def passthrough(names: tuple[str, ...]) -> dict[str, str]:
-    """Die gesetzten Variablen aus `names` (aus `os.environ`) — bewusste Übergabe der
-    CLI-eigenen Auth, nicht Erbschaft (ADR 0050)."""
+    """The set variables from `names` (from `os.environ`) — deliberate hand-over of the
+    CLI's own auth, not inheritance (ADR 0050)."""
     return {n: os.environ[n] for n in names if os.environ.get(n)}
 
 
 def build_agent_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Vollständige Env für einen Agent-Prozess: Allowlist (aus `os.environ`) + `extra`.
+    """Complete env for an agent process: allowlist (from `os.environ`) + `extra`.
 
-    `extra` (Adapter-Zusätze wie `COPILOT_AUTO_UPDATE` oder pro-Step-`extra_env`, z. B. die
-    `gh`-Identität) wird über die Allowlist gelegt und gewinnt dabei immer. Nur Namen aus
-    der Allowlist werden aus `os.environ` übernommen — alles andere (Secrets,
-    Provider-Keys, `FABRIK_*`-Konfiguration) bleibt draußen.
+    `extra` (adapter additions like `COPILOT_AUTO_UPDATE` or per-step `extra_env`, e.g. the
+    `gh` identity) is laid over the allowlist and always wins. Only names from the
+    allowlist are taken from `os.environ` — everything else (secrets,
+    provider keys, `FABRIK_*` configuration) stays out.
     """
     allowed = set(AGENT_ENV_ALLOWLIST) | extra_allowlist_names()
     env = {k: v for k, v in os.environ.items() if k in allowed}

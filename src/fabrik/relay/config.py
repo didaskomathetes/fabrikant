@@ -1,8 +1,8 @@
-"""`relay:`-Block einer Projekt-Spec → `RelayConfig` + generierte Loops (ADR 0037).
+"""`relay:` block of a project spec → `RelayConfig` + generated loops (ADR 0037).
 
-Ein Projekt schaltet Relay-Tasks mit einem `relay:`-Block frei; `expand_loops` erzeugt daraus
-beim Spec-Laden die Loops `relay-dispatch`, `relay-session` und `relay-audit`. Die Prompts
-(`prompts/relay/`) sind projektneutral — Projektwissen kommt aus Brief und Repo.
+A project enables relay tasks with a `relay:` block; `expand_loops` generates from it, on
+spec load, the loops `relay-dispatch`, `relay-session` and `relay-audit`. The prompts
+(`prompts/relay/`) are project-neutral — project knowledge comes from brief and repo.
 """
 
 from __future__ import annotations
@@ -28,21 +28,21 @@ PROMPT_AUDIT_BLIND = "prompts/relay/audit-blind.prompt.md"
 PROMPT_AUDIT_REVIEW = "prompts/relay/audit-review.prompt.md"
 
 DEFAULT_DISPATCH_CRON = "*/15 * * * *"
-# Obergrenze für `session_minutes` aus dem Brief; Session-Run muss unter FABRIK_STALE_HOURS bleiben.
+# Upper bound for `session_minutes` from the brief; the session run must stay below FABRIK_STALE_HOURS.
 DEFAULT_MAX_SESSION_MINUTES = 35
 DEFAULT_VERIFY_TIMEOUT = 300
-# Zwei Audit-Phasen + Steps müssen unter FABRIK_STALE_HOURS (lokal 1 h) bleiben.
+# Two audit phases + steps must stay below FABRIK_STALE_HOURS (locally 1 h).
 DEFAULT_AUDIT_TIMEOUT = 1200
 # Puffer zwischen hartem Session-Ende (Prompt) und Agent-Timeout (Kill).
 AGENT_TIMEOUT_GRACE_S = 300
 FABRIK_URL_ENV = "FABRIK_URL"
-# Archiv-Methoden für den Trail (ADR 0037, Nachtrag 2026-11-03); s3 ist vorgesehen, nicht umgesetzt.
+# Archive methods for the trail (ADR 0037, addendum 2026-11-03); s3 is planned, not implemented.
 TRAIL_ARCHIVE_TYPES = ("git-ref", "local")
 TRAIL_ARCHIVE_PLANNED = ("s3",)
 
 
 def fabrik_url() -> str:
-    """Basis-URL der laufenden fabrik-API (der Dispatcher startet Runs darüber)."""
+    """Base URL of the running fabrik API (the dispatcher starts runs via it)."""
     return os.environ.get(FABRIK_URL_ENV, f"http://127.0.0.1:{config.DEFAULT_PORT}").rstrip("/")
 
 
@@ -68,7 +68,7 @@ class AgentRole:
 
 @dataclass(frozen=True)
 class TrailArchiveConfig:
-    """`relay.trail_archive`: wohin der Trail nach `pass` archiviert wird, bevor er vom Branch geht."""
+    """`relay.trail_archive`: where the trail is archived after `pass` before it leaves the branch."""
 
     type: str
 
@@ -123,12 +123,12 @@ class RelayConfig:
     max_session_minutes: int = DEFAULT_MAX_SESSION_MINUTES
     verify_timeout: int = DEFAULT_VERIFY_TIMEOUT
     audit_timeout: int = DEFAULT_AUDIT_TIMEOUT
-    # Pflicht (from_spec validiert); `""` nur als Dataclass-Default für Teil-Konstruktion in Tests.
+    # Required (from_spec validates); `""` only as dataclass default for partial construction in tests.
     bot_login: str = ""
     audit: bool = True
-    # Wiederholung gescheiterter Relay-Runs (Semantik wie Run-Retry, ADR 0036); None = jeder Fehlschlag blockiert.
+    # Retry of failed relay runs (semantics like run retry, ADR 0036); None = every failure blocks.
     retry: RetryPolicy | None = None
-    # None = Trail bleibt auf dem Branch (Status-Kommentar warnt, wenn ein PR existiert).
+    # None = trail stays on the branch (status comment warns if a PR exists).
     trail_archive: TrailArchiveConfig | None = None
 
     @property
@@ -141,7 +141,7 @@ class RelayConfig:
 
     @classmethod
     def from_spec(cls, spec: dict) -> RelayConfig:
-        """ValueError mit allen Fehlern, wenn der Block ungültig ist."""
+        """ValueError with all errors if the block is invalid."""
         raw = spec.get("relay")
         errs: list[str] = []
         if not isinstance(raw, dict):
@@ -186,9 +186,9 @@ class RelayConfig:
 
 
 def _cmd(command: str, *args: str) -> str:
-    """Shell-Kommando für einen Relay-Subcommand (gleicher Interpreter wie der Server).
+    """Shell command for a relay subcommand (same interpreter as the server).
 
-    Die Issue-Nummer kommt über `env:` ($RELAY_ISSUE), nie inline (ADR 0008)."""
+    The issue number comes via `env:` ($RELAY_ISSUE), never inline (ADR 0008)."""
     return " ".join([shlex.quote(sys.executable), "-m", "fabrik.relay", command, "--project", "{project}", *args])
 
 
@@ -207,7 +207,7 @@ def _shell(name: str, command: str, timeout: int, *, issue: bool = True) -> dict
 
 
 def _agent(name: str, role: AgentRole, identity: str, prompt: str, timeout: int) -> dict:
-    # gate: false — Check-in/Publish laufen auch nach Timeout/Fehler des Agents (Handoff sichern).
+    # gate: false — check-in/publish also run after timeout/error of the agent (secure the handoff).
     return {
         "name": name,
         "type": "agent",
@@ -220,7 +220,7 @@ def _agent(name: str, role: AgentRole, identity: str, prompt: str, timeout: int)
 
 
 def build_loops(cfg: RelayConfig) -> dict[str, dict]:
-    """Die Relay-Loops eines Projekts (Specs-Dicts im normalen Loop-Format)."""
+    """The relay loops of a project (spec dicts in the normal loop format)."""
     loops = {
         LOOP_DISPATCH: {
             "description": t("relay.config.relay_dispatcher_starts_the_next", v1=cfg.label),
@@ -260,7 +260,7 @@ def build_loops(cfg: RelayConfig) -> dict[str, dict]:
 
 
 def expand_loops(spec: dict) -> None:
-    """`relay:` → Relay-Loops in `spec["loops"]` einfügen (vor der Spec-Validierung)."""
+    """`relay:` → insert relay loops into `spec["loops"]` (before spec validation)."""
     if spec.get("relay") is None:
         return
     cfg = RelayConfig.from_spec(spec)
@@ -268,7 +268,7 @@ def expand_loops(spec: dict) -> None:
     if loops is None:
         loops = spec["loops"] = {}
     if not isinstance(loops, dict):
-        return  # Spec-Validierung meldet den Fehler
+        return  # Spec validation reports the error
     clash = sorted(set(loops) & {LOOP_DISPATCH, *RUN_LOOPS})
     if clash:
         raise ValueError(t("relay.config.relay_loop_names_are_reserved", clash=clash))
@@ -276,8 +276,8 @@ def expand_loops(spec: dict) -> None:
 
 
 def load(project: str) -> tuple[dict, RelayConfig]:
-    """Spec + RelayConfig eines Projekts (für die Subcommands)."""
-    from .. import specs  # spät: specs importiert dieses Modul
+    """Spec + RelayConfig of a project (for the subcommands)."""
+    from .. import specs  # late: specs imports this module
 
     spec = specs.load_spec(specs.spec_path(project))
     if spec.get("relay") is None:
