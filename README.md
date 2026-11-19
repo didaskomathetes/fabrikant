@@ -438,7 +438,7 @@ der Conductor bleibt deterministisch, der Agent ist austauschbar:
 
 | Backend    | Setup                                                        |
 |------------|--------------------------------------------------------------|
-| `opencode` | `opencode serve --port 8945` + `fabrik.env`: `FABRIK_AGENT_ENDPOINT`, `FABRIK_AGENT_MODEL` (Format `provider/model`); 2.x zusätzlich `FABRIK_AGENT_PASSWORD` |
+| `opencode` | Host: `opencode serve --port 8945` + `fabrik.env`: `FABRIK_AGENT_ENDPOINT`, `FABRIK_AGENT_MODEL` (Format `provider/model`); 2.x zusätzlich `FABRIK_AGENT_PASSWORD`. Mit `FABRIK_SANDBOX=1`: kein `serve` — pro Session `opencode run --standalone` im Sandbox-Container, Modell als `<LLM-Verbindung>/<modell>` (z. B. `llama-cpp/Qwen3.8-27B-GGUF`); die Provider-Config entsteht aus der Verbindung (http-Endpoint, Secret nur falls gesetzt), deren Host auf die Egress-Allowlist gehört. Step-`permissions` sind restriktiv: genannte Pattern gelten, alle übrigen derselben Permission sind `deny` |
 | (Legacy)   | `cmd:` mit jeder Agent-CLI (z. B. `claude -p {prompt_file}`) |
 
 Sicherheitsschichten für Agent-Prozesse (einzeln zuschaltbar, siehe ADRs):
@@ -462,6 +462,8 @@ Sicherheitsschichten für Agent-Prozesse (einzeln zuschaltbar, siehe ADRs):
   Agent-CLI und git; Vorlage mit claude-code, codex, copilot, gh, Python/uv:
   `docker build -t fabrik/agent-sandbox:latest deploy/agent-sandbox` (Versionen per
   `--build-arg`, Basis-Images per Digest gepinnt; fabrik startet es mit `--pull never`).
+  Ein GitHub-Token kommt nur mit `github_identity` in den Container; ohne sind alle
+  Token-Variablen leer (auch bei Projekten mit `github_env_file`).
 
 Das `opencode`-Backend (Details: `docs/spike-opencode.md`, 1.x/2.x-Dual-Support:
 ADR 0005):

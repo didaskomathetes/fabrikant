@@ -11,10 +11,12 @@ Jeder Adapter implementiert `create(step, endpoint, model, stale_after)`
 
 from __future__ import annotations
 
+from .. import sandbox
 from .claude_code import ClaudeCodeBackend
 from .codex import CodexBackend
 from .copilot import CopilotBackend
 from .opencode import OpenCodeBackend
+from .opencode_cli import OpenCodeCliBackend
 from .port import AgentBackend
 
 # name → Adapter-Klasse. Reihenfolge = Reihenfolge in Fehlermeldungen.
@@ -23,6 +25,13 @@ ADAPTERS: dict[str, type[AgentBackend]] = {
     "claude_code": ClaudeCodeBackend,
     "codex": CodexBackend,
     "copilot": CopilotBackend,
+}
+
+
+# name → Variante für `FABRIK_SANDBOX=1` (ADR 0054): Backends, deren Host-Adapter einen fremden
+# Prozess anspricht, laufen in der Sandbox stattdessen als One-Shot im Container.
+SANDBOX_ADAPTERS: dict[str, type[AgentBackend]] = {
+    "opencode": OpenCodeCliBackend,
 }
 
 
@@ -37,6 +46,8 @@ def create_backend(backend_name: str, step: dict, endpoint: str, model: str, sta
     verfügbaren Backends an.
     """
     cls = ADAPTERS.get(backend_name)
+    if cls is not None and sandbox.sandbox_enabled():
+        cls = SANDBOX_ADAPTERS.get(backend_name, cls)
     if cls is None:
         raise ValueError(f"agent-step: unbekanntes Backend '{backend_name}' (verfügbar: {', '.join(known_backends())})")
     return cls.create(step, endpoint, model, stale_after)
