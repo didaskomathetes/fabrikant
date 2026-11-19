@@ -18,6 +18,8 @@
   "run.tab.transcript": "Transkript",
   "run.cost": "Kosten",
   "run.tokens": "Tok.",
+  "run.cached": "gecacht",
+  "run.apiEquiv": "API-Äquiv. (Abo-Limit)",
   "run.follow": "folgen",
   "run.status.queued": "in Warteschlange",
   "run.status.running": "läuft",

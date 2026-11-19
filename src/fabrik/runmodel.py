@@ -130,7 +130,10 @@ def check_transition(table: Mapping[_E, frozenset[_E]], current: _E, target: _E)
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """Token-/Kosten-Verbrauch eines Steps (LLM/Agent). ``cost_usd`` ist None, wenn unbekannt."""
+    """Token-/Kosten-Verbrauch eines Steps (LLM/Agent). ``cost_usd`` ist None, wenn unbekannt.
+
+    ``prompt_tokens`` enthält den Cache-Anteil; ``cache_read_tokens``/``cache_write_tokens`` schlüsseln
+    ihn auf (0 = nicht gemeldet, z. B. ältere Runs) — siehe :mod:`fabrik.tokens`."""
 
     model: str = ""
     provider: str = ""
@@ -138,6 +141,9 @@ class Usage:
     completion_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float | None = None
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    billing: str = ""  # api | subscription | unknown (fabrik.billing); "" = Altbestand
 
 
 @dataclass(frozen=True, slots=True)

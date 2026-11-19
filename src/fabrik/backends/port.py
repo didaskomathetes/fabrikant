@@ -24,6 +24,8 @@ class AgentBackend(Protocol):
     `poll` liefert `{status: running|done|failed, text, tokens, cost, tools}`; bei `failed` optional
     `retryable` (transient, Session-Neustart lohnt) bzw. `failure_kind`/`retry_after` (ADR 0035).
     One-Shot-CLIs ergänzen bei `failed` `exit_code` und `stderr_tail` (Ende von stderr, für Abstürze).
+    Optional: `billing() -> fabrik.billing.Billing` (Abrechnungsart aus der übergebenen Auth);
+    fehlt sie, gilt `unknown`.
     """
 
     name: str
