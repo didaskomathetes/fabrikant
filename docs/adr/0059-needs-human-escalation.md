@@ -94,8 +94,8 @@ human":
 ### 4. Stop: loops respect the label
 
 - `review-pr`, `pr-reply`, and `develop` skip items with `needs human`. This applies at the
-  trigger (label exclusion) and additionally in the gate of `pr-status.py` (`reply-context`,
-  `merge-check` → `skip`), so a manual run does not slip through.
+  trigger (label exclusion) and additionally in the gate of `pr-status.py`
+  (`merge-check` → `skip`), so a manual run does not slip through.
 - Stagnation detection (`stalled`) runs deterministically in `pr-status.py` from the existing
   markers (`fabrik-review verdict=… sha=…`, the bare `<!-- fabrik-reply -->` reply marker) and
   the commit history of the PR branch. The reply marker carries no attributes, so "the builder
