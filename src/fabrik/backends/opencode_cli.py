@@ -22,7 +22,7 @@ import json
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from .. import connections
+from .. import connections, egress
 from ._oneshot import OneShotCliBackend
 
 CONFIG_CONTENT_VAR = "OPENCODE_CONFIG_CONTENT"
@@ -37,6 +37,11 @@ OPENAI_COMPATIBLE_PACKAGE = "@ai-sdk/openai-compatible"
 CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 # Ohne Step-Regeln: der Container ist die Grenze — Agent darf editieren und die Shell nutzen.
 DEFAULT_PERMISSIONS: dict[str, dict[str, str]] = {"edit": {"*": "allow"}, "bash": {"*": "allow"}}
+# opencode 2.x: die Basis-Policy erlaubt ALLES (`*`/`*` allow) und Config-Regeln werden danach
+# angehängt (letzter Treffer gewinnt). Nennt der Step also Regeln, müssen alle eingebauten
+# Permissions auf `*` deny, sonst bleibt Ungenanntes frei (z. B. `bash` bei nur `edit`-Regeln)
+# und der Agent umgeht die Einschränkung über die Shell.
+BUILTIN_PERMISSIONS: tuple[str, ...] = ("edit", "bash", "read", "webfetch")
 _FAILURE_TEXT_MAX = 300
 WILDCARD, DENY = "*", "deny"
 
@@ -52,21 +57,33 @@ def endpoint_host(endpoint: str) -> str:
     return urlsplit(endpoint).hostname or ""
 
 
+def _host_allowed(host: str) -> bool:
+    """Endpoint-Host auf der Egress-Allowlist (ADR 0051)? Subdomänen zählen mit.
+    Kaputte Allowlist → False (fail-closed; der egress-Start meldet die Ursache)."""
+    try:
+        allowed = egress.load_allowlist()
+    except RuntimeError:
+        return False
+    return any(host == h or host.endswith("." + h) for h in allowed)
+
+
 def permission_rules(rules: list | None) -> dict[str, dict[str, str]]:
     """Step-`permissions` (1.x-Regeln `{permission, pattern, action}`) → opencode-Config
     `{permission: {pattern: action}}`. Ohne Regeln: :data:`DEFAULT_PERMISSIONS`.
 
-    Restriktiv: Nennt der Step Regeln für eine Permission, gilt für alle übrigen Pattern `deny`
-    (sofern der Step `*` nicht selbst setzt). opencode 2.x erlaubt sonst alles Ungenannte —
-    `edit: review.json allow` würde jede andere Datei mit freigeben."""
+    Restriktiv: opencode 2.x erlaubt per Basis-Policy alles (`*`/`*` allow, letzter Treffer
+    gewinnt) — nennt der Step also Regeln, werden alle eingebauten Permissions
+    (:data:`BUILTIN_PERMISSIONS`) auf `*` deny gesetzt, dann die Step-Regeln darüber (sofern
+    der Step `*` nicht selbst setzt). Sonst bliebe Ungenanntes frei — `edit: review.json allow`
+    würde `bash` (und damit jede andere Datei) mit freigeben."""
     if not rules:
         return {k: dict(v) for k, v in DEFAULT_PERMISSIONS.items()}
-    out: dict[str, dict[str, str]] = {}
+    out: dict[str, dict[str, str]] = {perm: {WILDCARD: DENY} for perm in BUILTIN_PERMISSIONS}
     for rule in rules:
         if not isinstance(rule, dict) or not rule.get("permission") or not rule.get("action"):
             raise ValueError(f"opencode: Permission-Regel braucht permission + action: {rule!r}")
         out.setdefault(str(rule["permission"]), {})[str(rule.get("pattern") or "*")] = str(rule["action"])
-    return {perm: {WILDCARD: DENY, **patterns} for perm, patterns in out.items()}
+    return out
 
 
 @dataclass(frozen=True)
@@ -95,6 +112,12 @@ class OpenCodeConfig:
             )
         if conn.secret_unreadable:
             raise connections.UndecryptableSecret(f"Verbindung '{name}': Secret nicht entschlüsselbar — neu eintragen")
+        host = endpoint_host(conn.endpoint)
+        if host and not _host_allowed(host):
+            raise connections.InvalidConnection(
+                f"opencode (Sandbox): Endpoint-Host '{host}' steht nicht auf der Egress-Allowlist (ADR 0051) — "
+                f"Host per {egress.ALLOWLIST_VAR} oder {egress.ALLOWLIST_FILE_VAR} ergänzen"
+            )
         return cls(
             provider=name,
             model=model or conn.model,
@@ -148,11 +171,11 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
         part: dict = raw_part if isinstance(raw_part, dict) else {}
         if event.get("type") == "error":
             err = event.get("error")
-            error = (
-                str((err.get("data") or {}).get("message") or err.get("name") or err)
-                if isinstance(err, dict)
-                else str(err)
-            )
+            if isinstance(err, dict):
+                # 2.2.5: `message` liegt direkt im Error-Objekt; ältere Builds: `data.message`.
+                error = str((err.get("data") or {}).get("message") or err.get("message") or err.get("name") or err)
+            else:
+                error = str(err)
         elif part.get("type") == "text" and part.get("text"):
             texts.append(str(part["text"]))
         elif part.get("type") == "tool" and part.get("tool"):

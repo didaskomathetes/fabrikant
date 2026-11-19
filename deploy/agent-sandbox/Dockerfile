@@ -15,8 +15,8 @@
 # bauen; fabrik startet es mit `--pull never`.
 
 # opencode 2.x gibt es nicht auf npm (dort nur 1.x): Release-Binary von GitHub, per SHA-256 geprüft.
-# Eigene Stage, damit curl nicht im Agent-Image landet.
-FROM debian:bookworm-slim AS opencode
+# Eigene Stage, damit curl nicht im Agent-Image landet. Basis per Digest gepinnt.
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS opencode
 ARG OPENCODE_VERSION=2.2.5
 ARG OPENCODE_SHA256=09f44302c10fd036912f59c81fd1aef5df45dd06f649197f9dfc9bbe2a79614e
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \

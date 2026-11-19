@@ -275,10 +275,13 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     endpoint = (step.get("endpoint") or os.environ.get("FABRIK_AGENT_ENDPOINT", "")).strip()
     model = (step.get("model") or os.environ.get("FABRIK_AGENT_MODEL", "")).strip()
     if backend_name == "opencode":
-        if not endpoint or not model:
+        # In der Sandbox (ADR 0054) kommt die Config aus der LLM-Verbindung — das endpoint
+        # wird ignoriert, nur das Modell (<verbindung>/<modell>) ist nötig.
+        if not model or (not endpoint and not sandbox.sandbox_enabled()):
             return failed(
                 "opencode-Backend: endpoint/model fehlen "
-                "(step.endpoint/model oder FABRIK_AGENT_ENDPOINT + FABRIK_AGENT_MODEL)",
+                "(step.endpoint/model oder FABRIK_AGENT_ENDPOINT + FABRIK_AGENT_MODEL; "
+                "in der Sandbox genügt model als <verbindung>/<modell>)",
                 FailureKind.ENVIRONMENT,
             )
     elif backend_name not in ("codex", "copilot") and not model:

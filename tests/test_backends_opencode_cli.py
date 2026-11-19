@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from fabrik import connections, sandbox
+from fabrik import connections, egress, sandbox
 from fabrik.backends import opencode_cli
 from fabrik.backends.opencode import OpenCodeBackend
 from fabrik.backends.opencode_cli import OpenCodeCliBackend, OpenCodeConfig, parse_events, permission_rules
@@ -29,11 +29,13 @@ def _conn(**kw) -> connections.Connection:
 
 @pytest.fixture
 def conn(monkeypatch):
-    """`get_connection` liefert die Verbindung aus `holder['conn']` (None = unbekannt)."""
+    """`get_connection` liefert die Verbindung aus `holder['conn']` (None = unbekannt).
+    Der Test-Endpoint-Host steht auf der Egress-Allowlist (sonst fail-closed)."""
     holder = {"conn": _conn()}
     monkeypatch.setattr(
         connections, "get_connection", lambda name, kind, **_: holder["conn"] if name == "lan" else None
     )
+    monkeypatch.setenv(egress.ALLOWLIST_VAR, "llm.example")
     return holder
 
 
@@ -50,12 +52,32 @@ def test_permission_rules_are_restrictive():
         {"permission": "edit", "pattern": "review.json", "action": "allow"},
         {"permission": "bash", "pattern": "*", "action": "deny"},
     ]
-    assert permission_rules(rules) == {"edit": {"*": "deny", "review.json": "allow"}, "bash": {"*": "deny"}}
+    assert permission_rules(rules) == {
+        "edit": {"*": "deny", "review.json": "allow"},
+        "bash": {"*": "deny"},
+        "read": {"*": "deny"},
+        "webfetch": {"*": "deny"},
+    }
     # ein explizites `*` des Steps gewinnt
-    assert permission_rules([{"permission": "edit", "pattern": "*", "action": "allow"}]) == {"edit": {"*": "allow"}}
+    assert permission_rules([{"permission": "edit", "pattern": "*", "action": "allow"}]) == {
+        "edit": {"*": "allow"},
+        "bash": {"*": "deny"},
+        "read": {"*": "deny"},
+        "webfetch": {"*": "deny"},
+    }
     assert permission_rules(None) == opencode_cli.DEFAULT_PERMISSIONS
     with pytest.raises(ValueError, match="permission \\+ action"):
         permission_rules([{"pattern": "*"}])
+
+
+def test_permission_rules_deny_unmentioned_builtins():
+    """opencode 2.x Basis-Policy erlaubt alles: nennt der Step nur `edit`, muss `bash`
+    (und Co.) trotzdem `deny` sein — sonst umgeht der Agent die Einschränkung über die Shell."""
+    rules = [{"permission": "edit", "pattern": "review.json", "action": "allow"}]
+    out = permission_rules(rules)
+    for perm in opencode_cli.BUILTIN_PERMISSIONS:
+        assert out[perm]["*"] == "deny", perm
+    assert out["edit"]["review.json"] == "allow"
 
 
 def test_config_from_connection(conn):
@@ -65,7 +87,16 @@ def test_config_from_connection(conn):
     assert provider["npm"] == "@ai-sdk/openai-compatible"
     assert provider["options"] == {"baseURL": "https://llm.example/v1"}  # kein apiKey ohne Secret
     assert list(provider["models"]) == ["qwen-big"] and data["model"] == "lan/qwen-big"
-    assert data["permission"] == {"bash": {"*": "deny"}} and data["share"] == "disabled"
+    assert (
+        data["permission"]
+        == {
+            "edit": {"*": "deny"},
+            "bash": {"*": "deny"},
+            "read": {"*": "deny"},
+            "webfetch": {"*": "deny"},
+        }
+        and data["share"] == "disabled"
+    )
     assert OpenCodeConfig.from_connection("lan").model == "qwen"  # Modell der Verbindung als Default
 
 
@@ -88,6 +119,16 @@ def test_config_errors(conn, conn_value, ref, error):
     conn["conn"] = conn_value
     with pytest.raises(connections.InvalidConnection, match=error):
         OpenCodeConfig.from_connection(ref)
+
+
+def test_config_rejects_endpoint_host_off_allowlist(conn, monkeypatch):
+    """Endpoint-Host ohne Egress-Allowlist-Eintrag → fail-closed mit Hinweis (ADR 0051)."""
+    monkeypatch.delenv(egress.ALLOWLIST_VAR, raising=False)  # nur Basis-Allowlist (github.com, …)
+    with pytest.raises(connections.InvalidConnection, match="Egress-Allowlist"):
+        OpenCodeConfig.from_connection("lan/qwen")
+    # Subdomäne eines erlaubten Hosts zählt mit
+    conn["conn"] = _conn(endpoint="https://api.github.com/v1/chat/completions")
+    assert OpenCodeConfig.from_connection("lan/qwen").base_url == "https://api.github.com/v1"
 
 
 def _event(type_: str, **part) -> str:
@@ -120,12 +161,21 @@ def test_parse_events_error_message():
     assert parse_events(out)[4] == "model not found"
 
 
+def test_parse_events_error_message_v2_2_5_shape():
+    """opencode 2.2.5: `message` liegt direkt im Error-Objekt (kein `data`, kein `name`) —
+    die saubere Meldung, nicht der Dict-Repr, muss extrahiert werden."""
+    out = json.dumps({"type": "error", "error": {"type": "provider.error", "message": "model not found"}})
+    assert parse_events(out)[4] == "model not found"
+
+
 def test_backend_cmd_env_and_parse(conn):
     be = OpenCodeCliBackend(model="lan/qwen", variant="high")
     be.create_task("/tmp", "t", [{"permission": "bash", "pattern": "*", "action": "deny"}])
     assert be._build_cmd() == ["opencode", "run", "--standalone", "--format", "json", "--model", "lan/qwen#high"]
     env = be._env()
-    assert json.loads(env[opencode_cli.CONFIG_CONTENT_VAR])["permission"] == {"bash": {"*": "deny"}}
+    assert json.loads(env[opencode_cli.CONFIG_CONTENT_VAR])["permission"] == {
+        perm: {"*": "deny"} for perm in opencode_cli.BUILTIN_PERMISSIONS
+    }
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
     assert be._stale_after() is None and be.health() and be.diagnose() is None
     done = be._parse(_event("text", type="text", text="ok"), "", 0)
