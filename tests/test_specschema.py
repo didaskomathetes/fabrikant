@@ -1,10 +1,9 @@
-"""JSON-Schema-Validierung (Issue #131): schema/fabrik-spec.schema.json.
+"""JSON schema validation (Issue #131): schema/fabrik-spec.schema.json.
 
-Parität: jede Spec, die `specs._validate_spec` akzeptiert, muss auch das
-Schema passieren (keine Regressionen). Die Tests hier decken die
-Strukturprüfungen des Schemas ab (Typen, Enums, Pflichtfelder, Bereiche);
-die semantischen Prüfungen (Backend-Registry, Cron-Intervalle, …) bleiben
-in test_specs.py.
+Parity: every spec that `specs._validate_spec` accepts must also pass the
+schema (no regressions). The tests here cover the schema's structural
+checks (types, enums, required fields, ranges); the semantic checks
+(backend registry, cron intervals, ...) stay in test_specs.py.
 """
 
 from pathlib import Path
@@ -18,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _valid_spec() -> dict:
-    """Minimal gültige Spec."""
+    """Minimal valid spec."""
     return {
         "name": "p",
         "loops": {
@@ -35,7 +34,7 @@ def _with_step(step: dict) -> dict:
     return spec
 
 
-# ------------------------------------------------------------------ Schema-Datei
+# ------------------------------------------------------------------ schema file
 def test_schema_file_is_valid_draft_2020_12():
     from jsonschema import Draft202012Validator
 
@@ -43,7 +42,7 @@ def test_schema_file_is_valid_draft_2020_12():
     Draft202012Validator.check_schema(load_schema())
 
 
-# ------------------------------------------------------------------ gültige Specs
+# ------------------------------------------------------------------ valid specs
 def test_valid_minimal_spec():
     assert validate_spec(_valid_spec()) == []
 
@@ -134,13 +133,13 @@ def test_valid_step_types(step):
 
 
 def test_valid_bundled_specs():
-    """Parität: alle mitgelieferten Specs passieren das Schema."""
+    """Parity: all bundled specs pass the schema."""
     for f in sorted(REPO_ROOT.glob("projects/*.fabrik.*")):
         spec = specs.load_spec(f, check_root=False)
         assert validate_spec(spec) == [], f"{f.name}: {validate_spec(spec)}"
 
 
-# ------------------------------------------------------------------ ungültige Specs
+# ------------------------------------------------------------------ invalid specs
 def test_missing_loops():
     errs = validate_spec({"name": "p"})
     assert any("loops" in e for e in errs)
@@ -207,8 +206,8 @@ def test_bad_tier_range():
 
 
 def test_max_parallel_non_numeric_string_rejected():
-    # `vars`-Substitution liefert Zahl-Strings — die akzeptiert das Schema;
-    # echte Nicht-Zahlen nicht (Bereich >= 1 prüft die Python-Validierung).
+    # `vars` substitution yields numeric strings — the schema accepts those;
+    # real non-numbers are rejected (the >= 1 range is checked by Python).
     spec = _valid_spec()
     spec["max_parallel"] = "abc"
     assert validate_spec(spec)
@@ -223,11 +222,11 @@ def test_bad_retry_block():
 
 
 def test_extra_context_exactly_one_source():
-    # zwei Quellen in einem Eintrag → ungültig
+    # two sources in one entry -> invalid
     spec = _valid_spec()
     spec["extra_context"] = [{"name": "x", "file": "a", "cmd": "b"}]
     assert validate_spec(spec)
-    # keine Quelle → ungültig
+    # no source -> invalid
     spec["extra_context"] = [{"name": "x"}]
     assert validate_spec(spec)
 
@@ -257,7 +256,7 @@ def test_on_slack_requires_token_and_channels():
 
 
 def test_internal_keys_are_ignored():
-    """Laufzeit-Buchführung (`_path`, …) stört die Schema-Prüfung nicht."""
+    """Runtime bookkeeping keys (`_path`, ...) do not disturb schema validation."""
     spec = _valid_spec()
     spec["_path"] = "/x/y.fabrik.yaml"
     assert validate_spec(spec) == []
@@ -268,3 +267,49 @@ def test_error_paths_are_json_pointer_like():
     spec["loops"]["l1"]["steps"] = [{"type": "shell"}]
     errs = validate_spec(spec)
     assert any(e.startswith("loops/l1/steps/0") for e in errs)
+
+
+# ------------------------------------------------------------------ end-to-end
+def test_e2e_valid_spec_runs_through_engine(projects_dir, tmp_path):
+    """A valid spec passes the schema and the engine executes it (no mocks)."""
+    from fabrik.engine import run_loop
+    from fabrik.specs import load_projects
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    (projects_dir / "e2e.fabrik.yaml").write_text(
+        f"name: e2e\nroot: {root}\nloops:\n"
+        "  hello:\n"
+        "    triggers:\n"
+        "      - {type: manual}\n"
+        "    steps:\n"
+        '      - {type: shell, name: greet, cmd: "echo e2e-ok"}\n'
+        "      - {type: state, name: mark, action: set, key: ran, value: true}\n"
+    )
+    assert not load_projects()["e2e"].get("_error")
+    rec = run_loop("e2e", "hello", trigger="test")
+    assert rec["status"] == "pass"
+    assert [s["name"] for s in rec["steps"]] == ["greet", "mark"]
+
+
+def test_e2e_invalid_spec_rejected_at_load(projects_dir, tmp_path):
+    """An invalid spec is marked at load time with schema errors (pointer paths)
+    and the engine refuses the run before any step starts."""
+    from fabrik.engine import run_loop
+    from fabrik.failures import SetupError
+    from fabrik.specs import load_projects
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    (projects_dir / "bad.fabrik.yaml").write_text(
+        f"name: bad\nroot: {root}\nloops:\n"
+        "  broken:\n"
+        "    steps:\n"
+        "      - {type: shell}\n"
+        "      - {type: nonexistent}\n"
+    )
+    err = load_projects()["bad"]["_error"]
+    assert "loops/broken/steps/0" in err
+    assert "nonexistent" in err
+    with pytest.raises(SetupError, match="Spec defekt"):
+        run_loop("bad", "broken", trigger="test")
