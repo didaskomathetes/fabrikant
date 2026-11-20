@@ -28,16 +28,13 @@ Step-Def:
 from __future__ import annotations
 
 import re
-import urllib.error
 from dataclasses import dataclass
-from urllib.parse import quote
 
 from .. import config
 from ..context import _substitute
 from ..failures import ConfigError
-from ..gitops import _gh_api, _gh_token
+from ..hosting import Provider, get_provider
 
-GH_API = "https://api.github.com"
 COMMENTS_PER_PAGE = 100
 MAX_WHY_CHARS = 1500  # Begründung im Gate kurz halten; der Link führt zum vollen Kommentar
 RESUME_FLAG = "escalation_acknowledged"
@@ -47,7 +44,6 @@ RESUME_FLAG = "escalation_acknowledged"
 # nachgelassene `exhausted`-Pfad) lesen und zu ihrem eigenen Budget addieren.
 GRANT_ROUNDS_CTX = "escalation_granted_rounds"
 DEFAULT_GRANT_ROUNDS = 2  # frisches Budget pro Freigabe (entspricht pr_review-Default)
-HTTP_NOT_FOUND = 404
 # Gleiches Format wie scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py prüft das).
 ESCALATE_MARKER_RE = re.compile(r"<!-- fabrik-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
 _ANY_MARKER_RE = re.compile(r"<!--\s*fabrik-[^>]*-->")
@@ -89,34 +85,23 @@ def _item_number(ctx: dict, step: dict) -> int:
     return int(raw)
 
 
-def _comments(repo: str, number: int, token: str) -> list[dict]:
-    """Alle Issue-/PR-Kommentare (chronologisch, paginiert)."""
+def _comments(provider: Provider, repo: str, number: int) -> list[dict]:
+    """Alle Issue-/PR-Kommentare (chronologisch, paginiert) als Raw-Dicts."""
     out: list[dict] = []
     page = 1
     while True:
-        url = f"{GH_API}/repos/{repo}/issues/{number}/comments?per_page={COMMENTS_PER_PAGE}&page={page}"
-        batch = _gh_api("GET", url, token)
-        if not isinstance(batch, list):
+        batch = provider.list_comments(repo, number, page=page, per_page=COMMENTS_PER_PAGE)
+        if not batch:
             return out
-        out.extend(batch)
+        out.extend(c.raw for c in batch)
         if len(batch) < COMMENTS_PER_PAGE:
             return out
         page += 1
 
 
-def _has_label(item: dict, label: str) -> bool:
-    return label in {str(lbl.get("name", "")) for lbl in item.get("labels") or [] if isinstance(lbl, dict)}
-
-
-def _remove_label(repo: str, number: int, label: str, token: str) -> bool:
-    """Label entfernen; schon weg (404) → False statt Fehler."""
-    try:
-        _gh_api("DELETE", f"{GH_API}/repos/{repo}/issues/{number}/labels/{quote(label)}", token)
-    except urllib.error.HTTPError as e:
-        if e.code == HTTP_NOT_FOUND:
-            return False
-        raise
-    return True
+def _remove_label(provider: Provider, repo: str, number: int, label: str) -> bool:
+    """Label entfernen; schon weg (404) → False statt Fehler (Provider ist idempotent)."""
+    return provider.remove_label(repo, number, label)
 
 
 def _step_escalation(ctx: dict, step: dict, emit) -> dict:
@@ -125,35 +110,35 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
         raise ConfigError("escalation: 'repo: owner/name' fehlt")
     label = str(step.get("label") or config.HUMAN_LABEL)
     number = _item_number(ctx, step)
-    token = _gh_token("dev")
+    provider = get_provider(repo)
 
     if str(ctx.get(RESUME_FLAG, "")) == "true":
         # ADR 0059: Freigabe = frisches Runden-Budget (Hook für pr_review und den
         # nachgelassenen `exhausted`-Pfad), nicht nur Resume mit dem alten Budget.
         granted = max(0, int(step.get("grant_rounds", DEFAULT_GRANT_ROUNDS)))
         ctx[GRANT_ROUNDS_CTX] = granted
-        removed = _remove_label(repo, number, label, token)
+        removed = _remove_label(provider, repo, number, label)
         state = "entfernt" if removed else "war schon entfernt"
         return {
             "ok": True,
             "summary": f"escalation: #{number} fortgesetzt — Label '{label}' {state}, +{granted} Runden",
         }
 
-    item = _gh_api("GET", f"{GH_API}/repos/{repo}/issues/{number}", token)
-    if not _has_label(item, label):
+    item = provider.get_issue(repo, number)
+    if label not in item.labels:
         return {
             "ok": True,
             "done": True,
             "summary": f"escalation: #{number} trägt '{label}' nicht (mehr) — nichts zu tun",
         }
 
-    esc = Escalation.from_comments(_comments(repo, number, token))
+    esc = Escalation.from_comments(_comments(provider, repo, number))
     ctx[RESUME_FLAG] = "true"  # vor der Pause setzen: wird mit record["vars"] persistiert
-    link = str(item.get("html_url") or "")
+    link = item.url
     approval = {"reason": "escalation", "kind": esc.kind, "why": esc.why, "what": ACTIONS}
-    approval["pr" if "pull_request" in item else "issue"] = link
-    if "pull_request" in item:
-        approval["pr_title"] = str(item.get("title") or "")
+    approval["pr" if item.is_pr else "issue"] = link
+    if item.is_pr:
+        approval["pr_title"] = item.title
     emit(f"  ⚠ eskaliert ({esc.kind}): {esc.url or link}")
     return {
         "ok": True,
