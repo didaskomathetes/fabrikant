@@ -306,7 +306,9 @@ def test_check_issue_new_fires(monkeypatch):
 def test_check_issue_filters_prs(monkeypatch):
     s, fired, trig = _mk_issue_test(monkeypatch, [])
     s._check_issue("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [{"number": 5, "title": "pr", "pull_request": {}}])
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, u, t, payload=None: [{"number": 5, "title": "pr", "pull_request": {}}]
+    )
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert fired == []  # PRs werden gefiltert
 

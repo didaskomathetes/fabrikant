@@ -35,7 +35,7 @@ from typing import Any
 
 from ..context import _substitute
 from ..failures import ConfigError
-from ..hosting import PullRequest, Provider, get_provider
+from ..hosting import Provider, PullRequest, get_provider
 from ..validation import validate_branch_name
 from .git import _git
 

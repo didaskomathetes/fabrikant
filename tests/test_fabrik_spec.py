@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from fabrik import context, spec_expand, specs
+from fabrik import context, gitops, spec_expand, specs
 from fabrik.engine import _approval_condition
 from fabrik.steps import issue
 
@@ -87,8 +87,8 @@ class _FakeGitHub:
 def _run_step(monkeypatch, name: str, gh: _FakeGitHub | None = None, **vars) -> tuple[dict, _FakeGitHub]:
     """Führt den refine-Step `name` mit gerenderten Variablen gegen die Fake-API aus."""
     gh = gh or _FakeGitHub()
-    monkeypatch.setattr(issue, "_gh_token", lambda role="dev": "tok")
-    monkeypatch.setattr(issue, "_gh_api", gh)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", gh)
     ctx = {**_BASE_VARS, **vars}
     res = issue._step_issue(ctx, _refine_steps()[name])
     assert res["ok"] is True, res

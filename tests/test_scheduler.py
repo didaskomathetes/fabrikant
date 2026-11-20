@@ -328,7 +328,9 @@ def test_on_pr_state_change_open_to_closed_fires(monkeypatch):
     trig["states"] = ["open", "closed"]
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init: PR offen
     assert fired == []
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [pr_closed] if _state_of(u) == "closed" else [])
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, u, t, payload=None: [pr_closed] if _state_of(u) == "closed" else []
+    )
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # PR jetzt geschlossen
     assert len(fired) == 1
     assert fired[0][0] == "on_pr:#1"
@@ -403,7 +405,9 @@ def test_on_pr_reconcile_head_fires_per_head_sha(monkeypatch):
     assert [f[0] for f in fired] == ["on_pr:#1@aaa"]
     assert fired[0][1]["initial_vars"]["pr_head_sha"] == "aaa"
     runs.add("on_pr:#1@aaa")
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr_sha(1, "t2", "aaa")])  # Kommentar, kein Push
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, u, t, payload=None: [_pr_sha(1, "t2", "aaa")]
+    )  # Kommentar, kein Push
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr_sha(1, "t3", "bbb")])  # neuer Push

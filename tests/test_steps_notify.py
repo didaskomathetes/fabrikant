@@ -496,7 +496,8 @@ def test_alert_dedup_with_multiple_labels(monkeypatch: pytest.MonkeyPatch) -> No
     assert first == ["issue#100"]
     assert second == ["issue#100(+)"]
     get_url = next(c[1] for c in fake.calls if c[0] == "GET")
-    assert "labels=fabrik-alert%2Cteam-x" in get_url
+    # each label quoted, joined by literal commas (a comma *inside* a label would be %2C)
+    assert "labels=fabrik-alert,team-x" in get_url
     (_, _, payload) = fake.posts("/issues")[0]
     assert payload is not None
     assert payload["labels"] == ["fabrik-alert", "team-x"]

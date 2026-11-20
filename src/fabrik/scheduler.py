@@ -523,7 +523,9 @@ class Scheduler(threading.Thread):
                 max_per_poll = max(1, int(trig.get("max_per_poll", DEFAULT_MAX_PER_POLL)))
                 blocked: dict[int, list[str]] | None = {} if trig.get("skip_blocked") else None
                 done = loop_run_triggers(name, lname)
-                todo = _unprocessed_issues(repo, provider, labels, done, max_per_poll, priority_labels, blocked, exclude)
+                todo = _unprocessed_issues(
+                    repo, provider, labels, done, max_per_poll, priority_labels, blocked, exclude
+                )
                 _log_blocked(st, repo, blocked)
             else:
                 issues = provider.list_issues(

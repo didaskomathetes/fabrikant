@@ -49,7 +49,6 @@ import re
 import urllib.error
 import urllib.parse
 from collections.abc import Iterable, Mapping
-from typing import cast
 
 from ..context import _cond_matches, _substitute
 from ..failures import ConfigError, Failure, classify_http, failed

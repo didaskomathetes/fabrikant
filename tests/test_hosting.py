@@ -311,6 +311,213 @@ class TestGitLabBehaviour:
         assert seen[0]["state_event"] == "close"
 
 
+# --------------------------------------------------------------------------- GitLab API surface (mocked _request)
+
+
+class _Recorder:
+    """Records ``_request`` calls and returns a canned payload per path suffix."""
+
+    def __init__(self, responses: dict[str, object] | None = None):
+        self.calls: list[tuple[str, str, dict | None]] = []
+        self.responses = responses or {}
+
+    def __call__(self, method, path, payload=None, *, raw=False):
+        # bound as an instance (not a function) → no ``self`` is passed
+        self.calls.append((method, path, payload))
+        path_only = path.split("?", 1)[0]
+        for suffix, res in self.responses.items():
+            if path_only.endswith(suffix):
+                return res
+        return {}
+
+
+def _install(monkeypatch, rec: _Recorder) -> None:
+    monkeypatch.setattr(GitLabProvider, "_request", rec)
+
+
+class TestGitLabApiSurface:
+    def test_create_issue_with_labels(self, monkeypatch):
+        rec = _Recorder({"/issues": {"iid": 3, "title": "t"}})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().create_issue("o/n", "t", "body", labels=["a", "b"])
+        assert out.number == 3
+        method, path, payload = rec.calls[0]
+        assert (method, path) == ("POST", "/projects/o%2Fn/issues")
+        assert payload == {"title": "t", "description": "body", "labels": "a,b"}
+
+    def test_create_issue_without_labels(self, monkeypatch):
+        rec = _Recorder({"/issues": {"iid": 3}})
+        _install(monkeypatch, rec)
+        GitLabProvider().create_issue("o/n", "t")
+        assert rec.calls[0][2] == {"title": "t", "description": ""}
+
+    def test_get_issue(self, monkeypatch):
+        rec = _Recorder({"/issues/7": {"iid": 7, "title": "t"}})
+        _install(monkeypatch, rec)
+        assert GitLabProvider().get_issue("o/n", 7).number == 7
+
+    def test_edit_issue_title_body(self, monkeypatch):
+        rec = _Recorder({"/issues/7": {"iid": 7}})
+        _install(monkeypatch, rec)
+        GitLabProvider().edit_issue("o/n", 7, title="nt", body="nb")
+        assert rec.calls[0][2] == {"title": "nt", "description": "nb"}
+
+    def test_add_labels(self, monkeypatch):
+        rec = _Recorder()
+        _install(monkeypatch, rec)
+        GitLabProvider().add_labels("o/n", 7, ["a", "b"])
+        method, path, payload = rec.calls[0]
+        assert (method, path) == ("POST", "/projects/o%2Fn/issues/7/labels")
+        assert payload == {"labels": "a,b"}
+
+    def test_add_labels_empty_noop(self, monkeypatch):
+        rec = _Recorder()
+        _install(monkeypatch, rec)
+        GitLabProvider().add_labels("o/n", 7, [])
+        assert rec.calls == []
+
+    def test_remove_label_success(self, monkeypatch):
+        rec = _Recorder()
+        _install(monkeypatch, rec)
+        assert GitLabProvider().remove_label("o/n", 7, "a b") is True
+        assert rec.calls[0][1] == "/projects/o%2Fn/issues/7/labels/a%20b"
+
+    def test_remove_label_404_returns_false(self, monkeypatch):
+        import http.client
+        import urllib.error
+
+        def boom(self_, method, path, payload=None, *, raw=False):
+            raise urllib.error.HTTPError(path, 404, "not found", http.client.HTTPMessage(), None)
+
+        monkeypatch.setattr(GitLabProvider, "_request", boom)
+        assert GitLabProvider().remove_label("o/n", 7, "x") is False
+
+    def test_remove_label_other_error_raises(self, monkeypatch):
+        import http.client
+        import urllib.error
+
+        def boom(self_, method, path, payload=None, *, raw=False):
+            raise urllib.error.HTTPError(path, 500, "server", http.client.HTTPMessage(), None)
+
+        monkeypatch.setattr(GitLabProvider, "_request", boom)
+        with pytest.raises(urllib.error.HTTPError):
+            GitLabProvider().remove_label("o/n", 7, "x")
+
+    def test_list_issues_with_labels_and_sort(self, monkeypatch):
+        rec = _Recorder({"/issues": [{"iid": 1}, {"iid": 2}]})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().list_issues("o/n", labels=["a"], sort="created", direction="asc")
+        assert [i.number for i in out] == [1, 2]
+        query = rec.calls[0][1].split("?", 1)[1]
+        assert "labels=a" in query and "order_by=created_at" in query and "sort=asc" in query
+
+    def test_create_comment(self, monkeypatch):
+        rec = _Recorder({"/notes": {"id": 9, "body": "hi", "author": {"username": "u"}}})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().create_comment("o/n", 7, "hi")
+        assert (out.id, out.author, out.body) == (9, "u", "hi")
+
+    def test_list_comments(self, monkeypatch):
+        rec = _Recorder({"/notes": [{"id": 1, "body": "b", "author": {"username": "u"}}]})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().list_comments("o/n", 7)
+        assert len(out) == 1 and out[0].id == 1
+
+    def test_create_pr(self, monkeypatch):
+        rec = _Recorder({"/merge_requests": {"iid": 4, "title": "t"}})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().create_pr("o/n", title="t", head="feat", base="main", body="d")
+        assert out.number == 4
+        assert rec.calls[0][2] == {
+            "title": "t",
+            "source_branch": "feat",
+            "target_branch": "main",
+            "description": "d",
+        }
+
+    def test_get_pr(self, monkeypatch):
+        rec = _Recorder({"/merge_requests/4": {"iid": 4, "title": "t"}})
+        _install(monkeypatch, rec)
+        assert GitLabProvider().get_pr("o/n", 4).number == 4
+
+    def test_list_prs_state_labels_head(self, monkeypatch):
+        rec = _Recorder({"/merge_requests": [{"iid": 1}]})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().list_prs("o/n", state="merged", labels=["l"], head="feat")
+        assert len(out) == 1
+        query = rec.calls[0][1].split("?", 1)[1]
+        assert "state=merged" in query and "labels=l" in query and "source_branch=feat" in query
+
+    def test_merge_pr(self, monkeypatch):
+        rec = _Recorder({"/merge": {"iid": 4, "state": "merged"}, "/merge_requests/4": {"iid": 4, "state": "merged"}})
+        _install(monkeypatch, rec)
+        out = GitLabProvider().merge_pr("o/n", 4, method="squash")
+        assert out.number == 4
+        assert rec.calls[0][0] == "PUT"
+
+    def test_pr_files_and_diff(self, monkeypatch):
+        changes = [
+            {"new_path": "a.py", "diff": "+x\n-y\n", "new_file": True},
+            {"new_path": "b.py", "diff": "+z\n"},
+        ]
+        rec = _Recorder({"/changes": {"changes": changes}})
+        _install(monkeypatch, rec)
+        files = GitLabProvider().pr_files("o/n", 4)
+        assert [f.path for f in files] == ["a.py", "b.py"]
+        assert files[0].status == "added"
+        diff = GitLabProvider().pr_diff("o/n", 4)
+        assert "+x" in diff and "+z" in diff
+
+    def test_commit_files_create_delete_author(self, monkeypatch):
+        rec = _Recorder({"/repository/commits": {"id": "abc123"}})
+        _install(monkeypatch, rec)
+        sha = GitLabProvider().commit_files(
+            "o/n",
+            "feat",
+            "msg",
+            [{"path": "a.txt", "content": "1"}, {"path": "b.txt", "deleted": True}],
+            author={"name": "N", "email": "e@x"},
+        )
+        assert sha == "abc123"
+        payload = rec.calls[0][2]
+        assert payload is not None
+        assert payload["branch"] == "feat"
+        assert payload["actions"] == [
+            {"action": "create", "file_path": "a.txt", "content": "1"},
+            {"action": "delete", "file_path": "b.txt"},
+        ]
+        assert payload["author_name"] == "N" and payload["author_email"] == "e@x"
+
+    def test_commit_files_no_author(self, monkeypatch):
+        rec = _Recorder({"/repository/commits": {"id": "abc"}})
+        _install(monkeypatch, rec)
+        GitLabProvider().commit_files("o/n", "feat", "m", [{"path": "a", "content": "1"}])
+        payload = rec.calls[0][2]
+        assert payload is not None and "author_name" not in payload
+
+
+class TestGitLabNormalizationExtras:
+    def test_comment_from_missing_author(self):
+        from fabrik.hosting.gitlab import _comment_from
+
+        out = _comment_from({"id": 1, "body": "b"})
+        assert out.author == ""
+
+    def test_file_from_renamed(self):
+        from fabrik.hosting.gitlab import _file_from
+
+        assert _file_from({"new_path": "a.py", "diff": "", "renamed_file": True}).status == "renamed"
+
+    def test_file_from_modified(self):
+        from fabrik.hosting.gitlab import _file_from
+
+        assert _file_from({"new_path": "a.py", "diff": ""}).status == "modified"
+
+    def test_parse_repo_ssh_unparseable(self):
+        with pytest.raises(HostingConfigError):
+            GitLabProvider().parse_repo("git@h.co:onlyowner")
+
+
 # --------------------------------------------------------------------------- GitLab webhook parsing
 
 

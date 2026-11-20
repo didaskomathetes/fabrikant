@@ -7,9 +7,12 @@ Run explicitly against a real instance:
         .venv/bin/python -m pytest tests/test_hosting_live.py -v
 
 The token must be available via ``FABRIK_GITLAB_TOKEN`` or ``~/.config/gitlab/token``.
-These checks are read-only: the PAT used for verification has the ``api`` scope but not
-the ``ai_workflows``/``mcp`` scopes the instance requires for writes (commits/issues/MRs),
-so the create/commit/MR/merge flow is not exercised here.
+
+These checks are read-only. The verification PAT carries the ``api`` scope, but the
+instance answers project creation with ``403 insufficient_scope`` ("the request requires
+higher privileges than provided by the access token"), so the create/commit/MR/merge flow
+cannot be exercised with it. The read path (auth, project, issue/PR lists, compare, webhook
+parsing) is what is verified here.
 """
 
 from __future__ import annotations

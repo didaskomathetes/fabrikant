@@ -141,7 +141,9 @@ def test_comments_are_paginated(monkeypatch):
     monkeypatch.setattr(escalation, "COMMENTS_PER_PAGE", 2)
     pages = {1: [{"id": 1}, {"id": 2}], 2: [{"id": 3}]}
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, url, t, payload=None, accept=None: pages[int(url.rsplit("=", 1)[1])])
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, url, t, payload=None, accept=None: pages[int(url.rsplit("=", 1)[1])]
+    )
     assert [c["id"] for c in escalation._comments(get_provider("o/r"), "o/r", 7)] == [1, 2, 3]
 
 
@@ -195,10 +197,8 @@ def test_on_pr_exclude_labels(monkeypatch):
 
 def test_unprocessed_issues_skip_excluded_without_using_quota(monkeypatch):
     issues = [{"number": 1, "labels": [LABEL]}, {"number": 2, "labels": []}]
-    monkeypatch.setattr(
-        fabrik.scheduler, "_iter_open_issues_oldest_first", lambda repo, provider, labels: iter(issues)
-    )
-    todo = fabrik.scheduler._unprocessed_issues("o/r", None, [], set(), 1, exclude=["needs human"])
+    monkeypatch.setattr(fabrik.scheduler, "_iter_open_issues_oldest_first", lambda repo, provider, labels: iter(issues))
+    todo = fabrik.scheduler._unprocessed_issues("o/r", get_provider("o/r"), [], set(), 1, exclude=["needs human"])
     assert [it["number"] for it in todo] == [2]
 
 
