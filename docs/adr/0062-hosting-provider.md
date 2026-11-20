@@ -1,71 +1,80 @@
-# ADR 0062: Hosting-Provider — Port/Adapter für Code-Hosting (GitHub, GitLab)
+# ADR 0062: Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab)
 
-**Status:** Vorgeschlagen (2026-11-20)
-**Betrifft:** ADR 0010 (Dual-Identity/Token), ADR 0011 (Approval-Kontext), ADR 0027 (Webhook-Trigger),
-ADR 0031 (native Issue-Dependencies), ADR 0057 (Port/Adapter-Muster).
+**Status:** Proposed (2026-11-20)
+**Affects:** ADR 0010 (dual identity/tokens), ADR 0011 (approval context), ADR 0027 (webhook
+trigger), ADR 0031 (native issue dependencies), ADR 0057 (port/adapter pattern).
 
-## Kontext
+## Context
 
-fabrik spricht Code-Hosting historisch **direkt über die GitHub-REST-API**: Steps und
-Triggers rufen `gitops._gh_api` / `_gh_token` / `_gh_diff` / `_gh_dependencies` mit rohen
-`api.github.com`-URLs auf (`pr`, `issue`, `pr_merge`, `human_gate`, `notify`, `scheduler`,
-`retry_chains`, `apicommit`, `relay`). Das ist für GitHub korrekt, aber:
+fabrik has historically talked to code hosting **directly over the GitHub REST API**: steps and
+triggers call `gitops._gh_api` / `_gh_token` / `_gh_diff` / `_gh_dependencies` with raw
+`api.github.com` URLs (`pr`, `issue`, `pr_merge`, `human_gate`, `notify`, `scheduler`,
+`retry_chains`, `apicommit`, `relay`). That is correct for GitHub, but:
 
-1. **Kein Self-Hosted-GitLab.** Ein self-hosted GitLab (z. B. `gitlab.opencode.de`) ist damit
-   nicht als Host nutzbar — jede Stelle müsste manuell umgebaut werden.
-2. **Provider-spezifisches JSON im Core.** Steps lesen GitHub-Felder (`head.sha`,
-   `mergeable`, `labels[].name`, …) direkt aus dem API-Response. Das ist fragil und
-   nicht portabel.
-3. **Kein gemeinsamer Vertrag.** Es gibt keinen Ort, an dem die Operationen definiert sind,
-   die Steps/Triggers von einem Host brauchen.
+1. **No self-hosted GitLab.** A self-hosted GitLab (e.g. `gitlab.opencode.de`) cannot be used as a
+   host — every call site would have to be rewritten by hand.
+2. **Provider-specific JSON in the core.** Steps read GitHub fields (`head.sha`, `mergeable`,
+   `labels[].name`, …) straight from the API response. That is fragile and not portable.
+3. **No shared contract.** There is no single place defining the operations steps/triggers need
+   from a host.
 
-Das Port/Adapter-Muster (ADR 0057, `RunLauncher`; analog `AgentBackend`) ist im Codebase
-etabliert und wird hier für das Hosting-Substrat übernommen.
+The port/adapter pattern (ADR 0057, `RunLauncher`; analogous to `AgentBackend`) is established in
+the codebase and is adopted here for the hosting substrate.
 
-## Entscheidung
+## Decision
 
-1. **Port `Provider` (`fabrik/hosting/base.py`).** Der Core definiert den Vertrag als Union
-   der Operationen, die Steps und Triggers brauchen: Issues (create/get/edit, Labels,
-   Comments, List), PRs/MRs (create/get/list, merge, update-branch, files, diff, review,
-   compare), native Issue-Dependencies, API-Commits (`commit_via: api`) und Webhook-Parsing.
-   Strukturell (Duck-Typing) wie `AgentBackend`/`RunLauncher` — Adapter müssen nicht erben.
-2. **Normalisierte Dataclasses als Vertrag.** `Issue`, `PullRequest`, `Comment`, `FileChange`,
-   `CompareResult`, `WebhookEvent`, `RepoRef`. Ein Step sieht nie Provider-JSON, nur diese
-   Typen. Jeder Typ hält das rohe Provider-Payload in `.raw` für die seltenen Felder ohne
-   gemeinsamen Namen (z. B. `mergeable_state`).
-3. **Adapter `GitHubProvider` / `GitLabProvider`.**
-   - `GitHubProvider` ist ein dünner Wrapper um die bestehenden `gitops`-Helfer — der
-     GitHub-Pfad bleibt byte-für-byte der bisherige (keine Verhaltensregression).
-   - `GitLabProvider` implementiert den Vertrag über die GitLab-REST-API v4
+1. **Port `Provider` (`fabrik/hosting/base.py`).** The core defines the contract as the union of
+   the operations steps and triggers need: issues (create/get/edit, labels, comments, list),
+   PRs/MRs (create/get/list, merge, update-branch, files, diff, review, compare), native issue
+   dependencies, API commits (`commit_via: api`), and webhook parsing. Structural (duck-typed)
+   like `AgentBackend`/`RunLauncher` — adapters do not have to inherit.
+2. **Normalized dataclasses as the contract.** `Issue`, `PullRequest`, `Comment`, `FileChange`,
+   `CompareResult`, `WebhookEvent`, `RepoRef`. A step never sees provider JSON, only these types.
+   Each type keeps the raw provider payload in `.raw` for the rare field with no common name
+   (e.g. `mergeable_state`).
+3. **Adapters `GitHubProvider` / `GitLabProvider`.**
+   - `GitHubProvider` is a thin wrapper around the existing `gitops` helpers — the GitHub path
+     stays byte-for-byte the previous one (no behavioural regression).
+   - `GitLabProvider` implements the contract over the GitLab REST API v4
      (`https://<host>/api/v4`, `PRIVATE-TOKEN`).
-4. **Selektion + Credentials (`fabrik/hosting/select.py`).** `get_provider(repo, spec, role)`
-   wählt den Adapter: explizites `hosting:`-Spec-Feld → Repo-URL-Host (`github.com` → GitHub,
-   sonst GitLab) → `github:`-Feld → Default GitHub (rückwärtskompatibel). GitHub-Identity
-   (Dual-Identity, ADR 0010) über `role`; GitLab-Token aus `FABRIK_GITLAB_TOKEN` (Env) oder
-   `~/.config/gitlab/token` (Datei, `FABRIK_GITLAB_TOKEN_FILE`).
-5. **Spec-Bindung pro Run.** Die Engine bindet das aktive Run-Spec per
-   `hosting.spec_context(spec)` (ContextVar) für die Dauer eines Runs — Steps lösen den
-   Provider daraus auf, ohne das Spec durch jeden Call zu reichen (analog
+4. **Selection + credentials (`fabrik/hosting/select.py`).** `get_provider(repo, spec, role)`
+   picks the adapter: explicit `hosting:` spec field → repo-URL host (`github.com` → GitHub,
+   otherwise GitLab) → `github:` field → default GitHub (backwards compatible). GitHub identity
+   (dual identity, ADR 0010) via `role`; the GitLab token comes from `FABRIK_GITLAB_TOKEN` (env)
+   or `~/.config/gitlab/token` (file, `FABRIK_GITLAB_TOKEN_FILE`).
+5. **Spec binding per run.** The engine binds the active run spec via
+   `hosting.spec_context(spec)` (a ContextVar) for the duration of a run — steps resolve the
+   provider from it without the spec being threaded through every call (analogous to
    `gitops.project_github`).
+6. **`commit_via: api` stays GitHub-only.** `apicommit.ApiPusher` rebuilds local commits as
+   GitHub-signed commits via the Git Data API (Blobs → Tree → Commit → Ref); the signing is a
+   GitHub property with no GitLab equivalent. `push_branch` now resolves the provider and raises
+   `HostingNotSupported` for a non-GitHub host instead of silently assuming GitHub.
+7. **Egress allowlist is deployment-scoped for GitLab.** The default-deny egress proxy
+   (ADR 0051) ships `github.com` as a builtin. A self-hosted GitLab host is deployment-specific,
+   so it is *not* a builtin: a deployment using GitLab adds its host to the egress allowlist
+   (`FABRIK_EGRESS_ALLOWLIST` / `FABRIK_EGRESS_ALLOWLIST_FILE`; template
+   `deploy/egress-allowlist.txt`), otherwise the proxy blocks agent access to it.
 
-### Dokumentierte Lücken (GitLab)
+### Documented gaps (GitLab)
 
-- `update_branch`: kein GitLab-Äquivalent → `HostingNotSupported` (Ziel in Quelle per git mergen).
-- `post_review`: `APPROVE` → Approve-Endpunkt; `REQUEST_CHANGES` → Note (kein eigener State).
-- `merge_pr`: ignoriert `method` (squash/merge/rebase ist eine Branch-Einstellung, kein
-  Merge-Parameter).
-- native Issue-Dependencies: GitHub-only → `HostingNotSupported`.
-- `edit_issue`: `state_reason`/`duplicate_issue_id` (GitHub-Close-Semantik) werden ignoriert.
+- `update_branch`: no GitLab equivalent → `HostingNotSupported` (merge the target into the source
+  via git).
+- `post_review`: `APPROVE` → the approve endpoint; `REQUEST_CHANGES` → a note (no distinct state).
+- `merge_pr`: ignores `method` (squash/merge/rebase is a branch setting, not a merge parameter).
+- Native issue dependencies: GitHub-only → `HostingNotSupported`.
+- `edit_issue`: `state_reason`/`duplicate_issue_id` (GitHub close semantics) are ignored.
+- `commit_via: api`: GitHub-only (see decision 6) → `HostingNotSupported`.
 
-## Konsequenzen
+## Consequences
 
-- (+) Self-hosted GitLab wird als Host nutzbar; `pr`, `issue`, `pr_merge` laufen über denselben
-  Pfad auf GitHub und GitLab.
-- (+) Steps sehen nur normalisierte Typen — Provider-Wechsel berührt keinen Step-Code.
-- (+) GitHub-Pfad unverändert (Wrapper um `gitops`), bestehende Tests bleiben gültig.
-- (−) Der Port ist die Union aller Operationen — er wächst, wenn Steps/Triggers mehr brauchen.
-- (−) GitLab-Lücken (`update_branch`, Dependencies) sind echte Funktionalitätsunterschiede,
-  keine Bugs; betroffene Features bleiben GitHub-only.
-- (−) Migration der übrigen direkten `gitops`-Aufrufe (`human_gate`, `notify`, `scheduler`,
-  `retry_chains`, `apicommit`, `relay`) auf den Provider ist schrittweise; bis dahin koexistieren
-  beide Pfade.
+- (+) Self-hosted GitLab becomes usable as a host; `pr`, `issue`, `pr_merge` run over the same
+  path on GitHub and GitLab.
+- (+) Steps see only normalized types — switching providers touches no step code.
+- (+) The GitHub path is unchanged (a wrapper over `gitops`); existing tests stay valid.
+- (−) The port is the union of all operations — it grows as steps/triggers need more.
+- (−) The GitLab gaps (`update_branch`, dependencies, `commit_via: api`) are real feature
+  differences, not bugs; the affected features stay GitHub-only.
+- (−) Migrating the remaining direct `gitops` calls (`human_gate`, `notify`, `scheduler`,
+  `retry_chains`, `apicommit`, `relay`) onto the provider is incremental; until then both paths
+  coexist.
