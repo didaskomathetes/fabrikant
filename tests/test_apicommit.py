@@ -21,6 +21,7 @@ from helpers import http_error, not_none
 from fabrik import apicommit, gitops
 from fabrik.apicommit import ApiPusher, Change, parse_diff_tree, push_branch, repo_from_remote
 from fabrik.failures import GitError
+from fabrik.hosting import HostingNotSupported
 from fabrik.relay.workspace import Workspace, branch_name
 
 BOT = {"GIT_AUTHOR_NAME": "bot[bot]", "GIT_AUTHOR_EMAIL": "1+bot[bot]@users.noreply.github.com"}
@@ -330,6 +331,22 @@ def test_push_branch_api_mode_via_project_setting(remote, monkeypatch):
         summary = push_branch(repo, "feat")
     assert summary.startswith("push feat via API (1 Commit(s), signiert")
     assert git(bare, "log", "--format=%an", "-1", "feat") == "bot[bot]"
+
+
+def test_push_branch_api_mode_gitlab_refused(remote, monkeypatch):
+    """`commit_via: api` ist GitHub-spezifisch; GitLab-Host → `HostingNotSupported` (ADR 0062)."""
+    repo, bare, _ = remote
+    monkeypatch.setattr(
+        apicommit.subprocess,
+        "run",
+        _remote_url_override(subprocess.run, "https://gitlab.example.com/o/r.git"),
+    )
+    commit(repo, "one", **{"a.txt": "1\n"})
+    with (
+        gitops.project_github({gitops.SPEC_COMMIT_VIA_KEY: "api"}),
+        pytest.raises(HostingNotSupported, match="commit_via: api"),
+    ):
+        push_branch(repo, "feat")
 
 
 def _remote_url_override(real_run, url):
