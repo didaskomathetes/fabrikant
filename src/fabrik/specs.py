@@ -22,7 +22,7 @@ try:
 except ImportError:
     yaml = None
 
-from . import alerts, branches, config, slack, spec_sources, webhook
+from . import alerts, branches, config, slack, spec_sources, specschema, webhook
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
 from .gitops import COMMIT_VIA_MODES, GH_TOKEN_ENV, SPEC_COMMIT_VIA_KEY, SPEC_ENV_FILE_KEY
@@ -472,6 +472,9 @@ _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
 
 def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     errs = []
+    # Strukturschema (Issue #131): Typen/Enums/Pflichtfelder aus
+    # schema/fabrik-spec.schema.json; semantische Prüfungen folgen darunter.
+    errs += specschema.validate_spec(spec)
     # Lock-Schlüssel "projekt::loop" (ADR 0020) bleibt nur eindeutig, wenn der Separator in Namen fehlt.
     for what, value in [("name", spec.get("name"))] + [("loop", ln) for ln in (spec.get("loops") or {})]:
         if isinstance(value, str) and LOCK_KEY_SEP in value:
