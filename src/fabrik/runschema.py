@@ -105,6 +105,7 @@ runs = Table(
     Column("failure_kind", Text),
     Column("retry_after", Text),
     Column("retry_of", Text),
+    Column("replay_of", Text),
     Column("attempt", Integer),
     Column("trigger_key", Text),
     Column("worktree_cleanup_error", Text),

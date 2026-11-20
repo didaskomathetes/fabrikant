@@ -352,6 +352,7 @@ def _init_record(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> tuple[dict, str, int]:
     """Record laden (Resume) bzw. neu anlegen; liefert (record, run_id, start_i).
 
@@ -360,7 +361,8 @@ def _init_record(
     bereits. ``trigger_key`` ist der kanonische Ketten-Schlüssel: bei
     Retry-Versuchen der Schlüssel der claimenden Kette (``chain_key``), sonst
     aus dem Trigger-String berechnet — das Run-Ende bucht die Kette über das
-    Record-Feld, nicht über die (zwischenzeitlich geänderte) Spec."""
+    Record-Feld, nicht über die (zwischenzeitlich geänderte) Spec.
+    ``replay_of`` (ADR 0061) verlinkt einen Replay-Run mit dem Original."""
     start_i = 0
     if resume_id:
         record = get_run(resume_id, project_name)
@@ -400,6 +402,7 @@ def _init_record(
             "rejected_by": None,
             "attempt": attempt,
             "retry_of": retry_of,
+            "replay_of": replay_of,
             "trigger_key": chain_key or retry_chains.trigger_key(spec, loop_name, trigger) or "",
         }
     # Neu: Datei darf fehlen oder ein queued-Platzhalter sein (den der Start überschreibt);
@@ -803,6 +806,7 @@ def run_loop(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> dict:
     """Führt einen Loop aus (synchron). Gibt den Run-Record zurück.
 
@@ -818,7 +822,9 @@ def run_loop(
     attempt: 0-basierte Retry-Versuchszahl (ADR 0036); 0 = erster Run.
     retry_of: Run-Id des vorherigen Versuchs (ADR 0036); "" = kein Retry.
     chain_key: Schlüssel der Retry-Kette, deren Claim der Versuch hält; ""
-    = aus Spec + Trigger berechnen."""
+    = aus Spec + Trigger berechnen.
+    replay_of: Run-Id des Originals, wenn dies ein Replay ist (ADR 0061);
+    "" = kein Replay."""
     spec = load_projects().get(project_name)
     if not spec:
         raise SetupError(f"Projekt unbekannt: {project_name}")
@@ -845,6 +851,7 @@ def run_loop(
             attempt,
             retry_of,
             chain_key,
+            replay_of,
         )
 
 
@@ -864,6 +871,7 @@ def _run_loop(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> dict:
     """Rumpf von :func:`run_loop` mit bereits aufgelöstem Spec-Snapshot."""
     run_dir = runs_dir_for(project_name)
@@ -881,6 +889,7 @@ def _run_loop(
         attempt,
         retry_of,
         chain_key,
+        replay_of,
     )
     log = SessionLog(run_id, project_name, loop_name, trigger, record.get("spec_hash", ""))
     log.start()  # INSERT OR IGNORE — beim Resume existiert die Session bereits

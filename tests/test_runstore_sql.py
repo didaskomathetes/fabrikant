@@ -86,7 +86,7 @@ def test_upgrade_head_on_empty_db_matches_schema(tmp_path):
     engine.dispose()
     assert diff == []
     assert tables == set(metadata.tables) | {"alembic_version"}
-    assert version == "0004"
+    assert version == "0005"
 
 
 def test_migrate_is_idempotent(tmp_path):
