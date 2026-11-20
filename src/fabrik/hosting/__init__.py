@@ -26,7 +26,7 @@ from .base import (
 )
 from .github import GitHubProvider
 from .gitlab import GitLabProvider, gitlab_token
-from .select import get_provider
+from .select import current_spec, get_provider, spec_context
 
 __all__ = [
     "Comment",
@@ -42,6 +42,8 @@ __all__ = [
     "PullRequest",
     "RepoRef",
     "WebhookEvent",
+    "current_spec",
     "get_provider",
     "gitlab_token",
+    "spec_context",
 ]

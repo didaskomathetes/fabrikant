@@ -117,10 +117,15 @@ class FileChange:
 
 @dataclass
 class CompareResult:
-    """Result of comparing two refs (how far ``head`` is ahead/behind ``base``)."""
+    """Result of comparing two refs (how far ``head`` is ahead/behind ``base``).
 
-    ahead_by: int
-    behind_by: int
+    ``ahead_by``/``behind_by`` are ``None`` when the host did not report a count
+    (e.g. an empty/unknown compare response) — callers must treat that as "unknown",
+    not "zero".
+    """
+
+    ahead_by: int | None
+    behind_by: int | None
     diff: str = ""
     files: list[FileChange] = field(default_factory=list)
 

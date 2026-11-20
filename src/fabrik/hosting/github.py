@@ -108,8 +108,10 @@ class GitHubProvider(Provider):
     def _token(self) -> str:
         return gitops._gh_token(self._role)
 
-    def _api(self, method: str, path: str, payload: dict | None = None, accept: str | None = None) -> Any:
-        return gitops._gh_api(method, f"{self.API}{path}", self._token(), payload, accept)
+    def _api(self, method: str, path: str, payload: dict | None = None) -> Any:
+        # 4-arg call (no ``accept``): the diff endpoint uses ``accept`` and goes through
+        # ``gitops._gh_diff`` directly, so the common path keeps the historical signature.
+        return gitops._gh_api(method, f"{self.API}{path}", self._token(), payload)
 
     # -- repo / urls ---------------------------------------------------------
     def parse_repo(self, ref: str) -> RepoRef:
@@ -163,14 +165,14 @@ class GitHubProvider(Provider):
         if labels:
             query["labels"] = ",".join(labels)
         items = self._api("GET", f"/repos/{ref}/issues?{urllib.parse.urlencode(query)}")
-        return [_issue_from(it) for it in (items or [])]
+        return [_issue_from(it) for it in items] if isinstance(items, list) else []
 
     def create_comment(self, ref, number, body):
         return _comment_from(self._api("POST", f"/repos/{ref}/issues/{number}/comments", {"body": body}))
 
     def list_comments(self, ref, number, *, page=1, per_page=100):
         items = self._api("GET", f"/repos/{ref}/issues/{number}/comments?per_page={per_page}&page={page}")
-        return [_comment_from(it) for it in (items or [])]
+        return [_comment_from(it) for it in items] if isinstance(items, list) else []
 
     # -- pull / merge requests -----------------------------------------------
     def create_pr(self, ref, *, title, head, base, body=""):
@@ -187,7 +189,7 @@ class GitHubProvider(Provider):
         if head:
             query["head"] = head
         items = self._api("GET", f"/repos/{ref}/pulls?{urllib.parse.urlencode(query)}")
-        return [_pr_from(it) for it in (items or [])]
+        return [_pr_from(it) for it in items] if isinstance(items, list) else []
 
     def merge_pr(self, ref, number, *, method="squash", sha=None):
         payload: dict[str, Any] = {"merge_method": method}
@@ -201,7 +203,7 @@ class GitHubProvider(Provider):
 
     def pr_files(self, ref, number):
         items = self._api("GET", f"/repos/{ref}/pulls/{number}/files")
-        return [_file_from(it) for it in (items or [])]
+        return [_file_from(it) for it in items] if isinstance(items, list) else []
 
     def pr_diff(self, ref, number):
         return gitops._gh_diff(ref, number, self._token())
@@ -215,9 +217,13 @@ class GitHubProvider(Provider):
             f"/repos/{ref}/compare/{urllib.parse.quote(base, safe='')}...{urllib.parse.quote(head, safe='')}",
         )
         res = res if isinstance(res, dict) else {}
+        ahead = res.get("ahead_by")
+        behind = res.get("behind_by")
+        # Missing/non-int count → None ("unknown"), not 0 — the pr-step relies on this
+        # to fall through to the Create path (which gives the clearer host error).
         return CompareResult(
-            ahead_by=int(res.get("ahead_by", 0) or 0),
-            behind_by=int(res.get("behind_by", 0) or 0),
+            ahead_by=ahead if type(ahead) is int else None,
+            behind_by=behind if type(behind) is int else None,
         )
 
     # -- native issue dependencies (GitHub-only) -----------------------------

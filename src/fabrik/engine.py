@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import agent_state, config, connections, pause, retry_chains
+from . import agent_state, config, connections, hosting, pause, retry_chains
 from .approval import ApprovalRequest
 from .context import _PLACEHOLDER_RE, _cap, _cond_matches, _substitute, tier_policy
 from .failures import Failure, FailureKind, SetupError, classify_exception, failed, from_result, run_failure
@@ -828,7 +828,7 @@ def run_loop(
     if not loop:
         raise SetupError(f"Loop unbekannt: {loop_name} (verfügbar: {list(spec['loops'])})")
 
-    with project_github(spec):  # GitHub-Identitäten des Projekts (github_env_file)
+    with project_github(spec), hosting.spec_context(spec):  # GitHub-Identitäten + Hosting-Provider (ADR 0061)
         return _run_loop(
             spec,
             loop,

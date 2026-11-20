@@ -19,6 +19,9 @@ Credential resolution lives in the adapters: GitHub reads ``GITHUB_TOKEN`` /
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import urlsplit
 
 from .base import Provider
@@ -29,6 +32,25 @@ GITHUB_HOST = "github.com"
 GITLAB_HOST_ENV = "FABRIK_GITLAB_HOST"
 DEFAULT_GITLAB_HOST = "gitlab.com"
 HOSTING_KEY = "hosting"
+
+# Active run spec, set by the engine for the duration of a run (like ``gitops.project_github``).
+# Steps resolve the provider from it without the spec being threaded through every call.
+_spec: ContextVar[dict | None] = ContextVar("fabrik_hosting_spec", default=None)
+
+
+@contextmanager
+def spec_context(spec: dict | None) -> Iterator[None]:
+    """Bind the active run spec for provider selection (entered by the engine per run)."""
+    token = _spec.set(spec)
+    try:
+        yield
+    finally:
+        _spec.reset(token)
+
+
+def current_spec() -> dict:
+    """The active run spec (``{}`` outside a run)."""
+    return _spec.get() or {}
 
 
 def _repo_host(repo: str | None) -> str | None:
@@ -63,9 +85,10 @@ def get_provider(repo: str | None = None, spec: dict | None = None, role: str = 
     """Build the :class:`Provider` for ``repo``/``spec``.
 
     ``role`` selects the GitHub dual-identity (ADR 0010); it is ignored for GitLab
-    (single token). ``spec`` may be ``None`` (e.g. a step that only knows the repo).
+    (single token). ``spec`` may be ``None`` — then the active run spec (bound by the
+    engine via :func:`spec_context`) is used.
     """
-    spec = spec or {}
+    spec = spec if spec is not None else current_spec()
     hosting = str(spec.get(HOSTING_KEY) or "").strip().lower()
     kind = hosting if hosting in ("github", "gitlab") else _infer_kind(repo, spec)
     if kind == "gitlab":
