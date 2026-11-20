@@ -314,9 +314,10 @@ class GitLabProvider(Provider):
     def compare(self, ref, base, head):
         pid = self._pid(ref)
         fwd = self._request("GET", f"/projects/{pid}/repository/compare?from={base}&to={head}")
-        ahead = int((fwd or {}).get("commit", {}).get("count", 0) or 0)
+        # ``commit`` is ``null`` for an empty/identical compare — guard the nested access.
+        ahead = int(((fwd or {}).get("commit") or {}).get("count", 0) or 0)
         rev = self._request("GET", f"/projects/{pid}/repository/compare?from={head}&to={base}")
-        behind = int((rev or {}).get("commit", {}).get("count", 0) or 0)
+        behind = int(((rev or {}).get("commit") or {}).get("count", 0) or 0)
         return CompareResult(ahead_by=ahead, behind_by=behind)
 
     # -- native issue dependencies (GitHub-only) -----------------------------

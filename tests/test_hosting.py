@@ -278,6 +278,14 @@ class TestGitLabBehaviour:
         assert any("from=main&to=feat" in c for c in calls)
         assert any("from=feat&to=main" in c for c in calls)
 
+    def test_compare_identical_refs_null_commit(self, monkeypatch):
+        # GitLab returns {"commit": null} for an empty/identical compare — must not crash.
+        monkeypatch.setattr(
+            GitLabProvider, "_request", lambda self, method, path, payload=None, *, raw=False: {"commit": None}
+        )
+        res = GitLabProvider().compare("o/n", "main", "main")
+        assert res == CompareResult(ahead_by=0, behind_by=0)
+
     def test_post_review_approve_vs_request_changes(self, monkeypatch):
         seen: list[tuple[str, str]] = []
 
