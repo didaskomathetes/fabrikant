@@ -2,7 +2,7 @@
 
 Ersetzt `shell` + `gh` in Triage-/Sweep-Loops (ADR 0001 §5): Werte gehen als
 JSON-Payload an die REST-API, nie durch eine Shell → keine Injection über
-Issue-/LLM-Text. Der Step spricht den Hosting-Provider (ADR 0061), nicht die
+Issue-/LLM-Text. Der Step spricht den Hosting-Provider (ADR 0062), nicht die
 GitHub-API direkt: GitHub und GitLab laufen über denselben Pfad.
 
 Auth: Developer-Identity (ADR 0010); das Token steht nie in Output/Summary und
@@ -212,7 +212,7 @@ def _close(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
     if comment:
         provider.create_comment(repo, int(number), comment)
     # GitHub: `duplicate_issue_id` setzt die native Duplikat-Relation (ADR 0031);
-    # GitLab ignoriert das Feld (kein Duplikat-Konzept, ADR 0061).
+    # GitLab ignoriert das Feld (kein Duplikat-Konzept, ADR 0062).
     provider.edit_issue(repo, int(number), state="closed", state_reason=reason or None, duplicate_issue_id=duplicate_id)
     summary = f"Issue #{number} geschlossen" + (f" ({reason})" if reason else "")
     if moved:

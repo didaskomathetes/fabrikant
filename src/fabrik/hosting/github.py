@@ -27,9 +27,9 @@ from .base import (
     FileChange,
     HostingConfigError,
     Issue,
+    Provider,
     PullRequest,
     RepoRef,
-    Provider,
 )
 
 # ``[^/:@]`` rejects URLs/SSH refs (``git@host:owner/name``) so they fall through to ``_GITHUB_URL``.

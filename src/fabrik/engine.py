@@ -828,7 +828,7 @@ def run_loop(
     if not loop:
         raise SetupError(f"Loop unbekannt: {loop_name} (verfügbar: {list(spec['loops'])})")
 
-    with project_github(spec), hosting.spec_context(spec):  # GitHub-Identitäten + Hosting-Provider (ADR 0061)
+    with project_github(spec), hosting.spec_context(spec):  # GitHub-Identitäten + Hosting-Provider (ADR 0062)
         return _run_loop(
             spec,
             loop,

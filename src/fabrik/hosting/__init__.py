@@ -1,4 +1,4 @@
-"""Hosting-provider abstraction (ADR 0061).
+"""Hosting-provider abstraction (ADR 0062).
 
 The port steps and triggers call to talk to a code-hosting service (GitHub or
 self-hosted GitLab). Public API:

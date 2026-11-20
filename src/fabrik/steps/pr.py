@@ -1,4 +1,4 @@
-"""Step: pr (PR anlegen) — über den Hosting-Provider (ADR 0061).
+"""Step: pr (PR anlegen) — über den Hosting-Provider (ADR 0062).
 
 Idempotent (Duplikat-Schutz): existiert für den Head-Branch bereits ein
 offener PR, wird er wiederverwendet — GitHub erlaubt ohnehin nur einen
@@ -14,7 +14,7 @@ Labels: `POST /pulls` kennt keinen labels-Parameter (GitHub ignoriert ihn
 stillschweigend) — sie werden danach über den Issues-Endpunkt gesetzt, auch
 für wiederverwendete PRs (additiv, idempotent; heilt PRs ohne Label).
 
-Der Step spricht den Hosting-Provider (ADR 0061), nicht die GitHub-API direkt:
+Der Step spricht den Hosting-Provider (ADR 0062), nicht die GitHub-API direkt:
 GitHub und GitLab laufen über denselben Pfad.
 
 Step-Def:

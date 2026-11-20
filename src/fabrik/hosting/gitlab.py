@@ -1,11 +1,11 @@
-"""GitLab adapter for the hosting port (ADR 0061).
+"""GitLab adapter for the hosting port (ADR 0062).
 
 Implements the :class:`~fabrik.hosting.base.Provider` contract over the GitLab
 REST API v4 (``https://<host>/api/v4``). Auth is a ``PRIVATE-TOKEN`` header; the
 token is resolved per call from ``FABRIK_GITLAB_TOKEN`` (env) or the token file
 ``~/.config/gitlab/token`` (overridable via ``FABRIK_GITLAB_TOKEN_FILE``).
 
-Differences from GitHub that are documented gaps (see ADR 0061):
+Differences from GitHub that are documented gaps (see ADR 0062):
 
 - ``update_branch`` has no GitLab equivalent → :class:`HostingNotSupported`.
 - ``post_review`` maps ``APPROVE`` to the approve endpoint and ``REQUEST_CHANGES``
@@ -35,9 +35,9 @@ from .base import (
     HostingError,
     HostingNotSupported,
     Issue,
+    Provider,
     PullRequest,
     RepoRef,
-    Provider,
     WebhookEvent,
 )
 
@@ -70,7 +70,7 @@ def _label_names(raw: dict) -> list[str]:
     labels = raw.get("labels") or []
     if isinstance(labels, list):
         return [str(x) for x in labels]
-    return [s for s in str(labels).split(",") if s]
+    return [s.strip() for s in str(labels).split(",") if s.strip()]
 
 
 def _issue_from(raw: dict) -> Issue:
@@ -197,7 +197,8 @@ class GitLabProvider(Provider):
                 raise HostingConfigError(f"unparseable GitLab repo URL: {ref!r}")
             return RepoRef(parts.netloc, owner, name.removesuffix(".git"))
         if ref.startswith("git@"):
-            host, _, path = ref.partition(":")
+            host = ref[len("git@") :].partition(":")[0]  # strip the ``git@`` prefix
+            _, _, path = ref.partition(":")
             owner, _, name = path.partition("/")
             if not owner or not name:
                 raise HostingConfigError(f"unparseable GitLab repo ref: {ref!r}")
@@ -218,7 +219,7 @@ class GitLabProvider(Provider):
         return _issue_from(self._request("GET", f"/projects/{self._pid(ref)}/issues/{number}"))
 
     def edit_issue(self, ref, number, *, title=None, body=None, state=None, state_reason=None, duplicate_issue_id=None):
-        # ``state_reason``/``duplicate_issue_id`` have no GitLab equivalent → ignored (ADR 0061).
+        # ``state_reason``/``duplicate_issue_id`` have no GitLab equivalent → ignored (ADR 0062).
         payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title
@@ -234,7 +235,9 @@ class GitLabProvider(Provider):
 
     def remove_label(self, ref, number, label):
         try:
-            self._request("DELETE", f"/projects/{self._pid(ref)}/issues/{number}/labels/{urllib.parse.quote(label, safe='')}")
+            self._request(
+                "DELETE", f"/projects/{self._pid(ref)}/issues/{number}/labels/{urllib.parse.quote(label, safe='')}"
+            )
         except urllib.error.HTTPError as e:
             if e.code != 404:
                 raise

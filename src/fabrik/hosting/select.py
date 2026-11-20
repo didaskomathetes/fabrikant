@@ -1,4 +1,4 @@
-"""Provider selection and credential resolution (ADR 0061).
+"""Provider selection and credential resolution (ADR 0062).
 
 Decides *which* provider a repo/spec talks to and builds the adapter instance.
 

@@ -1,4 +1,4 @@
-"""Hosting-provider abstraction (ADR 0061): the port that steps and triggers call.
+"""Hosting-provider abstraction (ADR 0062): the port that steps and triggers call.
 
 fabrik talks to a code-hosting service (GitHub today, self-hosted GitLab as well).
 Historically every step and trigger spoke the GitHub REST API directly (raw
@@ -204,7 +204,7 @@ class Provider(ABC):
     ) -> Issue:
         """Edit an issue. ``state_reason`` (``completed``/``not_planned``/``duplicate``) and
         ``duplicate_issue_id`` are GitHub close semantics; providers without the concept
-        ignore them (documented gap, ADR 0061)."""
+        ignore them (documented gap, ADR 0062)."""
 
     @abstractmethod
     def add_labels(self, ref: str, number: int, labels: list[str]) -> None: ...
