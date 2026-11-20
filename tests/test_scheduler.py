@@ -4,6 +4,7 @@ import datetime as dt
 import os
 
 import fabrik
+from fabrik import gitops
 
 
 # ---------------------------------------------------------------- debounce
@@ -118,8 +119,8 @@ def _mk_pr_test(monkeypatch, prs):
     sched = _FakePrScheduler()
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: list(prs))
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs))
     trig = {"repo": "o/r", "poll": 0}  # poll=0 → kein Interval-Wait
     return sched, fired, trig
 
@@ -135,7 +136,7 @@ def test_on_pr_new_pr_fires(monkeypatch):
     sched, fired, trig = _mk_pr_test(monkeypatch, [_pr(1, "t1")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     pr2 = {**_pr(2, "t2"), "head": {"ref": "feature/x", "sha": "abc"}}
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t1"), pr2])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t1"), pr2])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1
     assert fired[0][0] == "on_pr:#2"  # Event-Modus: kein @sha, auch wenn head.sha da ist
@@ -179,7 +180,7 @@ def test_on_pr_body_defaults_to_empty(monkeypatch):
 def test_on_pr_updated_pr_fires(monkeypatch):
     sched, fired, trig = _mk_pr_test(monkeypatch, [_pr(1, "t1")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t2")])  # updated_at geändert
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t2")])  # updated_at geändert
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1
     assert fired[0][0] == "on_pr:#1"
@@ -189,9 +190,9 @@ def test_on_pr_window_dropout_and_return_unchanged_no_fire(monkeypatch):
     """PR fällt aus dem begrenzten Fenster und kehrt unverändert zurück → kein Fire."""
     sched, fired, trig = _mk_pr_test(monkeypatch, [_pr(1, "t1"), _pr(2, "t2")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(2, "t2")])  # PR 1 aus Fenster
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(2, "t2")])  # PR 1 aus Fenster
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t1"), _pr(2, "t2")])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t1"), _pr(2, "t2")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert fired == []
 
@@ -207,12 +208,12 @@ def test_on_pr_respects_poll_interval(monkeypatch):
     sched = _FakePrScheduler()
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t1")])
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t1")])
     trig = {"repo": "o/r", "poll": 9999}  # großes Intervall
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init (setzt ts)
     api_calls = []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: (api_calls.append(1), [_pr(2, "t2")])[1])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: (api_calls.append(1), [_pr(2, "t2")])[1])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # innerhalb Intervall → kein API-Call
     assert api_calls == []
     assert fired == []
@@ -227,13 +228,17 @@ def test_on_pr_no_repo_no_fire(monkeypatch):
 
 
 def test_on_pr_no_token_no_fire(monkeypatch):
-    """Kein GitHub-Token → sauberer Early-Return (kein API-Call, kein Fire)."""
+    """Kein GitHub-Token → Provider wirft beim Token-Resolve (kein API-Call, kein Fire)."""
     sched = _FakePrScheduler()
     fired = []
     api_calls = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: None)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: api_calls.append(1) or [])
+
+    def _no_token(role="dev"):
+        raise RuntimeError("GITHUB_TOKEN nicht verfügbar")
+
+    monkeypatch.setattr(gitops, "_gh_token", _no_token)
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: api_calls.append(1) or [])
     sched._check_pr("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert api_calls == []
     assert fired == []
@@ -244,12 +249,12 @@ def test_on_pr_api_error_no_fire(monkeypatch):
     sched = _FakePrScheduler()
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
 
-    def _boom(m, u, t):
+    def _boom(m, u, t, payload=None):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", _boom)
+    monkeypatch.setattr(gitops, "_gh_api", _boom)
     sched._check_pr("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert fired == []
 
@@ -268,8 +273,8 @@ def _mk_pr_test_states(monkeypatch, prs_by_state: dict):
     sched = _FakePrScheduler()
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: list(prs_by_state.get(_state_of(u), [])))
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs_by_state.get(_state_of(u), [])))
     trig = {"repo": "o/r", "poll": 0}
     return sched, fired, trig
 
@@ -278,7 +283,7 @@ def test_on_pr_states_default_open_only(monkeypatch):
     """Ohne `states` wird nur state=open gepollt (Default, backward-kompatibel)."""
     sched, fired, trig = _mk_pr_test_states(monkeypatch, {"open": [_pr(1, "t1")]})
     urls = []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: (urls.append(u), [])[1])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: (urls.append(u), [])[1])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(urls) == 1
     assert "state=open" in urls[0]
@@ -288,7 +293,7 @@ def test_on_pr_states_polls_each_state(monkeypatch):
     """states: [open, closed] → ein API-Call pro State pro Poll."""
     sched, fired, trig = _mk_pr_test_states(monkeypatch, {})
     urls = []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: (urls.append(u), [])[1])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: (urls.append(u), [])[1])
     trig["states"] = ["open", "closed"]
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(urls) == 2
@@ -302,11 +307,11 @@ def test_on_pr_states_deduped_no_duplicate_runs(monkeypatch):
     sched, fired, trig = _mk_pr_test_states(monkeypatch, {})
     calls = {"n": 0}
 
-    def _api(m, u, t):
+    def _api(m, u, t, payload=None):
         calls["n"] += 1
         return [] if calls["n"] == 1 else [_pr(1, "u1")]
 
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_api", _api)
     trig["states"] = ["open", "open"]
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init: leer
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # PR #1 neu
@@ -323,7 +328,7 @@ def test_on_pr_state_change_open_to_closed_fires(monkeypatch):
     trig["states"] = ["open", "closed"]
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init: PR offen
     assert fired == []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [pr_closed] if _state_of(u) == "closed" else [])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [pr_closed] if _state_of(u) == "closed" else [])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # PR jetzt geschlossen
     assert len(fired) == 1
     assert fired[0][0] == "on_pr:#1"
@@ -333,7 +338,7 @@ def test_on_pr_closed_pr_ignored_with_default_states(monkeypatch):
     """Default states=[open]: eine PR, die verschwindet (geschlossen), feuert nicht."""
     sched, fired, trig = _mk_pr_test_states(monkeypatch, {"open": [_pr(1, "t1")]})
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [])  # PR geschlossen
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [])  # PR geschlossen
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert fired == []
 
@@ -378,7 +383,7 @@ def test_on_pr_reconcile_lifecycle_no_refire_after_finish(monkeypatch):
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # 1. Poll: feuert
     assert len(fired) == 1
     runs.add("on_pr:#1")  # Run existiert jetzt (running, später pass/error)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t2")])  # PR aktualisiert
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t2")])  # PR aktualisiert
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1  # kein Doppel-Run
@@ -398,10 +403,10 @@ def test_on_pr_reconcile_head_fires_per_head_sha(monkeypatch):
     assert [f[0] for f in fired] == ["on_pr:#1@aaa"]
     assert fired[0][1]["initial_vars"]["pr_head_sha"] == "aaa"
     runs.add("on_pr:#1@aaa")
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr_sha(1, "t2", "aaa")])  # Kommentar, kein Push
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr_sha(1, "t2", "aaa")])  # Kommentar, kein Push
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr_sha(1, "t3", "bbb")])  # neuer Push
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr_sha(1, "t3", "bbb")])  # neuer Push
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert [f[0] for f in fired] == ["on_pr:#1@aaa", "on_pr:#1@bbb"]
 
@@ -451,11 +456,11 @@ def test_on_pr_paginates(monkeypatch):
     sched, fired, trig = _mk_pr_test(monkeypatch, [])
     urls = []
 
-    def fake(m, u, t):
+    def fake(m, u, t, payload=None):
         urls.append(u)
         return page1 if "page=1" in u else page2
 
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", fake)
+    monkeypatch.setattr(gitops, "_gh_api", fake)
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(urls) == 2
     assert len(sched._pr_state[("p", "l")]["seen"]) == per + 1
@@ -466,7 +471,7 @@ def test_on_pr_pagination_capped(monkeypatch):
     full = [_pr(n, "t") for n in range(fabrik.scheduler.GH_PER_PAGE)]
     sched, fired, trig = _mk_pr_test(monkeypatch, [])
     urls = []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: (urls.append(u), full)[1])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: (urls.append(u), full)[1])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert len(urls) == fabrik.scheduler.RECONCILE_MAX_PAGES
 
@@ -475,7 +480,7 @@ def test_on_pr_labels_filter_in_url(monkeypatch):
     """on_pr mit labels → API-URL enthält den Label-Filter (quote für Leerzeichen)."""
     sched, fired, trig = _mk_pr_test(monkeypatch, [])
     urls = []
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: (urls.append(u), [])[1])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: (urls.append(u), [])[1])
     trig["labels"] = ["needs approval"]
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert any("labels=needs%20approval" in u for u in urls)
@@ -521,11 +526,11 @@ def test_on_pr_evicted_pr_returning_does_not_refire(monkeypatch):
     sched, fired, trig = _mk_pr_test(monkeypatch, [_pr(1, "t1")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     for n in range(2, 7):  # PR 1 verschwindet, Historie läuft über das Limit
-        monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t, n=n: [_pr(n, f"t{n}")])
+        monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None, n=n: [_pr(n, f"t{n}")])
         sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert 1 not in sched._pr_state[("p", "l")]["seen"]
     fired.clear()
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(1, "t1"), _pr(6, "t6")])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t1"), _pr(6, "t6")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert fired == []
     assert sched._pr_state[("p", "l")]["seen"][1] == ("open", "t1")  # still neu gelernt
@@ -535,7 +540,7 @@ def test_on_pr_new_pr_above_floor_still_fires(monkeypatch):
     monkeypatch.setattr(fabrik.scheduler, "_bounded_seen", lambda s, keep: _real_bounded(s, keep, limit=2))
     sched, fired, trig = _mk_pr_test(monkeypatch, [_pr(1, "t1"), _pr(2, "t2"), _pr(3, "t3")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: [_pr(3, "t3"), _pr(4, "t4")])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(3, "t3"), _pr(4, "t4")])
     sched._check_pr("p", "l", {"github": "o/r"}, trig)
     assert [f[0] for f in fired] == ["on_pr:#4"]
 

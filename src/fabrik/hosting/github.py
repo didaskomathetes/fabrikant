@@ -53,6 +53,16 @@ def _parse_list(items: Any, parse) -> list:
     return [parse(it) for it in items if isinstance(it, dict)]
 
 
+def _labels_param(labels: list[str]) -> str:
+    """The ``labels=`` query value: each label quoted, joined by literal commas.
+
+    Quoting per label (not the joined string) keeps a comma *inside* a label
+    (``%2C``) distinct from the join separator, which a whole-string ``urlencode``
+    would collapse.
+    """
+    return ",".join(urllib.parse.quote(x, safe="") for x in labels)
+
+
 def _issue_from(raw: dict) -> Issue:
     # Lenient: partial responses (e.g. a body-only GET) must not crash the parse.
     return Issue(
@@ -180,9 +190,10 @@ class GitHubProvider(Provider):
 
     def list_issues(self, ref, *, state="open", labels=None, sort="updated", direction="desc", page=1, per_page=100):
         query = {"state": state, "sort": sort, "direction": direction, "per_page": per_page, "page": page}
+        qs = urllib.parse.urlencode(query)
         if labels:
-            query["labels"] = ",".join(labels)
-        items = self._api("GET", f"/repos/{ref}/issues?{urllib.parse.urlencode(query)}")
+            qs += "&labels=" + _labels_param(labels)
+        items = self._api("GET", f"/repos/{ref}/issues?{qs}")
         return _parse_list(items, _issue_from)
 
     def create_comment(self, ref, number, body):
@@ -202,11 +213,12 @@ class GitHubProvider(Provider):
 
     def list_prs(self, ref, *, state="open", labels=None, head=None, page=1, per_page=100):
         query: dict[str, Any] = {"state": state, "per_page": per_page, "page": page}
-        if labels:
-            query["labels"] = ",".join(labels)
         if head:
             query["head"] = head
-        items = self._api("GET", f"/repos/{ref}/pulls?{urllib.parse.urlencode(query)}")
+        qs = urllib.parse.urlencode(query)
+        if labels:
+            qs += "&labels=" + _labels_param(labels)
+        items = self._api("GET", f"/repos/{ref}/pulls?{qs}")
         return _parse_list(items, _pr_from)
 
     def merge_pr(self, ref, number, *, method="squash", sha=None):
