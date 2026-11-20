@@ -32,7 +32,7 @@ from __future__ import annotations
 from .. import config
 from ..context import _cap
 from ..failures import ConfigError, failed, from_result
-from ..gitops import _gh_api, _gh_token
+from ..hosting import FileChange, get_provider
 from .llm import _step_llm
 from .pr_review import _resolve_pr_number
 
@@ -52,7 +52,7 @@ _LLM_PROMPT = (
 )
 
 
-def _heuristic_reasons(files: list[dict], step: dict) -> list[str]:
+def _heuristic_reasons(files: list[FileChange], step: dict) -> list[str]:
     """Diff-Heuristiken: ADR-Pfade, Größe, Keywords. Liefert Gründe (leer = ok)."""
     adr_paths = [str(p) for p in (step.get("adr_paths") or config.HUMAN_GATE_ADR_PATHS)]
     max_files = int(step.get("max_files", config.HUMAN_GATE_MAX_FILES))
@@ -60,29 +60,27 @@ def _heuristic_reasons(files: list[dict], step: dict) -> list[str]:
     keywords = [str(k).lower() for k in (step.get("keywords") or config.HUMAN_GATE_KEYWORDS)]
     reasons = []
     for f in files:
-        name = str(f.get("filename", ""))
+        name = f.path
         for adr in adr_paths:
             if name.startswith(adr.rstrip("/") + "/") or name == adr:
                 reasons.append(f"ADR-/Entscheidungs-Doku geändert: {name}")
-    total_lines = sum(int(f.get("additions", 0)) + int(f.get("deletions", 0)) for f in files)
+    total_lines = sum(f.additions + f.deletions for f in files)
     if len(files) > max_files:
         reasons.append(f"Diff groß: {len(files)} Dateien (Limit {max_files})")
     if total_lines > max_lines:
         reasons.append(f"Diff groß: {total_lines} Zeilen +/- (Limit {max_lines})")
     for kw in keywords:
         for f in files:
-            haystack = (str(f.get("filename", "")) + " " + str(f.get("patch", ""))).lower()
+            haystack = (f.path + " " + f.patch).lower()
             if kw in haystack:
-                reasons.append(f"Keyword '{kw}' in {f.get('filename', '?')}")
+                reasons.append(f"Keyword '{kw}' in {f.path}")
                 break
     return reasons
 
 
-def _llm_reason(files: list[dict], diff: str, ctx: dict, step: dict, emit) -> tuple[str | None, dict]:
+def _llm_reason(files: list[FileChange], diff: str, ctx: dict, step: dict, emit) -> tuple[str | None, dict]:
     """LLM-Meinung. Liefert (grund|None, llm-result). None = nicht kritisch."""
-    file_list = "\n".join(
-        f"- {f.get('filename', '?')} (+{f.get('additions', 0)}/-{f.get('deletions', 0)})" for f in files[:100]
-    )
+    file_list = "\n".join(f"- {f.path} (+{f.additions}/-{f.deletions})" for f in files[:100])
     prompt = _LLM_PROMPT.replace("{files}", file_list).replace("{diff}", _cap(diff))
     res = _step_llm(
         ctx,
@@ -107,12 +105,10 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
     repo = str(step.get("repo") or "").strip()
     if not repo:
         raise ConfigError("human_gate: 'repo: owner/name' fehlt")
-    token = _gh_token("dev")
-    pr_number = _resolve_pr_number(ctx, step, repo, token)
-    files = _gh_api("GET", f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files", token)
-    if not isinstance(files, list):
-        return {"ok": False, "summary": f"human_gate: unerwartete API-Antwort für PR #{pr_number}-Files"}
-    diff = "\n".join(str(f.get("patch", "")) for f in files)
+    provider = get_provider(repo)
+    pr_number = _resolve_pr_number(ctx, step, repo, provider)
+    files = provider.pr_files(repo, pr_number)
+    diff = "\n".join(f.patch for f in files)
 
     reasons = _heuristic_reasons(files, step)
     usage = None

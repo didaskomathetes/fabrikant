@@ -7,6 +7,8 @@ from urllib import parse
 
 import pytest
 
+from fabrik import gitops
+from fabrik.hosting import get_provider
 from fabrik.steps import notify
 
 
@@ -68,8 +70,8 @@ def test_notify_slack_dict_form(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_notify_github_issue(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(notify, "_http_post", lambda u, p: (200, "ok"))
-    monkeypatch.setattr(notify, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(notify, "_gh_api", lambda m, u, t, payload=None: {"number": 42})
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None, accept=None: {"number": 42})
     spec = {
         "notify": {"events": ["run_failed"], "github_issue": True, "issue_labels": ["fabrik"]},
         "github": "o/r",
@@ -80,12 +82,12 @@ def test_notify_github_issue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_notify_github_issue_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(notify, "_http_post", lambda u, p: (200, "ok"))
-    monkeypatch.setattr(notify, "_gh_token", lambda: "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
 
-    def _boom(m, u, t, payload=None):
+    def _boom(m, u, t, payload=None, accept=None):
         raise RuntimeError("gh down")
 
-    monkeypatch.setattr(notify, "_gh_api", _boom)
+    monkeypatch.setattr(gitops, "_gh_api", _boom)
     spec = {"notify": {"events": ["run_failed"], "github_issue": True}, "github": "o/r"}
     sent = notify._notify(spec, _record(status="fail"))
     assert any(s.startswith("issue:error") for s in sent)
@@ -97,7 +99,7 @@ def test_notify_github_issue_programming_error_propagates(monkeypatch: pytest.Mo
     Bugs als scheinbar normaler Kanalstatus verschluckt)."""
     monkeypatch.setattr(notify, "_http_post", lambda u, p: (200, "ok"))
 
-    def _bug(gh: str, labels: list[str], record: dict, tail: str) -> str:
+    def _bug(provider, gh: str, labels: list[str], record: dict, tail: str) -> str:
         raise TypeError("bug")
 
     monkeypatch.setattr(notify, "_alert_issue", _bug)
@@ -112,7 +114,7 @@ def test_notify_github_issue_api_error_becomes_channel_entry(monkeypatch: pytest
     gekillt."""
     monkeypatch.setattr(notify, "_http_post", lambda u, p: (200, "ok"))
 
-    def _api_err(gh: str, labels: list[str], record: dict, tail: str) -> str:
+    def _api_err(provider, gh: str, labels: list[str], record: dict, tail: str) -> str:
         raise RuntimeError("gh down")
 
     monkeypatch.setattr(notify, "_alert_issue", _api_err)
@@ -213,8 +215,8 @@ def _gh_spec() -> dict:
 
 
 def _patch_gh(monkeypatch: pytest.MonkeyPatch, fake: _FakeGitHub) -> None:
-    monkeypatch.setattr(notify, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(notify, "_gh_api", fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", fake)
 
 
 def test_alert_fingerprint_ignores_run_and_session_ids() -> None:
@@ -369,15 +371,16 @@ def test_alert_lookup_paginates_beyond_first_page(monkeypatch: pytest.MonkeyPatc
         {"number": 3, "state": "open", "body": f"irgendwas\n{marker}"},
     ]
 
-    def _paged(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _paged(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         if method == "GET":
             qs = parse.parse_qs(parse.urlparse(url).query)
             page, per = int(qs["page"][0]), int(qs["per_page"][0])
             return issues[(page - 1) * per : page * per]
         return {"number": 100}
 
-    monkeypatch.setattr(notify, "_gh_api", _paged)
-    assert notify._find_open_alert("o/r", ["fabrik-alert"], marker, "tok") == 3
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _paged)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 3
 
 
 def test_alert_lookup_caps_page_size_to_github_max(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -392,13 +395,14 @@ def test_alert_lookup_caps_page_size_to_github_max(monkeypatch: pytest.MonkeyPat
         {"number": 3, "state": "open", "body": marker},
     ]
 
-    def _capped(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _capped(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         qs = parse.parse_qs(parse.urlparse(url).query)
         page, per = int(qs["page"][0]), min(int(qs["per_page"][0]), 2)  # API-Kappung wie GitHub
         return issues[(page - 1) * per : page * per]
 
-    monkeypatch.setattr(notify, "_gh_api", _capped)
-    assert notify._find_open_alert("o/r", ["fabrik-alert"], marker, "tok") == 3
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _capped)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 3
 
 
 def test_alert_lookup_aborts_after_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -408,15 +412,16 @@ def test_alert_lookup_aborts_after_max_pages(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(notify.config, "ALERT_LOOKUP_MAX_PAGES", 2)
     calls = 0
 
-    def _infinite(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _infinite(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         nonlocal calls
         if method == "GET":
             calls += 1
             return [{"number": calls * 10, "state": "open", "body": "kein Match"}] * 2
         return {"number": 100}
 
-    monkeypatch.setattr(notify, "_gh_api", _infinite)
-    assert notify._find_open_alert("o/r", ["fabrik-alert"], "marker", "tok") is None
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _infinite)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], "marker") is None
     assert calls == 2
 
 
@@ -429,11 +434,12 @@ def test_alert_lookup_skips_pull_requests(monkeypatch: pytest.MonkeyPatch) -> No
         {"number": 2, "state": "open", "body": f"Issue-Body mit {marker}"},
     ]
 
-    def _gh(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _gh(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         return issues
 
-    monkeypatch.setattr(notify, "_gh_api", _gh)
-    assert notify._find_open_alert("o/r", ["fabrik-alert"], marker, "tok") == 2
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _gh)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 2
 
 
 def test_alert_fingerprint_normalizes_ids_to_named_token() -> None:
@@ -515,47 +521,42 @@ def test_alert_post_without_number_reports_error(monkeypatch: pytest.MonkeyPatch
     fake = _FakeGitHub()
     _patch_gh(monkeypatch, fake)
 
-    def _gh_api_no_number(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _gh_api_no_number(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         if method == "GET":
             return []
         return {"message": "Validation Failed"}
 
-    monkeypatch.setattr(notify, "_gh_api", _gh_api_no_number)
+    monkeypatch.setattr(gitops, "_gh_api", _gh_api_no_number)
     assert notify._notify(_gh_spec(), _failed("run-a")) == ["issue:error(keine Issue-Nummer in API-Antwort)"]
 
 
-def test_alert_lookup_unexpected_shape_returns_none(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Unerwartete API-Antwort (dict statt list) → None + Warning (kein Crash)."""
+def test_alert_lookup_unexpected_shape_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unerwartete API-Antwort (dict statt list) → Provider normalisiert zu leerer
+    Liste → Lookup liefert None (kein Crash)."""
 
-    def _dict_response(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _dict_response(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         return {"message": "rate limited"}
 
-    monkeypatch.setattr(notify, "_gh_api", _dict_response)
-    with caplog.at_level("WARNING", logger="fabrik.notify"):
-        assert notify._find_open_alert("o/r", ["fabrik-alert"], "marker", "tok") is None
-    assert any("unerwartete API-Antwort" in r.message for r in caplog.records)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _dict_response)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], "marker") is None
 
 
-def test_alert_lookup_skips_non_dict_elements(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Unerwartetes, nicht-Dict-Listenelement (Shape-Change) wird übersprungen
-    (kein AttributeError); gültige Issues dahinter werden weiterhin geprüft."""
+def test_alert_lookup_skips_non_dict_elements(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unerwartetes, nicht-Dict-Listenelement (Shape-Change) wird vom Provider
+    übersprungen (kein AttributeError); gültige Issues dahinter werden geprüft."""
     marker = notify._ALERT_MARKER.format(fp=notify._alert_fingerprint(_failed("run-a")))
     issues = [
         "kaputtes Element",  # nicht-Dict → überspringen
         {"number": 2, "state": "open", "body": f"Issue-Body mit {marker}"},
     ]
 
-    def _gh(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _gh(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         return issues
 
-    monkeypatch.setattr(notify, "_gh_api", _gh)
-    with caplog.at_level("WARNING", logger="fabrik.notify"):
-        assert notify._find_open_alert("o/r", ["fabrik-alert"], marker, "tok") == 2
-    assert any("unerwartetes Listenelement" in r.message for r in caplog.records)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _gh)
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 2
 
 
 def test_alert_comment_post_failure_reports_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -564,26 +565,26 @@ def test_alert_comment_post_failure_reports_error(monkeypatch: pytest.MonkeyPatc
     marker = notify._ALERT_MARKER.format(fp=notify._alert_fingerprint(_failed("run-a")))
     fake.issues[0]["body"] = marker
 
-    def _gh_api(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _gh_api(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         if method == "GET":
             return fake.issues
         raise RuntimeError("gh down")
 
-    monkeypatch.setattr(notify, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(notify, "_gh_api", _gh_api)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _gh_api)
     assert notify._notify(_gh_spec(), _failed("run-a")) == ["issue:7(+):error(gh down)"]
 
 
 def test_alert_issue_create_post_failure_reports_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue-Anlage-POST schlägt fehl → klarer Kanal-Eintrag, kein Crash."""
 
-    def _gh_api(method: str, url: str, token: str, payload: dict | None = None) -> object:
+    def _gh_api(method: str, url: str, token: str, payload: dict | None = None, accept=None) -> object:
         if method == "GET":
             return []
         raise RuntimeError("gh down")
 
-    monkeypatch.setattr(notify, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(notify, "_gh_api", _gh_api)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _gh_api)
     assert notify._notify(_gh_spec(), _failed("run-a")) == ["issue:error(gh down)"]
 
 

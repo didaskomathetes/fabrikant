@@ -1,4 +1,4 @@
-"""GitHub adapter for the hosting port (ADR 0061).
+"""GitHub adapter for the hosting port (ADR 0062).
 
 A thin wrapper over the existing ``gitops`` GitHub helpers (``_gh_api``,
 ``_gh_token``, ``_gh_diff``, ``_gh_dependencies``), so the GitHub code path is
@@ -32,12 +32,25 @@ from .base import (
     Provider,
 )
 
-_GITHUB_SLUG = re.compile(r"^(?P<owner>[^/]+)/(?P<name>[^/]+?)(?:\.git)?/?$")
+# ``[^/:@]`` rejects URLs/SSH refs (``git@host:owner/name``) so they fall through to ``_GITHUB_URL``.
+_GITHUB_SLUG = re.compile(r"^(?P<owner>[^/:@]+)/(?P<name>[^/:@]+?)(?:\.git)?/?$")
 _GITHUB_URL = re.compile(r"^(?:https?://|git@)(?:[^@/]+@)?(?P<host>github\.com)[:/](?P<path>.+?)(?:\.git)?/?$")
 
 
 def _label_names(raw: dict) -> list[str]:
     return [str(lbl.get("name", "")) for lbl in raw.get("labels") or [] if isinstance(lbl, dict)]
+
+
+def _parse_list(items: Any, parse) -> list:
+    """Parse a list endpoint response into normalized objects.
+
+    Lenient: a non-list response (error body, rate-limit page) yields ``[]`` and
+    malformed (non-dict) elements are skipped, so a shape change never crashes a
+    step that is merely *reading* a list (e.g. the alert dedup lookup).
+    """
+    if not isinstance(items, list):
+        return []
+    return [parse(it) for it in items if isinstance(it, dict)]
 
 
 def _issue_from(raw: dict) -> Issue:
@@ -170,14 +183,14 @@ class GitHubProvider(Provider):
         if labels:
             query["labels"] = ",".join(labels)
         items = self._api("GET", f"/repos/{ref}/issues?{urllib.parse.urlencode(query)}")
-        return [_issue_from(it) for it in items] if isinstance(items, list) else []
+        return _parse_list(items, _issue_from)
 
     def create_comment(self, ref, number, body):
         return _comment_from(self._api("POST", f"/repos/{ref}/issues/{number}/comments", {"body": body}))
 
     def list_comments(self, ref, number, *, page=1, per_page=100):
         items = self._api("GET", f"/repos/{ref}/issues/{number}/comments?per_page={per_page}&page={page}")
-        return [_comment_from(it) for it in items] if isinstance(items, list) else []
+        return _parse_list(items, _comment_from)
 
     # -- pull / merge requests -----------------------------------------------
     def create_pr(self, ref, *, title, head, base, body=""):
@@ -194,7 +207,7 @@ class GitHubProvider(Provider):
         if head:
             query["head"] = head
         items = self._api("GET", f"/repos/{ref}/pulls?{urllib.parse.urlencode(query)}")
-        return [_pr_from(it) for it in items] if isinstance(items, list) else []
+        return _parse_list(items, _pr_from)
 
     def merge_pr(self, ref, number, *, method="squash", sha=None):
         payload: dict[str, Any] = {"merge_method": method}
@@ -208,7 +221,7 @@ class GitHubProvider(Provider):
 
     def pr_files(self, ref, number):
         items = self._api("GET", f"/repos/{ref}/pulls/{number}/files")
-        return [_file_from(it) for it in items] if isinstance(items, list) else []
+        return _parse_list(items, _file_from)
 
     def pr_diff(self, ref, number):
         return gitops._gh_diff(ref, number, self._token())
