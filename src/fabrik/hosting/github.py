@@ -41,8 +41,9 @@ def _label_names(raw: dict) -> list[str]:
 
 
 def _issue_from(raw: dict) -> Issue:
+    # Lenient: partial responses (e.g. a body-only GET) must not crash the parse.
     return Issue(
-        number=int(raw["number"]),
+        number=int(raw.get("number", 0)),
         title=str(raw.get("title", "")),
         body=str(raw.get("body") or ""),
         state=str(raw.get("state", "")),
@@ -57,7 +58,7 @@ def _pr_from(raw: dict) -> PullRequest:
     head = raw.get("head") or {}
     base = raw.get("base") or {}
     return PullRequest(
-        number=int(raw["number"]),
+        number=int(raw.get("number", 0)),
         title=str(raw.get("title", "")),
         body=str(raw.get("body") or ""),
         state=str(raw.get("state", "")),
@@ -137,7 +138,7 @@ class GitHubProvider(Provider):
     def get_issue(self, ref, number):
         return _issue_from(self._api("GET", f"/repos/{ref}/issues/{number}"))
 
-    def edit_issue(self, ref, number, *, title=None, body=None, state=None):
+    def edit_issue(self, ref, number, *, title=None, body=None, state=None, state_reason=None, duplicate_issue_id=None):
         payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title
@@ -145,6 +146,10 @@ class GitHubProvider(Provider):
             payload["body"] = body
         if state is not None:
             payload["state"] = state
+        if state_reason is not None:
+            payload["state_reason"] = state_reason
+        if duplicate_issue_id is not None:
+            payload["duplicate_issue_id"] = duplicate_issue_id
         return _issue_from(self._api("PATCH", f"/repos/{ref}/issues/{number}", payload))
 
     def add_labels(self, ref, number, labels):

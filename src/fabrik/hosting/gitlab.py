@@ -217,7 +217,8 @@ class GitLabProvider(Provider):
     def get_issue(self, ref, number):
         return _issue_from(self._request("GET", f"/projects/{self._pid(ref)}/issues/{number}"))
 
-    def edit_issue(self, ref, number, *, title=None, body=None, state=None):
+    def edit_issue(self, ref, number, *, title=None, body=None, state=None, state_reason=None, duplicate_issue_id=None):
+        # ``state_reason``/``duplicate_issue_id`` have no GitLab equivalent → ignored (ADR 0061).
         payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title

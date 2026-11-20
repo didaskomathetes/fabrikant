@@ -192,8 +192,19 @@ class Provider(ABC):
 
     @abstractmethod
     def edit_issue(
-        self, ref: str, number: int, *, title: str | None = None, body: str | None = None, state: str | None = None
-    ) -> Issue: ...
+        self,
+        ref: str,
+        number: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        state: str | None = None,
+        state_reason: str | None = None,
+        duplicate_issue_id: int | None = None,
+    ) -> Issue:
+        """Edit an issue. ``state_reason`` (``completed``/``not_planned``/``duplicate``) and
+        ``duplicate_issue_id`` are GitHub close semantics; providers without the concept
+        ignore them (documented gap, ADR 0061)."""
 
     @abstractmethod
     def add_labels(self, ref: str, number: int, labels: list[str]) -> None: ...

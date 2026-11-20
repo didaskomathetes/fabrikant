@@ -1,9 +1,16 @@
-"""Step: issue — native GitHub-Issue-Operationen (kein LLM, kein Shell/gh).
+"""Step: issue — native Issue-Operationen über den Hosting-Provider (ADR 0001 §5, 0061).
 
 Ersetzt `shell` + `gh` in Triage-/Sweep-Loops (ADR 0001 §5): Werte gehen als
 JSON-Payload an die REST-API, nie durch eine Shell → keine Injection über
-Issue-/LLM-Text. Auth: GITHUB_TOKEN (Developer-Identity, ADR 0010); das Token
-steht nie in Output/Summary und wird zusätzlich vom Secret-Masking erfasst.
+Issue-/LLM-Text. Der Step spricht den Hosting-Provider (ADR 0061), nicht die
+GitHub-API direkt: GitHub und GitLab laufen über denselben Pfad.
+
+Auth: Developer-Identity (ADR 0010); das Token steht nie in Output/Summary und
+wird zusätzlich vom Secret-Masking erfasst.
+
+GitHub-spezifische Features (native Issue-Dependencies, ADR 0031): `block` und
+`duplicate_of` nutzen native "blocked by"-Relationen, die GitLab nicht hat —
+dort werfen sie `HostingNotSupported` (fail-closed).
 
 Step-Def:
     type: issue
@@ -16,8 +23,8 @@ Step-Def:
     remove_labels: [c]       # label: entfernen (fehlende Labels sind kein Fehler)
     state: open | closed     # edit (optional)
     comment: ...             # close: Begründung als Kommentar vor dem Schließen
-    state_reason: ...        # close: completed | not_planned | duplicate (leer = GitHub-Default completed)
-    duplicate_of: "#12"      # close: als Duplikat schließen + Blocker-Relationen auf #12 umhängen (ADR 0031)
+    state_reason: ...        # close: completed | not_planned | duplicate (leer = Host-Default)
+    duplicate_of: "#12"      # close: als Duplikat schließen + Blocker-Relationen auf #12 umhängen (ADR 0031, GitHub)
     emit: var                # create: Zielvariable der neuen Nummer (Default issue_number)
     inherit_labels: [p0, p1] # create: diese Labels übernehmen, sofern Issue `number` sie trägt
     append: true             # edit: body an bestehenden Body anhängen
@@ -46,16 +53,15 @@ from typing import cast
 
 from ..context import _cond_matches, _substitute
 from ..failures import ConfigError, Failure, classify_http, failed
-from ..gitops import _gh_api, _gh_dependencies, _gh_token
+from ..hosting import Provider, get_provider
 from ..runmodel import FailureKind
 from .pr import _normalize_labels
 
 ACTIONS = ("create", "edit", "label", "close", "list", "block")
 _NUMBERLESS = ("create", "list")  # Actions ohne Pflicht-`number`
-_API = "https://api.github.com/repos"
 _STATES = ("open", "closed")
 _CLOSE_REASONS = ("completed", "not_planned", "duplicate")
-_PER_PAGE = 100  # GitHub-Maximum für Listen-Endpoints
+_PER_PAGE = 100  # Host-Maximum für Listen-Endpoints
 LIST_LIMIT = 100  # list: Default-Obergrenze (Prompt-Größe bleibt bounded)
 LIST_MAX_PAGES = 5  # list: harte Obergrenze der Pagination (≤ 500 Issues)
 LIST_BODY_CHARS = 200  # list: Body-Auszug pro Issue
@@ -114,9 +120,9 @@ def _step_issue(ctx: dict, step: dict) -> dict:
     number = _substitute(str(step.get("number") or ""), ctx).strip() or str(ctx.get("issue_number") or "").strip()
     if action not in _NUMBERLESS and not number.isdigit():
         return _fail(f"number nicht auflösbar (number: {number!r})")
-    token = _gh_token("dev")
+    provider = get_provider(repo)
     try:
-        return _HANDLERS[action](ctx, step, repo, number, token)
+        return _HANDLERS[action](ctx, step, repo, number, provider)
     except urllib.error.HTTPError as e:
         detail = ""
         with contextlib.suppress(Exception):  # Body-Read ist best-effort
@@ -129,149 +135,132 @@ def _text(step: dict, key: str, ctx: dict) -> str | None:
     return None if val is None else _substitute(str(val), ctx)
 
 
-def _inherited_labels(step: dict, repo: str, number: str, token: str, ctx: dict) -> list[str]:
+def _inherited_labels(step: dict, repo: str, number: str, provider: Provider, ctx: dict) -> list[str]:
     """`inherit_labels`: die gelisteten Labels, die Issue `number` trägt (z. B. Priorität
     für ein abgeleitetes Issue) — bewusst eine Whitelist, damit Status-Labels wie
     `ready for development` nie mitwandern."""
     wanted = _labels(step.get("inherit_labels"), ctx)
     if not wanted or not number.isdigit():
         return []
-    have = {
-        str(lbl.get("name", "")) for lbl in _gh_api("GET", f"{_API}/{repo}/issues/{number}", token).get("labels") or []
-    }
+    have = set(provider.get_issue(repo, int(number)).labels)
     return [w for w in wanted if w in have]
 
 
-def _create(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
+def _create(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     title = (_text(step, "title", ctx) or "").strip()
     if not title:
         return _fail("create: 'title' fehlt")
-    payload: dict = {"title": title, "body": _text(step, "body", ctx) or ""}
-    labels = _labels(step.get("labels"), ctx) + _inherited_labels(step, repo, number, token, ctx)
-    if labels:
-        payload["labels"] = list(dict.fromkeys(labels))
-    res = _gh_api("POST", f"{_API}/{repo}/issues", token, payload)
+    body = _text(step, "body", ctx) or ""
+    labels = _labels(step.get("labels"), ctx) + _inherited_labels(step, repo, number, provider, ctx)
+    issue = provider.create_issue(repo, title, body, list(dict.fromkeys(labels)) if labels else None)
     emit = str(step.get("emit") or "issue_number")
-    ctx[emit] = str(res["number"])
-    if emit == "issue_number" and res.get("html_url"):
-        ctx["issue_url"] = res["html_url"]
-    return {"ok": True, "summary": f"Issue #{res['number']} erstellt {res.get('html_url', '')}".strip()}
+    ctx[emit] = str(issue.number)
+    if emit == "issue_number" and issue.url:
+        ctx["issue_url"] = issue.url
+    return {"ok": True, "summary": f"Issue #{issue.number} erstellt {issue.url}".strip()}
 
 
-def _edit(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
-    url = f"{_API}/{repo}/issues/{number}"
-    payload: dict = {}
+def _edit(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     title = _text(step, "title", ctx)
-    if title is not None:
-        payload["title"] = title
     state = _text(step, "state", ctx)
     if state is not None:
         state = state.strip().lower()
         if state not in _STATES:
             return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
-        payload["state"] = state
     body = _text(step, "body", ctx)
-    if body is not None:
-        if step.get("append"):
-            current = _gh_api("GET", url, token).get("body") or ""
-            marker = _text(step, "unless_contains", ctx)
-            if marker and marker in current:
-                return {"ok": True, "summary": f"Issue #{number} unverändert (Marker bereits vorhanden)"}
-            body = f"{current}\n\n{body}" if current else body
-        payload["body"] = body
-    if not payload:
+    if body is not None and step.get("append"):
+        current = provider.get_issue(repo, int(number)).body
+        marker = _text(step, "unless_contains", ctx)
+        if marker and marker in current:
+            return {"ok": True, "summary": f"Issue #{number} unverändert (Marker bereits vorhanden)"}
+        body = f"{current}\n\n{body}" if current else body
+    if title is None and body is None and state is None:
         return _fail("edit: nichts zu ändern (title/body/state fehlen)")
-    _gh_api("PATCH", url, token, payload)
-    return {"ok": True, "summary": f"Issue #{number} geändert ({', '.join(payload)})"}
+    provider.edit_issue(repo, int(number), title=title, body=body, state=state)
+    changed = [k for k, v in (("title", title), ("body", body), ("state", state)) if v is not None]
+    return {"ok": True, "summary": f"Issue #{number} geändert ({', '.join(changed)})"}
 
 
-def _label(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
+def _label(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     add = _labels(step.get("labels"), ctx)
     remove = _labels(step.get("remove_labels"), ctx)
     if not add and not remove:
         return _fail("label: 'labels' oder 'remove_labels' fehlt")
-    base = f"{_API}/{repo}/issues/{number}/labels"
     if add:  # GitHub legt unbekannte Labels beim Hinzufügen automatisch an
-        _gh_api("POST", base, token, {"labels": add})
+        provider.add_labels(repo, int(number), add)
     for name in remove:
-        try:
-            _gh_api("DELETE", f"{base}/{urllib.parse.quote(name, safe='')}", token)
-        except urllib.error.HTTPError as e:
-            if e.code != 404:  # Label nicht (mehr) am Issue → idempotent
-                raise
+        provider.remove_label(repo, int(number), name)  # 404 → idempotent (Provider)
     return {"ok": True, "summary": f"Issue #{number} Labels +{add} -{remove}"}
 
 
-def _close(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
+def _close(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     reason = (_text(step, "state_reason", ctx) or "").strip().lower()
     if reason and reason not in _CLOSE_REASONS:
         return _fail(f"state_reason '{reason}' ungültig (erlaubt: {', '.join(_CLOSE_REASONS)})")
     originals = _refs(_text(step, "duplicate_of", ctx) or "", number)
-    payload: dict = {"state": "closed"}
+    duplicate_id: int | None = None
     moved: list[str] = []
     if originals:
-        original = _gh_api("GET", f"{_API}/{repo}/issues/{originals[0]}", token)
-        if "pull_request" in original:
+        original = provider.get_issue(repo, originals[0])
+        if original.is_pr:
             return _fail(f"close: duplicate_of #{originals[0]} ist ein PR")
-        payload.update(state_reason="duplicate", duplicate_issue_id=original["id"])
+        duplicate_id = int(original.raw["id"])
         # Vor dem Schließen: schlägt das Umhängen fehl, bleibt das Issue offen.
-        moved = _move_dependents(repo, number, original, token)
-    elif reason:
-        payload["state_reason"] = reason
+        moved = _move_dependents(provider, repo, number, original)
+        reason = "duplicate"
     comment = (_text(step, "comment", ctx) or "").strip()
     if comment:
-        _gh_api("POST", f"{_API}/{repo}/issues/{number}/comments", token, {"body": comment})
-    _gh_api("PATCH", f"{_API}/{repo}/issues/{number}", token, payload)
-    summary = f"Issue #{number} geschlossen" + (f" ({payload['state_reason']})" if "state_reason" in payload else "")
+        provider.create_comment(repo, int(number), comment)
+    # GitHub: `duplicate_issue_id` setzt die native Duplikat-Relation (ADR 0031);
+    # GitLab ignoriert das Feld (kein Duplikat-Konzept, ADR 0061).
+    provider.edit_issue(repo, int(number), state="closed", state_reason=reason or None, duplicate_issue_id=duplicate_id)
+    summary = f"Issue #{number} geschlossen" + (f" ({reason})" if reason else "")
     if moved:
         summary += f"; Blocker umgehängt auf #{originals[0]}: {', '.join(moved)}"
     return {"ok": True, "summary": summary}
 
 
-def _move_dependents(repo: str, number: str, original: dict, token: str) -> list[str]:
+def _move_dependents(provider: Provider, repo: str, number: str, original) -> list[str]:
     """Issues, die `number` blockiert, werden stattdessen vom Original blockiert.
 
     Sonst hingen sie an einem als `duplicate` geschlossenen Blocker fest (der zählt
     nicht als erledigt, ADR 0031). Idempotent: bestehende Relationen bleiben.
     """
-    me = _gh_api("GET", f"{_API}/{repo}/issues/{number}", token)
+    me = provider.get_issue(repo, int(number))
     moved = []
-    for dep in _gh_dependencies(repo, number, token, "blocking"):
-        dep_no = dep["number"]
-        base = f"{_API}/{repo}/issues/{dep_no}/dependencies/blocked_by"
+    for dep in provider.issue_dependencies(repo, int(number), kind="blocking"):
+        dep_no = dep.number
         # Hing das Original selbst am Duplikat, wird die Relation nur gelöst
         # (keine Selbst-Blockade).
-        if dep_no != original["number"]:
-            if original["number"] not in {b.get("number") for b in _gh_dependencies(repo, dep_no, token)}:
-                _gh_api("POST", base, token, {"issue_id": original["id"]})
+        if dep_no != original.number:
+            if original.number not in {b.number for b in provider.issue_dependencies(repo, dep_no)}:
+                provider.add_issue_dependency(repo, dep_no, blocker_id=original.raw["id"])
             moved.append(f"#{dep_no}")
-        _gh_api("DELETE", f"{base}/{me['id']}", token)
+        provider.remove_issue_dependency(repo, dep_no, blocker_id=me.raw["id"])
     return moved
 
 
-def _issue_line(it: dict) -> str:
+def _issue_line(it) -> str:
     """Kompakte Prompt-Zeile: `#N [labels] Titel — Body-Auszug` (einzeilig)."""
-    labels = ", ".join(str(lbl.get("name", "")) for lbl in it.get("labels") or [] if isinstance(lbl, dict))
-    body = " ".join((it.get("body") or "").split())[:LIST_BODY_CHARS]
-    line = f"#{it['number']}" + (f" [{labels}]" if labels else "") + f" {it.get('title', '')}"
+    labels = ", ".join(it.labels)
+    body = " ".join(it.body.split())[:LIST_BODY_CHARS]
+    line = f"#{it.number}" + (f" [{labels}]" if labels else "") + f" {it.title}"
     return f"{line} — {body}" if body else line
 
 
-def _list(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
+def _list(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     """Andere Issues (ohne PRs und ohne Issue `number`) als Textliste in `emit`."""
     state = (_text(step, "state", ctx) or "open").strip().lower()
     if state not in _STATES:
         return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
     limit = max(1, int(step.get("limit", LIST_LIMIT)))
-    query = {"state": state, "per_page": _PER_PAGE, "sort": "updated", "direction": "desc"}
     labels = _labels(step.get("labels"), ctx)
-    if labels:
-        query["labels"] = ",".join(labels)
     lines: list[str] = []
     for page in range(1, LIST_MAX_PAGES + 1):
-        url = f"{_API}/{repo}/issues?{urllib.parse.urlencode({**query, 'page': page})}"
-        items = cast(list[dict], _gh_api("GET", url, token) or [])
-        lines += [_issue_line(it) for it in items if "pull_request" not in it and str(it["number"]) != number]
+        items = provider.list_issues(
+            repo, state=state, labels=labels or None, sort="updated", direction="desc", page=page, per_page=_PER_PAGE
+        )
+        lines += [_issue_line(it) for it in items if not it.is_pr and str(it.number) != number]
         if len(lines) >= limit or len(items) < _PER_PAGE:
             break
     var = str(step.get("emit") or "issues")
@@ -290,7 +279,7 @@ def _refs(text: str, own: str) -> list[int]:
     return out
 
 
-def _block(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
+def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     """Setzt native "blocked by"-Dependencies (ADR 0031), idempotent.
 
     `blocked_by` (LLM-Text) ist auf MAX_BLOCKERS begrenzt, `prerequisite` (die neu
@@ -305,23 +294,23 @@ def _block(ctx: dict, step: dict, repo: str, number: str, token: str) -> dict:
     refs += [n for n in _refs(_text(step, "prerequisite", ctx) or "", number) if n not in refs]
     if not refs:
         return {"ok": True, "summary": f"Issue #{number}: keine Blocker"}
-    existing = {b.get("number") for b in _gh_dependencies(repo, number, token)}
+    existing = {b.number for b in provider.issue_dependencies(repo, int(number))}
     linked, skipped = [], [f"#{n} (über Limit {MAX_BLOCKERS})" for n in dropped]
     for ref in refs:
         if ref in existing:
             linked.append(f"#{ref}")
             continue
         try:
-            blocker = _gh_api("GET", f"{_API}/{repo}/issues/{ref}", token)
+            blocker = provider.get_issue(repo, ref)
         except urllib.error.HTTPError as e:
             if e.code not in (404, 410):  # gelöscht/nicht vorhanden → halluzinierte Referenz
                 raise
             skipped.append(f"#{ref} (nicht gefunden)")
             continue
-        if "pull_request" in blocker or blocker.get("state") != "open":
-            skipped.append(f"#{ref} ({'PR' if 'pull_request' in blocker else 'geschlossen'})")
+        if blocker.is_pr or blocker.state != "open":
+            skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'geschlossen'})")
             continue
-        _gh_api("POST", f"{_API}/{repo}/issues/{number}/dependencies/blocked_by", token, {"issue_id": blocker["id"]})
+        provider.add_issue_dependency(repo, int(number), blocker_id=int(blocker.raw["id"]))
         linked.append(f"#{ref}")
     ctx["blockers"] = ", ".join(linked)
     summary = f"Issue #{number} blocked by: {', '.join(linked) or '—'}"
