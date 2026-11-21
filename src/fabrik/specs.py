@@ -26,6 +26,8 @@ from . import alerts, billing, branches, config, slack, spec_sources, webhook
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
 from .gitops import COMMIT_VIA_MODES, GH_TOKEN_ENV, SPEC_COMMIT_VIA_KEY, SPEC_ENV_FILE_KEY
+from .hosting import registered_providers
+from .hosting.select import HOSTING_KEY
 from .relay.config import expand_loops as expand_relay_loops
 from .runs import LOCK_KEY_SEP
 from .spec_expand import expand_spec
@@ -487,6 +489,13 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     cvia = spec.get(SPEC_COMMIT_VIA_KEY)
     if cvia is not None and cvia not in COMMIT_VIA_MODES:
         errs.append(f"{SPEC_COMMIT_VIA_KEY} muss einer von {COMMIT_VIA_MODES} sein (ist {cvia!r})")
+    hosting_name = spec.get(HOSTING_KEY)
+    if hosting_name is not None and (
+        not isinstance(hosting_name, str) or hosting_name.strip().lower() not in registered_providers()
+    ):
+        errs.append(
+            f"{HOSTING_KEY} muss ein registrierter Provider sein {registered_providers()} (ist {hosting_name!r})"
+        )
     if extra_context.KEY in spec:
         errs += extra_context.validate(spec[extra_context.KEY], "projekt", allow_false=False)
     mp = spec.get("max_parallel")

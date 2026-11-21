@@ -5,10 +5,12 @@ selection, GitLab token resolution, webhook parsing) and the documented
 provider gaps — no network (adapter I/O is mocked where exercised).
 """
 
+# pyright: reportArgumentType=false
 from __future__ import annotations
 
 import pytest
 
+from fabrik import gitops
 from fabrik.hosting import (
     BaseProvider,
     CompareResult,
@@ -776,9 +778,39 @@ class TestRegistry:
         registry_mod.register_provider("customhost", lambda r, s, role: sentinel)
         assert get_provider("o/n", spec={"hosting": "customhost"}) is sentinel
 
-    def test_get_provider_unknown_hosting_falls_back_to_inference(self):
-        # an unregistered `hosting:` value is ignored (not an error) -> host inference
-        assert isinstance(get_provider("o/n", spec={"hosting": "doesnotexist"}), GitHubProvider)
+    def test_get_provider_unknown_hosting_raises(self):
+        with pytest.raises(HostingConfigError, match="gitlabb.*registered: .*gitlab"):
+            get_provider("o/n", spec={"hosting": "gitlabb"})
+
+    def test_load_entry_points_warns_on_broken_plugin(self, clean_registry, monkeypatch, caplog):
+        class _EP:
+            name = "broken"
+
+            def load(self):
+                raise ImportError("boom")
+
+        class _EPs:
+            def select(self, group):
+                return [_EP()]
+
+        import importlib.metadata as md
+
+        monkeypatch.setattr(md, "entry_points", lambda: _EPs())
+        with caplog.at_level("WARNING"):
+            registry_mod.load_entry_points()
+        assert "broken" in caplog.text and "boom" in caplog.text
+        assert "broken" not in registry_mod.registered_providers()
+
+    def test_has_credentials(self, monkeypatch):
+        monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
+        assert get_provider("o/n").has_credentials() is False
+        monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "t")
+        assert get_provider("o/n").has_credentials() is True
+        monkeypatch.setenv("FABRIK_GITLAB_TOKEN", "")
+        monkeypatch.setenv("FABRIK_GITLAB_TOKEN_FILE", "/nonexistent/token")
+        assert get_provider("o/n", spec={"hosting": "gitlab"}).has_credentials() is False
+        monkeypatch.setenv("FABRIK_GITLAB_TOKEN", "x")
+        assert get_provider("o/n", spec={"hosting": "gitlab"}).has_credentials() is True
 
 
 # --------------------------------------------------------------------------- BaseProvider (ADR 0063)

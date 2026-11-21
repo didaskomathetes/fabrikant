@@ -189,6 +189,10 @@ class Provider(ABC):
     #: provider name (``github`` / ``gitlab``)
     name: str = "abstract"
 
+    def has_credentials(self) -> bool:
+        """Whether credentials are available (pollers skip silently when not). Default: True."""
+        return True
+
     # -- repo / urls ---------------------------------------------------------
     @abstractmethod
     def parse_repo(self, ref: str) -> RepoRef:

@@ -223,6 +223,12 @@ class GitLabProvider(Provider):
         """The GitLab instance version string (e.g. ``"19.5.8-ee"``)."""
         return self.capabilities().version
 
+    def has_credentials(self) -> bool:
+        try:
+            return bool(gitlab_token())
+        except HostingError:
+            return False
+
     # -- plumbing ------------------------------------------------------------
     def _pid(self, ref: str) -> str:
         """URL-encoded project path (``owner/name`` → ``owner%2Fname``)."""
@@ -488,9 +494,7 @@ def _gitlab_host(repo: str | None, spec: dict) -> str:
     host = repo_host(repo)
     if host and host != GITHUB_HOST:
         return host
-    return (
-        str(spec.get(GITLAB_HOST_KEY) or os.environ.get(GITLAB_HOST_ENV, "") or DEFAULT_GITLAB_HOST).strip()
-    )
+    return str(spec.get(GITLAB_HOST_KEY) or os.environ.get(GITLAB_HOST_ENV, "") or DEFAULT_GITLAB_HOST).strip()
 
 
 def _gitlab_factory(repo: str | None, spec: dict, role: str) -> Provider:

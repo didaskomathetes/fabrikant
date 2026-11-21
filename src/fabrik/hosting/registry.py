@@ -17,6 +17,7 @@ reused for other pluggable ports (e.g. an issue tracker, ADR 0063 "future work")
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,8 @@ ProviderFactory = Callable[["str | None", "dict", "str"], "Provider"]
 
 #: Entry-point group third-party hosting providers register under.
 ENTRY_POINT_GROUP = "fabrik.hosting_provider"
+
+_log = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, ProviderFactory] = {}
 
@@ -91,6 +94,7 @@ def load_entry_points() -> None:
     for ep in selected:
         try:
             factory = ep.load()
-        except Exception:  # pragma: no cover — skip a plugin that fails to import
+        except Exception as exc:  # skip a plugin that fails to import, but say so
+            _log.warning("hosting provider entry point %r failed to load: %s", ep.name, exc)
             continue
         register_provider(ep.name, factory, replace=True)

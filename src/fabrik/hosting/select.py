@@ -25,12 +25,15 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from .base import GITHUB_HOST, Provider, repo_host
-from .registry import get_factory, registered_providers
+from .registry import get_factory
 
 HOSTING_KEY = "hosting"
 
 # Active run spec, set by the engine for the duration of a run (like ``gitops.project_github``).
 # Steps resolve the provider from it without the spec being threaded through every call.
+# NOTE: ContextVars are per-thread. ``engine.run_loop`` binds it inside the worker thread
+# that executes the run, so steps see it; any code that hands step work to *another*
+# thread must propagate it (``contextvars.copy_context().run``) or pass ``spec=`` explicitly.
 _spec: ContextVar[dict | None] = ContextVar("fabrik_hosting_spec", default=None)
 
 
@@ -54,8 +57,6 @@ def _infer_kind(repo: str | None, spec: dict) -> str:
     host = repo_host(repo)
     if host is not None:
         return "github" if host == GITHUB_HOST else "gitlab"
-    if spec.get("github"):
-        return "github"
     return "github"
 
 
@@ -63,7 +64,8 @@ def get_provider(repo: str | None = None, spec: dict | None = None, role: str = 
     """Build the :class:`Provider` for ``repo``/``spec``.
 
     The provider name comes from the ``hosting:`` spec field (any *registered*
-    provider, ADR 0063) or is inferred from the repo host. The name is resolved to a
+    provider, ADR 0063) or is inferred from the repo host. An explicit but unregistered
+    ``hosting:`` value raises :class:`HostingConfigError` (no silent fallback). The name is resolved to a
     factory via the registry, which builds the adapter.
 
     ``role`` selects the GitHub dual-identity (ADR 0010); it is ignored by adapters
@@ -72,5 +74,5 @@ def get_provider(repo: str | None = None, spec: dict | None = None, role: str = 
     """
     spec = spec if spec is not None else current_spec()
     hosting = str(spec.get(HOSTING_KEY) or "").strip().lower()
-    kind = hosting if hosting in registered_providers() else _infer_kind(repo, spec)
-    return get_factory(kind)(repo, spec, role)
+    kind = hosting or _infer_kind(repo, spec)
+    return get_factory(kind)(repo, spec, role)  # unknown explicit name -> HostingConfigError

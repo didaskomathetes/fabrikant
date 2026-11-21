@@ -120,6 +120,7 @@ def _mk_pr_test(monkeypatch, prs):
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs))
     trig = {"repo": "o/r", "poll": 0}  # poll=0 → kein Interval-Wait
     return sched, fired, trig
@@ -209,6 +210,7 @@ def test_on_pr_respects_poll_interval(monkeypatch):
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(1, "t1")])
     trig = {"repo": "o/r", "poll": 9999}  # großes Intervall
     sched._check_pr("p", "l", {"github": "o/r"}, trig)  # init (setzt ts)
@@ -227,21 +229,29 @@ def test_on_pr_no_repo_no_fire(monkeypatch):
     assert fired == []
 
 
-def test_on_pr_no_token_no_fire(monkeypatch):
-    """Kein GitHub-Token → Provider wirft beim Token-Resolve (kein API-Call, kein Fire)."""
+def test_on_pr_no_token_no_fire(monkeypatch, capsys):
+    """Kein GitHub-Token → stilles Überspringen (kein API-Call, kein Fire, kein Fehler-Print)."""
     sched = _FakePrScheduler()
     fired = []
     api_calls = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
 
-    def _no_token(role="dev"):
-        raise RuntimeError("GITHUB_TOKEN nicht verfügbar")
-
-    monkeypatch.setattr(gitops, "_gh_token", _no_token)
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: api_calls.append(1) or [])
     sched._check_pr("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert api_calls == []
     assert fired == []
+    assert "fehlgeschlagen" not in capsys.readouterr().out
+
+
+def test_on_issue_no_token_silent_skip(monkeypatch, capsys):
+    sched = _FakePrScheduler()
+    api_calls = []
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: api_calls.append(1) or [])
+    sched._check_issue("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
+    assert api_calls == []
+    assert "fehlgeschlagen" not in capsys.readouterr().out
 
 
 def test_on_pr_api_error_no_fire(monkeypatch):
@@ -250,6 +260,7 @@ def test_on_pr_api_error_no_fire(monkeypatch):
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
 
     def _boom(m, u, t, payload=None):
         raise RuntimeError("network down")
@@ -274,6 +285,7 @@ def _mk_pr_test_states(monkeypatch, prs_by_state: dict):
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs_by_state.get(_state_of(u), [])))
     trig = {"repo": "o/r", "poll": 0}
     return sched, fired, trig

@@ -349,6 +349,23 @@ def test_push_branch_api_mode_gitlab_refused(remote, monkeypatch):
         push_branch(repo, "feat")
 
 
+def test_push_branch_api_mode_non_github_refused_without_credentials(remote, monkeypatch):
+    """Nicht-GitHub-Host → klare HostingNotSupported, auch ohne Token (kein Credential-Fehler)."""
+    repo, bare, _ = remote
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
+    monkeypatch.delenv("FABRIK_GITLAB_TOKEN", raising=False)
+    monkeypatch.setenv("FABRIK_GITLAB_TOKEN_FILE", "/nonexistent/token")
+    monkeypatch.setattr(
+        apicommit.subprocess, "run", _remote_url_override(subprocess.run, "https://gitlab.example.com/o/r.git")
+    )
+    commit(repo, "one", **{"a.txt": "1\n"})
+    with (
+        gitops.project_github({gitops.SPEC_COMMIT_VIA_KEY: "api"}),
+        pytest.raises(HostingNotSupported, match="nicht GitHub"),
+    ):
+        push_branch(repo, "feat")
+
+
 def _remote_url_override(real_run, url):
     """`git remote get-url origin` → GitHub-URL (origin ist im Test ein lokales Bare-Repo)."""
 

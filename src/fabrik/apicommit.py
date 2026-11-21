@@ -44,7 +44,7 @@ from pathlib import Path
 
 from . import config, gitops
 from .failures import GitError, classify_exception, exit_code
-from .hosting import HostingNotSupported, get_provider
+from .hosting import GITHUB_HOST, HostingNotSupported, repo_host
 from .secrets import _redact
 
 GIT_TIMEOUT_S = 300
@@ -306,11 +306,11 @@ def push_branch(
         _git(root, "push", *(["--force-with-lease"] if force else []), "origin", branch)
         return f"push {branch}"
     remote_url = repo or _git(root, "remote", "get-url", "origin")
-    provider = get_provider(remote_url)
-    if provider.name != "github":
+    # Entscheidung über den Host, bevor ein Provider (und dessen Credentials) gebaut wird.
+    if repo_host(remote_url) not in (None, GITHUB_HOST):
         raise HostingNotSupported(
-            f"commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
-            f"der Repo-Host nutzt {provider.name} — commit_via: git verwenden (ADR 0062)"
+            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
+            f"der Repo-Host ({repo_host(remote_url)}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
         )
     if repo is None:
         repo = repo_from_remote(remote_url)

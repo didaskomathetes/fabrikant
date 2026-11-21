@@ -519,6 +519,8 @@ class Scheduler(threading.Thread):
         exclude = [str(x) for x in (trig.get("exclude_labels") or [])]
         try:
             provider = get_provider(repo, spec=spec)
+            if not provider.has_credentials():
+                return
             if trig.get("reconcile"):
                 max_per_poll = max(1, int(trig.get("max_per_poll", DEFAULT_MAX_PER_POLL)))
                 blocked: dict[int, list[str]] | None = {} if trig.get("skip_blocked") else None
@@ -641,6 +643,8 @@ class Scheduler(threading.Thread):
         prs: list[dict] = []
         try:
             provider = get_provider(repo, spec=spec)
+            if not provider.has_credentials():
+                return
             for state in states:
                 prs.extend(_list_pulls(repo, provider, state, required_labels))
         except Exception as e:

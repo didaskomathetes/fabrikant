@@ -281,6 +281,7 @@ def _mk_issue_test(monkeypatch, issues):
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(issues))
     trig = {"repo": "o/r", "poll": 0}
     return s, fired, trig
@@ -327,10 +328,7 @@ def test_check_issue_no_token(monkeypatch):
     api = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
 
-    def _no_token(role="dev"):
-        raise RuntimeError("GITHUB_TOKEN nicht verfügbar")
-
-    monkeypatch.setattr(gitops, "_gh_token", _no_token)
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: api.append(1) or [])
     s._check_issue("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert api == []
@@ -342,6 +340,7 @@ def test_check_issue_api_error(monkeypatch):
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
 
     def _boom(m, u, t, payload=None):
         raise RuntimeError("down")
@@ -373,6 +372,7 @@ def _mk_reconcile_test(monkeypatch, runs_dir, issues, **trig_extra):
     monkeypatch.setattr(scheduler.config, "RUNS_DIR", runs_dir)
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _api)
     return s, fired, urls, {"repo": "o/r", "poll": 0, "reconcile": True, **trig_extra}
 

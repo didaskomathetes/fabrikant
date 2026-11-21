@@ -138,6 +138,7 @@ def _patch_externals(monkeypatch, verdicts, files):
     # an der `gitops`-Naht patchen (ein einziger Ort für alle Steps).
     monkeypatch.setattr(gitops, "_gh_api", _api)
     monkeypatch.setattr(gitops, "_gh_token", _token)
+    monkeypatch.setattr(gitops, "_gh_token_safe", _token)
     monkeypatch.setattr(gitops, "_gh_diff", _diff)
     monkeypatch.setattr(pr_review, "_step_agent_backend", _agent)
     monkeypatch.setattr(pr_review, "_HEAD_SYNC_INTERVAL_S", 0)
@@ -260,6 +261,7 @@ def test_on_pr_fires_on_develop_labeled_pr(monkeypatch):
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     trig = {"repo": "o/r", "poll": 0, "labels": ["fabrik"], "reconcile": "head"}
 
     # PR mit Label `fabrik` → review-pr feuert (vor dem Split: auch develop-PRs → Doppel-Review)

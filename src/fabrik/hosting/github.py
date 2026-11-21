@@ -129,6 +129,9 @@ class GitHubProvider(Provider):
     def __init__(self, role: str = "dev"):
         self._role = role
 
+    def has_credentials(self) -> bool:
+        return bool(gitops._gh_token_safe(self._role))
+
     # -- plumbing ------------------------------------------------------------
     def _token(self) -> str:
         return gitops._gh_token(self._role)
