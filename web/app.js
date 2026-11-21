@@ -2967,6 +2967,52 @@ async function refreshSchedule() {
   if (state.schedOpen) renderSchedule();
 }
 
+// KPI-Panel (Issue #127): Factory-KPIs je Projekt aus GET /api/kpis.
+function fmtKpiRate(r) {
+  return r === null || r === undefined ? "—" : `${Math.round(r * 100)} %`;
+}
+
+function renderKpiRow(name, k) {
+  const ct = k.cycle_time_s || {};
+  const cycle = ct.avg === null || ct.avg === undefined ? "—" : fmtDur(Math.round(ct.avg));
+  const rt = k.runtime_s || {};
+  const runtime = rt.count ? `${fmtDur(Math.round(rt.avg))} / ${fmtDur(Math.round(rt.total))}` : "—";
+  return `<div class="schedrow">
+    <div class="schedrow-main"><span class="schedname">${esc(name)}</span></div>
+    <span title="${esc(t("kpis.runsTitle"))}">${esc(t("kpis.runs"))}: ${k.passed || 0} ✔ / ${k.failed || 0} ✖ (${k.runs || 0})</span>
+    <span title="${esc(t("kpis.runtimeTitle"))}">${esc(t("kpis.runtime"))}: ${esc(runtime)}</span>
+    <span title="${esc(t("kpis.costTitle"))}">${esc(t("kpis.cost"))}: ${esc(fmtCost(k.cost) || "—")}</span>
+    <span title="${esc(t("kpis.cycleTitle"))}">${esc(t("kpis.cycle"))}: ${esc(cycle)} (${ct.count || 0})</span>
+    <span title="${esc(t("kpis.vetoTitle"))}">${esc(t("kpis.veto"))}: ${esc(fmtKpiRate(k.judge_veto_rate))}</span>
+    <span title="${esc(t("kpis.escapeTitle"))}">${esc(t("kpis.escape"))}: ${esc(fmtKpiRate(k.defect_escape_rate))}
+      (${k.defects_caught}/${k.defects_escaped})</span>
+  </div>`;
+}
+
+async function refreshKpis() {
+  let data;
+  try {
+    data = await api("/api/kpis");
+  } catch (e) {
+    $("#kpibody").innerHTML = `<div class="sched-err">${esc(t("kpis.loadFailed", { error: e.message }))}</div>`;
+    return;
+  }
+  const names = Object.keys(data.projects || {});
+  const rows = names.flatMap((p) => [
+    renderKpiRow(p, data.projects[p]),
+    ...Object.entries(data.projects[p].loops || {}).map(([l, k]) => renderKpiRow(`${p}/${l}`, k)),
+  ]);
+  $("#kpibody").innerHTML = names.length
+    ? renderKpiRow(t("kpis.total"), data.total) + rows.join("")
+    : `<div class="sched-empty">${esc(t("kpis.empty"))}</div>`;
+}
+
+function setKpis(open) {
+  $("#kpipanel").classList.toggle("hidden", !open);
+  $("#kpitoggle").classList.toggle("active", open);
+  if (open) refreshKpis();
+}
+
 // One-time-Formular (⏱-Button einer Zeile). Nur beim Öffnen/Schließen neu
 // aufgebaut — nicht beim 5-s-Refresh, sonst gingen Eingabe und Fokus verloren.
 function renderSchedForm() {
@@ -3066,6 +3112,8 @@ $("#chattoggle").addEventListener("click", () => setChat($("#chatpanel").classLi
 $("#chatclose").addEventListener("click", () => setChat(false));
 $("#schattoggle").addEventListener("click", () => setSchedule($("#schedpanel").classList.contains("hidden")));
 $("#schedclose").addEventListener("click", () => setSchedule(false));
+$("#kpitoggle").addEventListener("click", () => setKpis($("#kpipanel").classList.contains("hidden")));
+$("#kpiclose").addEventListener("click", () => setKpis(false));
 $("#chatform").addEventListener("submit", chatSend);
 $("#llmselect").addEventListener("change", (e) => setLlm(e.target.value));
 $("#langtoggle").addEventListener("click", toggleLang);
