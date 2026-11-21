@@ -19,6 +19,8 @@ Replayability (§5) ist nicht Teil dieses Moduls.
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TypedDict
@@ -259,6 +261,26 @@ def render_prometheus(runs: Iterable[Run]) -> str:
     return "\n".join(blocks)
 
 
+# Scrapes laden sonst bei jedem Request den kompletten Run-Store; ein kurzer TTL-Cache deckelt die Last.
+PROMETHEUS_CACHE_TTL_S = 15.0
+_prom_cache: tuple[float, str] | None = None
+_prom_lock = threading.Lock()
+
+
+def reset_prometheus_cache() -> None:
+    """Verwirft den gecachten Prometheus-Text (Tests, Admin-Hooks)."""
+    global _prom_cache
+    with _prom_lock:
+        _prom_cache = None
+
+
 def prometheus_text() -> str:
-    """Prometheus-Text der KPIs über alle gespeicherten Runs (für ``GET /api/metrics``)."""
-    return render_prometheus(runs_in_range(None, "", ""))
+    """Prometheus-Text der KPIs über alle gespeicherten Runs (für ``GET /api/metrics``).
+
+    Für ``PROMETHEUS_CACHE_TTL_S`` Sekunden gecacht — die Berechnung liest den gesamten Run-Store."""
+    global _prom_cache
+    with _prom_lock:
+        now = time.monotonic()
+        if _prom_cache is None or now - _prom_cache[0] >= PROMETHEUS_CACHE_TTL_S:
+            _prom_cache = (now, render_prometheus(runs_in_range(None, "", "")))
+        return _prom_cache[1]

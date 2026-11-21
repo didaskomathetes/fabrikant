@@ -140,6 +140,7 @@ def test_kpis_report_rejects_bad_date(seeded):
 
 
 def test_prometheus_text_from_store(seeded):
+    kpis.reset_prometheus_cache()
     text = kpis.prometheus_text()
     assert 'fabrik_kpi_defects_escaped{project="p",loop="l"} 1' in text
     assert 'fabrik_kpi_cycle_time_avg_seconds{project="q",loop="l"} 10.0' in text
@@ -192,3 +193,16 @@ def test_prometheus_exports_ops_gauges():
     assert 'fabrik_kpi_cost_usd_total{project="p",loop="l"} 0.25' in text
     assert 'fabrik_kpi_runtime_seconds_total{project="p",loop="l"} 60' in text
     assert 'fabrik_kpi_runs_failed{project="p",loop="l"} 0' in text
+
+
+def test_prometheus_text_is_cached_within_ttl(monkeypatch):
+    calls = []
+    monkeypatch.setattr(kpis, "runs_in_range", lambda *a: calls.append(a) or [])
+    kpis.reset_prometheus_cache()
+    kpis.prometheus_text()
+    kpis.prometheus_text()
+    assert len(calls) == 1
+    monkeypatch.setattr(kpis, "PROMETHEUS_CACHE_TTL_S", 0.0)
+    kpis.prometheus_text()
+    assert len(calls) == 2
+    kpis.reset_prometheus_cache()
