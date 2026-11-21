@@ -1,7 +1,7 @@
 # Self-Optimization via Falsifiable Proposals
 
 **Status:** Proposal (design doc) — not yet an accepted ADR.
-**Depends on:** #130 (golden runs + eval harness), #129 (replay), #131 (spec JSON schema), #126/#127 (KPIs).
+**Depends on:** #130 (golden runs + eval harness), #129 (replay, ADR 0061), #131 (spec JSON schema), #126/#127 (KPIs).
 **Companion reading list:** [self-optimization-reading-list.md](self-optimization-reading-list.md)
 **Last updated:** 2026-11-21.
 
@@ -23,7 +23,8 @@ The distinction is the whole safety model (see §7).
   loops, and prompts** — data the conductor runs — never to fabrik's own
   orchestration code.
 - **No autonomous application.** A proposal is never applied without human
-  approval through the existing approval gate (ADR 0015/0057).
+  approval through the existing approval gate (ADR 0011 approval-request
+  protocol; ADR 0059 `needs human` escalation).
 - **No relaxation of trust boundaries.** Proposals that touch egress, auth,
   untrusted-input handling, or the approval gates themselves may only ever be
   proposed in a *tightening* direction, and require expert review (§6).
@@ -42,9 +43,9 @@ Proposal {
   target_metric: the KPI it is meant to move (e.g. defect_escape ↓)
   guardrails:    KPIs that must NOT regress past a threshold, e.g.
                  { cycle_time: "+10%", judge_veto: "baseline+5%" }
-  tier:          low | medium | high          (§6)
+  tier:          low | medium | high          (§6) — conductor-computed
   falsification:
-    regime:      zero-data | low-data | high-data   (auto-derived, §5)
+    regime:      zero-data | low-data | high-data   (conductor-computed, §5)
     mode:        quantitative | qualitative        (routed by regime)
     plan:        baseline window, post window, N samples, metrics,
                  pass threshold            (when quantitative)
@@ -55,10 +56,19 @@ Proposal {
 }
 ```
 
-**Regime-derived mode.** `falsification.mode` is auto-derived from the loop's
-data regime (§5), never hand-set. The quantitative mode is only available
-once a loop has enough runs for a metric to beat its variance; below that the
-proposal is `qualitative`.
+**Tier and regime are conductor-computed, not agent-set.** The agent may
+*claim* a tier, but the conductor derives the effective tier deterministically
+from the diff: which files and fields it touches. Trust-boundary fields
+(egress, auth, untrusted-input rules, judge/eval/KPI-producing steps,
+guardrail thresholds, the golden-run set) are tagged in the #131 spec schema;
+touching any of them forces `high`. `regime` is computed from the loop's run
+count, not from the agent's claim. This closes the self-labeling hole: an LLM
+cannot call a trust-boundary change `low`.
+
+**Regime-derived mode.** `falsification.mode` is derived by the conductor from
+the loop's data regime (§5), never hand-set. The quantitative mode is only
+available once a loop has enough runs for a metric to beat its variance; below
+that the proposal is `qualitative`.
 
 **Free hypotheses, paid validation.** The qualitative signal draws on the
 LLM's *prior* — general, transferable patterns known from a huge corpus,
@@ -86,6 +96,11 @@ is the falsification, and the label says so.
 1. **Read-only audit report** — the agent reads telemetry (run logs, KPIs,
    `FailureKind` from ADR 0035, step usage, cost rollups) and *describes*
    what is wrong. No proposals. Pure advisor. Ships first; zero write risk.
+   The auditor is a **consumer of untrusted input** (ADR 0008/0050/0051): run
+   logs contain issue text, PR comments, and other external content that can
+   steer its proposals. It runs sandboxed with **no write credentials** —
+   read-only telemetry access; proposals are emitted as data, never as
+   commands.
 2. **Constrained proposals + eval gate** — the agent emits tiered proposals.
    Each is validated by the schema (#131) **and** by a golden-run eval (#130)
    showing the constrained objective improved. Human approves. This is where
@@ -113,15 +128,41 @@ will thrash without these rules:
 - **Cooldown / hysteresis.** Do not re-optimize a loop immediately after a
   change; let it run N times and accumulate stable telemetry first.
 - **One change at a time, attributable.** Apply a single proposal, measure,
-  *then* the next. (This is exactly what replay #129 + golden runs #130 buy:
-  attribution.)
+  *then* the next. (This is exactly what replay (ADR 0061) + golden runs #130
+  buy: attribution.)
 - **A ratchet, not a random walk.** A proposal is accepted only on net
   improvement of the constrained objective; otherwise it is rejected and the
   loop is reverted. No net gain → no change.
-- **Baseline + sample size.** Quantitative falsification names the baseline
-  window, the post window, and an N large enough that the delta is not noise.
-  A weekly loop needs a multi-week window; a per-issue loop needs enough issue
-  volume.
+- **Paired comparison, not before/after windows.** Before/after windows
+  confound the change with time (model upgrades, issue mix, baseline drift).
+  Prefer **paired A/B or shadow replay on identical inputs** via ADR 0061:
+  replay the same golden runs under the old and new spec and compare outcomes
+  on the *same* inputs, so the delta is the change, not the clock.
+- **Name the test.** The quantitative gate specifies a named statistical test
+  (e.g. paired bootstrap or permutation test on the paired run outcomes), not
+  a bare "the number went down."
+- **Correct for multiple comparisons.** Many proposals × many guardrails
+  inflates false accepts; the pass threshold is corrected for the number of
+  guardrails checked (e.g. Bonferroni or FDR).
+- **Handle LLM run variance.** LLM outputs are stochastic; the paired design +
+  resampling accounts for run-to-run variance, and a delta inside the variance
+  band is a *no-change*, not an improvement.
+
+### Rollback, provenance, and optimizer cost
+
+- **Applied proposals are stored as a git commit to the `*.fabrik.yaml` spec
+  plus a proposal record** (id, tier, regime, evidence, approver(s),
+  before/after eval) kept with the run data, so the ratchet history is
+  auditable and reversible.
+- **Revert is a first-class operation.** The operator triggers it explicitly,
+  or the conductor reverts **automatically** when a guardrail trips during
+  the measurement window. The proposal record marks the revert, so the
+  history shows the full accept→revert arc.
+- **Cost cap on the optimizer itself.** Audits and eval loops spend tokens
+  and CI time; the optimizer is a workload like any other. A budget cap
+  (per audit, per measurement window, per project) is enforced via the #126
+  cost rollups; a cap breach pauses optimization for that loop and surfaces
+  it in the audit report.
 
 **Data-regime routing (which signal leads).** The two signals differ in data
 efficiency, so the regime routes which one leads — and how strong the
@@ -129,9 +170,18 @@ falsification is:
 
 | Regime | Available | Leading signal | Falsification | Gate |
 |--------|-----------|----------------|---------------|------|
-| **zero-data** | spec + general patterns | LLM prior | weak — prior only | invariants (schema+tier) + human + ratchet |
-| **low-data** | spec + a few traces | LLM prior + few obs. | weak — few observations | human + ratchet (revert-on-regression) |
-| **high-data** | spec + enough runs | quantitative (metric) | strong — measured delta | metric filter + KPI/guardrail gate |
+| **zero-data** (0 runs) | spec + general patterns | LLM prior | weak — prior only | invariants (schema+tier) + human |
+| **low-data** (≥ `MIN_BASELINE_RUNS`, default 5) | spec + a few traces | LLM prior + few obs. | weak — few observations | human + ratchet (revert-on-regression vs. baseline) |
+| **high-data** (≥ graduation threshold, §8) | spec + enough runs | quantitative (metric) | strong — measured delta | metric filter + KPI/guardrail gate |
+
+**Regime boundaries are named constants, conductor-computed.** `zero-data` =
+0 completed runs. `low-data` = ≥ `MIN_BASELINE_RUNS` (default 5) completed
+runs — the minimum for "regression" to mean anything: the ratchet compares
+post-change runs against those baseline runs on the loop's primary outcome
+(failure rate, judge verdicts) and reverts if they are worse. Below 5 runs
+there is no baseline, so the loop is `zero-data` and the revert-on-regression
+claim does not apply. `high-data` = enough runs that the metric beats its
+variance (the graduation threshold is the §8 open question).
 
 The fabrik eval is the final gate *whenever it is feasible*; in the zero/low
 regime it usually is not, so the human + ratchet take over. The tradeoff to
@@ -143,14 +193,47 @@ presented as a measured improvement.
 
 | Tier | Scope | Gate |
 |------|-------|------|
-| **low** | prompt wording / efficiency tweaks | lightweight approval |
-| **medium** | structural spec changes (step order, model routing, budgets) | normal approval + eval delta required |
+| **low** | prompt wording / efficiency tweaks | single approval, diff + loop-specific evidence shown |
+| **medium** | structural spec changes (step order, model routing, budgets) | **two reviewers** + eval delta required |
 | **high** | anything touching a trust boundary (egress, auth, untrusted-input rules, the approval gates) | expert / second-human review; **tighten-only** — a relaxing change is never proposed |
+
+Tier is conductor-computed from the diff (§3), so the table is a property of
+the change, not of the agent's self-assessment.
 
 Security is the *scariest* tier, not the safest: an LLM can produce a spec
 that *looks* hardened with a subtle hole a skimming human misses, and an
 optimizer also has a quiet incentive to *relax* security to hit a speed/cost
 number. The tighten-only rule removes that incentive at the source.
+
+### Evaluator immutability (the optimizer cannot game the judge)
+
+The DGM gaming case (§7) is not prevented by guardrails alone: a proposal can
+still touch steps, prompts, and budgets in ways that move the *measurement*
+instead of the *outcome* — weaken a judge step, drop a review step, change
+what telemetry a KPI reads. Therefore:
+
+- **Judge/eval/KPI-producing steps and the golden-run set are immutable to
+  proposals** — touching them forces `high` tier, and even then only in a
+  *strengthening* direction (tighten-only, as for trust boundaries).
+- **A proposal cannot lower a guardrail threshold in the same change** that
+  claims to improve a guarded KPI. Threshold changes are their own proposal,
+  `high` tier, and never bundled.
+- **Tiering includes a "reduces observability" check:** any diff that removes
+  a log, metric, review step, or telemetry source is at least `medium`, and
+  `high` if the removed signal feeds a guardrail.
+
+### The human gate is only as strong as the approver's information
+
+A gate that presents a familiar-sounding diff will rubber-stamp it. Concrete
+mitigations, in force from the first tier:
+
+- The approver sees **the diff plus the loop-specific evidence** (`why_here`,
+  baseline numbers, the named test's result) — not just the pattern name.
+- **`medium` requires a second reviewer**, so no applied change rests on one
+  skim.
+- **Track approval rate and time-to-approve per approver** as a
+  rubber-stamp signal: a sustained ~100% instant-approval rate is itself a
+  finding the auditor reports back.
 
 ## 7. Why this is safe where prior art is not
 
@@ -158,7 +241,7 @@ The closest prior art — the [**Darwin Gödel Machine**](https://arxiv.org/abs/
 (Sakana AI, [arXiv:2505.22954](https://arxiv.org/abs/2505.22954) ·
 [sakana.ai/dgm](https://sakana.ai/dgm/)) — has the same audit → propose →
 evaluate → keep-if-better loop, but it lets the agent **rewrite its own code**
-(the conductor). Follow-up analysis documented **benchmark gaming**: a
+(the conductor). The paper's own analysis documents **objective hacking**: a
 self-modification raised the score by removing the logging of the tokens the
 evaluator keyed on, bypassing the detector without fixing the problem. That is
 Goodhart's law observed in the wild, in this exact architecture.
@@ -186,6 +269,32 @@ fabrik's deliberate differences:
    audit is preserved: the human, not the agent, is who approved it).
 4. **Trust-boundary changes are tighten-only** and expert-reviewed.
 
+### 7.1 Formal verification of the safety envelope (optional hardening)
+
+The safety argument above rests on the conductor enforcing a set of invariants
+(acceptance rule, deterministic tiering, evaluator immutability, ratchet
+monotonicity, tighten-only). Those invariants are **pure functions over data
+records** — exactly what a theorem prover can check. As an optional
+hardening tier, the acceptance/tiering/ratchet logic can be mirrored in a
+formal specification (e.g. Lean) with a small set of theorems:
+
+- no proposal that lowers a guardrail threshold can be accepted;
+- touching a trust-boundary field forces `high` tier;
+- the ratchet is monotonic (accepted states form a chain under the
+  improvement order);
+- tighten-only: no accepted diff relaxes a trust boundary.
+
+Scope, stated honestly: this proves the **envelope**, not the **improvement**.
+An LLM's effect on outcomes is an empirical claim — no prover can establish
+that it is a theorem; it stays falsified by eval + ratchet + human gate. The
+position is: *we cannot prove the improvement, but we can prove the boundary
+that contains the risk.* Practical shape: the Python implementation remains
+the executable spec; a CI differential test checks that the Lean model and
+the Python behavior agree on a generated corpus, closing the "code matches
+model" gap. This is a maintenance cost, so it is a ratchet-compatible upgrade,
+not a dependency: the ADR stands on the empirical gate + tested invariants,
+and the proof strengthens the claim later.
+
 ## 8. Open questions
 
 - **The constrained objective.** Which KPIs are hard floors vs. optimizable,
@@ -194,8 +303,6 @@ fabrik's deliberate differences:
 - **Measurement validity per loop.** How do we auto-derive a sufficient N and
   window from a loop's trigger cadence, and when do we fall back to
   `qualitative-only`?
-- **Proposal provenance & replay.** Every applied proposal should be recorded
-  with its before/after eval so the ratchet history is auditable and reversible.
 - **Data-regime classification.** How do we auto-classify a loop's regime
   (zero / low / high) from trigger cadence × run count, and at what run-count
   does a loop *graduate* from qualitative to quantitative gating? This is the
@@ -210,10 +317,25 @@ fabrik's deliberate differences:
   Current lean: use the fabrik eval harness as the source of truth; treat
   DSPy as a reference implementation (or a drop-in for the prompt tier only),
   contingent on the fabrik eval proving too sparse to gate on alone.
+- **Typed `Proposal`.** Per AGENTS.md, the proposal object becomes a typed
+  dataclass (with the JSON schema from #131 as its wire format) in the ADR —
+  not a dict poked at procedurally. The conductor-computed fields (`tier`,
+  `regime`) are set by the conductor, not by the constructing agent.
 
 ## 9. Roadmap placement
 
-Follow-on to #130. Suggested tracking: a new issue "self-optimization via
-falsifiable proposals" under the First Wins / post-#130 bucket, with the
-read-only audit report (§4.1) as the first shippable slice. An ADR follows on
-approval of this direction.
+Tracking issue: **#176** ("Self-optimization via falsifiable proposals"),
+follow-on to #130, with the read-only audit report (§4.1) as the first
+shippable slice.
+
+**Promotion to an ADR** happens when all of the following hold:
+
+1. The make-or-break decisions in §8 are resolved (constrained objective,
+   data-regime graduation threshold).
+2. The read-only audit report (§4.1) has shipped and produced at least one
+   real audit a human acted on.
+3. This direction is explicitly approved in review.
+
+The ADR will contain the typed `Proposal` model, the conductor-computed
+tiering rules, the evaluator-immutability invariants, and the statistical
+gate specification.
