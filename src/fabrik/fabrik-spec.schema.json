@@ -372,6 +372,7 @@
         "endpoint": { "type": "string", "description": "agent: backend endpoint override." },
         "connection": { "type": "string", "description": "agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state)." },
         "variant": { "type": "string", "description": "agent: backend variant." },
+        "billing": { "type": "string", "enum": ["api", "subscription", "unknown"], "description": "llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection." },
         "github_identity": {
           "type": "string",
           "enum": ["dev", "reviewer"],

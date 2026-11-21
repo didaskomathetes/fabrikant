@@ -87,6 +87,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `endpoint` | string | optional | agent: backend endpoint override. |
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
+| `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
 | `github_identity` | `dev` \| `reviewer` | optional | agent: GitHub identity (token) the agent uses for pushes/PRs. |
 | `workdir` | string | optional | agent: working directory inside the worktree. |
 | `permissions` | list of string | optional | agent: tool permissions for the session. |
