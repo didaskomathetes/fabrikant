@@ -74,7 +74,7 @@ from .. import config
 from ..apicommit import push_branch
 from ..context import _cap, _substitute
 from ..failures import ConfigError, failed, from_result
-from ..gitops import _gh_api, _gh_diff, _gh_token
+from ..hosting import Provider, get_provider
 from ..runmodel import FailureKind
 from .agent import _step_agent_backend
 from .escalation import GRANT_ROUNDS_CTX
@@ -223,7 +223,7 @@ _HEAD_SYNC_TIMEOUT_S = 90
 _HEAD_SYNC_INTERVAL_S = 3
 
 
-def _resolve_pr_number(ctx: dict, step: dict, repo: str, token: str) -> int:
+def _resolve_pr_number(ctx: dict, step: dict, repo: str, provider: Provider) -> int:
     """PR-Number: Step-Def ({pr_number} substituiert) → ctx → Lookup per Head-Branch."""
     raw = _substitute(str(step.get("pr") or ""), ctx).strip()
     if not raw:
@@ -233,27 +233,22 @@ def _resolve_pr_number(ctx: dict, step: dict, repo: str, token: str) -> int:
     branch = str(ctx.get("branch") or "")
     if branch and branch != "-":
         owner = repo.split("/", 1)[0]
-        res = _gh_api("GET", f"https://api.github.com/repos/{repo}/pulls?state=open&head={owner}:{branch}", token)
-        if isinstance(res, list) and res:
-            return int(res[0]["number"])
+        prs = provider.list_prs(repo, state="open", head=f"{owner}:{branch}")
+        if prs:
+            return prs[0].number
     raise ValueError(f"pr_review: PR-Number nicht auflösbar (pr: {raw!r}, branch: {branch!r})")
 
 
-def _post_review(repo: str, pr_number: int, token: str, event: str, body: str) -> None:
-    _gh_api(
-        "POST",
-        f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews",
-        token,
-        {"event": event, "body": body},
-    )
+def _post_review(provider: Provider, repo: str, pr_number: int, event: str, body: str) -> None:
+    provider.post_review(repo, pr_number, event=event, body=body)
 
 
-def _wait_for_head(repo: str, pr_number: int, sha: str, token: str) -> bool:
-    """Pollt den PR, bis GitHub ``sha`` als Head meldet. False = Timeout."""
+def _wait_for_head(provider: Provider, repo: str, pr_number: int, sha: str) -> bool:
+    """Pollt den PR, bis der Host ``sha`` als Head meldet. False = Timeout."""
     deadline = time.monotonic() + _HEAD_SYNC_TIMEOUT_S
     while True:
-        pr = _gh_api("GET", f"https://api.github.com/repos/{repo}/pulls/{pr_number}", token)
-        if ((pr or {}).get("head") or {}).get("sha") == sha:
+        pr = provider.get_pr(repo, pr_number)
+        if pr.head_sha == sha:
             return True
         if time.monotonic() >= deadline:
             return False
@@ -347,9 +342,11 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     repo = str(step.get("repo") or "").strip()
     if not repo:
         raise ConfigError("pr_review: 'repo: owner/name' fehlt")
-    dev_token = _gh_token("dev")
-    reviewer_token = _gh_token("reviewer")
-    pr_number = _resolve_pr_number(ctx, step, repo, dev_token)
+    # Dual-Identity (ADR 0010): Dev-Provider für Diff/Head-Polling, Reviewer-Provider
+    # für das Review-Posting (Self-Approval ist verboten). GitLab: beide derselbe Token.
+    dev_provider = get_provider(repo, role="dev")
+    reviewer_provider = get_provider(repo, role="reviewer")
+    pr_number = _resolve_pr_number(ctx, step, repo, dev_provider)
     # ADR 0059: eine Eskalations-Freigabe gewährt ein frisches Runden-Budget
     # (ctx-Variable GRANT_ROUNDS_CTX) — ein fortgesetzter Run erschöpft nicht sofort.
     max_rounds = max(0, int(step.get("max_rounds", 2))) + int(ctx.get(GRANT_ROUNDS_CTX, 0) or 0)
@@ -357,13 +354,13 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     previous: list[dict] = []  # Findings der Vorrunde (Konvergenz, ADR 0039)
 
     for round_i in range(max_rounds + 1):
-        if pushed_sha and not _wait_for_head(repo, pr_number, pushed_sha, dev_token):
+        if pushed_sha and not _wait_for_head(dev_provider, repo, pr_number, pushed_sha):
             return failed(
-                f"pr_review: GitHub meldet PR #{pr_number} nach {_HEAD_SYNC_TIMEOUT_S}s nicht auf "
+                f"pr_review: Host meldet PR #{pr_number} nach {_HEAD_SYNC_TIMEOUT_S}s nicht auf "
                 f"{pushed_sha[:7]} — Re-Review auf veraltetem Diff verhindert",
                 FailureKind.TRANSIENT,
             )
-        diff = _gh_diff(repo, pr_number, dev_token)
+        diff = dev_provider.pr_diff(repo, pr_number)
         emit(f"  Review-Runde {round_i + 1}/{max_rounds + 1} (PR #{pr_number}, Diff {len(diff)} chars)")
         verdict, res = _review_diff(diff, ctx, step, emit, previous)
         if verdict is None:
@@ -380,7 +377,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
             if acceptance_block:
                 body += "\n\n" + acceptance_block
             body += "\n\n— fabrik pr_review (Reviewer-Identity)"
-            _post_review(repo, pr_number, reviewer_token, "APPROVE", body)
+            _post_review(reviewer_provider, repo, pr_number, "APPROVE", body)
             return {
                 "ok": True,
                 "summary": f"approved (Runde {round_i + 1}) · {review_field['summary']}".strip(" ·"),
@@ -391,7 +388,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
         body = (verdict.get("summary") or "changes requested") + "\n" + _format_findings(verdict["findings"])
         if acceptance_block:
             body += "\n" + acceptance_block
-        _post_review(repo, pr_number, reviewer_token, "REQUEST_CHANGES", body)
+        _post_review(reviewer_provider, repo, pr_number, "REQUEST_CHANGES", body)
         emit(f"  ⚠ changes_requested ({len(verdict['findings'])} Findings)")
         if round_i >= max_rounds:
             return failed(

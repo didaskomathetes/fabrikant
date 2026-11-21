@@ -14,10 +14,9 @@ import urllib.request
 import pytest
 from test_server_api import fabrik_home, fabrik_url  # noqa: F401  (Fixtures)
 
-from fabrik import alerts, config, runs, server, specs, webhook
+from fabrik import alerts, config, gitops, runs, server, specs, webhook
 from fabrik import llm as llm_registry
 from fabrik.engine import run_loop
-from fabrik.steps import pr as pr_step
 
 SECRET = "alert-secret-value"
 
@@ -254,8 +253,8 @@ def incident(fabrik_home, tmp_path, monkeypatch):  # noqa: F811
             return {"number": 7, "html_url": "https://github.com/o/r/pull/7"}
         return []
 
-    monkeypatch.setattr(pr_step, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr_step, "_gh_api", fake_gh)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", fake_gh)
     monkeypatch.setattr(llm_registry, "active_provider", lambda: {"name": "fake", "model": "m"})
     answer = {"text": json.dumps({"category": "bug"})}
     usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}

@@ -11,10 +11,11 @@ import pytest
 from helpers import load_script
 
 import fabrik
-from fabrik import config
+from fabrik import config, gitops
 from fabrik.approval import ApprovalRequest
 from fabrik.engine import run_loop
 from fabrik.failures import ConfigError
+from fabrik.hosting import get_provider
 from fabrik.specs import _validate_trigger
 from fabrik.steps import escalation
 
@@ -33,7 +34,8 @@ def _comment(body: str, n: int = 1) -> dict:
 def _fake_github(monkeypatch, item: dict, comments: list[dict], *, delete_status: int | None = None) -> list:
     """GitHub-REST des Steps faken; liefert die Aufrufliste (method, url)."""
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(escalation, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
 
     def api(method, url, token, payload=None, accept=None):
         calls.append((method, url))
@@ -43,7 +45,7 @@ def _fake_github(monkeypatch, item: dict, comments: list[dict], *, delete_status
             return {}
         return comments if "/comments" in url else item
 
-    monkeypatch.setattr(escalation, "_gh_api", api)
+    monkeypatch.setattr(gitops, "_gh_api", api)
     return calls
 
 
@@ -131,7 +133,8 @@ def test_step_resume_grant_rounds_overridable(monkeypatch):
 
 @pytest.mark.parametrize(("ctx", "step"), [({}, {"repo": "o/r"}), (_ctx(), {})])
 def test_step_config_errors(monkeypatch, ctx, step):
-    monkeypatch.setattr(escalation, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     with pytest.raises(ConfigError):
         escalation._step_escalation(ctx, step, lambda _: None)
 
@@ -139,8 +142,12 @@ def test_step_config_errors(monkeypatch, ctx, step):
 def test_comments_are_paginated(monkeypatch):
     monkeypatch.setattr(escalation, "COMMENTS_PER_PAGE", 2)
     pages = {1: [{"id": 1}, {"id": 2}], 2: [{"id": 3}]}
-    monkeypatch.setattr(escalation, "_gh_api", lambda m, url, t: pages[int(url.rsplit("=", 1)[1])])
-    assert [c["id"] for c in escalation._comments("o/r", 7, "tok")] == [1, 2, 3]
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, url, t, payload=None, accept=None: pages[int(url.rsplit("=", 1)[1])]
+    )
+    assert [c["id"] for c in escalation._comments(get_provider("o/r"), "o/r", 7)] == [1, 2, 3]
 
 
 def test_engine_pauses_and_resume_continues(runs_dir, projects_dir, tmp_path, monkeypatch):
@@ -183,8 +190,9 @@ def test_on_pr_exclude_labels(monkeypatch):
     ]
     fired = []
     monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(fabrik.scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(fabrik.scheduler, "_gh_api", lambda m, u, t: list(prs))
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs))
     monkeypatch.setattr(fabrik.scheduler, "loop_run_triggers", lambda n, ln: set())
     trig = {"repo": "o/r", "poll": 0, "labels": ["fabrik"], "exclude_labels": ["needs human"], "reconcile": True}
     fabrik.Scheduler()._check_pr("p", "l", {"github": "o/r"}, trig)
@@ -193,8 +201,8 @@ def test_on_pr_exclude_labels(monkeypatch):
 
 def test_unprocessed_issues_skip_excluded_without_using_quota(monkeypatch):
     issues = [{"number": 1, "labels": [LABEL]}, {"number": 2, "labels": []}]
-    monkeypatch.setattr(fabrik.scheduler, "_iter_open_issues_oldest_first", lambda repo, tok, labels: iter(issues))
-    todo = fabrik.scheduler._unprocessed_issues("o/r", "tok", [], set(), 1, exclude=["needs human"])
+    monkeypatch.setattr(fabrik.scheduler, "_iter_open_issues_oldest_first", lambda repo, provider, labels: iter(issues))
+    todo = fabrik.scheduler._unprocessed_issues("o/r", get_provider("o/r"), [], set(), 1, exclude=["needs human"])
     assert [it["number"] for it in todo] == [2]
 
 

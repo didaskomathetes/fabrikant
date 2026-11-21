@@ -1,0 +1,657 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/didaskomathetes/fabrik/schema/fabrik-spec.schema.json",
+  "title": "fabrik project spec",
+  "description": "Machine-readable schema for fabrik project specs (*.fabrik.yaml / *.fabrik.json). Single source of truth for the spec format: validation (src/fabrik/specschema.py) and the generated reference (docs/spec-reference.md, scripts/generate-spec-reference.py) both derive from this file. The schema is applied to the EXPANDED spec (after vars/template/relay expansion, see src/fabrik/specs.py): `use:`/`with:`/`insert:` loops are already inlined, so the template keys on `loop` document the pre-expansion syntax only. Structural checks (types, enums, required fields, ranges) live here; semantic checks (backend registry, cron-vs-retry intervals, alert-route cycles, template parameters, reserved vars) stay in the Python validation in src/fabrik/specs.py.",
+  "type": "object",
+  "required": ["loops"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Project name. Defaults to the file name without suffix. Must not contain '::' (lock-key separator)."
+    },
+    "root": {
+      "type": "string",
+      "description": "Path of the project root the loops operate on (~ and env vars are expanded). Required for validation; defaults to the repo root for specs in .fabrik/fabrik.yaml."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable project description (UI, docs)."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Extra run-context variables (string values) available as {name} in all steps."
+    },
+    "max_parallel": {
+      "$ref": "#/$defs/numeric",
+      "description": "Maximum parallel runs of this project (integer >= 1, default 3, ADR 0028)."
+    },
+    "github": {
+      "type": "string",
+      "description": "GitHub repo as owner/name. Default repo for on_issue/on_pr triggers, issue/pr steps and alerts."
+    },
+    "hosting": {
+      "type": "string",
+      "description": "Code-hosting provider name, e.g. github, gitlab, or a registered third-party provider. Inferred from the repo host if omitted."
+    },
+    "repo": {
+      "type": "object",
+      "description": "Git repo of the project: every run gets a worktree detached on origin/<branch> (ADR 0028).",
+      "required": ["branch"],
+      "properties": {
+        "branch": {
+          "type": "string",
+          "description": "Base branch the run worktrees are created from."
+        },
+        "subpath": {
+          "type": "string",
+          "description": "Subdirectory inside the repo the loops operate on (default: repo root)."
+        }
+      }
+    },
+    "github_env_file": {
+      "type": "string",
+      "description": "Absolute path to a KEY=VALUE file with GitHub tokens (GITHUB_TOKEN, GITHUB_REVIEWER_TOKEN)."
+    },
+    "commit_via": {
+      "type": "string",
+      "enum": ["git", "api"],
+      "description": "How commits are made: local `git` (default) or signed commits via the GitHub API (ADR 0010 amendment)."
+    },
+    "protected": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Branch names the loops must not touch (legacy, informational — the engine does not enforce it)."
+    },
+    "notify": {
+      "type": "object",
+      "description": "Alert channels for run events (run_failed, run_exhausted, run_passed).",
+      "properties": {
+        "slack": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["url"],
+              "properties": { "url": { "type": "string" } }
+            }
+          ],
+          "description": "Slack webhook URL (string or {url: ...})."
+        },
+        "webhooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string" },
+              "name": { "type": "string", "description": "Webhook name (log, channel field)." }
+            }
+          },
+          "description": "Generic webhook targets (Datadog, CloudWatch, ...)."
+        },
+        "github_issue": { "type": "boolean", "description": "Open a GitHub issue on run_failed/run_exhausted (default false)." },
+        "issue_labels": { "type": "array", "items": { "type": "string" }, "description": "Labels for the alert issue (default: fabrik)." },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["run_failed", "run_exhausted", "run_passed"] },
+          "description": "Events to notify on (default: run_failed, run_exhausted)."
+        }
+      }
+    },
+    "notify_events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "enum": ["run_failed", "run_exhausted", "run_passed"] },
+      "description": "Legacy top-level form of notify.events."
+    },
+    "extra_context": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/context_source" },
+      "description": "Project-level prompt context sources for LLM steps (ADR 0008). Step-level extra_context supplements these."
+    },
+    "retry": {
+      "$ref": "#/$defs/retry"
+    },
+    "vars": {
+      "type": "object",
+      "description": "Spec-level variables substituted as {name} in all strings (ADR 0047). Keys must be identifiers and must not shadow reserved runtime variables (project, root, issue_number, ...).",
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*$": {}
+      }
+    },
+    "relay": {
+      "$ref": "#/$defs/relay"
+    },
+    "loops": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Loop name -> loop definition. At least one loop is required.",
+      "additionalProperties": { "$ref": "#/$defs/loop" }
+    }
+  },
+  "patternProperties": {
+    "^x-": {
+      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts); `x-` is the documented convention for them."
+    }
+  },
+  "$defs": {
+    "context_source": {
+      "type": "object",
+      "description": "One prompt context source (extra_context entry): exactly one of file/cmd/value (ADR 0008). Untrusted by default; trusted: true only for repo-owned files and tool output.",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "Variable name of the context block." },
+        "file": { "type": "string", "description": "File path relative to the step workdir (must not escape it)." },
+        "cmd": { "type": "string", "description": "Shell command (sh -c) in the step workdir; only stdout counts." },
+        "value": { "type": "string", "description": "Template with {variables}." },
+        "trusted": { "type": "boolean", "description": "true = content is instruction; default false = content is marked as data (prompt-injection protection)." },
+        "timeout": { "$ref": "#/$defs/numeric", "description": "cmd timeout in seconds (>= 0, default 300)." },
+        "max_chars": { "$ref": "#/$defs/numeric", "description": "Per-source character cap (integer >= 1, default 50000)." }
+      },
+      "oneOf": [
+        { "required": ["file"] },
+        { "required": ["cmd"] },
+        { "required": ["value"] }
+      ]
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^[0-9]+[smhd]$",
+      "description": "Duration like 45s, 5m, 2h, 1d."
+    },
+    "numeric": {
+      "oneOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^[+-]?\\d+(\\.\\d+)?$" }
+      ],
+      "description": "A number, or a numeric string (`vars:` substitution yields strings). Range/integer checks are enforced by the Python validation."
+    },
+    "retry": {
+      "type": "object",
+      "description": "Retry policy for failed runs (ADR 0036). max: 0 disables retry. Loop-level retry overrides the project-level block.",
+      "properties": {
+        "max": { "$ref": "#/$defs/numeric", "description": "Number of ADDITIONAL attempts after the first run (integer >= 0, default 3)." },
+        "backoff": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/duration" },
+          "description": "Wait before attempt 1..n; the last value applies to all further attempts (default 5m, 30m, 2h)."
+        },
+        "on": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["interrupted", "transient"] },
+          "description": "Failure kinds (ADR 0035) that may be retried (default: interrupted, transient)."
+        },
+        "max_wait": { "type": "string", "pattern": "^[0-9]+[smhd]$", "description": "Cap for a reported retry_after (default 24h)." }
+      }
+    },
+    "agent_role": {
+      "type": "object",
+      "description": "Backend/model of a relay role.",
+      "properties": {
+        "backend": { "type": "string", "description": "Agent backend name (default: installation default)." },
+        "model": { "type": "string", "description": "Model name (default: backend default)." }
+      }
+    },
+    "relay": {
+      "type": "object",
+      "description": "Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. Generates the loops relay-dispatch, relay-session and relay-audit.",
+      "required": ["allowed", "bot_login"],
+      "properties": {
+        "repo": { "type": "string", "description": "GitHub repo as owner/name (default: project-level github:)." },
+        "allowed": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "GitHub logins allowed to file relay tasks (briefs are agent instructions)." },
+        "bot_login": { "type": "string", "description": "Pinned bot identity for status comments (required)." },
+        "base": { "type": "string", "description": "Base branch (default main)." },
+        "label": { "type": "string", "description": "Issue label marking relay tasks (default: relay task)." },
+        "forbid": { "type": "array", "items": { "type": "string" }, "description": "Labels that forbid a task." },
+        "dispatch": { "type": "string", "description": "Cron expression of the dispatcher loop (default */15 * * * *)." },
+        "builder": { "$ref": "#/$defs/agent_role" },
+        "reviewer": { "$ref": "#/$defs/agent_role" },
+        "max_session_minutes": { "$ref": "#/$defs/numeric", "description": "Session length cap from the brief (integer >= 1, default 35)." },
+        "verify_timeout": { "$ref": "#/$defs/numeric", "description": "Verify timeout in seconds (integer >= 1, default 300)." },
+        "audit_timeout": { "$ref": "#/$defs/numeric", "description": "Audit agent timeout in seconds (integer >= 1, default 1200)." },
+        "audit": { "type": "boolean", "description": "Enable the audit loop (default true)." },
+        "retry": { "$ref": "#/$defs/retry" },
+        "trail_archive": {
+          "type": "object",
+          "required": ["type"],
+          "description": "Where the session trail is archived before the branch goes (ADR 0037).",
+          "properties": {
+            "type": { "type": "string", "enum": ["git-ref", "local"], "description": "Archive target (s3 is planned, not implemented)." }
+          }
+        }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "description": "A loop: a chain of steps started by triggers. Concrete loops need steps; template loops (pre-expansion) use use:/with:/insert: instead (ADR 0047).",
+      "required": ["steps"],
+      "properties": {
+        "description": { "type": "string", "description": "Human-readable loop description (UI)." },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step" },
+          "description": "Ordered step chain. Every step stops the run on failure by default."
+        },
+        "triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trigger" },
+          "description": "What starts the loop (manual, cron, on_file, on_issue, on_pr, on_webhook, on_alert, on_slack)."
+        },
+        "worktree": {
+          "type": "boolean",
+          "description": "false = no git worktree, empty scratch dir per run (ADR 0020); only allowed without worktree-requiring steps (git, pr, agent, review, pr_review)."
+        },
+        "tier": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "Risk tier as spec data (1 = lowest, 4 = highest); mapped to gates/approvals by a single mapping function."
+        },
+        "retry": { "$ref": "#/$defs/retry" },
+        "use": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "Template loop (pre-expansion): name of a <name>.loop.yaml template (ADR 0047). Expanded before validation."
+        },
+        "with": {
+          "type": "object",
+          "description": "Template loop (pre-expansion): parameter values for the template."
+        },
+        "insert": {
+          "type": "array",
+          "description": "Template loop (pre-expansion): extra steps inserted after named template steps. Cannot be combined with own steps.",
+          "items": {
+            "type": "object",
+            "required": ["after", "steps"],
+            "properties": {
+              "after": { "type": "string", "description": "Name of the template step to insert after." },
+              "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }
+            }
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "description": "One step of a loop. `type` selects the step kind; the per-type fields are listed under that type. Common fields (name, gate, approval, ...) apply to all types.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "shell", "git", "pr", "agent", "report", "http", "llm", "notify",
+            "state", "verify", "review", "pr_review", "pr_merge", "issue",
+            "human_gate", "alert_route", "escalation"
+          ],
+          "description": "Step kind."
+        },
+        "name": { "type": "string", "description": "Step name (run log, insert anchors, reports)." },
+        "gate": {
+          "type": "boolean",
+          "description": "false = a failure of this step does NOT stop the run (default true)."
+        },
+        "approval": {
+          "type": "boolean",
+          "description": "true = pause the run for human approval before this step (ADR 0015)."
+        },
+        "approval_when": {
+          "type": "object",
+          "description": "Conditional approval (ADR 0017): mapping variable -> value or list of values; pauses only when the variable matches. Not combinable with approval: true.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "integer" },
+              { "type": "boolean" },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "integer" },
+                    { "type": "boolean" }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "approval_reason": { "type": "string", "description": "Template for the approval request text ({variables} allowed)." },
+        "failure_kind": {
+          "type": "string",
+          "enum": ["transient", "environment", "outcome"],
+          "description": "Failure class (ADR 0035) for non-zero exit codes; shell steps only."
+        },
+        "extra_context": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/context_source" },
+          "description": "Step-level prompt context sources for LLM steps (ADR 0008); false disables the project-level context for this step."
+        },
+        "cmd": { "type": "string", "description": "shell: command (sh -c in the workdir; {variables} substituted)." },
+        "timeout": { "$ref": "#/$defs/numeric", "description": "Step timeout in seconds (>= 0; shell, http, llm, agent)." },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "shell: extra environment variables for the command."
+        },
+        "branch": { "type": "string", "description": "git: branch to create/checkout (template allowed)." },
+        "commit": {
+          "type": "object",
+          "required": ["message"],
+          "properties": {
+            "add": { "type": "array", "items": { "type": "string" }, "description": "Git pathspecs to stage (default: ':/' = everything)." },
+            "message": { "type": "string", "description": "Commit message (template allowed)." }
+          },
+          "description": "git: commit the worktree changes (add = pathspecs, message = commit message)."
+        },
+        "fetch": { "type": "boolean", "description": "git: fetch before checkout." },
+        "push": { "type": "boolean", "description": "git: push the branch after commit." },
+        "track": { "type": "boolean", "description": "git: track the branch." },
+        "protected": { "type": "boolean", "description": "git/pr_review: refuse to touch protected branches." },
+        "repo": { "type": "string", "description": "pr/pr_review/pr_merge/issue/human_gate/escalation: GitHub repo as owner/name (default: project-level github:)." },
+        "title": { "type": "string", "description": "pr: PR title. issue (create/edit): issue title. Templates allowed." },
+        "body": { "type": "string", "description": "pr: PR body. issue (create/edit): issue body. Templates allowed." },
+        "head": { "type": "string", "description": "pr: head branch (default: the run branch)." },
+        "base": { "type": "string", "description": "pr: base branch (default: project base branch)." },
+        "labels": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "pr/issue: labels to set (list or comma-separated string)."
+        },
+        "prompt": { "type": "string", "description": "agent/llm: prompt text (template allowed). agent: exactly one of prompt/prompt_file." },
+        "prompt_file": { "type": "string", "description": "agent/review: prompt file path (relative to the project root)." },
+        "backend": { "type": "string", "description": "agent/review/pr_review: agent backend name (default: installation default; must be a known backend)." },
+        "model": { "type": "string", "description": "agent/llm/review/pr_review: model name. review/pr_review: required (must differ from the builder model, ADR 0003)." },
+        "endpoint": { "type": "string", "description": "agent: backend endpoint override." },
+        "connection": { "type": "string", "description": "agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state)." },
+        "variant": { "type": "string", "description": "agent: backend variant." },
+        "billing": { "type": "string", "enum": ["api", "subscription", "unknown"], "description": "llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection." },
+        "github_identity": {
+          "type": "string",
+          "enum": ["dev", "reviewer"],
+          "description": "agent: GitHub identity (token) the agent uses for pushes/PRs."
+        },
+        "workdir": { "type": "string", "description": "agent: working directory inside the worktree." },
+        "permissions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "agent: tool permissions for the session."
+        },
+        "retries": { "$ref": "#/$defs/numeric", "description": "agent: number of session restarts after the first attempt (integer >= 0, default 2)." },
+        "stale_after": { "$ref": "#/$defs/numeric", "description": "agent: seconds without progress before the session counts as stale (>= 0, default 900)." },
+        "text": { "type": "string", "description": "report: report text (template allowed); logged, or written with write:." },
+        "write": { "type": "string", "description": "report: file path (inside the project root) to write the report to." },
+        "url": { "type": "string", "description": "http: request URL (template allowed). Required." },
+        "method": { "type": "string", "description": "http: HTTP method (default GET); pr_merge: squash | merge | rebase (default squash)." },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "http: request headers." },
+        "body": { "type": "string", "description": "http: request body (template allowed)." },
+        "expect": {
+          "type": "object",
+          "properties": { "status": { "type": "integer", "description": "Expected HTTP status (default 200)." } },
+          "description": "http: expected response."
+        },
+        "emit": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "additionalProperties": { "type": "string", "enum": ["body", "status"] }
+            }
+          ],
+          "description": "http: response parts to store as variables (variable -> body|status). issue: name of the variable to store the result in (create: issue number, list: issue lines; default issue_number / issues)."
+        },
+        "system": { "type": "string", "description": "llm: system prompt." },
+        "temperature": { "$ref": "#/$defs/numeric", "description": "llm: sampling temperature (>= 0)." },
+        "max_tokens": { "$ref": "#/$defs/numeric", "description": "llm: max completion tokens (integer >= 1)." },
+        "provider": { "type": "string", "description": "llm: LLM provider (named connection, ADR 0052)." },
+        "schema": { "type": "object", "description": "llm: JSON schema the response must match." },
+        "untrusted": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "llm: variable names whose values are marked as untrusted data in the prompt (prompt-injection protection, Leitprinzip 7)."
+        },
+        "message": { "type": "string", "description": "notify: message text (template allowed)." },
+        "slack": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["url"],
+              "properties": { "url": { "type": "string" } }
+            }
+          ],
+          "description": "notify: Slack webhook URL (string or {url: ...})."
+        },
+        "webhooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string" },
+              "name": { "type": "string", "description": "Webhook name (log, channel field)." }
+            }
+          },
+          "description": "notify: generic webhook targets (Datadog, CloudWatch, ...)."
+        },
+        "action": {
+          "type": "string",
+          "description": "state: get|set|add on the state file. issue: create|edit|label|close|list|block. (Other step types ignore the field; the per-type enum is enforced below.)"
+        },
+        "key": { "type": "string", "description": "state: state key (required)." },
+        "value": { "description": "state: value to set/add (any JSON type)." },
+        "file": { "type": "string", "description": "state: state file path (default: project state dir)." },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step" },
+          "description": "verify: check-list of steps that must all pass (issue #117)."
+        },
+        "target": { "type": "string", "description": "review: review target (default: the worktree diff)." },
+        "max_rounds": { "$ref": "#/$defs/numeric", "description": "pr_review: max review/fix rounds (integer >= 0; 0 = review only, ADR 0039)." },
+        "max_findings": { "$ref": "#/$defs/numeric", "description": "pr_review: max findings per round (integer >= 1, ADR 0039)." },
+        "fix_backend": { "type": "string", "description": "pr_review: backend for the fix rounds." },
+        "fix_model": { "type": "string", "description": "pr_review: model for the fix rounds." },
+        "fix_variant": { "type": "string", "description": "pr_review: backend variant for the fix rounds." },
+        "fix_timeout": { "$ref": "#/$defs/numeric", "description": "pr_review: fix agent timeout in seconds (integer >= 1)." },
+        "fix_check_timeout": { "$ref": "#/$defs/numeric", "description": "pr_review: fix check timeout in seconds (integer >= 1)." },
+        "fix_checks": { "type": "array", "items": { "type": "string" }, "description": "pr_review: shell commands that must pass after a fix round." },
+        "fix_commit": { "type": "boolean", "description": "pr_review: commit fix rounds to the PR branch." },
+        "pr": { "type": "string", "description": "pr_review/pr_merge: PR number or owner/name#number." },
+        "update_branch": { "type": "boolean", "description": "pr_merge: update the branch before merging." },
+        "number": { "type": "string", "description": "issue: issue number (for edit/label/close/block; default: the triggering issue)." },
+        "remove_labels": { "type": "array", "items": { "type": "string" }, "description": "issue: labels to remove." },
+        "inherit_labels": { "type": "array", "items": { "type": "string" }, "description": "issue (create): whitelist of labels inherited from the referenced issue (e.g. priority)." },
+        "limit": { "$ref": "#/$defs/numeric", "description": "issue: max items for list (integer >= 1, default 100)." },
+        "append": { "type": "boolean", "description": "issue (edit): true = append the body to the existing one instead of replacing it." },
+        "unless_contains": { "type": "string", "description": "issue (edit + append): skip when the current body already contains this marker (idempotency)." },
+        "state": { "type": "string", "enum": ["open", "closed"], "description": "issue (edit/list): issue state (list default: open)." },
+        "comment": { "type": "string", "description": "issue (close): comment posted before closing." },
+        "state_reason": { "type": "string", "description": "issue (close): close reason (completed | not_planned | duplicate; templates allowed, default: completed)." },
+        "duplicate_of": { "type": "string", "description": "issue (close): close as duplicate of #N and re-hang blocker relations onto #N (ADR 0031)." },
+        "blocked_by": { "type": "string", "description": "issue (block): issue references like '#12, #14' that block this issue (max 5, ADR 0031)." },
+        "prerequisite": { "type": "string", "description": "issue (block): newly created prerequisite issue reference, always added to the blockers." },
+        "only_if": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "integer" },
+              { "type": "boolean" },
+              { "type": "array", "minItems": 1, "items": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "boolean" }] } }
+            ]
+          },
+          "description": "issue: condition mapping variable -> value or list of values; the step is a no-op when any variable is missing or has none of the values (AND over variables, OR over values)."
+        },
+        "skip_if_empty": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "issue: variable name(s); the step is a no-op when all of them are empty."
+        },
+        "max_files": { "$ref": "#/$defs/numeric", "description": "human_gate: diff heuristic — more changed files makes the gate critical (integer >= 1, default 40)." },
+        "max_lines": { "$ref": "#/$defs/numeric", "description": "human_gate: diff heuristic — more +/- lines makes the gate critical (integer >= 1, default 1500)." },
+        "keywords": { "type": "array", "items": { "type": "string" }, "description": "human_gate: keywords that make the gate critical (default: GDPR/data-loss/migration terms)." },
+        "adr_paths": { "type": "array", "items": { "type": "string" }, "description": "human_gate: paths whose touch always makes the gate critical (default: docs/adr)." },
+        "llm": { "type": "boolean", "description": "human_gate: use an LLM critique in addition to the heuristics." },
+        "routes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" },
+          "description": "alert_route: alert category -> target loop (or none) (ADR 0045). Required; targets must be loops of this project and the route graph must be acyclic."
+        },
+        "fallback": { "type": "string", "description": "alert_route: target loop for unknown categories." },
+        "item": { "type": "string", "description": "escalation: the item to escalate (issue/PR reference, template allowed)." },
+        "label": { "type": "string", "description": "escalation: label to apply (default: needs human, ADR 0059)." },
+        "grant_rounds": { "$ref": "#/$defs/numeric", "description": "escalation: fix rounds granted on approval (integer >= 0)." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "shell" } } },
+          "then": { "required": ["cmd"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "http" } } },
+          "then": { "required": ["url"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "llm" } } },
+          "then": { "required": ["prompt"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "state" } } },
+          "then": {
+            "required": ["key"],
+            "properties": {
+              "action": { "enum": ["get", "set", "add"] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "issue" } } },
+          "then": {
+            "properties": {
+              "action": { "enum": ["create", "edit", "label", "close", "list", "block"] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "verify" } } },
+          "then": { "required": ["checks"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "review" } } },
+          "then": { "required": ["model"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "pr_review" } } },
+          "then": { "required": ["repo", "model"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "alert_route" } } },
+          "then": { "required": ["routes"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "pr_merge" } } },
+          "then": {
+            "properties": {
+              "method": { "enum": ["squash", "merge", "rebase"] }
+            }
+          }
+        }
+      ]
+    },
+    "trigger": {
+      "type": "object",
+      "description": "What starts a loop. `type` selects the trigger kind; the per-type fields are listed under that type.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook", "on_alert", "on_slack"],
+          "description": "Trigger kind."
+        },
+        "cron": { "type": "string", "description": "cron: 5-field cron expression (local time)." },
+        "on_start": { "type": "boolean", "description": "cron: fire once when the scheduler starts (default false)." },
+        "glob": { "type": "string", "description": "on_file: glob pattern relative to the project root (default *)." },
+        "debounce": { "$ref": "#/$defs/numeric", "description": "on_file: seconds the newest mtime must be stable before firing (>= 0, default 60)." },
+        "repo": { "type": "string", "description": "on_issue/on_pr: GitHub repo as owner/name (default: project-level github:; one of the two is required)." },
+        "labels": { "type": "array", "items": { "type": "string" }, "description": "on_issue: label filter (AND semantics)." },
+        "priority_labels": { "type": "array", "items": { "type": "string" }, "description": "on_issue: labels used to sort candidates (first match wins, ADR 0021)." },
+        "exclude_labels": { "type": "array", "items": { "type": "string" }, "description": "on_issue/on_pr: issues/PRs with any of these labels do not start the loop (ADR 0059)." },
+        "poll": { "$ref": "#/$defs/numeric", "description": "on_issue/on_pr/on_slack: poll interval in seconds (>= 0)." },
+        "reconcile": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "const": "head" }
+          ],
+          "description": "on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false or 'head' (per head SHA, ADR 0023)."
+        },
+        "skip_blocked": { "type": "boolean", "description": "on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031)." },
+        "max_per_poll": { "$ref": "#/$defs/numeric", "description": "on_issue with reconcile: max runs started per poll (integer >= 1)." },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["open", "closed"] },
+          "description": "on_pr: PR states to react to (default: open)."
+        },
+        "secret_env": {
+          "type": "string",
+          "minLength": 1,
+          "description": "on_webhook/on_alert: name of the environment variable holding the shared HMAC secret (required)."
+        },
+        "map": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "on_webhook: variable -> JSON path in the payload."
+        },
+        "replay_protection": {
+          "type": "boolean",
+          "description": "on_webhook: require timestamp + nonce in the signature (replay protection, issue #60)."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["sentry", "cloudwatch"],
+          "description": "on_alert: alert source (required)."
+        },
+        "token_env": {
+          "type": "string",
+          "minLength": 1,
+          "description": "on_slack: name of the environment variable holding the bot token (required; the token itself never goes into the spec)."
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^C[0-9A-Z]+$" },
+          "description": "on_slack: non-empty whitelist of channel IDs like C0123ABC (required)."
+        },
+        "pattern": { "type": "string", "description": "on_slack: regex the alert text must match." },
+        "max_pages": { "$ref": "#/$defs/numeric", "description": "on_slack: history pages per channel and poll (integer >= 1, default 20)." },
+        "max_alert_chars": { "$ref": "#/$defs/numeric", "description": "on_slack: alert_text is truncated beyond this (integer >= 1, default 4000)." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "on_webhook" } } },
+          "then": { "required": ["secret_env"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "on_alert" } } },
+          "then": { "required": ["source", "secret_env"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "on_slack" } } },
+          "then": { "required": ["token_env", "channels"] }
+        }
+      ]
+    }
+  }
+}

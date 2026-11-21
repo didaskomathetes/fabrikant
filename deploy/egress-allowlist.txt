@@ -12,6 +12,11 @@
 # huggingface.co
 # inference.hetzner.com
 #
+# Self-hosted GitLab (ADR 0062): Host des GitLab-Instances, den das Projekt nutzt
+# (API + Clone). github.com ist Builtin; ein eigener GitLab-Host muss hier ergänzt
+# werden, sonst blockt der Default-Deny-Proxy den Agent-Zugriff.
+# gitlab.example.com
+#
 # Python-Pakete (`uv lock`/`uv sync`; nur lesend, Hashes prüft uv):
 # pypi.org
 # files.pythonhosted.org

@@ -423,6 +423,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._run_stream(path[len("/api/run/") : -len("/stream")])
         elif path.startswith("/api/run/") and path.endswith("/transcript"):
             self._run_transcript(path[len("/api/run/") : -len("/transcript")])
+        elif path.startswith("/api/run/") and path.endswith("/events"):
+            self._run_events(path[len("/api/run/") : -len("/events")])
         elif path.startswith("/api/run/") and path.endswith("/log"):
             # Rohes Run-Log (aus runs/<projekt>/<id>.log) als Plain-Text.
             # Muss VOR dem generischen /api/run/<id>-Zweig geprüft werden.
@@ -912,6 +914,17 @@ class FabrikHandler(BaseHTTPRequestHandler):
             return
         entries = sessionlog.transcript(rid, after, min(limit, sessionlog.TRANSCRIPT_PAGE))
         self._json({"entries": [e.to_dict() for e in entries], "next_after": entries[-1].id if entries else after})
+
+    def _run_events(self, rid: str):
+        """GET /api/run/<id>/events: full session log (events, checkpoints, artifacts).
+
+        Backs the web UI trace view (#128). Works for both the legacy JSON store
+        and the SQL run store — ``session_log_dump`` abstracts the backend. The
+        ``data`` field of each event is the redacted JSON string as stored."""
+        if get_run(rid, self._query_param("project")) is None:
+            self._json({"error": "Run not found"}, 404)
+            return
+        self._json(sessionlog.session_log_dump(rid))
 
     def _query_param(self, name: str) -> str | None:
         """Letzter Wert des Query-Parameters `name` (URL-dekodiert) oder None."""

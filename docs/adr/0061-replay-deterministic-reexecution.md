@@ -1,6 +1,6 @@
 # ADR 0061: Replay — Deterministic Re-Execution of a Finished Run
 
-**Status:** Proposed (2026-11-20)
+**Status:** Accepted (2026-11-21); proposed 2026-11-20, accepted on merge to main
 **Betrifft:** ADR 0036 (run retry, retry chains), ADR 0034 (run store), ADR 0002 (session log)
 
 ## Context
