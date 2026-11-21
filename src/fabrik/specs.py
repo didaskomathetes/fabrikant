@@ -22,7 +22,7 @@ try:
 except ImportError:
     yaml = None
 
-from . import alerts, branches, config, slack, spec_sources, specschema, webhook
+from . import alerts, billing, branches, config, slack, spec_sources, specschema, webhook
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
 from .gitops import GH_TOKEN_ENV, SPEC_ENV_FILE_KEY
@@ -376,7 +376,7 @@ def _validate_step_http(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_llm(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("prompt"):
         return [f"{where}: llm ohne prompt"]
-    return []
+    return billing.validate(st, where)
 
 
 def _validate_step_state(st: dict, where: str, spec: dict) -> list[str]:
@@ -409,6 +409,7 @@ def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     if not (st.get("prompt") or st.get("prompt_file")):
         errs.append(f"{where}: agent ohne prompt/prompt_file")
     errs += _validate_backend(st, "backend", where, "agent backend")
+    errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
         errs.append(f"{where}: agent variant muss String sein (ist {st['variant']!r})")
     gid = st.get("github_identity")

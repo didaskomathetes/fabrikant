@@ -218,6 +218,7 @@ _AGENT_SELF_RESETTING = re.compile(
 _AGENT_ENVIRONMENT = re.compile(
     r"insufficient_quota|check your (?:plan and )?billing|billing (?:details|issue|error|problem)"
     r"|credit balance is too low|payment required|quota exceeded|usage limit reached"
+    r"|hit your usage limit|usage_limit_reached|credits_depleted"
     rf"|invalid api key|authentication_error|{_HTTP_CODE_CONTEXT}401\b|401 unauthorized"
     r"|model \S+ (?:from --model flag )?is not available|model not found",
     re.IGNORECASE,

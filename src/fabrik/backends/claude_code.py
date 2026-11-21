@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 
 from ..agentenv import CLAUDE_AUTH_VARS, passthrough
+from ..billing import Billing, from_auth
+from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend
 
 
@@ -40,6 +42,12 @@ class ClaudeCodeBackend(OneShotCliBackend):
     def _env(self) -> dict:
         """Eigene Auth der Claude-Code-CLI explizit durchreichen (ADR 0050)."""
         return passthrough(CLAUDE_AUTH_VARS)
+
+    def billing(self) -> Billing:
+        """API-Key → ``api`` (gewinnt im ``-p``-Modus immer), OAuth-Token des Abos → ``subscription``."""
+        return from_auth(
+            self._env(), api=("ANTHROPIC_API_KEY",), subscription=("CLAUDE_CODE_OAUTH_TOKEN",), api_wins=True
+        )
 
     def _cli(self) -> str:
         return "claude"
@@ -64,7 +72,7 @@ class ClaudeCodeBackend(OneShotCliBackend):
         ]
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
-        base = {"tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+        base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}
         try:
             d = json.loads(out)
         except (json.JSONDecodeError, ValueError):
@@ -75,16 +83,20 @@ class ClaudeCodeBackend(OneShotCliBackend):
             # JSON-Ergebnis trotz Exit ≠ 0 (z. B. Nutzungslimit): `result` ist die eigentliche
             # Meldung — der rohe JSON-Anfang (duration_api_ms, …) sagt nichts (ADR 0035).
             return {**base, "status": "failed", "text": str(d.get("result") or err or out)[:300]}
-        usage = d.get("usage", {})
-        tin = (
-            usage.get("input_tokens", 0)
-            + usage.get("cache_read_input_tokens", 0)
-            + usage.get("cache_creation_input_tokens", 0)
+        usage = d.get("usage") or {}
+        # Anthropic: input_tokens ist nur der ungecachte Rest — Cache-Read/-Write kommen dazu.
+        cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+        tokens = TokenCounts(
+            input=int(usage.get("input_tokens") or 0) + cache_read + cache_write,
+            output=int(usage.get("output_tokens") or 0),
+            cache_read=cache_read,
+            cache_write=cache_write,
         )
         return {
             "status": "done" if (d.get("subtype") == "success" and not d.get("is_error")) else "failed",
             "text": d.get("result", ""),
-            "tokens": {"input": tin, "output": usage.get("output_tokens", 0)},
+            "tokens": tokens.as_poll(),
             "cost": float(d.get("total_cost_usd", 0.0) or 0.0),
             "tools": [],
         }
