@@ -31,6 +31,7 @@ from .base import (
     PullRequest,
     RepoRef,
 )
+from .registry import register_provider
 
 # ``[^/:@]`` rejects URLs/SSH refs (``git@host:owner/name``) so they fall through to ``_GITHUB_URL``.
 _GITHUB_SLUG = re.compile(r"^(?P<owner>[^/:@]+)/(?P<name>[^/:@]+?)(?:\.git)?/?$")
@@ -319,3 +320,12 @@ class GitHubProvider(Provider):
             self._api("PATCH", path, {"sha": sha, "force": False})
         else:
             self._api("POST", f"/repos/{ref}/git/refs", {"ref": f"refs/heads/{branch}", "sha": sha})
+
+
+def _github_factory(repo: str | None, spec: dict, role: str) -> Provider:
+    """Build a :class:`GitHubProvider` (``role`` selects the dual-identity, ADR 0010)."""
+    return GitHubProvider(role=role)
+
+
+# Self-register so ``get_provider`` can select "github" via the registry (ADR 0063).
+register_provider("github", _github_factory)

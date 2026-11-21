@@ -35,6 +35,7 @@ from typing import Any
 
 from .. import config, httpsafe
 from .base import (
+    GITHUB_HOST,
     Comment,
     CompareResult,
     FileChange,
@@ -46,11 +47,19 @@ from .base import (
     PullRequest,
     RepoRef,
     WebhookEvent,
+    repo_host,
 )
+from .registry import register_provider
 
 DEFAULT_TOKEN_FILE = "~/.config/gitlab/token"
 TOKEN_ENV = "FABRIK_GITLAB_TOKEN"
 TOKEN_FILE_ENV = "FABRIK_GITLAB_TOKEN_FILE"
+
+# Host / base-URL resolution for the registry factory (ADR 0063).
+GITLAB_HOST_ENV = "FABRIK_GITLAB_HOST"
+DEFAULT_GITLAB_HOST = "gitlab.com"
+GITLAB_HOST_KEY = "gitlab_host"
+GITLAB_BASE_URL_KEY = "gitlab_base_url"
 
 # GitLab MR state values (the steps speak GitHub's ``open``/``closed``).
 _MR_STATE_MAP = {"open": "opened", "closed": "closed", "merged": "merged", "all": "all"}
@@ -471,3 +480,25 @@ class GitLabProvider(Provider):
             url=str(attrs.get("url", "")),
             raw=data,
         )
+
+
+def _gitlab_host(repo: str | None, spec: dict) -> str:
+    """Resolve the GitLab host: the repo URL's host (if not github.com), else the
+    ``gitlab_host`` spec field, else ``FABRIK_GITLAB_HOST``, else ``gitlab.com``."""
+    host = repo_host(repo)
+    if host and host != GITHUB_HOST:
+        return host
+    return (
+        str(spec.get(GITLAB_HOST_KEY) or os.environ.get(GITLAB_HOST_ENV, "") or DEFAULT_GITLAB_HOST).strip()
+    )
+
+
+def _gitlab_factory(repo: str | None, spec: dict, role: str) -> Provider:
+    """Build a :class:`GitLabProvider` (``role`` is ignored — GitLab uses one token)."""
+    host = _gitlab_host(repo, spec)
+    base_url = str(spec.get(GITLAB_BASE_URL_KEY) or "").strip() or None
+    return GitLabProvider(host=host, base_url=base_url)
+
+
+# Self-register so ``get_provider`` can select "gitlab" via the registry (ADR 0063).
+register_provider("gitlab", _gitlab_factory)

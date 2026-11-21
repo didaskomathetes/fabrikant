@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from fabrik.hosting import (
+    BaseProvider,
     CompareResult,
     GitHubProvider,
     GitLabProvider,
@@ -23,7 +24,7 @@ from fabrik.hosting import (
     spec_context,
 )
 from fabrik.hosting import gitlab as gitlab_mod
-from fabrik.hosting import select as select_mod
+from fabrik.hosting import registry as registry_mod
 
 # --------------------------------------------------------------------------- GitHub: parse_repo
 
@@ -212,7 +213,7 @@ class TestGetProvider:
         assert p.parse_repo("o/n").host == "gl.example.com"
 
     def test_gitlab_host_env_override(self, monkeypatch):
-        monkeypatch.setenv(select_mod.GITLAB_HOST_ENV, "env-gl.example.com")
+        monkeypatch.setenv(gitlab_mod.GITLAB_HOST_ENV, "env-gl.example.com")
         p = get_provider("o/n", spec={"hosting": "gitlab"})
         assert p.parse_repo("o/n").host == "env-gl.example.com"
 
@@ -716,3 +717,134 @@ def test_pull_request_defaults():
         number=1, title="t", body="", state="open", labels=[], url="", head_ref="", head_sha="", base_ref=""
     )
     assert p.mergeable is None and p.raw == {}
+
+
+# --------------------------------------------------------------------------- registry (ADR 0063)
+
+
+@pytest.fixture
+def clean_registry():
+    """Snapshot and restore the provider registry around a test (it is global state)."""
+    snapshot = dict(registry_mod._REGISTRY)
+    yield
+    registry_mod._REGISTRY.clear()
+    registry_mod._REGISTRY.update(snapshot)
+
+
+class TestRegistry:
+    def test_builtin_providers_registered(self):
+        names = registry_mod.registered_providers()
+        assert "github" in names and "gitlab" in names
+
+    def test_register_and_get(self, clean_registry):
+        factory = lambda repo, spec, role: "custom"  # noqa: E731
+        registry_mod.register_provider("testhost", factory)
+        assert registry_mod.get_factory("testhost") is factory
+
+    def test_register_empty_name_raises(self, clean_registry):
+        with pytest.raises(HostingConfigError):
+            registry_mod.register_provider("   ", lambda r, s, role: None)
+
+    def test_register_non_callable_raises(self, clean_registry):
+        with pytest.raises(HostingConfigError):
+            registry_mod.register_provider("testhost", "not-callable")
+
+    def test_register_duplicate_raises(self, clean_registry):
+        registry_mod.register_provider("testhost", lambda r, s, role: None)
+        with pytest.raises(HostingConfigError):
+            registry_mod.register_provider("testhost", lambda r, s, role: None)
+
+    def test_register_duplicate_replace(self, clean_registry):
+        first = lambda r, s, role: "first"  # noqa: E731
+        second = lambda r, s, role: "second"  # noqa: E731
+        registry_mod.register_provider("testhost", first)
+        registry_mod.register_provider("testhost", second, replace=True)
+        assert registry_mod.get_factory("testhost") is second
+
+    def test_get_factory_unknown_raises_with_known_names(self, clean_registry):
+        with pytest.raises(HostingConfigError) as exc:
+            registry_mod.get_factory("nope")
+        assert "github" in str(exc.value)
+
+    def test_names_are_case_insensitive(self, clean_registry):
+        registry_mod.register_provider("MyHost", lambda r, s, role: None)
+        assert registry_mod.get_factory("myhost") is not None
+        assert "myhost" in registry_mod.registered_providers()
+
+    def test_get_provider_uses_registered_name(self, clean_registry):
+        sentinel = object()
+        registry_mod.register_provider("customhost", lambda r, s, role: sentinel)
+        assert get_provider("o/n", spec={"hosting": "customhost"}) is sentinel
+
+    def test_get_provider_unknown_hosting_falls_back_to_inference(self):
+        # an unregistered `hosting:` value is ignored (not an error) -> host inference
+        assert isinstance(get_provider("o/n", spec={"hosting": "doesnotexist"}), GitHubProvider)
+
+
+# --------------------------------------------------------------------------- BaseProvider (ADR 0063)
+
+
+class _MinimalProvider(BaseProvider):
+    """A minimal adapter implementing only the core ops (parse_repo + issues + PRs)."""
+
+    name = "minimal"
+
+    def parse_repo(self, ref):
+        owner, _, name = ref.partition("/")
+        return RepoRef("minimal.example", owner, name)
+
+    def create_issue(self, ref, title, body="", labels=None):
+        return Issue(number=1, title=title, body=body, state="open", labels=labels or [], url="")
+
+    def get_issue(self, ref, number):
+        return Issue(number=number, title="t", body="", state="open", labels=[], url="")
+
+    def edit_issue(self, ref, number, *, title=None, body=None, state=None, state_reason=None, duplicate_issue_id=None):
+        return self.get_issue(ref, number)
+
+    def create_pr(self, ref, *, title, head, base, body=""):
+        return PullRequest(
+            number=1, title=title, body=body, state="open", labels=[], url="", head_ref=head, head_sha="", base_ref=base
+        )
+
+    def get_pr(self, ref, number):
+        return PullRequest(
+            number=number, title="t", body="", state="open", labels=[], url="", head_ref="", head_sha="", base_ref=""
+        )
+
+    def merge_pr(self, ref, number, *, method="squash", sha=None):
+        return self.get_pr(ref, number)
+
+
+class TestBaseProvider:
+    def test_core_ops_are_implemented(self):
+        p = _MinimalProvider()
+        assert p.get_issue("o/n", 3).number == 3
+        assert p.get_pr("o/n", 4).number == 4
+
+    def test_optional_ops_raise_by_default(self):
+        p = _MinimalProvider()
+        for call in (
+            lambda: p.add_labels("o/n", 1, ["x"]),
+            lambda: p.remove_label("o/n", 1, "x"),
+            lambda: p.list_issues("o/n"),
+            lambda: p.create_comment("o/n", 1, "b"),
+            lambda: p.list_comments("o/n", 1),
+            lambda: p.list_prs("o/n"),
+            lambda: p.update_branch("o/n", 1),
+            lambda: p.pr_files("o/n", 1),
+            lambda: p.pr_diff("o/n", 1),
+            lambda: p.post_review("o/n", 1, event="APPROVE"),
+            lambda: p.compare("o/n", "a", "b"),
+            lambda: p.issue_dependencies("o/n", 1),
+            lambda: p.commit_files("o/n", "b", "m", []),
+        ):
+            with pytest.raises(HostingNotSupported):
+                call()
+
+    def test_override_enables_op(self):
+        class _WithBranch(_MinimalProvider):
+            def update_branch(self, ref, number, *, expected_head_sha=None):
+                return "ok"
+
+        assert _WithBranch().update_branch("o/n", 1) == "ok"

@@ -21,6 +21,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------- errors
 
@@ -147,15 +148,38 @@ class WebhookEvent:
     raw: dict = field(default_factory=dict, repr=False)
 
 
+#: The canonical GitHub host (used for host-based provider inference).
+GITHUB_HOST = "github.com"
+
+
+def repo_host(ref: str | None) -> str | None:
+    """The host of a repo reference, or ``None`` for a bare ``owner/name`` slug.
+
+    Understands ``http(s)://`` URLs and ``git@host:owner/name`` SSH refs. Shared by
+    provider selection and the adapters' own host resolution (so a factory can resolve
+    its host without importing :mod:`fabrik.hosting.select`).
+    """
+    if not ref:
+        return None
+    ref = ref.strip()
+    if ref.startswith(("http://", "https://")):
+        return urlsplit(ref).netloc.lower() or None
+    if ref.startswith("git@"):
+        return ref.partition("@")[2].partition(":")[0].lower() or None
+    return None
+
+
 # --------------------------------------------------------------------------- the port
 
 
 class Provider(ABC):
     """The code-hosting port: the union of operations steps and triggers need.
 
-    Concrete adapters must not inherit from this class (duck-typing is fine, like
-    ``AgentBackend``/``RunLauncher``); the ABC documents the contract and gives a
-    single place to add operations.
+    The ABC documents the contract and gives a single place to add operations. New
+    adapters should subclass :class:`BaseProvider` (which defaults the optional
+    operations to :class:`HostingNotSupported`) and register via
+    :func:`fabrik.hosting.registry.register_provider` (ADR 0063); duck-typing is also
+    accepted, like ``AgentBackend``/``RunLauncher``.
 
     All methods take ``ref`` — an ``owner/name`` slug or a full clone/API URL — and
     resolve it via :meth:`parse_repo`. Tokens are resolved per call by the adapter
@@ -310,3 +334,108 @@ class Provider(ABC):
         The default returns ``None`` (provider does not emit fabrik webhooks).
         """
         return None
+
+
+class BaseProvider(Provider):
+    """Base class for hosting adapters (ADR 0063) — the recommended starting point.
+
+    Subclass this (rather than :class:`Provider` directly) to implement a new host. It
+    provides :class:`HostingNotSupported` defaults for every operation that is *optional*
+    for a host, so you implement only the **core** operations your host supports:
+
+    - :meth:`parse_repo`
+    - issues: :meth:`create_issue`, :meth:`get_issue`, :meth:`edit_issue`
+    - pull/merge requests: :meth:`create_pr`, :meth:`get_pr`, :meth:`merge_pr`
+
+    Everything else (labels, comments, listing, reviews, diffs, compare, native issue
+    dependencies, API commits, ``update_branch``) raises :class:`HostingNotSupported` by
+    default — override a method to enable that operation on your host.
+
+    After implementing the core operations, register the adapter so it can be selected:
+    ``register_provider("myhost", my_factory)`` (or via the ``fabrik.hosting_provider``
+    entry point). See ADR 0063.
+    """
+
+    # -- issues (optional) ---------------------------------------------------
+    def add_labels(self, ref: str, number: int, labels: list[str]) -> None:
+        """No label support on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: add_labels")
+
+    def remove_label(self, ref: str, number: int, label: str) -> bool:
+        """No label support on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: remove_label")
+
+    def list_issues(
+        self,
+        ref: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        sort: str = "updated",
+        direction: str = "desc",
+        page: int = 1,
+        per_page: int = 100,
+    ) -> list[Issue]:
+        """No issue listing on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: list_issues")
+
+    def create_comment(self, ref: str, number: int, body: str) -> Comment:
+        """No comments on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: create_comment")
+
+    def list_comments(self, ref: str, number: int, *, page: int = 1, per_page: int = 100) -> list[Comment]:
+        """No comments on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: list_comments")
+
+    # -- pull / merge requests (optional) ------------------------------------
+    def list_prs(
+        self,
+        ref: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        head: str | None = None,
+        page: int = 1,
+        per_page: int = 100,
+    ) -> list[PullRequest]:
+        """No PR listing on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: list_prs")
+
+    def update_branch(self, ref: str, number: int, *, expected_head_sha: str | None = None) -> None:
+        """No equivalent on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: update_branch")
+
+    def pr_files(self, ref: str, number: int) -> list[FileChange]:
+        """No per-file diff on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: pr_files")
+
+    def pr_diff(self, ref: str, number: int) -> str:
+        """No diff on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: pr_diff")
+
+    def post_review(self, ref: str, number: int, *, event: str, body: str = "") -> None:
+        """No reviews on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: post_review")
+
+    def compare(self, ref: str, base: str, head: str) -> CompareResult:
+        """No compare on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: compare")
+
+    # -- native issue dependencies (optional) --------------------------------
+    def issue_dependencies(self, ref: str, number: int, *, kind: str = "blocked_by") -> list[Issue]:
+        """No native issue dependencies on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: issue_dependencies")
+
+    # -- API commits (optional) ----------------------------------------------
+    def commit_files(
+        self,
+        ref: str,
+        branch: str,
+        message: str,
+        files: list[dict[str, Any]],
+        *,
+        author: dict[str, str] | None = None,
+        start_branch: str | None = None,
+    ) -> str:
+        """No API commits on this host (default); override to support it."""
+        raise HostingNotSupported(f"{self.name}: commit_files")
