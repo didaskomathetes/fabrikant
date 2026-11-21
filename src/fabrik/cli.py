@@ -332,6 +332,43 @@ def cmd_egress(args):
         sys.exit(1)
 
 
+def cmd_fetch(args):
+    """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
+    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Nur Auto-Freigaben."""
+    from .fetch import Fetcher
+
+    domains = [d.strip() for d in (args.approved_domains or "").split(",") if d.strip()]
+    urls = [u.strip() for u in (args.approved_urls or "").split(",") if u.strip()]
+    fetcher = Fetcher(approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger)
+    res = fetcher.fetch(args.url, requested_by=_cli_actor())
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "url": res.url,
+                    "status": res.status,
+                    "reason": res.reason,
+                    "content_type": res.content_type,
+                    "fetched_at": res.fetched_at,
+                    "source_path": str(res.source_path) if res.source_path else None,
+                    "findings": [{"rule": f.rule, "severity": f.severity, "snippet": f.snippet} for f in res.findings],
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(f"{res.status.upper():<14} {res.url}")
+        if res.reason:
+            print(f"  reason: {res.reason}")
+        if res.findings:
+            print(f"  findings: {len(res.findings)}")
+            for f in res.findings:
+                print(f"    {f.severity:<11} {f.rule}: {f.snippet}")
+        if res.source_path:
+            print(f"  -> {res.source_path}")
+    sys.exit(0 if res.status == "clean" else 1)
+
+
 def cmd_import_runs(_args):
     from .sessionlog import import_runs
 
@@ -480,6 +517,15 @@ def main(argv=None):
     p = sub.add_parser("egress", help="Default-Deny-Egress-Proxy (ADR 0051)")
     p.add_argument("action", choices=("start", "stop", "status"))
     p.set_defaults(func=cmd_egress)
+
+    p = sub.add_parser("fetch", help="Research-Fetcher: Seite holen, bereinigen, Injection-Scan (ADR 0060)")
+    p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
+    p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
+    p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
+    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
+    p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
+    p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
+    p.set_defaults(func=cmd_fetch)
 
     args = ap.parse_args(argv)
     try:
