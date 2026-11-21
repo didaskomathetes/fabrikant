@@ -305,8 +305,8 @@ def push_branch(
     if gitops.commit_via() != gitops.COMMIT_VIA_API:
         _git(root, "push", *(["--force-with-lease"] if force else []), "origin", branch)
         return f"push {branch}"
-    remote_url = _git(root, "remote", "get-url", "origin")
-    provider = get_provider(repo or remote_url)
+    remote_url = repo or _git(root, "remote", "get-url", "origin")
+    provider = get_provider(remote_url)
     if provider.name != "github":
         raise HostingNotSupported(
             f"commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
