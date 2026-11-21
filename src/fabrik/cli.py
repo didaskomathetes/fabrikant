@@ -130,6 +130,16 @@ REPLAY_SIDE_EFFECT_NOTICE = (
 )
 
 
+def _confirm_replay(args) -> bool:
+    """Bestätigung vor dem realen Re-Run: `--yes` überspringt; ohne TTY ohne `--yes` Abbruch."""
+    if getattr(args, "yes", False):
+        return True
+    if not sys.stdin.isatty():
+        print("Abbruch: keine interaktive Eingabe — mit --yes/-y explizit bestätigen.")
+        return False
+    return input(f"Run {args.run_id} jetzt real neu ausführen? [y/N] ").strip().lower() in ("y", "yes", "j", "ja")
+
+
 def cmd_replay(args):
     """Replay: einen abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)."""
     orig = get_run(args.run_id, args.project)
@@ -141,13 +151,16 @@ def cmd_replay(args):
     if blocked:
         print(f"Fehler: {blocked}")
         sys.exit(1)
+    print(REPLAY_SIDE_EFFECT_NOTICE)
+    if not _confirm_replay(args):
+        print("Abgebrochen.")
+        sys.exit(1)
     claim = claim_run(project, loop, None)
     if claim is None:
         print(f"⚠ {project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
         sys.exit(1)
-    print(REPLAY_SIDE_EFFECT_NOTICE)
     try:
-        orig, rec = replay_run(args.run_id, project=project, actor=_cli_actor(), held_scope=claim.scope)
+        orig, rec = replay_run(args.run_id, project=project, actor=_cli_actor(), held_scope=claim.scope, original=orig)
     except Exception as e:  # ReplayError (nicht ersetzbar) und Engine-Fehler werden gleich gemeldet
         print(f"Fehler: {e}")
         sys.exit(1)
@@ -384,6 +397,7 @@ def main(argv=None):
     p = sub.add_parser("replay", help="Abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)")
     p.add_argument("run_id")
     p.add_argument("--project", default=None, help="Projekt (sonst aus dem Run abgeleitet)")
+    p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
     p.set_defaults(func=cmd_replay)
 
     p = sub.add_parser("runs", help="Run-Historie (show/export: Einzelrun + Session-Log)")

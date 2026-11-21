@@ -213,11 +213,11 @@ def test_cmd_replay_pass(projects_dir, runs_dir, monkeypatch, capsys):
     monkeypatch.setattr(
         cli,
         "replay_run",
-        lambda run_id, project=None, actor=None, held_scope=None: (orig, _fake_replay_record(orig)),
+        lambda run_id, project=None, actor=None, held_scope=None, original=None: (orig, _fake_replay_record(orig)),
     )
     monkeypatch.setattr(cli, "claim_run", lambda *a, **k: type("C", (), {"scope": "p", "release": lambda self: None})())
     with pytest.raises(SystemExit) as e:
-        cli.cmd_replay(type("A", (), {"run_id": "orig-1", "project": None})())
+        cli.cmd_replay(type("A", (), {"run_id": "orig-1", "project": None, "yes": True})())
     assert e.value.code == 0
     out = capsys.readouterr().out
     assert "PASS" in out
@@ -236,6 +236,57 @@ def test_cmd_replay_replay_error(projects_dir, runs_dir, monkeypatch, capsys):
     _write_spec(projects_dir, "p")
     _write_run(runs_dir, "p", "r1", status="running")
     with pytest.raises(SystemExit) as e:
-        cli.cmd_replay(type("A", (), {"run_id": "r1", "project": None})())
+        cli.cmd_replay(type("A", (), {"run_id": "r1", "project": None, "yes": True})())
     assert e.value.code == 1
     assert "not terminal" in capsys.readouterr().out
+
+
+def _stub_replay(monkeypatch, orig, calls):
+    def fake(run_id, project=None, actor=None, held_scope=None, original=None):
+        calls.append(original)
+        return orig, _fake_replay_record(orig)
+
+    monkeypatch.setattr(cli, "replay_run", fake)
+    monkeypatch.setattr(cli, "claim_run", lambda *a, **k: type("C", (), {"scope": "p", "release": lambda self: None})())
+
+
+def test_cmd_replay_no_tty_without_yes_aborts(projects_dir, runs_dir, monkeypatch, capsys):
+    _write_spec(projects_dir, "p")
+    orig = _write_run(runs_dir, "p", "orig-1", status="pass", loop="l")
+    calls: list = []
+    _stub_replay(monkeypatch, orig, calls)
+    monkeypatch.setattr("sys.stdin", type("S", (), {"isatty": lambda self: False})())
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_replay(type("A", (), {"run_id": "orig-1", "project": None, "yes": False})())
+    assert e.value.code == 1
+    assert "--yes" in capsys.readouterr().out
+    assert calls == []
+
+
+@pytest.mark.parametrize("answer,executed", [("y", True), ("n", False), ("", False)])
+def test_cmd_replay_tty_prompt(projects_dir, runs_dir, monkeypatch, capsys, answer, executed):
+    _write_spec(projects_dir, "p")
+    orig = _write_run(runs_dir, "p", "orig-1", status="pass", loop="l")
+    calls: list = []
+    _stub_replay(monkeypatch, orig, calls)
+    monkeypatch.setattr("sys.stdin", type("S", (), {"isatty": lambda self: True})())
+    monkeypatch.setattr("builtins.input", lambda prompt="": answer)
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_replay(type("A", (), {"run_id": "orig-1", "project": None, "yes": False})())
+    assert e.value.code == (0 if executed else 1)
+    assert bool(calls) is executed
+    if executed:
+        assert calls[0] is not None and calls[0]["id"] == "orig-1"  # no second lookup
+
+
+def test_pinned_vars_drops_redacted_values():
+    rec = {"vars": {"issue": "42", "token": "[REDACTED]", "mixed": "x [REDACTED] y", "n": 3}}
+    assert replay._pinned_vars(rec, {}) == {"issue": "42", "n": 3}
+
+
+def test_replay_run_uses_given_original(projects_dir, runs_dir, monkeypatch):
+    _write_spec(projects_dir, "p")
+    orig = _write_run(runs_dir, "p", "orig-1", status="pass", loop="l")
+    monkeypatch.setattr(replay, "get_run", lambda *a, **k: pytest.fail("unexpected lookup"))
+    monkeypatch.setattr(replay, "run_loop", lambda *a, **k: _fake_replay_record(orig))
+    assert replay.replay_run("orig-1", original=orig)[0] is orig
