@@ -22,10 +22,10 @@ try:
 except ImportError:
     yaml = None
 
-from . import alerts, billing, branches, config, slack, spec_sources, webhook
+from . import alerts, billing, branches, config, slack, spec_sources, specschema, webhook
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
-from .gitops import COMMIT_VIA_MODES, GH_TOKEN_ENV, SPEC_COMMIT_VIA_KEY, SPEC_ENV_FILE_KEY
+from .gitops import GH_TOKEN_ENV, SPEC_ENV_FILE_KEY
 from .hosting import registered_providers
 from .hosting.select import HOSTING_KEY
 from .relay.config import expand_loops as expand_relay_loops
@@ -475,6 +475,9 @@ _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
 
 def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     errs = []
+    # Strukturschema (Issue #131): Typen/Enums/Pflichtfelder aus
+    # src/fabrik/fabrik-spec.schema.json; semantische Prüfungen folgen darunter.
+    errs += specschema.validate_spec(spec)
     # Lock-Schlüssel "projekt::loop" (ADR 0020) bleibt nur eindeutig, wenn der Separator in Namen fehlt.
     for what, value in [("name", spec.get("name"))] + [("loop", ln) for ln in (spec.get("loops") or {})]:
         if isinstance(value, str) and LOCK_KEY_SEP in value:
@@ -482,13 +485,11 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     if not spec.get("root") or (check_root and not Path(spec["root"]).is_dir()):
         errs.append(f"root fehlt oder existiert nicht: {spec.get('root')!r}")
     gef = spec.get(SPEC_ENV_FILE_KEY)
-    if gef is not None and (not isinstance(gef, str) or not gef.strip()):
+    # Typ (String) prüft das Schema; hier nur Leer-/Absolut-Check, damit Fehler nicht doppelt gemeldet werden.
+    if isinstance(gef, str) and not gef.strip():
         errs.append(f"{SPEC_ENV_FILE_KEY} muss ein Pfad (String) sein (ist {gef!r})")
-    elif gef is not None and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
+    elif isinstance(gef, str) and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
         errs.append(f"{SPEC_ENV_FILE_KEY} muss ein absoluter Pfad sein (ist {gef!r})")
-    cvia = spec.get(SPEC_COMMIT_VIA_KEY)
-    if cvia is not None and cvia not in COMMIT_VIA_MODES:
-        errs.append(f"{SPEC_COMMIT_VIA_KEY} muss einer von {COMMIT_VIA_MODES} sein (ist {cvia!r})")
     hosting_name = spec.get(HOSTING_KEY)
     # Nicht-Strings typprüft das Schema; hier nur: ein String muss ein registrierter Provider sein.
     if isinstance(hosting_name, str) and hosting_name.strip().lower() not in registered_providers():
@@ -517,9 +518,6 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
             for ti, trig in enumerate(ldef.get("triggers") or []):
                 if isinstance(trig, dict) and trig.get("type") == "on_webhook":
                     errs += webhook.validate_trigger(trig, f"loop {lname} trigger {ti}")
-            tier = ldef.get("tier")
-            if tier is not None and (not isinstance(tier, int) or not 1 <= tier <= 4):
-                errs.append(f"loop {lname}: tier muss int 1-4 sein (ist {tier!r})")
             for i, trig in enumerate(ldef.get("triggers") or []):
                 if not isinstance(trig, dict):
                     errs.append(f"loop {lname} trigger {i}: Mapping erwartet")
@@ -530,8 +528,7 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                 errs += _validate_retry_block(ldef["retry"], f"loop {lname}.retry")
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
-                if not isinstance(st, dict) or st.get("type") not in config.STEP_TYPES:
-                    errs.append(f"loop {lname} step {i}: type muss einer von {config.STEP_TYPES} sein")
+                # Step-Typ-Enum prüft das Schema (kein Duplikat hier).
                 if isinstance(st, dict):
                     where = f"loop {lname} step {i}"
                     errs += _validate_approval_when(st, where)
@@ -592,8 +589,7 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
     errs = []
     ttype = trig.get("type")
     if ttype not in config.TRIGGER_TYPES:
-        errs.append(f"loop {lname} trigger {i}: type muss einer von {config.TRIGGER_TYPES} sein (ist {ttype!r})")
-        return errs
+        return errs  # unbekannter Typ: meldet das Schema (Enum), kein Duplikat hier
     if ttype == "on_slack":
         errs += slack.validate_trigger(trig, f"loop {lname} trigger {i}")
         for key in ("max_pages", "max_alert_chars"):
