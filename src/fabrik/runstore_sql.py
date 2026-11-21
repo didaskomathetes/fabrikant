@@ -124,6 +124,7 @@ _RUN_FIELDS: Mapping[str, str] = {
     "failure_kind": _TEXT,
     "retry_after": _TEXT,
     "retry_of": _TEXT,
+    "replay_of": _TEXT,
     "attempt": _INT,
     "trigger_key": _TEXT,
     "worktree_cleanup_error": _TEXT,

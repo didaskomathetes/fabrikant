@@ -255,6 +255,7 @@ class Run:
     failure_kind: FailureKind | None = None  # nur bei fail/error gesetzt (ADR 0035)
     retry_after: str = ""  # ISO-Zeitpunkt (UTC), nur bei transient
     retry_of: str = ""  # Run-Id des vorherigen Versuchs (ADR 0036); "" = kein Retry
+    replay_of: str = ""  # Run-Id des Originals, wenn dies ein Replay ist (ADR 0061); "" = kein Replay
     attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
     worktree_cleanup_error: str = ""
     # Schreibgeschützt (MappingProxyType): der Run ist frozen, ``vars`` auch —

@@ -1,4 +1,4 @@
-"""CLI: list, validate, project add, run, runs, serve, approve, reject, pause/resume/disable, chat, alert."""
+"""CLI: list, validate, project add, run, replay, runs, serve, approve, reject, pause/resume/disable, chat, alert."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
+from .replay import diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
 from .runstore import STORE, PreconditionError
@@ -121,6 +122,55 @@ def _print_steps(rec: dict) -> None:
     """Step-Liste eines Run-Records mit Status-Marke ausgeben."""
     for s in rec["steps"]:
         print(f"  {STEP_MARKS.get(s['status'], '?')} {s['name']} [{s['type']}] {s.get('summary', '')}")
+
+
+REPLAY_SIDE_EFFECT_NOTICE = (
+    "⚠ Replay führt alle Steps real aus (PRs, Kommentare, Merges, Benachrichtigungen) — "
+    "gepinnt sind nur die Eingaben, nicht die Seiteneffekte."
+)
+
+
+def _confirm_replay(args) -> bool:
+    """Bestätigung vor dem realen Re-Run: `--yes` überspringt; ohne TTY ohne `--yes` Abbruch."""
+    if getattr(args, "yes", False):
+        return True
+    if not sys.stdin.isatty():
+        print("Abbruch: keine interaktive Eingabe — mit --yes/-y explizit bestätigen.")
+        return False
+    return input(f"Run {args.run_id} jetzt real neu ausführen? [y/N] ").strip().lower() in ("y", "yes", "j", "ja")
+
+
+def cmd_replay(args):
+    """Replay: einen abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)."""
+    orig = get_run(args.run_id, args.project)
+    if orig is None:
+        print(f"Fehler: Run {args.run_id} nicht gefunden")
+        sys.exit(1)
+    project, loop = orig["project"], orig["loop"]
+    blocked = pause.manual_block_reason(project, loop)
+    if blocked:
+        print(f"Fehler: {blocked}")
+        sys.exit(1)
+    print(REPLAY_SIDE_EFFECT_NOTICE)
+    if not _confirm_replay(args):
+        print("Abgebrochen.")
+        sys.exit(1)
+    claim = claim_run(project, loop, None)
+    if claim is None:
+        print(f"⚠ {project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
+        sys.exit(1)
+    try:
+        orig, rec = replay_run(args.run_id, project=project, actor=_cli_actor(), held_scope=claim.scope, original=orig)
+    except Exception as e:  # ReplayError (nicht ersetzbar) und Engine-Fehler werden gleich gemeldet
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    finally:
+        claim.release()
+    print(f"{rec['status'].upper()}  {rec['project']}/{rec['loop']}  ({rec['id']})  [replay of {orig['id']}]")
+    _print_steps(rec)
+    print()
+    print(diff_runs(orig, rec))
+    sys.exit(0 if rec["status"] == "pass" else 1)
 
 
 def cmd_runs(args):
@@ -343,6 +393,12 @@ def main(argv=None):
     p.add_argument("--note", default="")
     p.add_argument("--var", action="append", default=[], metavar="K=V", help="Initiale Variable (mehrfach erlaubt)")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("replay", help="Abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)")
+    p.add_argument("run_id")
+    p.add_argument("--project", default=None, help="Projekt (sonst aus dem Run abgeleitet)")
+    p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
+    p.set_defaults(func=cmd_replay)
 
     p = sub.add_parser("runs", help="Run-Historie (show/export: Einzelrun + Session-Log)")
     p.add_argument("--project", default=None)
