@@ -76,3 +76,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrik replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
 | [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
 | [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
+| [0065](0065-golden-runs-eval-harness.md) | Golden Runs — gepinnte Baseline + Eval-Harness (`fabrik eval`, opt-in CI-Gate) | Accepted (2026-11-21) |
