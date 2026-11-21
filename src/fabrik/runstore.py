@@ -151,6 +151,9 @@ def _parse_usage(d: Any) -> Usage | None:
         completion_tokens=_int(d.get("completion_tokens")),
         total_tokens=_int(d.get("total_tokens")),
         cost_usd=_num(d.get("cost_usd")),
+        cache_read_tokens=_int(d.get("cache_read_tokens")),
+        cache_write_tokens=_int(d.get("cache_write_tokens")),
+        billing=_text(d.get("billing")),
     )
 
 

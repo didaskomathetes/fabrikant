@@ -161,6 +161,9 @@ step_usage = Table(
     Column("completion_tokens", Integer),
     Column("total_tokens", Integer),
     Column("cost_usd", Float),
+    Column("cache_read_tokens", Integer),
+    Column("cache_write_tokens", Integer),
+    Column("billing", Text),
     _step_fk(),
 )
 

@@ -39,6 +39,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from . import config, connections, httpsafe, llm_cli
+from .tokens import TokenCounts
 
 log = logging.getLogger("fabrik.llm")
 _ACTIVE_FILE = config.STATE_DIR / "active_llm"
@@ -189,19 +190,14 @@ def complete(
     """Ein Chat-Completion-Call gegen ``prov`` (HTTP oder CLI).
 
     → ``{"text": str | None, "finish_reason": str, "usage": {prompt_tokens,
-    completion_tokens, total_tokens}}``. ``text`` None/leer = leere Antwort
+    completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens}}``. ``text`` None/leer = leere Antwort
     (Aufrufer entscheidet). Transport-Fehler werfen. CLI-Provider ignorieren
     ``temperature``/``max_tokens``; ``cancel_event`` killt dort die CLI.
     """
     model = model or prov["model"]
     if prov.get("cli"):
         text, tokens = llm_cli.complete(prov["cli"], model, system, user, timeout, cancel_event)
-        tin, tout = int(tokens.get("input") or 0), int(tokens.get("output") or 0)
-        return {
-            "text": text,
-            "finish_reason": "stop",
-            "usage": {"prompt_tokens": tin, "completion_tokens": tout, "total_tokens": tin + tout},
-        }
+        return {"text": text, "finish_reason": "stop", "usage": TokenCounts.from_poll(tokens).usage_fields()}
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -222,15 +218,22 @@ def complete(
     }
 
 
-_USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
-
-
 def _usage(u: object) -> dict[str, int]:
-    """OpenAI-Usage-Block → Token-Zähler; malformiert → Nullen (Drittanbieter-APIs
-    dürfen einen erfolgreichen Call nicht in einen Failure drehen)."""
+    """OpenAI-Usage-Block → Step-Usage-Token-Felder; malformiert → Nullen (Drittanbieter-APIs
+    dürfen einen erfolgreichen Call nicht in einen Failure drehen).
+
+    Gecachte Prompt-Tokens stehen in ``prompt_tokens_details.cached_tokens`` (in ``prompt_tokens``
+    enthalten); Cache-Writes meldet die Chat-Completions-API nicht."""
     if not isinstance(u, Mapping):
-        return dict.fromkeys(_USAGE_KEYS, 0)
-    return {k: _token_count(u.get(k)) for k in _USAGE_KEYS}
+        return TokenCounts().usage_fields()
+    details = u.get("prompt_tokens_details")
+    cached = _token_count(details.get("cached_tokens")) if isinstance(details, Mapping) else 0
+    fields = TokenCounts(
+        _token_count(u.get("prompt_tokens")), _token_count(u.get("completion_tokens")), cached
+    ).usage_fields()
+    # Ein gemeldetes total_tokens hat Vorrang (manche Anbieter zählen z. B. Reasoning extra).
+    fields["total_tokens"] = _token_count(u.get("total_tokens"))
+    return fields
 
 
 def _token_count(v: Any) -> int:
