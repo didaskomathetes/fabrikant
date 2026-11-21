@@ -1,6 +1,6 @@
 # Spec-Referenz
 
-Maschinenlesbare Single Source of Truth: [`schema/fabrik-spec.schema.json`](../schema/fabrik-spec.schema.json).
+Maschinenlesbare Single Source of Truth: [`src/fabrik/fabrik-spec.schema.json`](../src/fabrik/fabrik-spec.schema.json).
 Diese Seite wird daraus generiert (`scripts/generate-spec-reference.py`) — nicht von Hand editieren.
 
 Das Schema prüft die **Struktur** (Typen, Enums, Pflichtfelder, Bereiche) der *expandierten* Spec
@@ -247,4 +247,4 @@ Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. 
 | `on_alert` | `source`, `secret_env` |
 | `on_slack` | `token_env`, `channels` |
 
-_Generiert aus `schema/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen und dieses Skript neu laufen lassen._
+_Generiert aus `src/fabrik/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen und dieses Skript neu laufen lassen._

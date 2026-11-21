@@ -313,3 +313,11 @@ def test_e2e_invalid_spec_rejected_at_load(projects_dir, tmp_path):
     assert "nonexistent" in err
     with pytest.raises(SetupError, match="Spec defekt"):
         run_loop("bad", "broken", trigger="test")
+
+
+def test_schema_ships_inside_the_package():
+    """Das Schema muss im Paketverzeichnis liegen, sonst fehlt es in Wheel-Installs (hatch packt nur src/fabrik)."""
+    import fabrik
+
+    assert SCHEMA_PATH.is_file()
+    assert SCHEMA_PATH.parent == Path(fabrik.__file__).resolve().parent

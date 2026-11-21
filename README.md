@@ -167,7 +167,7 @@ Echte Parallelität braucht `FABRIK_WORKERS` > 1.
 ## Spec-Format (`*.fabrik.yaml`)
 
 **Vollständige Feld-Referenz:** [docs/spec-reference.md](docs/spec-reference.md) — generiert aus
-[`schema/fabrik-spec.schema.json`](schema/fabrik-spec.schema.json) (Single Source of Truth;
+[`src/fabrik/fabrik-spec.schema.json`](src/fabrik/fabrik-spec.schema.json) (Single Source of Truth;
 `fabrik validate` prüft dagegen).
 
 ```yaml

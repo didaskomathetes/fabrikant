@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generiert docs/spec-reference.md aus schema/fabrik-spec.schema.json (Issue #131).
+"""Generiert docs/spec-reference.md aus src/fabrik/fabrik-spec.schema.json (Issue #131).
 
 Das Schema ist die Single Source of Truth für das Spec-Format; die Referenz
 wird daraus abgeleitet, damit Doku und Validierung nicht auseinanderlaufen:
@@ -18,12 +18,12 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_PATH = REPO_ROOT / "schema" / "fabrik-spec.schema.json"
+SCHEMA_PATH = REPO_ROOT / "src" / "fabrik" / "fabrik-spec.schema.json"
 OUT_PATH = REPO_ROOT / "docs" / "spec-reference.md"
 
 HEADER = """# Spec-Referenz
 
-Maschinenlesbare Single Source of Truth: [`schema/fabrik-spec.schema.json`](../schema/fabrik-spec.schema.json).
+Maschinenlesbare Single Source of Truth: [`src/fabrik/fabrik-spec.schema.json`](../src/fabrik/fabrik-spec.schema.json).
 Diese Seite wird daraus generiert (`scripts/generate-spec-reference.py`) — nicht von Hand editieren.
 
 Das Schema prüft die **Struktur** (Typen, Enums, Pflichtfelder, Bereiche) der *expandierten* Spec
@@ -137,7 +137,7 @@ def generate() -> str:
         out.append("")
 
     out.append(
-        "_Generiert aus `schema/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen "
+        "_Generiert aus `src/fabrik/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen "
         "und dieses Skript neu laufen lassen._"
     )
     return "\n".join(out) + "\n"

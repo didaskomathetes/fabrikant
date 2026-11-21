@@ -1,6 +1,6 @@
 """JSON-Schema-Validierung der Spec-Dateien (Issue #131).
 
-Das Schema (`schema/fabrik-spec.schema.json`) ist die maschinenlesbare
+Das Schema (`fabrik/fabrik-spec.schema.json`, im Paket mitgeliefert) ist die maschinenlesbare
 Single Source of Truth für das Spec-Format: Validierung (dieses Modul) und
 generierte Referenz (`docs/spec-reference.md` via
 `scripts/generate-spec-reference.py`) leiten sich beide davon ab.
@@ -21,8 +21,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-# src/fabrik/specschema.py → 3 Ebenen hoch = Repo-Root (wie config.FABRIK_HOME)
-SCHEMA_PATH = Path(__file__).resolve().parent.parent.parent / "schema" / "fabrik-spec.schema.json"
+# Liegt im Paket (nicht im Repo-Root), damit es in Wheel-/Nicht-Editable-Installs enthalten ist.
+SCHEMA_PATH = Path(__file__).resolve().parent / "fabrik-spec.schema.json"
 
 
 @lru_cache(maxsize=1)
