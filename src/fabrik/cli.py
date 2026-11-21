@@ -334,11 +334,22 @@ def cmd_egress(args):
 
 def cmd_fetch(args):
     """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
-    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Nur Auto-Freigaben."""
-    from .fetch import Fetcher
+    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Auto-Freigaben; Profile
+    via ``--spec``/``--loop`` (Stufe 3)."""
+    from .fetch import Fetcher, fetcher_config_for, resolve_profiles
+    from .specs import load_spec_raw
 
     domains = [d.strip() for d in (args.approved_domains or "").split(",") if d.strip()]
     urls = [u.strip() for u in (args.approved_urls or "").split(",") if u.strip()]
+    loop_note = None
+    if args.spec:
+        spec = load_spec_raw(Path(args.spec))
+        loop = args.loop or "relay"
+        profs = resolve_profiles(spec, loop)
+        for d in fetcher_config_for(profs)["approved_domains"]:
+            if d not in domains:
+                domains.append(d)
+        loop_note = f"loop={loop} profile={[p.name for p in profs]}"
     fetcher = Fetcher(approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger)
     res = fetcher.fetch(args.url, requested_by=_cli_actor())
     if args.json:
@@ -358,6 +369,8 @@ def cmd_fetch(args):
         )
     else:
         print(f"{res.status.upper():<14} {res.url}")
+        if loop_note:
+            print(f"  {loop_note}")
         if res.reason:
             print(f"  reason: {res.reason}")
         if res.findings:
@@ -524,6 +537,8 @@ def main(argv=None):
     p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
     p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
     p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
+    p.add_argument("--spec", default=None, help="Projekt-Spec (YAML) mit access-Profilen")
+    p.add_argument("--loop", default=None, help="Loop/Run-Name für Profil-Resolution (Default: relay)")
     p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
     p.set_defaults(func=cmd_fetch)
 
