@@ -5,7 +5,6 @@ selection, GitLab token resolution, webhook parsing) and the documented
 provider gaps — no network (adapter I/O is mocked where exercised).
 """
 
-# pyright: reportArgumentType=false
 from __future__ import annotations
 
 import pytest
@@ -740,27 +739,27 @@ class TestRegistry:
 
     def test_register_and_get(self, clean_registry):
         factory = lambda repo, spec, role: "custom"  # noqa: E731
-        registry_mod.register_provider("testhost", factory)
+        registry_mod.register_provider("testhost", factory)  # pyright: ignore[reportArgumentType]
         assert registry_mod.get_factory("testhost") is factory
 
     def test_register_empty_name_raises(self, clean_registry):
         with pytest.raises(HostingConfigError):
-            registry_mod.register_provider("   ", lambda r, s, role: None)
+            registry_mod.register_provider("   ", lambda r, s, role: None)  # pyright: ignore[reportArgumentType]
 
     def test_register_non_callable_raises(self, clean_registry):
         with pytest.raises(HostingConfigError):
-            registry_mod.register_provider("testhost", "not-callable")
+            registry_mod.register_provider("testhost", "not-callable")  # pyright: ignore[reportArgumentType]
 
     def test_register_duplicate_raises(self, clean_registry):
-        registry_mod.register_provider("testhost", lambda r, s, role: None)
+        registry_mod.register_provider("testhost", lambda r, s, role: None)  # pyright: ignore[reportArgumentType]
         with pytest.raises(HostingConfigError):
-            registry_mod.register_provider("testhost", lambda r, s, role: None)
+            registry_mod.register_provider("testhost", lambda r, s, role: None)  # pyright: ignore[reportArgumentType]
 
     def test_register_duplicate_replace(self, clean_registry):
         first = lambda r, s, role: "first"  # noqa: E731
         second = lambda r, s, role: "second"  # noqa: E731
-        registry_mod.register_provider("testhost", first)
-        registry_mod.register_provider("testhost", second, replace=True)
+        registry_mod.register_provider("testhost", first)  # pyright: ignore[reportArgumentType]
+        registry_mod.register_provider("testhost", second, replace=True)  # pyright: ignore[reportArgumentType]
         assert registry_mod.get_factory("testhost") is second
 
     def test_get_factory_unknown_raises_with_known_names(self, clean_registry):
@@ -769,13 +768,13 @@ class TestRegistry:
         assert "github" in str(exc.value)
 
     def test_names_are_case_insensitive(self, clean_registry):
-        registry_mod.register_provider("MyHost", lambda r, s, role: None)
+        registry_mod.register_provider("MyHost", lambda r, s, role: None)  # pyright: ignore[reportArgumentType]
         assert registry_mod.get_factory("myhost") is not None
         assert "myhost" in registry_mod.registered_providers()
 
     def test_get_provider_uses_registered_name(self, clean_registry):
         sentinel = object()
-        registry_mod.register_provider("customhost", lambda r, s, role: sentinel)
+        registry_mod.register_provider("customhost", lambda r, s, role: sentinel)  # pyright: ignore[reportArgumentType]
         assert get_provider("o/n", spec={"hosting": "customhost"}) is sentinel
 
     def test_get_provider_unknown_hosting_raises(self):

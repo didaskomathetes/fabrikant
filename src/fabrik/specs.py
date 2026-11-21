@@ -490,9 +490,8 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     if cvia is not None and cvia not in COMMIT_VIA_MODES:
         errs.append(f"{SPEC_COMMIT_VIA_KEY} muss einer von {COMMIT_VIA_MODES} sein (ist {cvia!r})")
     hosting_name = spec.get(HOSTING_KEY)
-    if hosting_name is not None and (
-        not isinstance(hosting_name, str) or hosting_name.strip().lower() not in registered_providers()
-    ):
+    # Nicht-Strings typprüft das Schema; hier nur: ein String muss ein registrierter Provider sein.
+    if isinstance(hosting_name, str) and hosting_name.strip().lower() not in registered_providers():
         errs.append(
             f"{HOSTING_KEY} muss ein registrierter Provider sein {registered_providers()} (ist {hosting_name!r})"
         )

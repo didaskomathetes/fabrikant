@@ -21,7 +21,7 @@ from helpers import http_error, not_none
 from fabrik import apicommit, gitops
 from fabrik.apicommit import ApiPusher, Change, parse_diff_tree, push_branch, repo_from_remote
 from fabrik.failures import GitError
-from fabrik.hosting import HostingNotSupported
+from fabrik.hosting import HostingNotSupported, spec_context
 from fabrik.relay.workspace import Workspace, branch_name
 
 BOT = {"GIT_AUTHOR_NAME": "bot[bot]", "GIT_AUTHOR_EMAIL": "1+bot[bot]@users.noreply.github.com"}
@@ -364,6 +364,18 @@ def test_push_branch_api_mode_non_github_refused_without_credentials(remote, mon
         pytest.raises(HostingNotSupported, match="nicht GitHub"),
     ):
         push_branch(repo, "feat")
+
+
+def test_push_branch_api_mode_spec_hosting_gitlab_refused(remote):
+    """Nackter owner/name-Slug + Spec `hosting: gitlab` → HostingNotSupported (nicht als GitHub behandelt)."""
+    repo, _bare, _ = remote
+    commit(repo, "one", **{"a.txt": "1\n"})
+    with (
+        gitops.project_github({gitops.SPEC_COMMIT_VIA_KEY: "api"}),
+        spec_context({"hosting": "gitlab"}),
+        pytest.raises(HostingNotSupported, match="hosting: gitlab"),
+    ):
+        push_branch(repo, "feat", repo="owner/name")
 
 
 def _remote_url_override(real_run, url):

@@ -44,7 +44,8 @@ from pathlib import Path
 
 from . import config, gitops
 from .failures import GitError, classify_exception, exit_code
-from .hosting import GITHUB_HOST, HostingNotSupported, repo_host
+from .hosting import GITHUB_HOST, HostingNotSupported, current_spec, repo_host
+from .hosting.select import HOSTING_KEY
 from .secrets import _redact
 
 GIT_TIMEOUT_S = 300
@@ -307,10 +308,18 @@ def push_branch(
         return f"push {branch}"
     remote_url = repo or _git(root, "remote", "get-url", "origin")
     # Entscheidung über den Host, bevor ein Provider (und dessen Credentials) gebaut wird.
-    if repo_host(remote_url) not in (None, GITHUB_HOST):
+    host = repo_host(remote_url)
+    if host not in (None, GITHUB_HOST):
         raise HostingNotSupported(
             "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
-            f"der Repo-Host ({repo_host(remote_url)}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+            f"der Repo-Host ({host}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+        )
+    # Ein nackter owner/name-Slug verrät den Host nicht — dann entscheidet `hosting:` der aktiven Spec.
+    spec_hosting = current_spec().get(HOSTING_KEY)
+    if isinstance(spec_hosting, str) and spec_hosting.strip().lower() != "github":
+        raise HostingNotSupported(
+            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
+            f"hosting: {spec_hosting} ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
         )
     if repo is None:
         repo = repo_from_remote(remote_url)

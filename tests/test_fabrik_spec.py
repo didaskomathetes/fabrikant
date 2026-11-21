@@ -460,6 +460,13 @@ def test_spec_with_api_only_loops_is_valid():
     specs._validate_spec(_spec(), check_root=False)
 
 
+def test_spec_hosting_must_name_registered_provider():
+    """Ein String-`hosting` muss registriert sein; Nicht-Strings prüft das Schema, nicht `_validate_spec`."""
+    specs._validate_spec({**_spec(), "hosting": "gitlab"}, check_root=False)
+    with pytest.raises(Exception, match="registrierter Provider"):
+        specs._validate_spec({**_spec(), "hosting": "bitbucket"}, check_root=False)
+
+
 def test_dependencies_skipped_for_close_proposed():
     assert _refine_steps()["dependencies"]["only_if"] == {"label": ["ready for development", "needs approval"]}
     assert "only_if" not in _loop_steps("deps-backfill")["dependencies"]  # Backfill: immer
