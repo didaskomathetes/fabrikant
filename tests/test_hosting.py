@@ -367,8 +367,10 @@ class TestGitLabApiSurface:
         _install(monkeypatch, rec)
         GitLabProvider().add_labels("o/n", 7, ["a", "b"])
         method, path, payload = rec.calls[0]
-        assert (method, path) == ("POST", "/projects/o%2Fn/issues/7/labels")
-        assert payload == {"labels": "a,b"}
+        # the ``.../labels`` sub-endpoint is disabled on some instances; the
+        # issue update's ``add_labels`` param is the supported, idempotent way
+        assert (method, path) == ("PUT", "/projects/o%2Fn/issues/7")
+        assert payload == {"add_labels": "a,b"}
 
     def test_add_labels_empty_noop(self, monkeypatch):
         rec = _Recorder()
@@ -377,10 +379,19 @@ class TestGitLabApiSurface:
         assert rec.calls == []
 
     def test_remove_label_success(self, monkeypatch):
-        rec = _Recorder()
+        rec = _Recorder({"/issues/7": {"labels": ["a b", "c"]}})
         _install(monkeypatch, rec)
         assert GitLabProvider().remove_label("o/n", 7, "a b") is True
-        assert rec.calls[0][1] == "/projects/o%2Fn/issues/7/labels/a%20b"
+        # get current labels, then remove via the issue update's ``remove_labels`` param
+        assert rec.calls[0][:2] == ("GET", "/projects/o%2Fn/issues/7")
+        assert rec.calls[1][:2] == ("PUT", "/projects/o%2Fn/issues/7")
+        assert rec.calls[1][2] == {"remove_labels": "a b"}
+
+    def test_remove_label_absent_returns_false(self, monkeypatch):
+        rec = _Recorder({"/issues/7": {"labels": ["c"]}})
+        _install(monkeypatch, rec)
+        assert GitLabProvider().remove_label("o/n", 7, "a b") is False
+        assert len(rec.calls) == 1  # only the GET, no PUT
 
     def test_remove_label_404_returns_false(self, monkeypatch):
         import http.client
@@ -494,6 +505,115 @@ class TestGitLabApiSurface:
         GitLabProvider().commit_files("o/n", "feat", "m", [{"path": "a", "content": "1"}])
         payload = rec.calls[0][2]
         assert payload is not None and "author_name" not in payload
+
+
+class TestGitLabVersion:
+    """Version registration and capability-driven endpoint selection (ADR 0062)."""
+
+    def test_base_url_default_https(self):
+        assert GitLabProvider()._base == "https://gitlab.com/api/v4"
+
+    def test_base_url_override_http(self):
+        # local/dev or self-hosted instances served over plain http
+        p = GitLabProvider(host="localhost:8091", base_url="http://localhost:8091/api/v4/")
+        assert p._base == "http://localhost:8091/api/v4"  # trailing slash stripped
+
+    def test_parse_version_ee(self):
+        from fabrik.hosting.gitlab import _parse_version
+
+        assert _parse_version("19.5.8-ee") == (19, 5, 8)
+
+    def test_parse_version_ce(self):
+        from fabrik.hosting.gitlab import _parse_version
+
+        assert _parse_version("14.0.1-ce") == (14, 0, 1)
+
+    def test_parse_version_empty(self):
+        from fabrik.hosting.gitlab import _parse_version
+
+        assert _parse_version("") == (0,)
+
+    def test_capabilities_modern(self, monkeypatch):
+        rec = _Recorder({"/version": {"version": "19.5.8-ee", "enterprise": True}})
+        _install(monkeypatch, rec)
+        caps = GitLabProvider().capabilities()
+        assert caps.version == "19.5.8-ee"
+        assert caps.version_tuple == (19, 5, 8)
+        assert caps.enterprise is True
+        assert caps.mr_diffs_endpoint is True
+
+    def test_capabilities_old_version(self, monkeypatch):
+        rec = _Recorder({"/version": {"version": "13.11.0", "enterprise": False}})
+        _install(monkeypatch, rec)
+        caps = GitLabProvider().capabilities()
+        assert caps.version_tuple == (13, 11, 0)
+        assert caps.mr_diffs_endpoint is False
+
+    def test_capabilities_fetched_once(self, monkeypatch):
+        rec = _Recorder({"/version": {"version": "19.5.8-ee"}})
+        _install(monkeypatch, rec)
+        p = GitLabProvider()
+        p.capabilities()
+        p.capabilities()
+        assert [c[1] for c in rec.calls] == ["/version"]
+
+    def test_version_property(self, monkeypatch):
+        rec = _Recorder({"/version": {"version": "19.5.8-ee"}})
+        _install(monkeypatch, rec)
+        assert GitLabProvider().version == "19.5.8-ee"
+
+    def test_mr_changes_modern_endpoint(self, monkeypatch):
+        diffs = [{"new_path": "a.py", "diff": "+x\n"}]
+        rec = _Recorder(
+            {
+                "/version": {"version": "19.5.8-ee"},
+                "/versions": [{"id": 99, "state": "collected"}, {"id": 100, "state": "collected"}],
+                "/merge_request_diffs/100": {"diffs": diffs},
+            }
+        )
+        _install(monkeypatch, rec)
+        out = GitLabProvider()._mr_changes("o/n", 4)
+        assert [c["new_path"] for c in out] == ["a.py"]
+        paths = [c[1] for c in rec.calls]
+        assert "/projects/o%2Fn/merge_requests/4/versions" in paths
+        assert "/projects/o%2Fn/merge_request_diffs/100" in paths  # newest diff id
+
+    def test_mr_changes_fallback_on_404(self, monkeypatch):
+        import http.client
+        import urllib.error
+
+        changes = [{"new_path": "a.py", "diff": "+x\n"}]
+
+        def fake(self_, method, path, payload=None, *, raw=False):
+            if path.endswith("/merge_request_diffs/100"):
+                raise urllib.error.HTTPError(path, 404, "not found", http.client.HTTPMessage(), None)
+            if path.endswith("/versions"):
+                return [{"id": 100}]
+            if path.endswith("/changes"):
+                return {"changes": changes}
+            return {}
+
+        monkeypatch.setattr(GitLabProvider, "_request", fake)
+        out = GitLabProvider()._mr_changes("o/n", 4)
+        assert [c["new_path"] for c in out] == ["a.py"]
+
+    def test_mr_changes_polls_until_collected(self, monkeypatch):
+        import fabrik.hosting.gitlab as gl
+
+        monkeypatch.setattr(gl.time, "sleep", lambda s: None)
+        state = {"n": 0}
+
+        def fake(self_, method, path, payload=None, *, raw=False):
+            if path.endswith("/changes"):
+                state["n"] += 1
+                # the diff is computed asynchronously: empty on the first poll
+                return {"changes": [] if state["n"] == 1 else [{"new_path": "a.py", "diff": "+x\n"}]}
+            return {}  # /version → empty → old version → deprecated /changes path
+
+        monkeypatch.setattr(GitLabProvider, "_request", fake)
+        out = GitLabProvider()._mr_changes("o/n", 4)
+        assert state["n"] == 2
+        assert [c["new_path"] for c in out] == ["a.py"]
 
 
 class TestGitLabNormalizationExtras:

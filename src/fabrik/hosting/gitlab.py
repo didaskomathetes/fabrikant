@@ -5,6 +5,12 @@ REST API v4 (``https://<host>/api/v4``). Auth is a ``PRIVATE-TOKEN`` header; the
 token is resolved per call from ``FABRIK_GITLAB_TOKEN`` (env) or the token file
 ``~/.config/gitlab/token`` (overridable via ``FABRIK_GITLAB_TOKEN_FILE``).
 
+The host's version and capabilities are registered once from ``GET /version``
+(see :meth:`GitLabProvider.capabilities` / :class:`GitLabCapabilities`). Endpoints
+that vary by version or are disabled on restricted instances (e.g. the modern
+per-file diffs endpoint, the issue ``.../labels`` sub-endpoint) are handled with
+supported fallbacks.
+
 Differences from GitHub that are documented gaps (see ADR 0062):
 
 - ``update_branch`` has no GitLab equivalent → :class:`HostingNotSupported`.
@@ -23,6 +29,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +55,13 @@ TOKEN_FILE_ENV = "FABRIK_GITLAB_TOKEN_FILE"
 # GitLab MR state values (the steps speak GitHub's ``open``/``closed``).
 _MR_STATE_MAP = {"open": "opened", "closed": "closed", "merged": "merged", "all": "all"}
 
+# The MR diff is computed asynchronously after the MR is created; poll briefly for it.
+_DIFF_POLL_TIMEOUT_S = 10.0
+_DIFF_POLL_INTERVAL_S = 1.0
+
+# Oldest GitLab with the modern per-file diffs endpoint (``/merge_request_diffs/:id``).
+_MIN_MR_DIFFS_VERSION = (14, 0)
+
 
 def gitlab_token() -> str:
     """Resolve the GitLab token: ``FABRIK_GITLAB_TOKEN`` env, else the token file.
@@ -64,6 +78,29 @@ def gitlab_token() -> str:
         if tok:
             return tok
     raise HostingError(f"no GitLab token (set {TOKEN_ENV} or write {path})")
+
+
+def _parse_version(raw: str) -> tuple[int, ...]:
+    """Parse a GitLab version string into a comparable tuple (``"19.5.8-ee"`` → ``(19, 5, 8)``)."""
+    core = raw.split("-", 1)[0]
+    parts = [int(p) for p in ("".join(ch for ch in seg if ch.isdigit()) or "0" for seg in core.split("."))]
+    return tuple(parts)
+
+
+@dataclass(frozen=True)
+class GitLabCapabilities:
+    """Version- and instance-specific capabilities of a GitLab host (ADR 0062).
+
+    Registered once per provider from ``GET /version``. ``mr_diffs_endpoint`` reflects
+    the version gate for the modern per-file diffs endpoint; restricted instances may
+    still disable it, so callers fall back to the deprecated ``/changes`` endpoint on
+    404/405.
+    """
+
+    version: str
+    version_tuple: tuple[int, ...]
+    enterprise: bool
+    mr_diffs_endpoint: bool
 
 
 def _label_names(raw: dict) -> list[str]:
@@ -141,9 +178,41 @@ class GitLabProvider(Provider):
 
     name = "gitlab"
 
-    def __init__(self, host: str = "gitlab.com"):
+    def __init__(self, host: str = "gitlab.com", base_url: str | None = None):
         self._host = host
-        self._base = f"https://{host}/api/v4"
+        # ``base_url`` overrides the default ``https://<host>/api/v4`` — useful for
+        # local/dev or self-hosted instances served over plain http (e.g. a container).
+        self._base = (base_url or f"https://{host}/api/v4").rstrip("/")
+        self._version_cache: dict | None = None
+        self._capabilities: GitLabCapabilities | None = None
+
+    # -- version / capabilities (ADR 0062) -----------------------------------
+    def _version_info(self) -> dict:
+        """The ``GET /version`` payload, fetched once and cached."""
+        cache = self._version_cache
+        if cache is None:
+            cache = self._request("GET", "/version") or {}
+            self._version_cache = cache
+        return cache
+
+    def capabilities(self) -> GitLabCapabilities:
+        """The registered :class:`GitLabCapabilities` for this host (fetched once)."""
+        if self._capabilities is None:
+            info = self._version_info()
+            version = str(info.get("version", ""))
+            vt = _parse_version(version)
+            self._capabilities = GitLabCapabilities(
+                version=version,
+                version_tuple=vt,
+                enterprise=bool(info.get("enterprise", False)),
+                mr_diffs_endpoint=vt >= _MIN_MR_DIFFS_VERSION,
+            )
+        return self._capabilities
+
+    @property
+    def version(self) -> str:
+        """The GitLab instance version string (e.g. ``"19.5.8-ee"``)."""
+        return self.capabilities().version
 
     # -- plumbing ------------------------------------------------------------
     def _pid(self, ref: str) -> str:
@@ -230,18 +299,23 @@ class GitLabProvider(Provider):
         return _issue_from(self._request("PUT", f"/projects/{self._pid(ref)}/issues/{number}", payload))
 
     def add_labels(self, ref, number, labels):
-        if labels:
-            self._request("POST", f"/projects/{self._pid(ref)}/issues/{number}/labels", {"labels": ",".join(labels)})
+        if not labels:
+            return
+        # The ``.../labels`` sub-endpoint is disabled on some instances; the issue
+        # update's ``add_labels`` param is the supported, idempotent way to add.
+        self._request("PUT", f"/projects/{self._pid(ref)}/issues/{number}", {"add_labels": ",".join(labels)})
 
     def remove_label(self, ref, number, label):
+        path = f"/projects/{self._pid(ref)}/issues/{number}"
         try:
-            self._request(
-                "DELETE", f"/projects/{self._pid(ref)}/issues/{number}/labels/{urllib.parse.quote(label, safe='')}"
-            )
+            current = _label_names(self._request("GET", path))
         except urllib.error.HTTPError as e:
-            if e.code != 404:
-                raise
-            return False
+            if e.code == 404:
+                return False  # issue gone → label gone (idempotent)
+            raise
+        if label not in current:
+            return False  # already gone (idempotent)
+        self._request("PUT", path, {"remove_labels": label})
         return True
 
     def list_issues(self, ref, *, state="open", labels=None, sort="updated", direction="desc", page=1, per_page=100):
@@ -295,15 +369,46 @@ class GitLabProvider(Provider):
     def update_branch(self, ref, number, *, expected_head_sha=None):
         raise HostingNotSupported("gitlab: update_branch (no equivalent API; merge the target into the source via git)")
 
-    def _changes(self, ref: str, number: int) -> list[dict]:
-        res = self._request("GET", f"/projects/{self._pid(ref)}/merge_requests/{number}/changes")
-        return (res or {}).get("changes") or []
+    def _mr_changes(self, ref: str, number: int) -> list[dict]:
+        """Per-file changes for an MR (newest diff).
+
+        Uses the modern ``/merge_request_diffs/:id`` endpoint when the instance
+        supports it (GitLab >= 14), falling back to the deprecated ``/changes``
+        endpoint (restricted instances disable the former). The diff is computed
+        asynchronously, so poll briefly until it is collected.
+        """
+        pid = self._pid(ref)
+        use_modern = self.capabilities().mr_diffs_endpoint
+
+        def fetch() -> list[dict]:
+            nonlocal use_modern
+            if use_modern:
+                try:
+                    versions = self._request("GET", f"/projects/{pid}/merge_requests/{number}/versions")
+                    if versions:
+                        diff_id = max(int(v["id"]) for v in versions)
+                        res = self._request("GET", f"/projects/{pid}/merge_request_diffs/{diff_id}")
+                        return res.get("diffs") or []
+                except urllib.error.HTTPError as e:
+                    if e.code not in (404, 405):
+                        raise
+                    use_modern = False  # restricted instance → stop re-trying the modern endpoint
+            res = self._request("GET", f"/projects/{pid}/merge_requests/{number}/changes")
+            return (res or {}).get("changes") or []
+
+        deadline = time.monotonic() + _DIFF_POLL_TIMEOUT_S
+        changes: list[dict] = []
+        while True:
+            changes = fetch()
+            if changes or time.monotonic() >= deadline:
+                return changes
+            time.sleep(_DIFF_POLL_INTERVAL_S)
 
     def pr_files(self, ref, number):
-        return [_file_from(c) for c in self._changes(ref, number)]
+        return [_file_from(c) for c in self._mr_changes(ref, number)]
 
     def pr_diff(self, ref, number):
-        return "\n".join(str(c.get("diff", "")) for c in self._changes(ref, number))
+        return "\n".join(str(c.get("diff", "")) for c in self._mr_changes(ref, number))
 
     def post_review(self, ref, number, *, event, body=""):
         if event == "APPROVE":
@@ -325,7 +430,7 @@ class GitLabProvider(Provider):
         raise HostingNotSupported("gitlab: native issue dependencies (GitHub-only, ADR 0031)")
 
     # -- API commits (commit_via: api) ---------------------------------------
-    def commit_files(self, ref, branch, message, files, *, author=None):
+    def commit_files(self, ref, branch, message, files, *, author=None, start_branch=None):
         actions = []
         for f in files:
             if f.get("deleted"):
@@ -333,6 +438,9 @@ class GitLabProvider(Provider):
             else:
                 actions.append({"action": "create", "file_path": f["path"], "content": f["content"]})
         payload: dict[str, Any] = {"branch": branch, "commit_message": message, "actions": actions}
+        if start_branch:
+            # branch does not exist yet — base it on ``start_branch`` (GitLab creates it)
+            payload["start_branch"] = start_branch
         if author:
             payload["author_name"] = author.get("name", "")
             payload["author_email"] = author.get("email", "")

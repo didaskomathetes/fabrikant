@@ -66,12 +66,34 @@ the codebase and is adopted here for the hosting substrate.
 - `edit_issue`: `state_reason`/`duplicate_issue_id` (GitHub close semantics) are ignored.
 - `commit_via: api`: GitHub-only (see decision 6) → `HostingNotSupported`.
 
+### Version & capability registration (GitLab)
+
+`GitLabProvider` registers the host's version and capabilities once from `GET /version`
+(`GitLabProvider.capabilities()` → `GitLabCapabilities`; the `version` property exposes the raw
+string, e.g. `"19.5.8-ee"`). The version is parsed to a comparable tuple (`"19.5.8-ee"` →
+`(19, 5, 8)`) and drives endpoint selection:
+
+- **MR diffs.** The modern per-file endpoint (`GET .../merge_requests/:iid/versions` →
+  `GET .../merge_request_diffs/:diff_id`) is used when the version supports it (GitLab ≥ 14).
+  The diff is computed **asynchronously** after the MR is created, so the provider polls briefly
+  (bounded, ~10 s) until it is collected. Restricted instances disable the modern endpoint
+  (404/405) even on recent versions, so the provider falls back to the deprecated
+  `GET .../merge_requests/:iid/changes` endpoint on 404/405.
+- **Issue labels.** The `.../issues/:iid/labels` sub-endpoint is disabled on some instances; the
+  provider uses the issue update's `add_labels` / `remove_labels` params (supported and
+  idempotent) instead.
+
+The `diff` field GitLab returns is the **hunk only** (no `diff --git` header), so a file's path is
+read from `new_path` (exposed via `pr_files`), not from the diff text.
+
 ## Consequences
 
 - (+) Self-hosted GitLab becomes usable as a host; `pr`, `issue`, `pr_merge` run over the same
   path on GitHub and GitLab.
 - (+) Steps see only normalized types — switching providers touches no step code.
 - (+) The GitHub path is unchanged (a wrapper over `gitops`); existing tests stay valid.
+- (+) GitLab version/capability registration makes endpoint selection explicit and robust across
+  versions and restricted instances (modern diffs endpoint with a deprecated fallback).
 - (−) The port is the union of all operations — it grows as steps/triggers need more.
 - (−) The GitLab gaps (`update_branch`, dependencies, `commit_via: api`) are real feature
   differences, not bugs; the affected features stay GitHub-only.

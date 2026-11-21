@@ -268,13 +268,16 @@ class GitHubProvider(Provider):
         self._api("DELETE", f"/repos/{ref}/issues/{number}/dependencies/blocked_by/{blocker_id}")
 
     # -- API commits (commit_via: api) ---------------------------------------
-    def commit_files(self, ref, branch, message, files, *, author=None):
+    def commit_files(self, ref, branch, message, files, *, author=None, start_branch=None):
         """Commit ``files`` to ``branch`` via the Git Data API (blobs → tree → commit → ref).
 
         Returns the new commit SHA. GitHub signs commits created by an app this way
-        (``commit_via: api``, ADR 0010).
+        (``commit_via: api``, ADR 0010). If ``branch`` does not exist and
+        ``start_branch`` is given, the new branch is based on ``start_branch``.
         """
         head = self._branch_head(ref, branch)
+        if head is None and start_branch:
+            head = self._branch_head(ref, start_branch)
         base_tree = self._commit_tree(ref, head) if head else ""
         entries: list[dict[str, Any]] = []
         for f in files:

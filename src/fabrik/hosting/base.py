@@ -294,10 +294,13 @@ class Provider(ABC):
         files: list[dict[str, Any]],
         *,
         author: dict[str, str] | None = None,
+        start_branch: str | None = None,
     ) -> str:
         """Commit ``files`` to ``branch`` via the host API; return the new commit SHA.
 
         ``files`` is a list of ``{"path": str, "content": str, "deleted": bool}``.
+        If ``branch`` does not exist and ``start_branch`` is given, the new branch is
+        created based on ``start_branch``; without it a new (orphan) branch results.
         """
 
     # -- webhook parsing -----------------------------------------------------
