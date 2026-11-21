@@ -1,6 +1,6 @@
 # ADR 0062: Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab)
 
-**Status:** Proposed (2026-11-20)
+**Status:** Accepted (2026-11-21); proposed 2026-11-20, accepted on merge to main
 **Affects:** ADR 0010 (dual identity/tokens), ADR 0011 (approval context), ADR 0027 (webhook
 trigger), ADR 0031 (native issue dependencies), ADR 0057 (port/adapter pattern).
 

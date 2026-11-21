@@ -1,6 +1,6 @@
 # ADR 0063: Hosting Provider Registry — Extensible Adapters
 
-**Status:** Proposed (2026-11-21)
+**Status:** Accepted (2026-11-21)
 **Affects:** ADR 0062 (hosting provider port/adapter), ADR 0056 (adapter registry at the
 composition root), ADR 0057 (port/adapter pattern).
 
