@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .. import config
 from . import clean
+from .approval import PendingURL
 from .scan import ScanFinding
 from .scan import verdict as _verdict
 
@@ -44,10 +45,20 @@ class FetchResult:
     content_type: str | None = None
     reason: str | None = None  # für not_fetched / error
     snippet: str = ""
+    domain: str = ""  # Host der URL (für Freigabe/Domain-Statistik)
+    found_in: str = ""  # Provenance: wo die URL herkam (source-id / "search" / "agent")
 
     @property
     def ok(self) -> bool:
         return self.status == "clean"
+
+
+def _host_of(url: str) -> str:
+    """Host (netloc) einer URL, kleingeschrieben — für Freigabe/Statistik."""
+    try:
+        return urllib.parse.urlparse(url).netloc.lower().split("@")[-1].split(":")[0]
+    except ValueError:
+        return ""
 
 
 def _host_matches(host: str, domains: Iterable[str]) -> bool:
@@ -202,10 +213,10 @@ class Fetcher:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     # --- Orchestrierung ---
-    def fetch(self, url: str, *, search_query: str | None = None, requested_by: str = "cli") -> FetchResult:
+    def fetch(self, url: str, *, search_query: str | None = None, requested_by: str = "cli", found_in: str = "") -> FetchResult:
         url = url.strip()
         if not self.is_approved(url):
-            return FetchResult(url=url, status="not_fetched", reason="nicht freigegeben (kein approved_domain / approved_url)")
+            return FetchResult(url=url, status="not_fetched", domain=_host_of(url), found_in=found_in, reason="nicht freigegeben (kein approved_domain / approved_url)")
         try:
             assert_public_url(url)
         except ValueError as e:
@@ -232,6 +243,8 @@ class Fetcher:
             fetched_at=now,
             content_type=ctype or None,
             snippet=clean_text[:_SNIPPET_LEN],
+            domain=_host_of(url),
+            found_in=found_in,
         )
         self._write(result, clean_text)
         self._ledger(result, search_query, requested_by)
@@ -242,3 +255,18 @@ def _run_scan(text: str) -> list[ScanFinding]:
     from .scan import scan
 
     return scan(text)
+
+
+def results_to_pending(results: Iterable[FetchResult]) -> list[PendingURL]:
+    """``not_fetched``-Ergebnisse → ``PendingURL``-Liste (für :func:`bundle_access`).
+
+    Nur URLs, die weder automatisch freigegeben noch abgerufen wurden, landen im
+    gebündelten ``access``-Request (ADR 0060 §3). ``found_in`` = Provenance-Quelle,
+    ``why`` = der Nicht-Freigabe-Grund.
+    """
+    out: list[PendingURL] = []
+    for r in results:
+        if r.status != "not_fetched":
+            continue
+        out.append(PendingURL(url=r.url, domain=r.domain, found_in=r.found_in, scan="", why=r.reason or ""))
+    return out

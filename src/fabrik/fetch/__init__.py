@@ -5,21 +5,32 @@ bereinigt sie deterministisch (Stufe A), scannt sie deterministisch auf
 Prompt-Injection (Stufe B, ohne LLM) und liefert ein Ergebnis mit Status
 ``clean`` / ``suspicious`` / ``quarantined`` plus Herkunftsprotokoll.
 
-Nur Auto-Freigaben (Herkunft + ``approved_domains``) werden geholt; alles
-andere wird nicht geholt (Stufe 2: gebündelte menschliche Freigabe).
+Auto-Freigaben (Herkunft + ``approved_domains``) werden geholt; offene URLs
+werden gebündelt zu EINEM ``access``-Freigabe-Request (Stufe 2, ADR 0059 §5a).
 """
 
 from __future__ import annotations
 
+from .approval import ACCESS_TIMEOUT_HOURS, AccessRequest, PendingURL, bundle_access
 from .clean import clean_html, normalize_text
-from .fetcher import Fetcher, FetchResult
-from .scan import ScanFinding, scan
+from .fetcher import Fetcher, FetchResult, results_to_pending
+from .scan import QUARANTINE, SUSPICIOUS, ScanFinding, rule_by_id, rules, scan, verdict
 
 __all__ = [
-    "FetchResult",
-    "Fetcher",
-    "ScanFinding",
+    "ACCESS_TIMEOUT_HOURS",
+    "AccessRequest",
+    "PendingURL",
+    "bundle_access",
     "clean_html",
     "normalize_text",
+    "QUARANTINE",
+    "SUSPICIOUS",
+    "Fetcher",
+    "FetchResult",
+    "results_to_pending",
+    "ScanFinding",
+    "rules",
+    "rule_by_id",
     "scan",
+    "verdict",
 ]
