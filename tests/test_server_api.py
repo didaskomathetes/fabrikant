@@ -911,6 +911,44 @@ def test_get_run_includes_cost_rollup(fabrik_url):
     assert cost["total_tokens"] == 0 and cost["steps"] == []
 
 
+def test_get_run_events(fabrik_url):
+    """#128: GET /api/run/<id>/events returns the full session log (events/checkpoints/artifacts)."""
+    from fabrik import sessionlog
+
+    lg = sessionlog.SessionLog(RUN_ID, "uitest", "t")
+    lg.start()
+    lg.event("step_start", step_name="a", step_type="shell")
+    lg.event("prompt", step_name="a", step_type="agent", text="do it")
+    lg.event("tool_call", step_name="a", step_type="agent", tool={"name": "bash"})
+    lg.event("message", step_name="a", step_type="agent", text="done")
+    lg.event(
+        "step_done",
+        step_name="a",
+        step_type="shell",
+        status="pass",
+        duration_s=1.5,
+        usage={"model": "m", "total_tokens": 10, "cost_usd": 0.01},
+    )
+    lg.artifact("a", "report", "/tmp/out.md")
+    lg.finish("pass")
+
+    status, body, _ = _get(f"{fabrik_url}/api/run/{RUN_ID}/events")
+    assert status == 200
+    data = json.loads(body)
+    kinds = [e["kind"] for e in data["events"]]
+    assert {"run_start", "step_start", "step_done", "prompt", "tool_call", "message", "run_end"} <= set(kinds)
+    assert len(data["artifacts"]) == 1 and data["artifacts"][0]["path"] == "/tmp/out.md"
+    # step_done carries duration + usage as a redacted JSON string
+    done = next(e for e in data["events"] if e["kind"] == "step_done")
+    payload = json.loads(done["data"])
+    assert payload["duration_s"] == 1.5 and payload["usage"]["total_tokens"] == 10
+
+
+def test_get_run_events_missing(fabrik_url):
+    status, _, _ = _get(f"{fabrik_url}/api/run/keiner/events")
+    assert status == 404
+
+
 def test_get_kpis_costs(fabrik_url):
     status, body, _ = _get(f"{fabrik_url}/api/kpis/costs?project=uitest")
     assert status == 200

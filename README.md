@@ -740,6 +740,7 @@ CLI is killed. The model dropdown sits in the chat's title bar.
 | `/api/run/<id>/log?lines=N` | GET | Raw run log as plain text (tail via `lines`) |
 | `/api/run/<id>/stream?project=` | GET | Live log + status changes as server-sent events (`log`/`status`/`end`); reconnect via `Last-Event-ID` (byte offset); secrets redacted (ADR 0038) |
 | `/api/run/<id>/transcript?after=&limit=` | GET | Agent turns (prompt, tool calls, answers) from the SessionLog, paginated (ADR 0038) |
+| `/api/run/<id>/events` | GET | Full session log as `{events, checkpoints, artifacts}` (all event kinds, redacted `data` as a JSON string); works for legacy JSON and SQL runs. Backs the web UI trace view (issue #128) |
 | `/api/chat` | POST `{"message","project","req_id"}` | Chat (command or LLM); answers with `req_id` |
 | `/api/chat/cancel` | POST `{"req_id"}` | Cancel a running chat request (UI button) |
 | `/api/approve` / `/api/reject` | POST `{"project","run_id"}` | Approval gate; the response contains `resumed` (bool) |
@@ -845,7 +846,11 @@ without the field stay compatible (additive API change).
 200 KB. Status: `running`, `pass`, `fail`, `needs_approval`,
 `rejected`. The raw `.log` is served via `GET /api/run/<id>/log`
 and shown on demand in the run panel via the **📜 log** button (toggle between
-the formatted record view and the raw log).
+the formatted record view and the raw log). The run panel also has a **Trace**
+tab: a chronological step timeline from the session log (`GET /api/run/<id>/events`)
+showing each step's status, duration and usage (tokens/cost), with agent events
+(prompt / tool call / message) as drill-down items and the run's artifacts listed
+at the end (issue #128).
 
 **Single node:** on start, `fabrik serve` sets every `running` record to `error`
 (restart recovery, `needs_approval` stays). Two server processes sharing a

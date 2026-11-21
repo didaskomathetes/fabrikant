@@ -371,6 +371,45 @@ a { color: var(--run); }
   white-space: pre-wrap; word-break: break-word; color: #aeb9c8;
 }
 
+/* Trace view (Issue #128): chronological step timeline from the session log. */
+.runtrace { padding: 2px 0; }
+.trace-entry {
+  display: flex; align-items: center; gap: 6px; margin: 6px 0;
+  padding: 6px 10px; font-size: 12px; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+}
+.trace-entry .trace-icon { margin: 0; }
+.trace-runend { color: var(--text); }
+.trace-warning { border-color: rgba(255, 198, 120, 0.4); background: rgba(255, 198, 120, 0.08); }
+.trace-step { margin: 0 0 8px; padding: 6px 10px; border-left: 3px solid var(--line); }
+.trace-step.pass { border-left-color: var(--ok); }
+.trace-step.fail, .trace-step.error, .trace-step.timeout { border-left-color: var(--err); }
+.trace-step.skipped { border-left-color: var(--line); }
+.trace-stephead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.trace-stepname { font-weight: 700; color: var(--text); }
+.trace-steptype { color: var(--dim); font-size: 11px; }
+.trace-dur, .trace-usage, .trace-count { color: var(--dim); font-size: 11px; margin-left: 4px; }
+.trace-icon { margin-right: 4px; }
+.trace-step.pass .trace-icon { color: var(--ok); }
+.trace-step.fail .trace-icon, .trace-step.error .trace-icon, .trace-step.timeout .trace-icon { color: var(--err); }
+.trace-step.skipped .trace-icon, .trace-step.skipped .trace-stepname { color: var(--dim); }
+.trace-events { margin: 6px 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
+.trace-event { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.trace-event summary {
+  cursor: pointer; padding: 5px 8px; font-size: 11px; color: var(--dim);
+  list-style: none; display: flex; align-items: center; gap: 4px;
+}
+.trace-event summary::-webkit-details-marker { display: none; }
+.trace-event[open] summary { color: var(--text); border-bottom: 1px solid var(--line); }
+.trace-event pre {
+  margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+  white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto;
+}
+.trace-artifacts { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.trace-artifacts-title { font-weight: 700; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+.trace-artifact { font-size: 11px; color: var(--dim); margin-bottom: 3px; word-break: break-all; }
+.trace-artifactmeta { color: var(--dim); opacity: 0.7; }
+
 /* Freigabe-Kontext: WAS wird freigegeben, welche Rechte, welches Issue */
 .runapproval {
   margin: 0 0 12px; padding: 10px 12px;
