@@ -67,6 +67,7 @@ def replay_run(
     actor: str | None = None,
     held_scope: str | None = None,
     original: dict | None = None,
+    trigger: str = "replay",
 ) -> tuple[dict, dict]:
     """Re-execute a finished run with pinned inputs.
 
@@ -74,6 +75,10 @@ def replay_run(
     if the run is unknown, not in a terminal status, or its project/spec is gone.
     A spec-hash mismatch is *not* an error — it is reported by :func:`diff_runs`.
     Pass an already-loaded ``original`` record to skip the run lookup.
+
+    ``trigger`` labels the re-run (``"replay"`` = manual replay, ``"eval"`` =
+    golden eval, Roadmap #130) — it lands in the run record and the note but,
+    like replay, is purely informational (no reconcile trigger).
     """
     orig = original if original is not None else get_run(run_id, project)
     if orig is None:
@@ -92,8 +97,8 @@ def replay_run(
     rec = run_loop(
         proj,
         loop,
-        trigger="replay",
-        note=f"replay of {run_id}",
+        trigger=trigger,
+        note=f"{trigger} of {run_id}",
         initial_vars=_pinned_vars(orig, spec) or None,
         actor=actor,
         held_scope=held_scope,

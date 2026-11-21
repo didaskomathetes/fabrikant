@@ -12,6 +12,7 @@ from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
+from .golden import capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
 from .replay import diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
@@ -171,6 +172,84 @@ def cmd_replay(args):
     print()
     print(diff_runs(orig, rec))
     sys.exit(0 if rec["status"] == "pass" else 1)
+
+
+def cmd_golden(args):
+    """Golden Runs (Roadmap #130): ``capture`` pinnst ein Golden, ``show`` zeigt sie."""
+    if args.golden_cmd == "capture":
+        try:
+            g = capture_golden(args.project, args.loop, args.run_id, args.name)
+            p = save_golden(args.project, args.name or args.loop, g)
+        except Exception as e:
+            print(f"Fehler: {e}")
+            sys.exit(1)
+        print(f"✔ golden '{args.name or args.loop}' für {args.project}/{args.loop} aus Run {args.run_id} → {p}")
+        return
+    try:
+        goldens = load_goldens(args.project)
+        if args.name:
+            goldens = {args.name: goldens[args.name]}
+    except Exception as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    if not goldens:
+        print(f"(keine Goldens für {args.project})")
+        return
+    for n, g in goldens.items():
+        exp = g.get("expect", {})
+        print(f"{n}  loop={g.get('loop')}  baseline={g.get('baseline_run')}  spec={str(g.get('spec_hash', ''))[:12]}")
+        for s in exp.get("steps", []):
+            print(f"    - {s.get('name')} [{s.get('status')}]  verdict={s.get('verdict') or '—'}")
+        print(f"    status={exp.get('status')}")
+
+
+def _confirm_eval(args) -> bool:
+    """Bestätigung vor dem realen Eval-Re-Run: ``--yes`` überspringt; ohne TTY ohne ``--yes`` Abbruch."""
+    if getattr(args, "yes", False):
+        return True
+    if not sys.stdin.isatty():
+        print("Abbruch: keine interaktive Eingabe — mit --yes/-y explizit bestätigen.")
+        return False
+    return input(f"Loop {args.project}/{args.loop} jetzt real neu ausführen (Eval)? [y/N] ").strip().lower() in (
+        "y",
+        "yes",
+        "j",
+        "ja",
+    )
+
+
+def cmd_eval(args):
+    """Eval (Roadmap #130): Loop mit Golden-Baseline vergleichen — Exit 0 = kein Regression."""
+    try:
+        g = get_golden(args.project, args.name or args.loop)
+    except Exception as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    loop = g["loop"]
+    blocked = pause.manual_block_reason(args.project, loop)
+    if blocked:
+        print(f"Fehler: {blocked}")
+        sys.exit(1)
+    print(REPLAY_SIDE_EFFECT_NOTICE)
+    if not _confirm_eval(args):
+        print("Abgebrochen.")
+        sys.exit(1)
+    claim = claim_run(args.project, loop, None)
+    if claim is None:
+        print(f"⚠ {args.project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
+        sys.exit(1)
+    try:
+        golden, baseline, record, diffs = run_eval(args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope)
+    except Exception as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    finally:
+        claim.release()
+    print(f"eval  {record['project']}/{record['loop']}  ({record['id']})  [golden {args.name or loop}]")
+    _print_steps(record)
+    print()
+    print(eval_report(golden, baseline, record, diffs))
+    sys.exit(0 if not diffs else 1)
 
 
 def cmd_runs(args):
@@ -399,6 +478,27 @@ def main(argv=None):
     p.add_argument("--project", default=None, help="Projekt (sonst aus dem Run abgeleitet)")
     p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
     p.set_defaults(func=cmd_replay)
+
+    p = sub.add_parser("golden", help="Golden Runs: Baseline pinnen & anzeigen (Roadmap #130)")
+    g = p.add_subparsers(dest="golden_cmd", required=True)
+    gc = g.add_parser("capture", help="Golden aus abgeschlossenen Run pinnen")
+    gc.add_argument("project")
+    gc.add_argument("loop")
+    gc.add_argument("run_id", help="Id des abgeschlossenen Baseline-Runs")
+    gc.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
+    gs = g.add_parser("show", help="Goldens anzeigen")
+    gs.add_argument("project")
+    gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
+    p.set_defaults(func=cmd_golden)
+
+    p = sub.add_parser(
+        "eval", help="Loop mit Golden-Baseline vergleichen, Exit 0 = kein Regression (Roadmap #130)"
+    )
+    p.add_argument("project")
+    p.add_argument("loop")
+    p.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
+    p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
+    p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("runs", help="Run-Historie (show/export: Einzelrun + Session-Log)")
     p.add_argument("--project", default=None)
