@@ -12,6 +12,7 @@ from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
+from .mcp_server import serve_stdio
 from .replay import diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
@@ -200,6 +201,12 @@ def cmd_serve(args):
     except auth.AuthError as e:
         print(f"Fehler: {e}")
         sys.exit(1)
+
+
+def cmd_mcp(_args):
+    # fabrik as an MCP stdio server (Roadmap #132): runs, specs, approvals for
+    # any MCP-capable agent. Long-lived process — the client keeps the pipe open.
+    serve_stdio()
 
 
 def _resume_sync(project: str, run_id: str, approve: bool) -> str:
@@ -418,6 +425,11 @@ def main(argv=None):
         "--host", default=None, help="Bind-Adresse (Default 127.0.0.1 / FABRIK_HOST; sonst FABRIK_AUTH=local)"
     )
     p.set_defaults(func=cmd_serve)
+
+    sub.add_parser(
+        "mcp",
+        help="MCP-Server (stdio): Runs, Specs, Approvals für MCP-fähige Agenten (Roadmap #132)",
+    ).set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("approve", help="needs_approval-Run freigeben (setzt fort)")
     p.add_argument("run_id")

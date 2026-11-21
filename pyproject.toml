@@ -24,6 +24,7 @@ oidc = ["pyjwt[crypto]>=2.8"]
 
 [project.scripts]
 fabrik = "fabrik.cli:main"
+fabrik-mcp = "fabrik.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fabrik"]
