@@ -45,10 +45,14 @@ CLI:
 - `fabrik eval <project> <loop> [--name N] [--yes]` — run an eval; **Exit 0 =
   no regression** (the CI-gate contract)
 
-CI: the eval is **opt-in** via a dedicated `workflow_dispatch` workflow
-(`.github/workflows/golden-eval.yml`) — it does not run on every push/PR. The
-job fails on regression, so "this pipeline change did not regress my loops"
-becomes a provable, blocking statement on demand.
+CI: the eval is **opt-in** via a dedicated `workflow_dispatch` workflow — it
+does not run on every push/PR. The job fails on regression, so "this pipeline
+change did not regress my loops" becomes a provable, blocking statement on
+demand. The workflow file is **staged at `docs/ci/golden-eval.yml`** (its
+content is final); its home is `.github/workflows/golden-eval.yml`, which the
+contributing GitHub App cannot push to without the `workflows` write
+permission. Once that permission is granted, the file moves to its final path
+unchanged.
 
 ## Consequences
 

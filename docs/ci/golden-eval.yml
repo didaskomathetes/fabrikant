@@ -1,0 +1,56 @@
+# Opt-in Golden-Run-Eval (Roadmap #130).
+#
+# WICHTIG — Staging-Pfad: Diese Datei liegt vorübergehend unter `docs/ci/`,
+# weil die GitHub-App die `workflows`-Write-Permission nicht hat und deshalb
+# nichts nach `.github/workflows/` pushen darf. Endstandort:
+# `.github/workflows/golden-eval.yml` (dorthin verschieben, sobald die
+# Permission vorliegt). Inhalt ist final — nur der Pfad wandert.
+#
+# Wird NUR manuell ausgelöst (Actions → „golden-eval" → Run workflow) — läuft
+# bewusst nicht auf jedem Push/PR. Zweck: "diese Pipeline-Änderung hat meine
+# Loops nicht regressioniert" als prüfbare Aussage. Der Job schlägt fehl
+# (Exit != 0), wenn der Replay einer gepinnten Golden-Baseline abweicht.
+name: golden-eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Fabrik-Project (Name der *.fabrik.yaml)"
+        required: true
+        default: "fabrik"
+      loop:
+        description: "Loop-Name"
+        required: true
+      golden:
+        description: "Golden-Name (leer = Loop-Name)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Golden eval (Exit 0 = keine Regression)
+        env:
+          PROJECT: ${{ github.event.inputs.project }}
+          LOOP: ${{ github.event.inputs.loop }}
+          GOLDEN: ${{ github.event.inputs.golden }}
+        run: |
+          set -euo pipefail
+          GOLDEN_ARGS=()
+          [ -n "$GOLDEN" ] && GOLDEN_ARGS+=(--name "$GOLDEN")
+          # --yes ist in CI Pflicht (kein TTY für die Rückfrage).
+          uv run fabrik eval "$PROJECT" "$LOOP" "${GOLDEN_ARGS[@]}" --yes
