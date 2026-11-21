@@ -17,7 +17,8 @@ Ablauf von :meth:`ApiPusher.push`:
      Arbeitsbaum bleiben, weil der Tree identisch ist).
 
 GitHub-spezifisch (Git-Data-API, Signatur durch GitHub); gehört mit den Provider-Ports
-(PR #437) in den GitHub-Adapter.
+(ADR 0062) in den GitHub-Adapter. Auf anderen Hosts verweigert :func:`push_branch`
+den API-Weg mit `HostingNotSupported`.
 
 Grenzen: Root-Commits (ohne Parent) werden nicht unterstützt. Autor/Datum der lokalen
 Commits gehen verloren (Autor = App); die Message bleibt.
@@ -43,6 +44,8 @@ from pathlib import Path
 
 from . import config, gitops
 from .failures import GitError, classify_exception, exit_code
+from .hosting import GITHUB_HOST, HostingNotSupported, current_spec, repo_host
+from .hosting.select import HOSTING_KEY
 from .secrets import _redact
 
 GIT_TIMEOUT_S = 300
@@ -293,7 +296,9 @@ def push_branch(
 ) -> str:
     """`branch` pushen — per `git push origin` oder (Projekt `commit_via: api`) per API. Liefert Summary.
 
-    Geschützte Branches (`protected`, Default `config.PROTECTED_DEFAULT`) und detached HEAD werden verweigert."""
+    Geschützte Branches (`protected`, Default `config.PROTECTED_DEFAULT`) und detached HEAD werden verweigert.
+    `commit_via: api` ist GitHub-spezifisch (GitHub signiert die API-Commits); auf anderen
+    Hosts wirft es `HostingNotSupported` (dokumentierte Lücke, ADR 0062)."""
     root = Path(root)
     if branch == "HEAD" or branch in (protected or config.PROTECTED_DEFAULT):
         msg = f"BLOCKED: push auf geschützten Branch '{branch}' verweigert"
@@ -301,8 +306,23 @@ def push_branch(
     if gitops.commit_via() != gitops.COMMIT_VIA_API:
         _git(root, "push", *(["--force-with-lease"] if force else []), "origin", branch)
         return f"push {branch}"
+    remote_url = repo or _git(root, "remote", "get-url", "origin")
+    # Entscheidung über den Host, bevor ein Provider (und dessen Credentials) gebaut wird.
+    host = repo_host(remote_url)
+    if host not in (None, GITHUB_HOST):
+        raise HostingNotSupported(
+            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
+            f"der Repo-Host ({host}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+        )
+    # Ein nackter owner/name-Slug verrät den Host nicht — dann entscheidet `hosting:` der aktiven Spec.
+    spec_hosting = current_spec().get(HOSTING_KEY)
+    if isinstance(spec_hosting, str) and spec_hosting.strip().lower() != "github":
+        raise HostingNotSupported(
+            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
+            f"hosting: {spec_hosting} ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+        )
     if repo is None:
-        repo = repo_from_remote(_git(root, "remote", "get-url", "origin"))
+        repo = repo_from_remote(remote_url)
     return ApiPusher(root, repo, gitops._gh_token("dev")).push(branch, force=force).summary
 
 

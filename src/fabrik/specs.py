@@ -26,6 +26,8 @@ from . import alerts, billing, branches, config, slack, spec_sources, specschema
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
 from .gitops import GH_TOKEN_ENV, SPEC_ENV_FILE_KEY
+from .hosting import registered_providers
+from .hosting.select import HOSTING_KEY
 from .relay.config import expand_loops as expand_relay_loops
 from .runs import LOCK_KEY_SEP
 from .spec_expand import expand_spec
@@ -488,6 +490,12 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
         errs.append(f"{SPEC_ENV_FILE_KEY} muss ein Pfad (String) sein (ist {gef!r})")
     elif isinstance(gef, str) and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
         errs.append(f"{SPEC_ENV_FILE_KEY} muss ein absoluter Pfad sein (ist {gef!r})")
+    hosting_name = spec.get(HOSTING_KEY)
+    # Nicht-Strings typprüft das Schema; hier nur: ein String muss ein registrierter Provider sein.
+    if isinstance(hosting_name, str) and hosting_name.strip().lower() not in registered_providers():
+        errs.append(
+            f"{HOSTING_KEY} muss ein registrierter Provider sein {registered_providers()} (ist {hosting_name!r})"
+        )
     if extra_context.KEY in spec:
         errs += extra_context.validate(spec[extra_context.KEY], "projekt", allow_false=False)
     mp = spec.get("max_parallel")
