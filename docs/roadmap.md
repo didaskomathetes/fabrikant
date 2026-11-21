@@ -7,7 +7,7 @@ draft's principles, its P0→P3 structure and its KPI definitions, reconciled
 with what is actually shipped (ADRs + code) and what is in flight (PRs,
 issues).
 
-Statuses as of 2026-11-17.
+Statuses as of 2026-11-21.
 
 **Status legend**
 
@@ -131,27 +131,27 @@ its mechanics one by one, mostly on the homelab profile.
 
 ## First wins (strategy 2026-11-17)
 
-The current priorities, ahead of the open P2/P3 items.
+The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-21.
 
-**1. Observability & KPIs**
+**1. Observability & KPIs** — shipped
 
-- Per-run cost rollup (cost-per-change) from `step_usage` — issue #126
-- Factory KPIs from the run store: cycle time, defect escape, judge veto — issue #127
-- Trace view per run in the web UI (steps, durations, usage, agent events) — issue #128
+- Per-run cost rollup (cost-per-change) from `step_usage` — issue #126 (shipped, #142)
+- Factory KPIs from the run store: cycle time, defect escape, judge veto — issue #127 (shipped, #143/#168)
+- Trace view per run in the web UI (steps, durations, usage, agent events) — issue #128 (shipped, #173)
 
 **2. Reproducibility & evals**
 
-- Replay: deterministic re-execution of a run from pinned inputs — issue #129
+- Replay: deterministic re-execution of a run from pinned inputs — issue #129 (shipped, #170, ADR 0061)
 - Golden runs + eval harness ("this pipeline change did not regress my
-  loops" as a provable statement) — issue #130 (depends on #129)
+  loops" as a provable statement) — issue #130 (in PR #177; gaps: CI job, docs, run-store storage)
 
 **3. Spec as a standard**
 
 - JSON schema for `*.fabrik.yaml`, single source of truth for validation
-  and docs — issue #131
+  and docs — issue #131 (shipped, #169)
 - fabrik as an MCP server (runs, specs, approvals reachable from any
-  MCP-capable agent) — issue #132
-- Grow the template library (≥5 documented, versioned templates) — issue #133
+  MCP-capable agent) — issue #132 (in PR #178, ADR 0064; gap: `validate-spec` tool)
+- Grow the template library (≥5 documented, versioned templates) — issue #133 (not started)
 
 ## Known contradictions & stale ADRs
 
