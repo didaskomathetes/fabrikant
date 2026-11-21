@@ -165,6 +165,10 @@ True parallelism needs `FABRIK_WORKERS` > 1.
 
 ## Spec format (`*.fabrik.yaml`)
 
+**Vollständige Feld-Referenz:** [docs/spec-reference.md](docs/spec-reference.md) — generiert aus
+[`src/fabrik/fabrik-spec.schema.json`](src/fabrik/fabrik-spec.schema.json) (Single Source of Truth;
+`fabrik validate` prüft dagegen).
+
 ```yaml
 name: kyudo-neandertal
 description: "Drupal 7→11 migration"
