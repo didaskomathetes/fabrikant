@@ -12,7 +12,7 @@ from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
-from .replay import ReplayError, diff_runs, replay_run
+from .replay import diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
 from .runstore import STORE, PreconditionError
@@ -124,6 +124,12 @@ def _print_steps(rec: dict) -> None:
         print(f"  {STEP_MARKS.get(s['status'], '?')} {s['name']} [{s['type']}] {s.get('summary', '')}")
 
 
+REPLAY_SIDE_EFFECT_NOTICE = (
+    "⚠ Replay führt alle Steps real aus (PRs, Kommentare, Merges, Benachrichtigungen) — "
+    "gepinnt sind nur die Eingaben, nicht die Seiteneffekte."
+)
+
+
 def cmd_replay(args):
     """Replay: einen abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)."""
     orig = get_run(args.run_id, args.project)
@@ -139,12 +145,10 @@ def cmd_replay(args):
     if claim is None:
         print(f"⚠ {project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
         sys.exit(1)
+    print(REPLAY_SIDE_EFFECT_NOTICE)
     try:
         orig, rec = replay_run(args.run_id, project=project, actor=_cli_actor(), held_scope=claim.scope)
-    except ReplayError as e:
-        print(f"Fehler: {e}")
-        sys.exit(1)
-    except Exception as e:
+    except Exception as e:  # ReplayError (nicht ersetzbar) und Engine-Fehler werden gleich gemeldet
         print(f"Fehler: {e}")
         sys.exit(1)
     finally:

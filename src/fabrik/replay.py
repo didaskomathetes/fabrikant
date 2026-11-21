@@ -1,12 +1,14 @@
 """Replay: deterministic re-execution of a finished run (ADR 0061, Issue #129).
 
 `replay_run` re-executes a finished run with **pinned inputs** — the original
-spec (checked via `spec_hash`), the original run variables, loop, trigger and
-note — and links the new run to its original via the `replay_of` record field.
+run variables and loop — against the *current* spec (a changed spec is not
+blocked, it is reported as a `spec_hash` mismatch by `diff_runs`), and links
+the new run to its original via the `replay_of` record field.
 `diff_runs` renders a text diff report (status, steps, verdicts, spec hash).
 
 A replay is *input-deterministic*: the same spec + vars + loop execute the same
-steps in the same order with the same inputs. Where outputs diverge (LLM/agent
+steps in the same order with the same inputs. Steps run for real, so side effects
+(PRs, comments, merges) happen again. Where outputs diverge (LLM/agent
 steps, external state) is exactly what the diff report surfaces.
 """
 
