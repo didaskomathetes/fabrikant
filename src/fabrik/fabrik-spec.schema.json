@@ -31,6 +31,10 @@
       "type": "string",
       "description": "GitHub repo as owner/name. Default repo for on_issue/on_pr triggers, issue/pr steps and alerts."
     },
+    "hosting": {
+      "type": "string",
+      "description": "Code-hosting provider name, e.g. github, gitlab, or a registered third-party provider. Inferred from the repo host if omitted."
+    },
     "repo": {
       "type": "object",
       "description": "Git repo of the project: every run gets a worktree detached on origin/<branch> (ADR 0028).",
@@ -44,8 +48,7 @@
           "type": "string",
           "description": "Subdirectory inside the repo the loops operate on (default: repo root)."
         }
-      },
-      "additionalProperties": false
+      }
     },
     "github_env_file": {
       "type": "string",
@@ -71,8 +74,7 @@
             {
               "type": "object",
               "required": ["url"],
-              "properties": { "url": { "type": "string" } },
-              "additionalProperties": false
+              "properties": { "url": { "type": "string" } }
             }
           ],
           "description": "Slack webhook URL (string or {url: ...})."
@@ -85,8 +87,7 @@
             "properties": {
               "url": { "type": "string" },
               "name": { "type": "string", "description": "Webhook name (log, channel field)." }
-            },
-            "additionalProperties": false
+            }
           },
           "description": "Generic webhook targets (Datadog, CloudWatch, ...)."
         },
@@ -98,8 +99,7 @@
           "items": { "type": "string", "enum": ["run_failed", "run_exhausted", "run_passed"] },
           "description": "Events to notify on (default: run_failed, run_exhausted)."
         }
-      },
-      "additionalProperties": false
+      }
     },
     "notify_events": {
       "type": "array",
@@ -120,8 +120,7 @@
       "description": "Spec-level variables substituted as {name} in all strings (ADR 0047). Keys must be identifiers and must not shadow reserved runtime variables (project, root, issue_number, ...).",
       "patternProperties": {
         "^[A-Za-z_][A-Za-z0-9_]*$": {}
-      },
-      "additionalProperties": false
+      }
     },
     "relay": {
       "$ref": "#/$defs/relay"
@@ -135,10 +134,9 @@
   },
   "patternProperties": {
     "^x-": {
-      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format."
+      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts); `x-` is the documented convention for them."
     }
   },
-  "additionalProperties": false,
   "$defs": {
     "context_source": {
       "type": "object",
@@ -157,8 +155,7 @@
         { "required": ["file"] },
         { "required": ["cmd"] },
         { "required": ["value"] }
-      ],
-      "additionalProperties": false
+      ]
     },
     "duration": {
       "type": "string",
@@ -189,8 +186,7 @@
           "description": "Failure kinds (ADR 0035) that may be retried (default: interrupted, transient)."
         },
         "max_wait": { "type": "string", "pattern": "^[0-9]+[smhd]$", "description": "Cap for a reported retry_after (default 24h)." }
-      },
-      "additionalProperties": false
+      }
     },
     "agent_role": {
       "type": "object",
@@ -198,8 +194,7 @@
       "properties": {
         "backend": { "type": "string", "description": "Agent backend name (default: installation default)." },
         "model": { "type": "string", "description": "Model name (default: backend default)." }
-      },
-      "additionalProperties": false
+      }
     },
     "relay": {
       "type": "object",
@@ -226,11 +221,9 @@
           "description": "Where the session trail is archived before the branch goes (ADR 0037).",
           "properties": {
             "type": { "type": "string", "enum": ["git-ref", "local"], "description": "Archive target (s3 is planned, not implemented)." }
-          },
-          "additionalProperties": false
+          }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "loop": {
       "type": "object",
@@ -278,12 +271,10 @@
             "properties": {
               "after": { "type": "string", "description": "Name of the template step to insert after." },
               "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }
-            },
-            "additionalProperties": false
+            }
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "step": {
       "type": "object",
@@ -356,7 +347,6 @@
             "add": { "type": "array", "items": { "type": "string" }, "description": "Git pathspecs to stage (default: ':/' = everything)." },
             "message": { "type": "string", "description": "Commit message (template allowed)." }
           },
-          "additionalProperties": false,
           "description": "git: commit the worktree changes (add = pathspecs, message = commit message)."
         },
         "fetch": { "type": "boolean", "description": "git: fetch before checkout." },
@@ -404,7 +394,6 @@
         "expect": {
           "type": "object",
           "properties": { "status": { "type": "integer", "description": "Expected HTTP status (default 200)." } },
-          "additionalProperties": false,
           "description": "http: expected response."
         },
         "emit": {
@@ -434,8 +423,7 @@
             {
               "type": "object",
               "required": ["url"],
-              "properties": { "url": { "type": "string" } },
-              "additionalProperties": false
+              "properties": { "url": { "type": "string" } }
             }
           ],
           "description": "notify: Slack webhook URL (string or {url: ...})."
@@ -448,8 +436,7 @@
             "properties": {
               "url": { "type": "string" },
               "name": { "type": "string", "description": "Webhook name (log, channel field)." }
-            },
-            "additionalProperties": false
+            }
           },
           "description": "notify: generic webhook targets (Datadog, CloudWatch, ...)."
         },
@@ -580,8 +567,7 @@
             }
           }
         }
-      ],
-      "additionalProperties": false
+      ]
     },
     "trigger": {
       "type": "object",
@@ -664,8 +650,7 @@
           "if": { "properties": { "type": { "const": "on_slack" } } },
           "then": { "required": ["token_env", "channels"] }
         }
-      ],
-      "additionalProperties": false
+      ]
     }
   }
 }

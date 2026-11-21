@@ -150,20 +150,31 @@ def test_loops_empty():
     assert errs
 
 
-def test_unknown_top_level_key():
-    errs = validate_spec({**_valid_spec(), "loopz": {}})
-    assert any("loopz" in e for e in errs)
-
-
-def test_unknown_step_field():
-    errs = validate_spec(_with_step({"type": "shell", "cmd": "echo", "bogus": 1}))
-    assert any("bogus" in e for e in errs)
-
-
-def test_unknown_trigger_field():
+def test_unknown_keys_are_accepted():
+    # Parität mit specs._validate_spec: unbekannte Keys werden nicht abgelehnt.
+    assert validate_spec({**_valid_spec(), "loopz": {}}) == []
+    assert validate_spec(_with_step({"type": "shell", "cmd": "echo", "bogus": 1})) == []
     spec = _valid_spec()
     spec["loops"]["l1"]["triggers"] = [{"type": "cron", "cron": "* * * * *", "bogus": 1}]
-    assert any("bogus" in e for e in validate_spec(spec))
+    assert validate_spec(spec) == []
+
+
+def test_hosting_is_an_optional_string():
+    assert validate_spec({**_valid_spec(), "hosting": "gitlab"}) == []
+    assert validate_spec({**_valid_spec(), "hosting": 5})
+
+
+def test_schema_and_semantic_errors_are_not_duplicated(tmp_path):
+    # Ein Fehler (z. B. falscher Step-Typ) darf nur einmal in der Liste stehen.
+    spec = {**_valid_spec(), "root": str(tmp_path), "commit_via": "x", "github_env_file": 5}
+    spec["loops"]["l1"]["tier"] = 9
+    spec["loops"]["l1"]["triggers"] = [{"type": "bogus"}]
+    spec["loops"]["l1"]["steps"] = [{"type": "nope"}]
+    with pytest.raises(ValueError) as exc:
+        specs._validate_spec(spec)
+    lines = str(exc.value).splitlines()[1:]
+    for needle in ("nope", "bogus", "'x'", "tier", "github_env_file"):
+        assert sum(needle in line for line in lines) == 1, (needle, lines)
 
 
 @pytest.mark.parametrize(

@@ -22,6 +22,7 @@ Eine Projekt-Spec (`*.fabrik.yaml` / `*.fabrik.json`) definiert Loops, die auf d
 | `env` | object | optional | Extra run-context variables (string values) available as {name} in all steps. |
 | `max_parallel` | → `numeric` | optional | Maximum parallel runs of this project (integer >= 1, default 3, ADR 0028). |
 | `github` | string | optional | GitHub repo as owner/name. Default repo for on_issue/on_pr triggers, issue/pr steps and alerts. |
+| `hosting` | string | optional | Code-hosting provider name, e.g. github, gitlab, or a registered third-party provider. Inferred from the repo host if omitted. |
 | `repo` | object | optional | Git repo of the project: every run gets a worktree detached on origin/<branch> (ADR 0028). |
 | `github_env_file` | string | optional | Absolute path to a KEY=VALUE file with GitHub tokens (GITHUB_TOKEN, GITHUB_REVIEWER_TOKEN). |
 | `commit_via` | `git` \| `api` | optional | How commits are made: local `git` (default) or signed commits via the GitHub API (ADR 0010 amendment). |
