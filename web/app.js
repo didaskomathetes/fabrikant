@@ -2357,7 +2357,9 @@ function stopRunStream() {
 function showRunTab(tab) {
   stopRunStream();
   runTab = tab;
-  document.querySelectorAll("#runtabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll("#runtabs button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  });
   $("#runfollowlabel").classList.toggle("hidden", tab !== "log");
   const box = $("#runlog");
   if (!runPanelRec) return;
@@ -2456,7 +2458,9 @@ class RunLogView {
         `<span class="rsicon">${s.prelude ? "" : icon}</span>${esc(s.name)}</button>`);
     });
     this.bar.innerHTML = chips.join("");
-    this.segs.forEach((s, i) => s.pre.classList.toggle("hidden", this.filter !== null && this.filter !== i));
+    this.segs.forEach((s, i) => {
+      s.pre.classList.toggle("hidden", this.filter !== null && this.filter !== i);
+    });
     followRunLog();
   }
 }
@@ -3263,7 +3267,9 @@ $("#langtoggle").addEventListener("click", toggleLang);
 
 setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString(i18nLocale()); }, 1000);
 $("#runclose").addEventListener("click", closeRun);
-document.querySelectorAll("#runtabs button").forEach((b) => b.addEventListener("click", () => showRunTab(b.dataset.tab)));
+document.querySelectorAll("#runtabs button").forEach((b) => {
+  b.addEventListener("click", () => showRunTab(b.dataset.tab));
+});
 $("#runbackdrop").addEventListener("click", closeRun);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#settingspanel").classList.contains("hidden")) closeSettings();
