@@ -2363,6 +2363,7 @@ function showRunTab(tab) {
   if (!runPanelRec) return;
   if (tab === "overview") box.innerHTML = formatRun(runPanelRec);
   else if (tab === "log") startRunLog(box);
+  else if (tab === "trace") loadTrace(box);
   else loadTranscript(box);
 }
 
@@ -2558,6 +2559,148 @@ function transcriptEntry(e) {
   const tool = typeof e.tool === "string" ? e.tool : JSON.stringify(e.tool, null, 2);
   const body = e.role === "tool" ? `<pre>${esc(tool)}</pre>` : `<pre>${esc(e.text)}</pre>`;
   return `<div class="turn turn-${esc(e.role)}"><div class="turnhead">${esc(e.role)} · ${esc(e.step)} · ${esc(e.ts)}</div>${body}</div>`;
+}
+
+// ---- Trace view (Issue #128) ----
+// Chronological step trace from the full session log (GET /api/run/<id>/events):
+// each step shows status, duration, verdict and usage (tokens/cost); agent events
+// (prompt / tool_call / message) are drill-down items; artifacts are listed at the end.
+// Works for legacy JSON runs and SQL runs — the endpoint abstracts the backend.
+
+// Parse an event's `data` field (a redacted JSON string) into an object; bad JSON → {}.
+function parseEventData(data) {
+  if (!data) return {};
+  if (typeof data === "object") return data;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+// Fold the flat, chronological event list into ordered render blocks. Steps are
+// sequential, so agent events attach to the currently open step; run_start /
+// run_end / approval / warning become standalone timeline entries.
+function buildTraceBlocks(events) {
+  const blocks = [];
+  let cur = null; // currently open step block
+  const openStep = (name, type) => {
+    cur = { type: "step", name, stepType: type || "", status: "running", durationS: null, usage: null, events: [] };
+    blocks.push(cur);
+    return cur;
+  };
+  for (const ev of events) {
+    const d = parseEventData(ev.data);
+    const kind = ev.kind;
+    if (kind === "run_start") {
+      blocks.push({ type: "run_start", loop: d.loop, trigger: d.trigger, ts: ev.ts });
+      cur = null;
+    } else if (kind === "step_start") {
+      openStep(ev.step_name, ev.step_type);
+    } else if (kind === "step_done") {
+      const b = cur && cur.name === ev.step_name ? cur : openStep(ev.step_name, ev.step_type);
+      b.status = ev.status || "pass";
+      b.durationS = d.duration_s ?? null;
+      b.usage = d.usage ?? null;
+    } else if (kind === "prompt" || kind === "tool_call" || kind === "message") {
+      if (!cur || cur.name !== ev.step_name) openStep(ev.step_name, ev.step_type || "agent");
+      cur.events.push({ role: kind, ts: ev.ts, text: d.text ?? "", tool: d.tool ?? null });
+    } else if (kind === "approval") {
+      blocks.push({ type: "approval", ts: ev.ts, data: d });
+      cur = null;
+    } else if (kind === "warning") {
+      blocks.push({ type: "warning", ts: ev.ts, data: d });
+    } else if (kind === "run_end") {
+      blocks.push({ type: "run_end", status: ev.status, ts: ev.ts });
+      cur = null;
+    }
+    // unknown kinds are ignored
+  }
+  return blocks;
+}
+
+// Compact per-step usage line: "model · 1.3M tok · $0.0123".
+function fmtStepUsage(u) {
+  const parts = [];
+  if (u.model) parts.push(u.model);
+  if (u.total_tokens) parts.push(`${fmtTokens(u.total_tokens)} ${t("run.tokens")}`);
+  if (u.cost_usd) parts.push(`$${Number(u.cost_usd).toFixed(4)}`);
+  return parts.join(" · ");
+}
+
+function traceAgentEvent(e) {
+  const icon = e.role === "prompt" ? "👤" : e.role === "tool_call" ? "🔧" : "💬";
+  const body =
+    e.role === "tool_call"
+      ? `<pre class="trace-tool">${esc(typeof e.tool === "string" ? e.tool : JSON.stringify(e.tool, null, 2))}</pre>`
+      : `<pre class="trace-text">${esc(e.text)}</pre>`;
+  return `<details class="trace-event trace-event-${esc(e.role)}">
+    <summary><span class="trace-icon">${icon}</span> ${esc(t(`run.trace.${e.role}`))} · ${esc(e.ts || "")}</summary>
+    ${body}
+  </details>`;
+}
+
+function traceBlock(b, verdicts = {}) {
+  if (b.type === "run_start")
+    return `<div class="trace-entry trace-runstart"><span class="trace-icon">▶</span> ${esc(t("run.trace.started"))} · ${esc(t("run.trace.loop"))}: ${esc(b.loop || "")} · ${esc(t("run.trace.trigger"))}: ${esc(b.trigger || "")}</div>`;
+  if (b.type === "run_end")
+    return `<div class="trace-entry trace-runend"><span class="trace-icon">■</span> ${esc(t("run.trace.ended"))} · ${badge(statusLabel(b.status), b.status)}</div>`;
+  if (b.type === "approval")
+    return `<div class="trace-entry trace-approval"><span class="trace-icon">⏸</span> ${esc(t("run.trace.approval"))}</div>`;
+  if (b.type === "warning") {
+    const msg = (b.data && (b.data.message || b.data.text || b.data.warning)) || "";
+    return `<div class="trace-entry trace-warning"><span class="trace-icon">⚠</span> ${esc(t("run.trace.warning"))}${msg ? `: ${esc(msg)}` : ""}</div>`;
+  }
+  // step block
+  const icon = STEP_ICONS[b.status] || "✖";
+  const dur = b.durationS != null ? `<span class="trace-dur">${fmtDur(Math.round(b.durationS))}</span>` : "";
+  const usage = b.usage ? `<span class="trace-usage">${esc(fmtStepUsage(b.usage))}</span>` : "";
+  const verdict = verdicts[b.name] ? verdictBadge({ verdict: verdicts[b.name] }) : "";
+  const count = b.events.length ? `<span class="trace-count">${b.events.length} ${esc(t("run.trace.events"))}</span>` : "";
+  const events = b.events.map(traceAgentEvent).join("");
+  return `<div class="trace-step ${esc(b.status)}">
+    <div class="trace-stephead">
+      <span class="trace-icon">${icon}</span>
+      <span class="trace-stepname">${esc(b.name)}</span>
+      <span class="trace-steptype">[${esc(b.stepType || "")}]</span>
+      ${verdict}${dur}${usage}${count}
+    </div>
+    ${events ? `<div class="trace-events">${events}</div>` : ""}
+  </div>`;
+}
+
+function traceArtifacts(artifacts) {
+  const rows = artifacts
+    .map(
+      (a) =>
+        `<div class="trace-artifact"><span class="trace-icon">📎</span> ${esc(a.path)} <span class="trace-artifactmeta">[${esc(a.kind || "")}] · ${esc(a.step_name || "")}</span></div>`,
+    )
+    .join("");
+  return `<div class="trace-artifacts"><div class="trace-artifacts-title">${esc(t("run.trace.artifacts"))}</div>${rows}</div>`;
+}
+
+async function loadTrace(box) {
+  box.innerHTML = '<div class="runtrace"></div>';
+  const list = box.firstChild;
+  const id = runPanelRec.id;
+  let data;
+  try {
+    data = await api(`${runApiPath("events")}?project=${encodeURIComponent(runPanelRec.project || "")}`);
+  } catch (e) {
+    list.innerHTML = `<div class="runerr">${esc(t("run.traceFailed", { error: e.message }))}</div>`;
+    return;
+  }
+  if (runTab !== "trace" || !runPanelRec || runPanelRec.id !== id) return; // Tab/Run changed
+  const blocks = buildTraceBlocks(data.events || []);
+  const artifacts = data.artifacts || [];
+  if (!blocks.length && !artifacts.length) {
+    list.innerHTML = `<div style="color:var(--dim)">${esc(t("run.noTrace"))}</div>`;
+    return;
+  }
+  // Verdicts live in the run record (not the session log): map step name → verdict.
+  const verdicts = {};
+  for (const s of runPanelRec.steps || []) if (s && s.verdict) verdicts[s.name] = s.verdict;
+  list.innerHTML = blocks.map((b) => traceBlock(b, verdicts)).join("") + (artifacts.length ? traceArtifacts(artifacts) : "");
 }
 
 // Status-Badge im Run-Panel: roher Status in data-status (die Polling-Logik
