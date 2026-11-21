@@ -35,6 +35,7 @@ from .runs import (
     pending_approvals,
 )
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
+from .specschema import validate_spec
 
 PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "fabrik"
@@ -107,6 +108,32 @@ def _get_raw_spec(args: dict) -> dict:
     raw = load_spec_raw(path)
     raw["_hash"] = spec_hash(path)
     return raw
+
+
+def _validate_spec(args: dict) -> dict:
+    """Validate project specs against the JSON schema (#131), like ``fabrik validate``.
+
+    The schema describes the *expanded* spec, so this validates the loaded
+    (post vars/template/relay expansion) project specs — not raw YAML. Pass
+    ``project`` for one project, or omit it to validate every project.
+    """
+    name = str(args.get("project") or "")
+    specs = load_projects()
+    if name:
+        if name not in specs:
+            raise ToolError(f"unknown project: {name!r} (have: {', '.join(sorted(specs)) or 'none'})")
+        targets = {name: specs[name]}
+    else:
+        targets = specs
+    results = []
+    for n, spec in targets.items():
+        if not isinstance(spec, dict) or spec.get("_error"):
+            err = spec.get("_error") if isinstance(spec, dict) else "failed to load"
+            results.append({"project": n, "valid": False, "errors": [err]})
+            continue
+        errors = validate_spec(spec)
+        results.append({"project": n, "valid": not errors, "errors": errors})
+    return {"valid": all(r["valid"] for r in results), "results": results, "count": len(results)}
 
 
 def _list_runs(args: dict) -> dict:
@@ -262,6 +289,16 @@ TOOLS: list[dict] = [
         "description": "Get the raw (un-expanded) spec of a project plus its content hash (the edit source).",
         "inputSchema": _schema({"project": _STR}, required=("project",)),
         "handler": _get_raw_spec,
+    },
+    {
+        "name": "validate_spec",
+        "description": (
+            "Validate project specs against the JSON schema (like `fabrik validate`). "
+            "Pass `project` for one project, or omit it to validate every project. "
+            "Returns valid + per-project errors."
+        ),
+        "inputSchema": _schema({"project": _STR}),
+        "handler": _validate_spec,
     },
     {
         "name": "list_runs",

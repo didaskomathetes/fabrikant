@@ -79,6 +79,7 @@ def test_tools_list_exposes_expected_tools():
         "list_projects",
         "get_spec",
         "get_raw_spec",
+        "validate_spec",
         "list_runs",
         "get_run",
         "get_run_log",
@@ -148,6 +149,30 @@ def test_get_raw_spec(projects_dir):
     res = mcp._get_raw_spec({"project": "p"})
     assert res["name"] == "p"
     assert "_hash" in res
+
+
+def test_validate_spec_valid_project(projects_dir):
+    _write_spec(projects_dir, "p")
+    res = mcp._validate_spec({"project": "p"})
+    assert res["valid"] is True
+    assert res["count"] == 1
+    assert res["results"][0]["project"] == "p"
+    assert res["results"][0]["errors"] == []
+
+
+def test_validate_spec_all_projects(projects_dir):
+    _write_spec(projects_dir, "alpha")
+    _write_spec(projects_dir, "beta")
+    res = mcp._validate_spec({})
+    assert res["valid"] is True
+    assert res["count"] == 2
+    assert {r["project"] for r in res["results"]} == {"alpha", "beta"}
+
+
+def test_validate_spec_unknown_project_raises(projects_dir):
+    _write_spec(projects_dir, "p")
+    with pytest.raises(mcp.ToolError):
+        mcp._validate_spec({"project": "ghost"})
 
 
 # ------------------------------------------------------------ tool handlers: runs
@@ -326,7 +351,7 @@ def test_stdio_initialize_then_tools_list(projects_dir):
     )
     by_id = {m["id"]: m for m in msgs if "id" in m}
     assert by_id[1]["result"]["serverInfo"]["name"] == "fabrik"
-    assert len(by_id[2]["result"]["tools"]) == 11
+    assert len(by_id[2]["result"]["tools"]) == 12
     # notification produced no envelope
     assert len(msgs) == 2
 

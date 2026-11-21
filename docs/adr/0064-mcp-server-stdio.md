@@ -41,7 +41,7 @@ deps, always available). The only stdlib used is `json`/`sys`.
 | `initialize` | protocolVersion, capabilities, serverInfo | returns `2025-03-26` |
 | `notifications/initialized` | none | notification (no `id`) |
 | `ping` | `{}` | |
-| `tools/list` | tool array (name, description, inputSchema) | 11 tools |
+| `tools/list` | tool array (name, description, inputSchema) | 12 tools |
 | `tools/call` | `{content, structuredContent, isError}` | dispatches to a handler |
 | unknown | JSON-RPC error `-32601` | |
 | malformed line | JSON-RPC error `-32700` | parse error |
@@ -60,6 +60,7 @@ thin adapter. Actions are audited with actor `mcp`.
 | `list_projects` | `specs.load_projects` | specs |
 | `get_spec` | `load_projects` + `spec_hash` | specs |
 | `get_raw_spec` | `specs.load_spec_raw` + `spec_hash` | specs |
+| `validate_spec` | `specschema.validate_spec` (the #131 JSON schema, on the *expanded* spec) | specs |
 | `list_runs` | `runs.list_runs` (+ status/limit filter) | runs |
 | `get_run` | `runs.get_run` | runs |
 | `get_run_log` | `runs.get_run_log` (+ `lines` tail) | runs |
