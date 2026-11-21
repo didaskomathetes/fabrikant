@@ -248,5 +248,22 @@
   "verdict.value.fail": "fail",
   "verdict.value.done": "fertig",
   "verdict.value.blocked": "blockiert",
-  "verdict.value.active": "aktiv"
+  "verdict.value.active": "aktiv",
+  "header.kpis": "📊 KPIs",
+  "kpis.title": "Factory-KPIs",
+  "kpis.total": "Alle Projekte",
+  "kpis.empty": "Noch keine Runs.",
+  "kpis.loadFailed": "KPIs nicht ladbar: {error}",
+  "kpis.runs": "Runs",
+  "kpis.runsTitle": "Erfolgreich ✔ / gescheitert ✖ (Runs gesamt); gescheitert = Status fail oder error",
+  "kpis.runtime": "Laufzeit",
+  "kpis.runtimeTitle": "Mittlere / gesamte Laufzeit beendeter Runs",
+  "kpis.cost": "Kosten",
+  "kpis.costTitle": "Kosten und Tokens der Agent-/LLM-Steps (≥ = einige Steps melden keine Kosten)",
+  "kpis.cycle": "Zyklus",
+  "kpis.cycleTitle": "Mittlere Cycle Time erfolgreicher Runs (Anzahl Runs)",
+  "kpis.veto": "Veto",
+  "kpis.vetoTitle": "Anteil der Runs mit Review, in denen Änderungen verlangt wurden",
+  "kpis.escape": "Escape",
+  "kpis.escapeTitle": "Defect-Escape-Rate (gefangen/entkommen): Outcome-Fehler nach einem früheren erfolgreichen Run"
 }

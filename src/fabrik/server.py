@@ -26,6 +26,7 @@ from . import (
     config,
     connections,
     costs,
+    kpis,
     metrics,
     oidc,
     pause,
@@ -454,10 +455,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 if parsed:
                     r = {**r, "cost": costs.run_cost(parsed[0]).as_dict()}
             self._json(r, 200 if r else 404)
-        elif path == "/api/kpis/costs":
+        elif path in ("/api/kpis", "/api/kpis/costs"):
+            report = costs.costs_report if path == "/api/kpis/costs" else kpis.kpis_report
             try:
                 self._json(
-                    costs.costs_report(
+                    report(
                         self._query_param("project"),
                         date_from=self._query_param("from") or "",
                         date_to=self._query_param("to") or "",
@@ -469,7 +471,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._json({"ok": True, "time": config.utcnow().isoformat()})
         elif path == "/api/metrics":
             # KPI-Export (Prometheus-Textformat) für Scrape-Tools.
-            body = metrics.render().encode("utf-8")
+            body = (metrics.render() + kpis.prometheus_text() + "\n").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
