@@ -19,6 +19,7 @@ Run it directly with ``fabrik mcp`` or the ``fabrik-mcp`` console script.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import sys
 from collections.abc import Callable
@@ -39,7 +40,10 @@ from .specschema import validate_spec
 
 PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "fabrik"
-SERVER_VERSION = "0.1.0"  # keep in sync with pyproject [project] version
+try:
+    SERVER_VERSION = importlib.metadata.version("fabrik")
+except importlib.metadata.PackageNotFoundError:  # running from a bare checkout
+    SERVER_VERSION = "0.0.0+unknown"
 MCP_ACTOR = "mcp"  # audit actor for actions taken through the MCP endpoint
 
 
