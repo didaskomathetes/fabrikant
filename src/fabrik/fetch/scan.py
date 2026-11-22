@@ -17,6 +17,11 @@ from .clean import normalize_text
 SUSPICIOUS = "suspicious"
 QUARANTINE = "quarantine"
 
+# CSS in <style>-Blöcken ist Markup, kein injizierter Prose: `display:none` in
+# einer Stylesheet darf die Hidden-Text-Regeln nicht feuern (False Positive).
+# <script>/<noscript> bleiben — deren JS-Payloads werden gezielt mitgescannt.
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.IGNORECASE | re.DOTALL)
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -47,7 +52,7 @@ _RULES: list[Rule] = [
     Rule("marker_system_tag", _c(r"</?system\s*>|<\|system\|>|<\|im_start\|>\s*system"), QUARANTINE),
     Rule("marker_sys_delim", _c(r"###\s*system\b|<<sys>>|\[system\]"), QUARANTINE),
     # --- Jailbreak / Rollenspiel (suspicious) ---
-    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b|\bDAN\b.{0,80}\bmode\b"), SUSPICIOUS),
+    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b"), SUSPICIOUS),
     Rule("jailbreak_actas", _c(r"\bact as if\b|\bpretend (to be|you are)\b|ab sofort bist du"), SUSPICIOUS),
     # --- Geheimer Text (suspicious) ---
     Rule("hidden_display_none", _c(r"display\s*:\s*none"), SUSPICIOUS),
@@ -95,6 +100,7 @@ def scan(text: str) -> list[ScanFinding]:
     # Fold compatibility forms (fullwidth etc.) and drop invisible characters so
     # that obfuscated phrases match; the same normalisation the agent-facing text gets.
     text = normalize_text(text)
+    text = _STYLE_BLOCK_RE.sub(" ", text)
     findings: list[ScanFinding] = []
     for rule in _RULES:
         for m in rule.pattern.finditer(text):

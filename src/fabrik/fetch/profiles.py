@@ -20,7 +20,7 @@ Jede Nutzung wird protokolliert.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # --- Defaults (ADR 0060 §4: research-web-Beispiel) ----------------------------
 DEFAULT_FETCHES_PER_SESSION = 40
@@ -51,6 +51,7 @@ def _to_int(x: object, default: int) -> int:
 
 # --- Schreib-Credential-Heuristik (ADR 0060 §4, Validierung) ------------------
 _SECRET_MARKERS = ("secret", "key", "token", "password", "passwd", "credential", "write")
+_PUBLIC_MARKERS = ("public", "readonly", "read_only")
 
 
 def is_readonly_credential(env_key: str) -> bool:
@@ -60,11 +61,13 @@ def is_readonly_credential(env_key: str) -> bool:
 
 
 def is_write_credential(env_key: str) -> bool:
-    """Schreib-Credential, wenn der Key wie ein Secret aussieht UND nicht read-only ist."""
+    """Schreib-Credential: sieht aus wie Secret, ist weder read-only noch public."""
     low = env_key.lower()
     if not any(m in low for m in _SECRET_MARKERS):
         return False
-    return not is_readonly_credential(env_key)
+    if is_readonly_credential(env_key):
+        return False
+    return not any(m in low for m in _PUBLIC_MARKERS)
 
 
 # --- Modelle -------------------------------------------------------------------
@@ -296,13 +299,15 @@ class Grant:
 
 
 def _parse_dt(x: object) -> datetime | None:
+    # Naive Datetimes gelten als UTC, damit Aware/Naive-Vergleiche nie crashen.
     if isinstance(x, datetime):
-        return x
+        return x if x.tzinfo is not None else x.replace(tzinfo=UTC)
     if isinstance(x, str):
         try:
-            return datetime.fromisoformat(x)
+            dt = datetime.fromisoformat(x)
         except ValueError:
             return None
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
     return None
 
 
@@ -321,6 +326,10 @@ class GrantStore:
         ttl_hours: float | None = None,
         max_sessions: int | None = None,
     ) -> Grant:
+        if ttl_hours is None and max_sessions is None:
+            raise ValueError(
+                "Grant braucht eine Bound (ttl_hours oder max_sessions) — forever-Grants sind nicht erlaubt (ADR 0060 §5)"
+            )
         g = Grant(
             profile_name=profile_name,
             item=item,

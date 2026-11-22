@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from fabrik.fetch.profiles import (
     AccessProfile,
     FetchProfile,
@@ -248,3 +250,33 @@ def test_grant_store_roundtrip():
     assert back.grants[0].max_sessions == 3
     assert GrantStore.from_dict(None) is None
     assert GrantStore.from_dict({}) is None  # kein grants
+
+
+def test_grant_requires_a_bound():
+    # M12: Grants sind zeitlich begrenzt — eine Bound ist Pflicht.
+    store = GrantStore()
+    with pytest.raises(ValueError):
+        store.grant("p", "PR #1", now=NOW)
+    g = store.grant("p", "PR #1", now=NOW, ttl_hours=1)
+    assert g.expires_at is not None
+    g2 = store.grant("p", "PR #2", now=NOW, max_sessions=3)
+    assert g2.max_sessions == 3
+
+
+def test_grant_naive_datetime_is_utc():
+    # M1: naive Datetimes werden als UTC interpretiert — Aware/Naive-Vergleich crash-t nie.
+    g = Grant.from_dict(
+        {"profile_name": "p", "item": "PR #1", "granted_at": "2026-11-22T10:00:00", "expires_at": "2026-11-23T10:00:00"}
+    )
+    assert g is not None
+    assert g.expires_at is not None and g.expires_at.tzinfo is not None
+    assert g.is_active(datetime(2026, 11, 22, 12, 0, tzinfo=UTC))  # kein TypeError
+    assert not g.is_active(datetime(2026, 11, 24, 12, 0, tzinfo=UTC))
+
+
+def test_public_key_is_not_write_credential():
+    # M9: Public-Marker → kein Schreib-Credential, auch wenn „key" vorkommt.
+    assert not is_write_credential("PUBLIC_KEY")
+    assert not is_write_credential("GITHUB_READ_ONLY_TOKEN")
+    # Echte Secrets bleiben Write-Credentials.
+    assert is_write_credential("DEPLOY_TOKEN")
