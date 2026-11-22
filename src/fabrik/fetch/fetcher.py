@@ -77,14 +77,7 @@ def _is_blocked_ip(ip_str: str) -> bool:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return True  # unparseable → defensively block
-    return (
-        ip.is_loopback
-        or ip.is_link_local
-        or ip.is_private
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+    return ip.is_loopback or ip.is_link_local or ip.is_private or ip.is_reserved or ip.is_multicast or ip.is_unspecified
 
 
 def assert_public_url(url: str) -> tuple[str, str]:
@@ -99,7 +92,9 @@ def assert_public_url(url: str) -> tuple[str, str]:
     if not host:
         raise ValueError("URL hat keinen Host")
     try:
-        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+        infos = socket.getaddrinfo(
+            host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP
+        )
     except socket.gaierror as e:
         raise ValueError(f"Host {host!r} nicht auflösbar: {e}") from e
     for info in infos:
@@ -149,7 +144,9 @@ class Fetcher:
     # --- HTTP ---
     def _http_get(self, url: str) -> tuple[bytes, str]:
         """Geprüftes HTTP-Get; liefert ``(body, content_type)``."""
-        req = urllib.request.Request(url, headers={"User-Agent": DEFAULT_UA, "Accept": "text/html,text/plain,application/json,*/*;q=0.8"})
+        req = urllib.request.Request(
+            url, headers={"User-Agent": DEFAULT_UA, "Accept": "text/html,text/plain,application/json,*/*;q=0.8"}
+        )
         opener = urllib.request.build_opener(_SafeRedirectHandler)
         with opener.open(req, timeout=self.timeout_s) as resp:
             body = resp.read(MAX_BODY_BYTES + 1)
@@ -213,10 +210,18 @@ class Fetcher:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     # --- Orchestrierung ---
-    def fetch(self, url: str, *, search_query: str | None = None, requested_by: str = "cli", found_in: str = "") -> FetchResult:
+    def fetch(
+        self, url: str, *, search_query: str | None = None, requested_by: str = "cli", found_in: str = ""
+    ) -> FetchResult:
         url = url.strip()
         if not self.is_approved(url):
-            return FetchResult(url=url, status="not_fetched", domain=_host_of(url), found_in=found_in, reason="nicht freigegeben (kein approved_domain / approved_url)")
+            return FetchResult(
+                url=url,
+                status="not_fetched",
+                domain=_host_of(url),
+                found_in=found_in,
+                reason="nicht freigegeben (kein approved_domain / approved_url)",
+            )
         try:
             assert_public_url(url)
         except ValueError as e:

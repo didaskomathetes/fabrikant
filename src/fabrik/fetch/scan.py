@@ -32,7 +32,13 @@ def _c(pattern: str) -> re.Pattern[str]:
 _RULES: list[Rule] = [
     # --- Instruktion-Override (quarantine) ---
     Rule("override_ignore", _c(r"ignore\s+(all\s+)?(previous|prior|above|earlier)\s+instructions"), QUARANTINE),
-    Rule("override_ignore_de", _c(r"ignorier(e|en)\s+(sie\s+|du\s+)?(alle\s+)?(vorherigen|fr[üu]heren|oberen)\s+(anweisungen|regeln|instruktionen)"), QUARANTINE),
+    Rule(
+        "override_ignore_de",
+        _c(
+            r"ignorier(e|en)\s+(sie\s+|du\s+)?(alle\s+)?(vorherigen|fr[üu]heren|oberen)\s+(anweisungen|regeln|instruktionen)"
+        ),
+        QUARANTINE,
+    ),
     Rule("override_disregard", _c(r"disregard\s+(your|all|the)\s+(instructions|guidelines|rules)"), QUARANTINE),
     Rule("override_new_system", _c(r"(new|updated)\s+system\s+prompt"), QUARANTINE),
     # --- Prompt-Grenzmarker (quarantine) ---
@@ -45,7 +51,13 @@ _RULES: list[Rule] = [
     Rule("hidden_display_none", _c(r"display\s*:\s*none"), SUSPICIOUS),
     Rule("hidden_font0", _c(r"font-size\s*:\s*0(px)?\b"), SUSPICIOUS),
     Rule("hidden_indent", _c(r"text-indent\s*:\s*-?\d{3,}"), SUSPICIOUS),
-    Rule("hidden_samecolor", _c(r"color\s*:\s*#?fff(?:ffff)?[^{]*?background[^{]*?#?fff(?:ffff)?|background[^{]*?#?fff(?:ffff)?[^{]*?color\s*:\s*#?fff(?:ffff)?"), SUSPICIOUS),
+    Rule(
+        "hidden_samecolor",
+        _c(
+            r"color\s*:\s*#?fff(?:ffff)?[^{]*?background[^{]*?#?fff(?:ffff)?|background[^{]*?#?fff(?:ffff)?[^{]*?color\s*:\s*#?fff(?:ffff)?"
+        ),
+        SUSPICIOUS,
+    ),
     # --- Encodierte Blöcke (suspicious) ---
     Rule("blob_base64", _c(r"[A-Za-z0-9+/]{200,}={0,2}"), SUSPICIOUS),
     Rule("blob_hex", _c(r"\b[0-9a-fA-F]{120,}\b"), SUSPICIOUS),
@@ -69,7 +81,11 @@ class ScanFinding:
 def _snippet(text: str, start: int, end: int) -> str:
     lo = max(0, start - 24)
     hi = min(len(text), end + 24)
-    return "…" + text[lo:hi].replace("\n", " ").strip() + "…" if (lo > 0 or hi < len(text)) else text[lo:hi].replace("\n", " ").strip()
+    return (
+        "…" + text[lo:hi].replace("\n", " ").strip() + "…"
+        if (lo > 0 or hi < len(text))
+        else text[lo:hi].replace("\n", " ").strip()
+    )
 
 
 def scan(text: str) -> list[ScanFinding]:

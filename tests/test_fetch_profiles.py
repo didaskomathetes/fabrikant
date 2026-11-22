@@ -196,7 +196,14 @@ def test_grant_session_expiry():
 
 
 def test_grant_roundtrip():
-    g = Grant(profile_name="p", item="PR #1", granted_at=NOW, expires_at=NOW + timedelta(hours=24), max_sessions=3, used_sessions=1)
+    g = Grant(
+        profile_name="p",
+        item="PR #1",
+        granted_at=NOW,
+        expires_at=NOW + timedelta(hours=24),
+        max_sessions=3,
+        used_sessions=1,
+    )
     back = Grant.from_dict(g.to_dict())
     assert back is not None
     assert back.profile_name == "p" and back.max_sessions == 3 and back.used_sessions == 1

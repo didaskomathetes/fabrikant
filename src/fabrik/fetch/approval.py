@@ -222,13 +222,17 @@ class AccessRequest:
             item=item,
             urls=urls,
             created_at=_parse_dt(data.get("created_at")) or _utcnow(),
-            timeout_hours=float(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) else ACCESS_TIMEOUT_HOURS,
+            timeout_hours=float(timeout)
+            if isinstance(timeout, (int, float)) and not isinstance(timeout, bool)
+            else ACCESS_TIMEOUT_HOURS,
             decided=decided,
             status=status if status in ("open", "resolved", "expired") else "open",
         )
 
 
-def bundle_access(item: str, pending: list[PendingURL] | list[dict], now: datetime | None = None) -> AccessRequest | None:
+def bundle_access(
+    item: str, pending: list[PendingURL] | list[dict], now: datetime | None = None
+) -> AccessRequest | None:
     """Aus den offenen URLs einer Session EINEN gebündelten Request bauen.
 
     Duplizierte URLs fallen raus. Keine offenen URLs → ``None`` (nichts zu freigegeben).

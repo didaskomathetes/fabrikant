@@ -119,7 +119,11 @@ def test_ledger_written(tmp_path, monkeypatch):
 def test_redirect_to_blocked_target_raises():
     # Ein Redirect auf eine blockierte URL muss abgefangen werden.
     handler = _SafeRedirectHandler()
+    import http.client
+    import io
     import urllib.error
+    import urllib.request
 
+    req = urllib.request.Request("http://example.com/")
     with pytest.raises(urllib.error.HTTPError):
-        handler.redirect_request(None, None, 302, "Found", {}, "http://127.0.0.1/steal")
+        handler.redirect_request(req, io.BytesIO(), 302, "Found", http.client.HTTPMessage(), "http://127.0.0.1/steal")

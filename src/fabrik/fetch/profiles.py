@@ -138,7 +138,13 @@ class AccessProfile:
         env_raw_x = data.get("env")
         env_raw = env_raw_x if isinstance(env_raw_x, dict) else {}
         env = {k: _s(v) for k, v in env_raw.items() if _s(k) and _s(v)}
-        return cls(name=name, fetch=fetch, egress=_to_tuple_str(data.get("egress")), env=env, tools=_to_tuple_str(data.get("tools")))
+        return cls(
+            name=name,
+            fetch=fetch,
+            egress=_to_tuple_str(data.get("egress")),
+            env=env,
+            tools=_to_tuple_str(data.get("tools")),
+        )
 
 
 # --- Spec-Parsing & Resolution -------------------------------------------------
@@ -200,7 +206,9 @@ def validate_access_spec(spec: object) -> list[str]:
         loop_map["relay"] = list(_to_tuple_str(spec["relay"].get("access")))
     for loop_name, names in sorted(loop_map.items()):
         fetch_profs = [n for n in names if profiles.get(n) and profiles[n].fetch is not None]
-        write_egress = [n for n in names if profiles.get(n) and profiles[n].egress and profiles[n].carries_write_credentials()]
+        write_egress = [
+            n for n in names if profiles.get(n) and profiles[n].egress and profiles[n].carries_write_credentials()
+        ]
         if fetch_profs and write_egress:
             problems.append(
                 f"Loop {loop_name!r}: fetch-Profil {fetch_profs} + egress-Profil mit Write-Credentials {write_egress} "
@@ -218,7 +226,11 @@ def fetcher_config_for(profiles: list[AccessProfile]) -> dict:
     """
     fetch_profs = [p.fetch for p in profiles if p.fetch is not None]
     if not fetch_profs:
-        return {"approved_domains": [], "fetches_per_session": DEFAULT_FETCHES_PER_SESSION, "queries_per_session": DEFAULT_QUERIES_PER_SESSION}
+        return {
+            "approved_domains": [],
+            "fetches_per_session": DEFAULT_FETCHES_PER_SESSION,
+            "queries_per_session": DEFAULT_QUERIES_PER_SESSION,
+        }
     domains: set[str] = set()
     for fp in fetch_profs:
         domains.update(fp.approved_domains)
