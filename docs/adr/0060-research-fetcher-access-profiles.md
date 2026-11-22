@@ -1,6 +1,9 @@
 # ADR 0060: Fetcher für offene Recherche, Zugriffsprofile pro Loop/Run, einmalige Freigaben
 
 **Status:** Vorgeschlagen (2026-11-16)
+Nachtrag 2026-11-22: in-process detector for stage C, scan verdict never grants capability, redirect
+re-approval (English text; the rest of this ADR is German). The ADR index says "Akzeptiert (2026-11-19)";
+that mismatch is not resolved by this amendment.
 **Ergänzt:** ADR 0037 (Relay-Tasks), ADR 0051 (Egress-Proxy), ADR 0054 (Per-Run-Sandbox),
 ADR 0059 (`needs human`-Eskalation, PR #122).
 **Verwendet:** ADR 0030 (Rollen), ADR 0050 (Agent-Env-Allowlist), ADR 0052 (benannte Verbindungen).
@@ -103,12 +106,22 @@ ein Signal.
 - Tool-Call- oder Funktionsaufruf-Syntax, Shell-Befehle in Fließtext.
 - Kodierte Blöcke (lange Base64-/Hex-Sequenzen), Anteil entfernter versteckter Inhalte aus Stufe A.
 
-Die Regeln liegen versioniert im Repo (`src/fabrik/fetch/rules/`) und haben Tests mit echten
+Die Regeln liegen versioniert im Repo (`src/fabrikant/fetch/scan.py`) und haben Tests mit echten
 Beispielen.
 
 **Stufe C: Klassifikator (optional, pro Projekt).** Ein Klassifikationsmodell (kein
 instruktionsfolgendes Chat-Modell) über eine benannte Verbindung. Ein Chat-LLM als Prüfer würde
 selbst angreifbar; ein Klassifikator ist das weniger, aber umgehbar.
+
+*Nachtrag 2026-11-22:* The classifier may also be a **local, in-process detector** behind the
+`Detector` interface (`fabrikant.fetch.detectors`), shipped as an optional extra
+(`fabrikant[injection-llm-guard]`); the built-in regex rules are the default detector. Classifier
+findings default to `suspicious` (security articles, which the fetcher reads on purpose,
+false-positive), inputs are chunked to model size, and the detector sees the cleaned text only.
+The runner **fails closed**: a detector that raises, or a scan truncated by the chunk cap,
+yields a `suspicious` finding instead of a silent `clean`. Detectors are selected with
+`FABRIKANT_FETCH_DETECTORS` or `fabrikant fetch --detectors`; a requested but missing extra fails
+at configuration time.
 
 **Ergebnis und Wirkung:**
 
@@ -128,6 +141,10 @@ Egress, Pushes nur auf den Relay-Branch (ADR 0037). Scans senken die Trefferquot
 Angriffe sichtbar. Quarantäne-Ereignisse fließen wie Proxy-Denials (ADR 0051) in die
 Alert-Auswertung.
 
+*Nachtrag 2026-11-22:* A scan verdict may **route** a source (quarantine, human review) but
+never **grants** a capability: `clean` does not mean trusted, and no later stage may rely on it
+for a privilege decision. See `docs/threat-model.md`.
+
 ### 3. Freigabe: Herkunft automatisch, Rest gebündelt beim Menschen
 
 Ob eine beantragte URL abgerufen wird, entscheidet der Fetcher so:
@@ -145,7 +162,13 @@ Ob eine beantragte URL abgerufen wird, entscheidet der Fetcher so:
 3. **Abgelehnte oder nicht beantwortete** URLs bleiben unabgerufen; die Session arbeitet ohne sie
    weiter und vermerkt das.
 
-**Gegen Ermüdung:** Freigaben gibt es pro Session gebündelt, nicht pro URL. fabrik zählt
+*Nachtrag 2026-11-22:* **Redirects are re-checked.** A redirect target must pass the SSRF guard
+*and* be approved itself (§3.1), otherwise the fetch fails; an approved host cannot launder an
+unapproved URL. The SSRF guard also verifies the *connected peer address* before any request
+data is sent, which closes the DNS-rebinding window between resolution and connect, and it
+blocks every non-globally-routable address (including CGNAT, NAT64, 6to4 and IPv4-mapped forms).
+
+**Gegen Ermüdung:** Freigaben gibt es pro Session gebündelt, nicht pro URL. fabrikant zählt
 Entscheidungen pro Domain. Wird eine Domain wiederholt freigegeben, schlägt die UI vor, sie in die
 Freigabeliste des Profils aufzunehmen. Das ist eine Spec-Änderung durch einen Admin, kein
 automatischer Lerneffekt.
