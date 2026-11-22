@@ -6,6 +6,15 @@
 # `.github/workflows/golden-eval.yml` (dorthin verschieben, sobald die
 # Permission vorliegt). Inhalt ist final — nur der Pfad wandert.
 #
+# VORAUSSETZUNGEN (sonst endet der Job mit Exit 2 = Fehler, nicht Regression):
+#  - Golden-Dateien speichern nur Run-IDs. Der Baseline-Run muss im Run-Store
+#    des Runners existieren (gleiches FABRIK_HOME / gleicher Run-Store wie beim
+#    `golden capture`) — ein frischer GitHub-hosted Runner hat ihn NICHT; nutze
+#    einen self-hosted Runner oder stelle den Run-Store vorher wieder her.
+#  - Backend-Secrets der Loop-Steps (z. B. API-Keys) und ein `gh`-Token
+#    (GH_TOKEN) müssen im Job-Environment verfügbar sein.
+#  - Exit 0 = keine Regression, 1 = Regression, 2 = Fehler/inkonklusiv.
+#
 # Wird NUR manuell ausgelöst (Actions → „golden-eval" → Run workflow) — läuft
 # bewusst nicht auf jedem Push/PR. Zweck: "diese Pipeline-Änderung hat meine
 # Loops nicht regressioniert" als prüfbare Aussage. Der Job schlägt fehl
@@ -18,7 +27,6 @@ on:
       project:
         description: "Fabrik-Project (Name der *.fabrik.yaml)"
         required: true
-        default: "fabrik"
       loop:
         description: "Loop-Name"
         required: true
@@ -48,9 +56,13 @@ jobs:
           PROJECT: ${{ github.event.inputs.project }}
           LOOP: ${{ github.event.inputs.loop }}
           GOLDEN: ${{ github.event.inputs.golden }}
+          # Prerequisites (see header): same run store + backend secrets + gh token.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # FABRIK_HOME: ${{ vars.FABRIK_HOME }}  # must point at the run store holding the baseline run
         run: |
           set -euo pipefail
           GOLDEN_ARGS=()
           [ -n "$GOLDEN" ] && GOLDEN_ARGS+=(--name "$GOLDEN")
-          # --yes ist in CI Pflicht (kein TTY für die Rückfrage).
-          uv run fabrik eval "$PROJECT" "$LOOP" "${GOLDEN_ARGS[@]}" --yes
+          # --yes: eval re-runs the loop for real (side effects!); in CI there is no TTY for the
+          # prompt, and triggering this workflow manually is the explicit confirmation.
+          uv run fabrik eval "$PROJECT" "$LOOP" "${GOLDEN_ARGS[@]+"${GOLDEN_ARGS[@]}"}" --yes

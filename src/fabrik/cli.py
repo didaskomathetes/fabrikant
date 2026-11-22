@@ -6,19 +6,30 @@ import argparse
 import getpass
 import json
 import sys
+import traceback
 from pathlib import Path
 
 from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
-from .golden import capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
-from .replay import diff_runs, replay_run
-from .runmodel import FAILED_RUN_STATUSES
+from .golden import GoldenError, capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
+from .replay import ReplayError, diff_runs, replay_run
+from .runmodel import FAILED_RUN_STATUSES, RunStatus
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
 from .runstore import STORE, PreconditionError
 from .server import serve
 from .specs import collect_projects, load_projects
+
+# Exit codes of `golden` / `eval`: a real regression must be distinguishable from infrastructure errors.
+EXIT_OK = 0
+EXIT_REGRESSION = 1
+EXIT_ERROR = 2
+EXIT_CODES_HELP = (
+    "Exit codes: 0 = ok / no regression, 1 = regression, 2 = error or inconclusive (usage, infra, waiting)."
+)
+# Non-terminal eval outcomes: the run has not finished, so it proves nothing either way.
+INCONCLUSIVE_RUN_STATUSES = frozenset({RunStatus.NEEDS_APPROVAL, RunStatus.QUEUED, RunStatus.RUNNING})
 
 
 def cmd_list(_args):
@@ -175,25 +186,21 @@ def cmd_replay(args):
 
 
 def cmd_golden(args):
-    """Golden Runs (Roadmap #130): ``capture`` pinnst ein Golden, ``show`` zeigt sie."""
-    if args.golden_cmd == "capture":
-        try:
+    """Golden runs (roadmap #130): ``capture`` pins a golden, ``show`` lists them.
+
+    Exit codes: ``EXIT_OK`` on success, ``EXIT_ERROR`` on usage/infrastructure errors."""
+    try:
+        if args.golden_cmd == "capture":
             g = capture_golden(args.project, args.loop, args.run_id)
             p = save_golden(args.project, args.name or args.loop, g)
-        except Exception as e:
-            print(f"Fehler: {e}")
-            sys.exit(1)
-        print(f"✔ golden '{args.name or args.loop}' für {args.project}/{args.loop} aus Run {args.run_id} → {p}")
-        return
-    try:
-        goldens = load_goldens(args.project)
-        if args.name:
-            goldens = {args.name: goldens[args.name]}
-    except Exception as e:
-        print(f"Fehler: {e}")
-        sys.exit(1)
+            print(f"✔ golden '{args.name or args.loop}' for {args.project}/{args.loop} from run {args.run_id} → {p}")
+            return
+        goldens = {args.name: get_golden(args.project, args.name)} if args.name else load_goldens(args.project)
+    except GoldenError as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
     if not goldens:
-        print(f"(keine Goldens für {args.project})")
+        print(f"(no goldens for {args.project})")
         return
     for n, g in goldens.items():
         exp = g.get("expect", {})
@@ -204,13 +211,13 @@ def cmd_golden(args):
 
 
 def _confirm_eval(args) -> bool:
-    """Bestätigung vor dem realen Eval-Re-Run: ``--yes`` überspringt; ohne TTY ohne ``--yes`` Abbruch."""
+    """Confirm before the real eval re-run: ``--yes`` skips; without a TTY and without ``--yes`` it aborts."""
     if getattr(args, "yes", False):
         return True
     if not sys.stdin.isatty():
-        print("Abbruch: keine interaktive Eingabe — mit --yes/-y explizit bestätigen.")
+        print("Aborted: no interactive input — confirm explicitly with --yes/-y.")
         return False
-    return input(f"Loop {args.project}/{args.loop} jetzt real neu ausführen (Eval)? [y/N] ").strip().lower() in (
+    return input(f"Re-run loop {args.project}/{args.loop} for real now (eval)? [y/N] ").strip().lower() in (
         "y",
         "yes",
         "j",
@@ -219,39 +226,49 @@ def _confirm_eval(args) -> bool:
 
 
 def cmd_eval(args):
-    """Eval (Roadmap #130): Loop mit Golden-Baseline vergleichen — Exit 0 = kein Regression."""
+    """Eval (roadmap #130): compare a loop re-run against its golden baseline.
+
+    Exit codes: ``EXIT_OK`` no regression, ``EXIT_REGRESSION`` real diffs against the golden,
+    ``EXIT_ERROR`` infrastructure/usage problem or inconclusive run (e.g. waiting for approval)."""
     try:
         g = get_golden(args.project, args.name or args.loop)
-    except Exception as e:
-        print(f"Fehler: {e}")
-        sys.exit(1)
-    loop = g["loop"]
+        loop = g["loop"]
+    except (GoldenError, KeyError) as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
     blocked = pause.manual_block_reason(args.project, loop)
     if blocked:
-        print(f"Fehler: {blocked}")
-        sys.exit(1)
+        print(f"Error: {blocked}")
+        sys.exit(EXIT_ERROR)
     print(REPLAY_SIDE_EFFECT_NOTICE)
     if not _confirm_eval(args):
-        print("Abgebrochen.")
-        sys.exit(1)
+        print("Aborted.")
+        sys.exit(EXIT_ERROR)
     claim = claim_run(args.project, loop, None)
     if claim is None:
-        print(f"⚠ {args.project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
-        sys.exit(1)
+        print(f"⚠ {args.project}: parallel run limit reached or {loop} is already running.")
+        sys.exit(EXIT_ERROR)
     try:
         golden, baseline, record, diffs = run_eval(
             args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope
         )
-    except Exception as e:
-        print(f"Fehler: {e}")
-        sys.exit(1)
+    except (GoldenError, ReplayError) as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
+    except Exception:
+        # Keep the traceback visible, but never let a crash look like a regression (exit 1).
+        traceback.print_exc()
+        sys.exit(EXIT_ERROR)
     finally:
         claim.release()
     print(f"eval  {record['project']}/{record['loop']}  ({record['id']})  [golden {args.name or loop}]")
     _print_steps(record)
     print()
     print(eval_report(golden, baseline, record, diffs))
-    sys.exit(0 if not diffs else 1)
+    if record.get("status") in INCONCLUSIVE_RUN_STATUSES:
+        print(f"inconclusive: eval run is waiting for approval (status {record.get('status')})")
+        sys.exit(EXIT_ERROR)
+    sys.exit(EXIT_REGRESSION if diffs else EXIT_OK)
 
 
 def cmd_runs(args):
@@ -481,7 +498,7 @@ def main(argv=None):
     p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
     p.set_defaults(func=cmd_replay)
 
-    p = sub.add_parser("golden", help="Golden Runs: Baseline pinnen & anzeigen (Roadmap #130)")
+    p = sub.add_parser("golden", help="Golden Runs: Baseline pinnen & anzeigen (Roadmap #130)", epilog=EXIT_CODES_HELP)
     g = p.add_subparsers(dest="golden_cmd", required=True)
     gc = g.add_parser("capture", help="Golden aus abgeschlossenen Run pinnen")
     gc.add_argument("project")
@@ -493,7 +510,7 @@ def main(argv=None):
     gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
     p.set_defaults(func=cmd_golden)
 
-    p = sub.add_parser("eval", help="Loop mit Golden-Baseline vergleichen, Exit 0 = kein Regression (Roadmap #130)")
+    p = sub.add_parser("eval", help="Loop mit Golden-Baseline vergleichen (Roadmap #130)", epilog=EXIT_CODES_HELP)
     p.add_argument("project")
     p.add_argument("loop")
     p.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
