@@ -17,10 +17,36 @@ from .clean import normalize_text
 SUSPICIOUS = "suspicious"
 QUARANTINE = "quarantine"
 
-# CSS in <style>-Blöcken ist Markup, kein injizierter Prose: `display:none` in
-# einer Stylesheet darf die Hidden-Text-Regeln nicht feuern (False Positive).
-# <script>/<noscript> bleiben — deren JS-Payloads werden gezielt mitgescannt.
-_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.IGNORECASE | re.DOTALL)
+# CSS inside <style> blocks is markup, not injected prose: `display:none` in a stylesheet
+# must not fire the hidden-text rules (false positive). Only those CSS rules are exempt
+# (`Rule.css`); phrase, marker, exfiltration and blob rules still see the style content.
+_STYLE_OPEN_RE = re.compile(r"<style\b[^>]*>", re.IGNORECASE)
+_STYLE_CLOSE_RE = re.compile(r"</style\s*>", re.IGNORECASE)
+
+
+def _strip_style_blocks(text: str) -> str:
+    """Blank out ``<style>…</style>`` blocks in linear time.
+
+    A single regex like ``<style\b[^>]*>.*?</style>`` backtracks to the end of the text
+    for every unclosed ``<style>``, i.e. quadratic on hostile input. Unclosed blocks are
+    left untouched (so nothing is silently hidden from the CSS rules' *absence*).
+    """
+    closes = [(m.start(), m.end()) for m in _STYLE_CLOSE_RE.finditer(text)]
+    out: list[str] = []
+    pos = 0
+    ci = 0
+    for m in _STYLE_OPEN_RE.finditer(text):
+        if m.start() < pos:
+            continue  # nested/overlapping opener inside an already blanked block
+        while ci < len(closes) and closes[ci][0] < m.end():
+            ci += 1
+        if ci == len(closes):
+            break  # no closing tag after this opener (nor any later one)
+        out.append(text[pos : m.start()])
+        out.append(" ")
+        pos = closes[ci][1]
+    out.append(text[pos:])
+    return "".join(out)
 
 
 @dataclass(frozen=True)
@@ -28,6 +54,7 @@ class Rule:
     id: str
     pattern: re.Pattern[str]
     severity: str  # SUSPICIOUS | QUARANTINE
+    css: bool = False  # CSS-hiding rule: not applied inside <style> blocks
 
 
 def _c(pattern: str) -> re.Pattern[str]:
@@ -52,18 +79,19 @@ _RULES: list[Rule] = [
     Rule("marker_system_tag", _c(r"</?system\s*>|<\|system\|>|<\|im_start\|>\s*system"), QUARANTINE),
     Rule("marker_sys_delim", _c(r"###\s*system\b|<<sys>>|\[system\]"), QUARANTINE),
     # --- Jailbreak / Rollenspiel (suspicious) ---
-    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b"), SUSPICIOUS),
+    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b|(?-i:\bDAN\b).{0,80}\bmode\b"), SUSPICIOUS),
     Rule("jailbreak_actas", _c(r"\bact as if\b|\bpretend (to be|you are)\b|ab sofort bist du"), SUSPICIOUS),
     # --- Geheimer Text (suspicious) ---
-    Rule("hidden_display_none", _c(r"display\s*:\s*none"), SUSPICIOUS),
-    Rule("hidden_font0", _c(r"font-size\s*:\s*0(px)?\b"), SUSPICIOUS),
-    Rule("hidden_indent", _c(r"text-indent\s*:\s*-?\d{3,}"), SUSPICIOUS),
+    Rule("hidden_display_none", _c(r"display\s*:\s*none"), SUSPICIOUS, css=True),
+    Rule("hidden_font0", _c(r"font-size\s*:\s*0(px)?\b"), SUSPICIOUS, css=True),
+    Rule("hidden_indent", _c(r"text-indent\s*:\s*-?\d{3,}"), SUSPICIOUS, css=True),
     Rule(
         "hidden_samecolor",
         _c(
             r"color\s*:\s*#?fff(?:ffff)?[^{]{0,100}background[^{]{0,100}#?fff(?:ffff)?|background[^{]{0,100}#?fff(?:ffff)?[^{]{0,100}color\s*:\s*#?fff(?:ffff)?"
         ),
         SUSPICIOUS,
+        css=True,
     ),
     # --- Encodierte Blöcke (suspicious) ---
     Rule("blob_base64", _c(r"[A-Za-z0-9+/]{200,}={0,2}"), SUSPICIOUS),
@@ -100,11 +128,12 @@ def scan(text: str) -> list[ScanFinding]:
     # Fold compatibility forms (fullwidth etc.) and drop invisible characters so
     # that obfuscated phrases match; the same normalisation the agent-facing text gets.
     text = normalize_text(text)
-    text = _STYLE_BLOCK_RE.sub(" ", text)
+    markup_free = _strip_style_blocks(text)  # view for the CSS-hiding rules
     findings: list[ScanFinding] = []
     for rule in _RULES:
-        for m in rule.pattern.finditer(text):
-            findings.append(ScanFinding(rule.id, rule.severity, _snippet(text, m.start(), m.end())))
+        haystack = markup_free if rule.css else text
+        for m in rule.pattern.finditer(haystack):
+            findings.append(ScanFinding(rule.id, rule.severity, _snippet(haystack, m.start(), m.end())))
     return findings
 
 

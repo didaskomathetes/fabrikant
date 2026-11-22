@@ -51,23 +51,37 @@ def _to_int(x: object, default: int) -> int:
 
 # --- Schreib-Credential-Heuristik (ADR 0060 §4, Validierung) ------------------
 _SECRET_MARKERS = ("secret", "key", "token", "password", "passwd", "credential", "write")
-_PUBLIC_MARKERS = ("public", "readonly", "read_only")
+# Matched on whole `_`-separated parts, never as substrings: `PUBLIC_KEY` (an asymmetric
+# public key) is harmless, but `GITHUB_PUBLIC_REPO_TOKEN` is a write token for public repos.
+_PUBLIC_KEY_SEQUENCES = (("PUBLIC", "KEY"), ("PUBLIC", "KEYS"))
+_PUBLIC_KEY_WORDS = ("PUBLICKEY", "PUBKEY")
+_READONLY_SEQUENCES = (("READ", "ONLY"),)
+_READONLY_WORDS = ("RO", "READONLY")
+
+
+def _has_sequence(parts: list[str], seq: tuple[str, ...]) -> bool:
+    n = len(seq)
+    return any(tuple(parts[i : i + n]) == seq for i in range(len(parts) - n + 1))
 
 
 def is_readonly_credential(env_key: str) -> bool:
-    """Read-only, wenn der Key das ``RO``-Marker trägt (z. B. ``langfuse-ro`` → ``LANGFUSE_RO``)."""
+    """Read-only if a whole part is ``RO``/``READONLY`` or ``READ``+``ONLY`` are adjacent
+    (e.g. ``langfuse-ro`` → ``LANGFUSE_RO``, ``GITHUB_READ_ONLY_TOKEN``)."""
     parts = env_key.upper().split("_")
-    return "RO" in parts
+    return any(w in parts for w in _READONLY_WORDS) or any(_has_sequence(parts, s) for s in _READONLY_SEQUENCES)
+
+
+def _is_public_key(env_key: str) -> bool:
+    parts = env_key.upper().split("_")
+    return any(w in parts for w in _PUBLIC_KEY_WORDS) or any(_has_sequence(parts, s) for s in _PUBLIC_KEY_SEQUENCES)
 
 
 def is_write_credential(env_key: str) -> bool:
-    """Schreib-Credential: sieht aus wie Secret, ist weder read-only noch public."""
+    """Write credential: looks like a secret and is neither read-only nor a public *key*."""
     low = env_key.lower()
     if not any(m in low for m in _SECRET_MARKERS):
         return False
-    if is_readonly_credential(env_key):
-        return False
-    return not any(m in low for m in _PUBLIC_MARKERS)
+    return not (is_readonly_credential(env_key) or _is_public_key(env_key))
 
 
 # --- Modelle -------------------------------------------------------------------
