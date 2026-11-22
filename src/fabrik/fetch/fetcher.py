@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -28,7 +28,8 @@ from pathlib import Path
 from .. import config
 from . import clean
 from .approval import PendingURL
-from .scan import ScanFinding, scan
+from .detectors import Detector, build_detectors, run_detectors
+from .scan import ScanFinding
 from .scan import verdict as _verdict
 
 FETCHER_VERSION = "1"
@@ -214,6 +215,7 @@ class Fetcher:
         ledger_path: Path | str | None = None,
         timeout_s: int = DEFAULT_TIMEOUT_S,
         deadline_s: int = DEFAULT_DEADLINE_S,
+        detectors: Sequence[Detector] | None = None,
     ) -> None:
         self.approved_domains = {d.lower() for d in approved_domains}
         self.approved_urls = set(approved_urls)
@@ -221,6 +223,8 @@ class Fetcher:
         self.ledger_path = Path(ledger_path) if ledger_path else None
         self.timeout_s = timeout_s
         self.deadline_s = deadline_s
+        # Detectors are resolved at construction: a missing optional extra fails loudly here.
+        self.detectors: Sequence[Detector] = detectors if detectors is not None else build_detectors()
 
     # --- Auto-Freigabe (ADR 0060 §3) ---
     def is_approved(self, url: str) -> bool:
@@ -365,7 +369,8 @@ class Fetcher:
         # Scan BOTH views: the raw markup (hidden-CSS, <system> markers and JS payloads
         # only exist there) and the cleaned text the agent actually sees (where entity /
         # tag-split / invisible-character obfuscation has collapsed into the real phrase).
-        findings = _dedupe(([] if ctype == "application/pdf" else scan(decode_body(body))) + scan(clean_text))
+        raw_findings = [] if ctype == "application/pdf" else run_detectors(self.detectors, decode_body(body), raw=True)
+        findings = _dedupe(raw_findings + run_detectors(self.detectors, clean_text))
         result = FetchResult(
             url=url,
             status=_verdict(findings),

@@ -336,7 +336,7 @@ def cmd_fetch(args):
     """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
     Quelle/Quarantäne schreiben + Herkunftsprotokoll. Auto-Freigaben; Profile
     via ``--spec``/``--loop`` (Stufe 3)."""
-    from .fetch import Fetcher, fetcher_config_for, resolve_profiles
+    from .fetch import DetectorUnavailable, Fetcher, build_detectors, fetcher_config_for, resolve_profiles
     from .specs import load_spec_raw
 
     domains = [d.strip() for d in (args.approved_domains or "").split(",") if d.strip()]
@@ -350,7 +350,16 @@ def cmd_fetch(args):
             if d not in domains:
                 domains.append(d)
         loop_note = f"loop={loop} profile={[p.name for p in profs]}"
-    fetcher = Fetcher(approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger)
+    try:
+        detectors = build_detectors(
+            [n.strip() for n in args.detectors.split(",") if n.strip()] if args.detectors else None
+        )
+    except (ValueError, DetectorUnavailable) as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    fetcher = Fetcher(
+        approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger, detectors=detectors
+    )
     res = fetcher.fetch(args.url, requested_by=_cli_actor())
     if args.json:
         print(
@@ -539,6 +548,12 @@ def main(argv=None):
     p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
     p.add_argument("--spec", default=None, help="Projekt-Spec (YAML) mit access-Profilen")
     p.add_argument("--loop", default=None, help="Loop/Run-Name für Profil-Resolution (Default: relay)")
+    p.add_argument(
+        "--detectors",
+        default=None,
+        help="Kommagetrennte Injection-Detektoren: regex (Default), llm-guard (Extra injection-llm-guard); "
+        "sonst FABRIK_FETCH_DETECTORS",
+    )
     p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
     p.set_defaults(func=cmd_fetch)
 

@@ -21,6 +21,8 @@ dependencies = [
 [project.optional-dependencies]
 # OIDC-Login (ADR 0046): ID-Token-Signaturprüfung braucht Krypto außerhalb der Stdlib.
 oidc = ["pyjwt[crypto]>=2.8"]
+# Model-based injection detector for the research fetcher (ADR 0060 stage B): pulls in torch/transformers.
+injection-llm-guard = ["llm-guard>=0.3"]
 
 [project.scripts]
 fabrik = "fabrik.cli:main"

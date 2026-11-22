@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from .approval import ACCESS_TIMEOUT_HOURS, AccessRequest, PendingURL, bundle_access
 from .clean import clean_html, normalize_text
+from .detectors import Detector, DetectorUnavailable, LLMGuardDetector, RegexDetector, build_detectors
 from .fetcher import Fetcher, FetchResult, results_to_pending
 from .profiles import (
     AccessProfile,
@@ -40,6 +41,11 @@ __all__ = [
     "normalize_text",
     "QUARANTINE",
     "SUSPICIOUS",
+    "Detector",
+    "DetectorUnavailable",
+    "LLMGuardDetector",
+    "RegexDetector",
+    "build_detectors",
     "Fetcher",
     "FetchResult",
     "results_to_pending",
