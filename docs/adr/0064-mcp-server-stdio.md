@@ -1,6 +1,8 @@
 # ADR 0064: MCP Server — fabrik as a stdio Endpoint for MCP-Capable Agents
 
-**Status:** Accepted (2026-11-21); proposed on the `feat/mcp-server` branch
+**Status:** Accepted (2026-11-21); proposed on the `feat/mcp-server` branch.
+Amendment 2026-11-22: scope clarified as the *local* profile; hardening and opt-in approvals added;
+hosted profile deferred to a future ADR.
 **Betrifft:** ADR 0034 (run store), ADR 0030 (auth/roles), ADR 0061 (replay)
 
 ## Context
@@ -34,6 +36,17 @@ deps, always available). The only stdlib used is `json`/`sys`.
   run executes. If the client kills it, the next fabrik server start reaps the
   orphaned runs (`reap_orphaned_runs`).
 
+### Profiles
+
+This server is the **local profile**: stdio, no authentication, the OS user is the identity.
+A **hosted profile** needs a different transport (streamable HTTP), per-client
+authentication, an identity in the audit actor instead of the constant `mcp`, and RBAC
+reusing the ADR 0030 roles (`viewer` read tools, `operator` start/approve/reject, `admin`
+the rest). It must refuse to start without authentication, as `auth.check_bind` does for the
+HTTP server. The hosted profile is out of scope here; the official MCP SDK is the expected
+basis for it (it provides both transports and an OAuth 2.1 resource-server integration).
+See `docs/threat-model.md`.
+
 ### Supported methods
 
 | Method | Response | Notes |
@@ -41,7 +54,7 @@ deps, always available). The only stdlib used is `json`/`sys`.
 | `initialize` | protocolVersion, capabilities, serverInfo | returns `2025-03-26` |
 | `notifications/initialized` | none | notification (no `id`) |
 | `ping` | `{}` | |
-| `tools/list` | tool array (name, description, inputSchema) | 12 tools |
+| `tools/list` | tool array (name, description, inputSchema) | 10 tools by default, 12 with `--allow-approvals` |
 | `tools/call` | `{content, structuredContent, isError}` | dispatches to a handler |
 | unknown | JSON-RPC error `-32601` | |
 | malformed line | JSON-RPC error `-32700` | parse error |
@@ -70,9 +83,30 @@ thin adapter. Actions are audited with actor `mcp`.
 | `approve_run` | `chat._chat_resume(…, approve=True)` | approvals |
 | `reject_run` | `chat._chat_resume(…, approve=False)` | approvals |
 
+**Approvals are opt-in.** `approve_run` and `reject_run` are offered (and callable) only with
+`--allow-approvals` or `FABRIKANT_MCP_ALLOW_APPROVALS=1`. Approval is the human gate, and locally
+the caller is a model that may be prompt-injected; it must not reach the gate by default.
+`--read-only` (or `FABRIKANT_MCP_READONLY=1`) additionally hides `start_run` and wins over
+`--allow-approvals`. Hidden tools are refused at call time, not merely unlisted.
+
 `approve_run`/`reject_run` reuse the **same atomic, audited resume path** the HTTP
 `/api/approve` and `/api/reject` routes use (`_chat_resume`), so MCP approvals are
 indistinguishable from UI approvals in the run record (except `actor=mcp`).
+
+### Hardening
+
+- **stdout is reserved for protocol messages.** The real stdout is kept for replies and
+  `sys.stdout` points at stderr, so `print()` calls in the engine cannot corrupt the stream.
+- **Failures are contained.** A failing request or tool yields a JSON-RPC error or an
+  `isError` result; it never ends the long-lived process.
+- **Conformance:** batches, `"id": null` on parse/invalid-request errors, `id`/`jsonrpc`/`method`
+  validation, protocol version negotiation, UTF-8 on stdin/stdout.
+- **Lifecycle:** orphaned runs are reaped at startup (like the HTTP server); on stdin EOF,
+  in-flight run workers are drained for up to 10 minutes.
+- **Inputs and outputs:** `limit`/`lines` are validated, `get_run_log` returns a bounded
+  tail (flagged `truncated`), secret-looking keys (token, password, api key, ...) are redacted
+  and the spec `_path` is dropped in `get_spec`/`get_raw_spec`. Approve/reject failures are
+  tool errors, not success-shaped results.
 
 ### Tool results
 
@@ -86,18 +120,22 @@ machine-readable `structuredContent` (the raw object), so agents can parse eithe
 - No new runtime dependency; no change to the spec format, the engine, or the store.
 - Agents can drive fabrik end-to-end (read specs → start a run → approve it) without
   HTTP.
-- The MCP endpoint is **unauthenticated by design** (stdio, local trust boundary,
-  same as the CLI). Remote exposure is out of scope and would go through the HTTP
-  API's auth (ADR 0030), not this server.
+- The MCP endpoint is **unauthenticated by design in the local profile** (stdio, local
+  trust boundary, same as the CLI). Residual risk: a prompt-injected agent that has the
+  server configured could start runs; approvals are therefore opt-in. Remote exposure
+  requires the hosted profile (see *Profiles*), not this server as it stands.
 
 ## Alternatives considered
 
 - **The `mcp` Python package (FastMCP):** fastest to write, but adds a runtime
-  dependency and pulls a web-framework stack for a 100-line protocol. Rejected to keep
-  the dependency surface flat.
+  dependency and pulls a web-framework stack for a 100-line protocol. Rejected for the
+  local profile to keep the dependency surface flat. **To be revisited for the hosted
+  profile**, where authenticated HTTP transport and OAuth discovery are not worth
+  hand-rolling (ideally as an optional extra).
 - **Expose MCP over the existing HTTP server (a `/mcp` route):** couples the agent
   transport to the web server's lifecycle and auth; stdio is the MCP-native,
   process-local fit for a local factory. Rejected.
 - **A read-only MCP server (no `start_run`/`approve_run`):** safer, but defeats the
   point — an agent that can only watch the factory is not an operator. Write tools are
-  included and audited like the UI's.
+  included and audited like the UI's; read-only is available as a flag, and the
+  approval tools are opt-in (see *Tools*).
