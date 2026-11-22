@@ -287,7 +287,8 @@ class Fetcher:
         if self.out_dir is None:
             return
         host = urllib.parse.urlsplit(result.url).hostname or "host"
-        digest = hashlib.sha1(result.url.encode()).hexdigest()[:10]
+        # Only a short stable file-name suffix, not a security hash (keeps existing names unchanged).
+        digest = hashlib.sha1(result.url.encode(), usedforsecurity=False).hexdigest()[:10]
         name = f"{host}-{digest}.md"
         target, other = ("sources", "quarantine") if result.status == Status.CLEAN else ("quarantine", "sources")
         base = self.out_dir / target
