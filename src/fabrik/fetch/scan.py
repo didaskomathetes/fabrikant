@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .clean import normalize_text
+
 SUSPICIOUS = "suspicious"
 QUARANTINE = "quarantine"
 
@@ -45,7 +47,7 @@ _RULES: list[Rule] = [
     Rule("marker_system_tag", _c(r"</?system\s*>|<\|system\|>|<\|im_start\|>\s*system"), QUARANTINE),
     Rule("marker_sys_delim", _c(r"###\s*system\b|<<sys>>|\[system\]"), QUARANTINE),
     # --- Jailbreak / Rollenspiel (suspicious) ---
-    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b|\bDAN\b.*\bmode\b"), SUSPICIOUS),
+    Rule("jailbreak_dan", _c(r"\b(DAN|developer|jailbreak)\s+mode\b|\bDAN\b.{0,80}\bmode\b"), SUSPICIOUS),
     Rule("jailbreak_actas", _c(r"\bact as if\b|\bpretend (to be|you are)\b|ab sofort bist du"), SUSPICIOUS),
     # --- Geheimer Text (suspicious) ---
     Rule("hidden_display_none", _c(r"display\s*:\s*none"), SUSPICIOUS),
@@ -54,7 +56,7 @@ _RULES: list[Rule] = [
     Rule(
         "hidden_samecolor",
         _c(
-            r"color\s*:\s*#?fff(?:ffff)?[^{]*?background[^{]*?#?fff(?:ffff)?|background[^{]*?#?fff(?:ffff)?[^{]*?color\s*:\s*#?fff(?:ffff)?"
+            r"color\s*:\s*#?fff(?:ffff)?[^{]{0,100}background[^{]{0,100}#?fff(?:ffff)?|background[^{]{0,100}#?fff(?:ffff)?[^{]{0,100}color\s*:\s*#?fff(?:ffff)?"
         ),
         SUSPICIOUS,
     ),
@@ -90,6 +92,9 @@ def _snippet(text: str, start: int, end: int) -> str:
 
 def scan(text: str) -> list[ScanFinding]:
     """Text deterministisch scannen; liefert alle Treffer (geordnet nach Regel)."""
+    # Fold compatibility forms (fullwidth etc.) and drop invisible characters so
+    # that obfuscated phrases match; the same normalisation the agent-facing text gets.
+    text = normalize_text(text)
     findings: list[ScanFinding] = []
     for rule in _RULES:
         for m in rule.pattern.finditer(text):
