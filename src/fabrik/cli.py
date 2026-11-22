@@ -178,7 +178,7 @@ def cmd_golden(args):
     """Golden Runs (Roadmap #130): ``capture`` pinnst ein Golden, ``show`` zeigt sie."""
     if args.golden_cmd == "capture":
         try:
-            g = capture_golden(args.project, args.loop, args.run_id, args.name)
+            g = capture_golden(args.project, args.loop, args.run_id)
             p = save_golden(args.project, args.name or args.loop, g)
         except Exception as e:
             print(f"Fehler: {e}")
@@ -239,7 +239,9 @@ def cmd_eval(args):
         print(f"⚠ {args.project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
         sys.exit(1)
     try:
-        golden, baseline, record, diffs = run_eval(args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope)
+        golden, baseline, record, diffs = run_eval(
+            args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope
+        )
     except Exception as e:
         print(f"Fehler: {e}")
         sys.exit(1)
@@ -491,9 +493,7 @@ def main(argv=None):
     gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
     p.set_defaults(func=cmd_golden)
 
-    p = sub.add_parser(
-        "eval", help="Loop mit Golden-Baseline vergleichen, Exit 0 = kein Regression (Roadmap #130)"
-    )
+    p = sub.add_parser("eval", help="Loop mit Golden-Baseline vergleichen, Exit 0 = kein Regression (Roadmap #130)")
     p.add_argument("project")
     p.add_argument("loop")
     p.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")

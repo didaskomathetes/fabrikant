@@ -86,7 +86,6 @@ def capture_golden(
     project: str,
     loop: str,
     run_id: str,
-    name: str | None = None,
     record: dict | None = None,
 ) -> dict:
     """Golden aus einem abgeschlossenen Run bauen (schreibt noch nichts).
@@ -100,6 +99,8 @@ def capture_golden(
         record = get_run(run_id, project)
     if record is None:
         raise GoldenError(f"Baseline-Run {run_id} nicht gefunden (Projekt {project})")
+    if record.get("loop") not in (None, loop):
+        raise GoldenError(f"Baseline-Run {run_id} gehört zu Loop {record.get('loop')!r}, nicht {loop!r}")
     if record.get("status") not in TERMINAL_RUN_STATUSES:
         raise GoldenError(f"Baseline-Run {run_id} nicht abgeschlossen (Status {record.get('status')!r})")
     return {

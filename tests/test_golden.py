@@ -102,6 +102,12 @@ def test_capture_golden_refuses_non_terminal(projects_dir, runs_dir):
         golden.capture_golden("p", "l", "r1", record=rec)
 
 
+def test_capture_golden_refuses_loop_mismatch(projects_dir, runs_dir):
+    rec = _write_run(runs_dir, "p", "r1", status="pass", loop="other")
+    with pytest.raises(golden.GoldenError, match="gehört zu Loop"):
+        golden.capture_golden("p", "l", "r1", record=rec)
+
+
 def test_capture_golden_missing_run(projects_dir, runs_dir):
     with pytest.raises(golden.GoldenError, match="nicht gefunden"):
         golden.capture_golden("p", "l", "nope")
@@ -151,7 +157,13 @@ def _golden_with(expect):
 
 def test_compare_golden_identical_no_regression():
     g = _golden_with(
-        {"status": "pass", "steps": [{"name": "a", "status": "pass", "verdict": ""}, {"name": "review", "status": "pass", "verdict": "approved"}]}
+        {
+            "status": "pass",
+            "steps": [
+                {"name": "a", "status": "pass", "verdict": ""},
+                {"name": "review", "status": "pass", "verdict": "approved"},
+            ],
+        }
     )
     rec = {"status": "pass", "steps": _STEPS}
     assert golden.compare_golden(g, rec) == []
@@ -165,13 +177,19 @@ def test_compare_golden_status_regression():
 
 def test_compare_golden_verdict_regression():
     g = _golden_with({"status": "pass", "steps": [{"name": "review", "status": "pass", "verdict": "approved"}]})
-    rec = {"status": "pass", "steps": [{"name": "review", "type": "review", "status": "pass", "verdict": "changes_requested"}]}
+    rec = {
+        "status": "pass",
+        "steps": [{"name": "review", "type": "review", "status": "pass", "verdict": "changes_requested"}],
+    }
     assert any("review" in d and "verdict" in d for d in golden.compare_golden(g, rec))
 
 
 def test_compare_golden_missing_step():
     g = _golden_with(
-        {"status": "pass", "steps": [{"name": "a", "status": "pass", "verdict": ""}, {"name": "b", "status": "pass", "verdict": ""}]}
+        {
+            "status": "pass",
+            "steps": [{"name": "a", "status": "pass", "verdict": ""}, {"name": "b", "status": "pass", "verdict": ""}],
+        }
     )
     rec = {"status": "pass", "steps": [{"name": "a", "type": "shell", "status": "pass", "verdict": ""}]}
     assert any("'b'" in d and "fehlt im Eval-Run" in d for d in golden.compare_golden(g, rec))
@@ -245,7 +263,9 @@ def test_run_eval_wrong_loop(projects_dir, runs_dir):
 
 def test_run_eval_missing_baseline(projects_dir, runs_dir):
     _write_spec(projects_dir, "p")
-    _write_golden(projects_dir, "p", "l", {"loop": "l", "baseline_run": "gone", "expect": {"status": "pass", "steps": []}})
+    _write_golden(
+        projects_dir, "p", "l", {"loop": "l", "baseline_run": "gone", "expect": {"status": "pass", "steps": []}}
+    )
     with pytest.raises(golden.GoldenError, match=r"Baseline-Run .* gefunden"):
         golden.run_eval("p", "l")
 
@@ -287,7 +307,12 @@ def test_cmd_golden_show(projects_dir, capsys):
         projects_dir,
         "p",
         "l",
-        {"loop": "l", "baseline_run": "x", "spec_hash": "abc123", "expect": {"status": "pass", "steps": [{"name": "a", "status": "pass", "verdict": ""}]}},
+        {
+            "loop": "l",
+            "baseline_run": "x",
+            "spec_hash": "abc123",
+            "expect": {"status": "pass", "steps": [{"name": "a", "status": "pass", "verdict": ""}]},
+        },
     )
     cli.cmd_golden(type("A", (), {"golden_cmd": "show", "project": "p", "name": None})())
     out = capsys.readouterr().out
@@ -296,8 +321,18 @@ def test_cmd_golden_show(projects_dir, capsys):
 
 
 def test_cmd_golden_show_one(projects_dir, capsys):
-    _write_golden(projects_dir, "p", "l1", {"loop": "l", "baseline_run": "x", "spec_hash": "", "expect": {"status": "pass", "steps": []}})
-    _write_golden(projects_dir, "p", "l2", {"loop": "l", "baseline_run": "y", "spec_hash": "", "expect": {"status": "pass", "steps": []}})
+    _write_golden(
+        projects_dir,
+        "p",
+        "l1",
+        {"loop": "l", "baseline_run": "x", "spec_hash": "", "expect": {"status": "pass", "steps": []}},
+    )
+    _write_golden(
+        projects_dir,
+        "p",
+        "l2",
+        {"loop": "l", "baseline_run": "y", "spec_hash": "", "expect": {"status": "pass", "steps": []}},
+    )
     cli.cmd_golden(type("A", (), {"golden_cmd": "show", "project": "p", "name": "l1"})())
     out = capsys.readouterr().out
     assert "l1" in out and "l2" not in out
