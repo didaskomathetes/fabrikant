@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
+from .mcp_server import READ_ONLY_ENV as MCP_READ_ONLY_ENV
 from .mcp_server import serve_stdio
 from .replay import diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES
@@ -203,9 +205,11 @@ def cmd_serve(args):
         sys.exit(1)
 
 
-def cmd_mcp(_args):
+def cmd_mcp(args):
     # fabrik as an MCP stdio server (Roadmap #132): runs, specs, approvals for
     # any MCP-capable agent. Long-lived process — the client keeps the pipe open.
+    if args.read_only:
+        os.environ[MCP_READ_ONLY_ENV] = "1"
     serve_stdio()
 
 
@@ -426,10 +430,12 @@ def main(argv=None):
     )
     p.set_defaults(func=cmd_serve)
 
-    sub.add_parser(
+    p = sub.add_parser(
         "mcp",
         help="MCP-Server (stdio): Runs, Specs, Approvals für MCP-fähige Agenten (Roadmap #132)",
-    ).set_defaults(func=cmd_mcp)
+    )
+    p.add_argument("--read-only", action="store_true", help="start_run/approve_run/reject_run ausblenden und sperren")
+    p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("approve", help="needs_approval-Run freigeben (setzt fort)")
     p.add_argument("run_id")
