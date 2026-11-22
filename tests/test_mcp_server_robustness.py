@@ -190,3 +190,19 @@ def test_startup_recovery_failure_is_contained(monkeypatch):
     monkeypatch.setattr(mcp, "reap_orphaned_runs", lambda: (_ for _ in ()).throw(RuntimeError("db locked")))
     msgs, err = _exchange([_req(1, "ping")])
     assert msgs[0]["id"] == 1 and "db locked" in err
+
+
+def test_approval_tools_are_opt_in(monkeypatch):
+    monkeypatch.delenv(mcp.ALLOW_APPROVALS_ENV, raising=False)
+    assert not {t["name"] for t in mcp._visible_tools()} & {"approve_run", "reject_run"}
+    msgs, _ = _exchange([_req(1, "tools/call", {"name": "approve_run", "arguments": {"project": "p", "run_id": "r"}})])
+    assert msgs[0]["error"]["code"] == mcp.ERR_INVALID_PARAMS  # refused, not merely hidden
+    monkeypatch.setenv(mcp.ALLOW_APPROVALS_ENV, "1")
+    assert {"approve_run", "reject_run"} <= {t["name"] for t in mcp._visible_tools()}
+
+
+def test_read_only_wins_over_allow_approvals(monkeypatch):
+    monkeypatch.setenv(mcp.ALLOW_APPROVALS_ENV, "1")
+    monkeypatch.setenv(mcp.READ_ONLY_ENV, "1")
+    names = {t["name"] for t in mcp._visible_tools()}
+    assert not names & {"approve_run", "reject_run", "start_run"}

@@ -72,23 +72,27 @@ def test_unknown_method_raises_rpc_error():
     assert e.value.code == -32601
 
 
-def test_tools_list_exposes_expected_tools():
+_DEFAULT_TOOLS = {
+    "list_projects",
+    "get_spec",
+    "get_raw_spec",
+    "validate_spec",
+    "list_runs",
+    "get_run",
+    "get_run_log",
+    "start_run",
+    "queue_status",
+    "list_approvals",
+}
+_APPROVAL_TOOLS = {"approve_run", "reject_run"}
+
+
+def test_tools_list_exposes_expected_tools(monkeypatch):
+    # Approve/reject are opt-in (the human gate must not be reachable by a prompt-injected agent).
+    monkeypatch.setenv(mcp.ALLOW_APPROVALS_ENV, "1")
     res = mcp._handle({"jsonrpc": "2.0", "id": 4, "method": "tools/list"})
     names = {t["name"] for t in res["tools"]}
-    assert {
-        "list_projects",
-        "get_spec",
-        "get_raw_spec",
-        "validate_spec",
-        "list_runs",
-        "get_run",
-        "get_run_log",
-        "start_run",
-        "queue_status",
-        "list_approvals",
-        "approve_run",
-        "reject_run",
-    } == names
+    assert names == _DEFAULT_TOOLS | _APPROVAL_TOOLS
     for t in res["tools"]:
         assert t["inputSchema"]["type"] == "object"
         assert t["description"]
@@ -351,7 +355,7 @@ def test_stdio_initialize_then_tools_list(projects_dir):
     )
     by_id = {m["id"]: m for m in msgs if "id" in m}
     assert by_id[1]["result"]["serverInfo"]["name"] == "fabrik"
-    assert len(by_id[2]["result"]["tools"]) == 12
+    assert len(by_id[2]["result"]["tools"]) == len(_DEFAULT_TOOLS)
     # notification produced no envelope
     assert len(msgs) == 2
 

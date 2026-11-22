@@ -52,6 +52,8 @@ except importlib.metadata.PackageNotFoundError:  # running from a bare checkout
 MCP_ACTOR = "mcp"  # audit actor for actions taken through the MCP endpoint
 SUPPORTED_PROTOCOLS = (PROTOCOL_VERSION, "2024-11-05")
 READ_ONLY_ENV = "FABRIK_MCP_READONLY"  # truthy → mutating tools are hidden and refused
+ALLOW_APPROVALS_ENV = "FABRIK_MCP_ALLOW_APPROVALS"  # truthy → approve_run/reject_run are offered (opt-in)
+_TRUTHY = ("1", "true", "yes", "on")
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 1000
 DEFAULT_LOG_LINES = 2000  # bound for get_run_log when `lines` is omitted
@@ -120,8 +122,17 @@ def _redact(obj: Any) -> Any:
     return obj
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY
+
+
 def _read_only() -> bool:
-    return os.environ.get(READ_ONLY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+    return _env_flag(READ_ONLY_ENV)
+
+
+def _approvals_enabled() -> bool:
+    """Approve/reject are the human gate; a prompt-injected agent must not get them by default."""
+    return _env_flag(ALLOW_APPROVALS_ENV) and not _read_only()
 
 
 def _known_project(name: str) -> dict:
@@ -400,6 +411,7 @@ TOOLS: list[dict] = [
         "inputSchema": _schema({"project": _STR, "run_id": _STR}, required=("project", "run_id")),
         "handler": _approve_run,
         "mutating": True,
+        "approval": True,
     },
     {
         "name": "reject_run",
@@ -407,6 +419,7 @@ TOOLS: list[dict] = [
         "inputSchema": _schema({"project": _STR, "run_id": _STR}, required=("project", "run_id")),
         "handler": _reject_run,
         "mutating": True,
+        "approval": True,
     },
 ]
 
@@ -421,8 +434,13 @@ def _tool_error(text: str) -> dict:
 
 
 def _visible_tools() -> list[dict]:
-    """Tools offered to the client (mutating ones are hidden in read-only mode)."""
-    return [t for t in TOOLS if not (t.get("mutating") and _read_only())]
+    """Tools offered to the client: mutating ones are hidden in read-only mode, and the
+    approval tools only appear when explicitly enabled (opt-in)."""
+    return [
+        t
+        for t in TOOLS
+        if not (t.get("mutating") and _read_only()) and not (t.get("approval") and not _approvals_enabled())
+    ]
 
 
 def _call_tool(params: dict) -> dict:
