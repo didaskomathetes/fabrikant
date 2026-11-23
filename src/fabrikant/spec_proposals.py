@@ -75,6 +75,8 @@ class SpecProposal:
         A record with an unknown status (corruption, newer fabrikant version) raises
         :class:`ProposalError` so one bad file cannot crash ``list_proposals``.
         """
+        if not isinstance(data, dict):
+            raise ProposalError("corrupted proposal record: not a JSON object")
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         try:
             known["status"] = ProposalStatus(known.get("status", ProposalStatus.PENDING))
@@ -150,7 +152,7 @@ def _path(proposal_id: str, *, decided: bool = False) -> Path:
 
 
 def _write(proposal: SpecProposal, *, decided: bool = False) -> None:
-    """Atomic write of the record (into the decided dir once it has been applied/rejected)."""
+    """Atomic write (into the decided dir once decided); a failed write leaves no temp file."""
     target = _path(proposal.id, decided=decided)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=target.parent, suffix=".tmp", delete=False, encoding="utf-8") as fd:
@@ -200,7 +202,9 @@ def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
 
     Pending records live in the top-level dir, decided ones in ``decided/``; only the
     directories that can hold the requested status are read, so the pending hot path never
-    touches the (unbounded) audit history.
+    touches the (unbounded) audit history. Unparseable records are skipped (one bad file
+    must not make the whole listing unusable); ``get_proposal`` still surfaces the error
+    for a specific id.
     """
     if status is ProposalStatus.PENDING:
         dirs = [proposals_dir()]

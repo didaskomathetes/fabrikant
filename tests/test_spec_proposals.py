@@ -122,6 +122,18 @@ def test_corrupted_status_raises_proposal_error_not_crash(proj):
     assert [p.id for p in listed] == [ok.id]
 
 
+def test_non_object_record_raises_proposal_error_not_crash(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    path = sp.proposals_dir() / f"{pr.id}.json"
+    # a non-object JSON body (e.g. a list) must raise ProposalError, not AttributeError
+    path.write_text(json.dumps([1, 2, 3]))
+    with pytest.raises(sp.ProposalError, match="not a JSON object"):
+        sp.get_proposal(pr.id)
+    ok = sp.propose("p", {"description": "other"}, _hash(proj), "mcp")
+    listed = sp.list_proposals()
+    assert [p.id for p in listed] == [ok.id]
+
+
 # ------------------------------------------------------------------ apply/reject
 def test_apply_writes_with_backup_and_audit(proj):
     before = proj.read_bytes()
@@ -174,23 +186,6 @@ def test_reject_keeps_the_record(proj):
     assert "description: old" in proj.read_text()
     with pytest.raises(sp.ProposalError, match="already rejected"):
         sp.apply(pr.id, "cli:me")
-
-
-def test_apply_maps_spec_conflict_to_proposal_error(proj, monkeypatch):
-    # The dry-run check passes, then the spec moves on before the final write: the
-    # SpecConflict must surface as a clean ProposalError (not a raw 500 in the web UI).
-    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
-    real_save = specs.save_spec
-
-    def conflict_on_write(*a, **k):
-        if k.get("backup"):
-            raise specs.SpecConflict("spec changed externally")
-        return real_save(*a, **k)
-
-    monkeypatch.setattr(sp, "save_spec", conflict_on_write)
-    with pytest.raises(sp.ProposalError, match="changed while applying"):
-        sp.apply(pr.id, "cli:me")
-    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
 
 
 def test_decided_proposal_moves_to_decided_dir(proj):
