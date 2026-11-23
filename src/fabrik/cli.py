@@ -346,6 +346,65 @@ def cmd_egress(args):
         sys.exit(1)
 
 
+def cmd_fetch(args):
+    """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
+    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Auto-Freigaben; Profile
+    via ``--spec``/``--loop`` (Stufe 3)."""
+    from .fetch import DetectorUnavailable, Fetcher, build_detectors, fetcher_config_for, resolve_profiles
+    from .specs import load_spec_raw
+
+    domains = [d.strip() for d in (args.approved_domains or "").split(",") if d.strip()]
+    urls = [u.strip() for u in (args.approved_urls or "").split(",") if u.strip()]
+    loop_note = None
+    if args.spec:
+        spec = load_spec_raw(Path(args.spec))
+        loop = args.loop or "relay"
+        profs = resolve_profiles(spec, loop)
+        for d in fetcher_config_for(profs)["approved_domains"]:
+            if d not in domains:
+                domains.append(d)
+        loop_note = f"loop={loop} profile={[p.name for p in profs]}"
+    try:
+        detectors = build_detectors(
+            [n.strip() for n in args.detectors.split(",") if n.strip()] if args.detectors else None
+        )
+    except (ValueError, DetectorUnavailable) as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    fetcher = Fetcher(
+        approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger, detectors=detectors
+    )
+    res = fetcher.fetch(args.url, requested_by=_cli_actor())
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "url": res.url,
+                    "status": res.status,
+                    "reason": res.reason,
+                    "content_type": res.content_type,
+                    "fetched_at": res.fetched_at,
+                    "source_path": str(res.source_path) if res.source_path else None,
+                    "findings": [{"rule": f.rule, "severity": f.severity, "snippet": f.snippet} for f in res.findings],
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(f"{res.status.upper():<14} {res.url}")
+        if loop_note:
+            print(f"  {loop_note}")
+        if res.reason:
+            print(f"  reason: {res.reason}")
+        if res.findings:
+            print(f"  findings: {len(res.findings)}")
+            for f in res.findings:
+                print(f"    {f.severity:<11} {f.rule}: {f.snippet}")
+        if res.source_path:
+            print(f"  -> {res.source_path}")
+    sys.exit(0 if res.status == "clean" else 1)
+
+
 def cmd_import_runs(_args):
     from .sessionlog import import_runs
 
@@ -506,6 +565,23 @@ def main(argv=None):
     p = sub.add_parser("egress", help="Default-Deny-Egress-Proxy (ADR 0051)")
     p.add_argument("action", choices=("start", "stop", "status"))
     p.set_defaults(func=cmd_egress)
+
+    p = sub.add_parser("fetch", help="Research-Fetcher: Seite holen, bereinigen, Injection-Scan (ADR 0060)")
+    p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
+    p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
+    p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
+    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
+    p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
+    p.add_argument("--spec", default=None, help="Projekt-Spec (YAML) mit access-Profilen")
+    p.add_argument("--loop", default=None, help="Loop/Run-Name für Profil-Resolution (Default: relay)")
+    p.add_argument(
+        "--detectors",
+        default=None,
+        help="Kommagetrennte Injection-Detektoren: regex (Default), llm-guard (Extra injection-llm-guard); "
+        "sonst FABRIK_FETCH_DETECTORS",
+    )
+    p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
+    p.set_defaults(func=cmd_fetch)
 
     args = ap.parse_args(argv)
     try:
