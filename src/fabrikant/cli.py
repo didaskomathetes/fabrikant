@@ -5,20 +5,16 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
-import os
 import sys
 import traceback
 from pathlib import Path
 
-from . import auth, config, pause, profiles, retry_chains, scaffold, spec_sources
+from . import auth, config, pause, profiles, retry_chains, scaffold, spec_proposals, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
 from .golden import GoldenError, capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
 from .i18n import t
-from .mcp_server import ALLOW_APPROVALS_ENV as MCP_ALLOW_APPROVALS_ENV
-from .mcp_server import READ_ONLY_ENV as MCP_READ_ONLY_ENV
-from .mcp_server import serve_stdio
 from .replay import ReplayError, diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES, RunStatus
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
@@ -319,11 +315,37 @@ def cmd_serve(args):
 def cmd_mcp(args):
     # fabrikant as an MCP stdio server (Roadmap #132): runs, specs, approvals for
     # any MCP-capable agent. Long-lived process — the client keeps the pipe open.
-    if args.read_only:
-        os.environ[MCP_READ_ONLY_ENV] = "1"
-    if args.allow_approvals:
-        os.environ[MCP_ALLOW_APPROVALS_ENV] = "1"
-    serve_stdio()
+    # Imported lazily: the MCP SDK is heavy and only this subcommand needs it.
+    from . import mcp_server
+
+    options = mcp_server.McpOptions.from_env(
+        read_only=args.read_only,
+        allow_approvals=args.allow_approvals,
+        allow_spec_write=args.allow_spec_write,
+        spec_write_direct=args.spec_write_direct,
+    )
+    mcp_server.serve_stdio(options)
+
+
+def cmd_proposals(args):
+    """Human side of MCP spec-write: list / show / apply / reject spec-change proposals."""
+    actor = _cli_actor()
+    try:
+        if args.action == "list":
+            for pr in spec_proposals.list_proposals():
+                print(f"{pr.id}  {pr.project}  {pr.status}  by {pr.proposed_by}  {', '.join(pr.changes)}")
+        elif args.action == "show":
+            pr = spec_proposals.get_proposal(args.id)
+            print(json.dumps(pr.to_dict(), indent=2, ensure_ascii=False))
+        elif args.action == "apply":
+            pr = spec_proposals.apply(args.id, actor)
+            print(t("cli.proposal_applied", id=pr.id, project=pr.project))
+        else:
+            pr = spec_proposals.reject(args.id, actor)
+            print(t("cli.proposal_rejected", id=pr.id, project=pr.project))
+    except spec_proposals.ProposalError as e:
+        print(t("cli.error", error=e))
+        sys.exit(1)
 
 
 def _resume_sync(project: str, run_id: str, approve: bool) -> str:
@@ -627,12 +649,15 @@ def main(argv=None):
         help=t("cli.help.mcp"),
     )
     p.add_argument("--read-only", action="store_true", help=t("cli.help.mcp_read_only"))
-    p.add_argument(
-        "--allow-approvals",
-        action="store_true",
-        help=t("cli.help.mcp_allow_approvals"),
-    )
+    p.add_argument("--allow-approvals", action="store_true", help=t("cli.help.mcp_allow_approvals"))
+    p.add_argument("--allow-spec-write", action="store_true", help=t("cli.help.mcp_allow_spec_write"))
+    p.add_argument("--spec-write-direct", action="store_true", help=t("cli.help.mcp_spec_write_direct"))
     p.set_defaults(func=cmd_mcp)
+
+    p = sub.add_parser("proposals", help=t("cli.help.proposals"))
+    p.add_argument("action", choices=["list", "show", "apply", "reject"])
+    p.add_argument("id", nargs="?", default="")
+    p.set_defaults(func=cmd_proposals)
 
     p = sub.add_parser("approve", help=t("cli.help.approve"))
     p.add_argument("run_id")

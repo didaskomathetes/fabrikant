@@ -10,6 +10,7 @@ import io
 import json
 import math
 import os
+import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -159,7 +160,14 @@ def _dump_doc(path: Path, doc: dict) -> str:
     return buf.getvalue()
 
 
-def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) -> dict:
+# Suffix of the one-generation backup written next to a spec by ``save_spec(..., backup=True)``.
+# It does not match ``SPEC_GLOBS``, so a backup is never loaded as a project.
+SPEC_BACKUP_SUFFIX = ".bak"
+
+
+def save_spec(
+    name: str, update: SpecUpdate, *, base_hash: str | None = None, dry_run: bool = False, backup: bool = False
+) -> dict:
     """Saves a :class:`SpecUpdate` into the project's spec file.
 
     Flow: load project (unknown → ``KeyError``, broken → ``ValueError``),
@@ -170,6 +178,9 @@ def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) ->
     temp file in the same folder — only then write atomically
     (``os.replace``). On validation errors the file stays untouched.
     Returns the validated, saved spec (with corrected ``_path``).
+
+    ``dry_run``: run every check but leave the file untouched (proposal validation).
+    ``backup``: copy the previous file to ``<file>.bak`` before replacing it.
     """
     spec = load_projects().get(name)
     if not spec:
@@ -210,6 +221,13 @@ def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) ->
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
+    if dry_run:
+        tmp.unlink(missing_ok=True)
+        saved["_path"] = str(path)
+        saved["name"] = spec["name"]
+        return saved
+    if backup:
+        shutil.copy2(path, path.with_name(path.name + SPEC_BACKUP_SUFFIX))
     os.replace(tmp, path)  # atomic: no half-written spec after a crash
     saved["_path"] = str(path)
     saved["name"] = spec["name"]  # canonical name, not derived from the temp path

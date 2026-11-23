@@ -92,7 +92,7 @@ The full index is [docs/README.md](docs/README.md). Highlights:
 - [Architecture overview](docs/architecture.md) and [roadmap](docs/roadmap.md)
 - [Configuration](docs/configuration.md) · [spec reference](docs/spec-reference.md) · [step types](docs/steps.md) · [triggers and alerts](docs/triggers.md)
 - [Agent backends](docs/backends.md) · [runs](docs/runs.md) · [relay tasks](docs/relay.md)
-- [Chat and LLM providers](docs/chat.md) · [HTTP API](docs/api.md) · [authentication](docs/auth.md) · [security](docs/security.md)
+- [Chat and LLM providers](docs/chat.md) · [HTTP API](docs/api.md) · [MCP server](docs/mcp.md) · [authentication](docs/auth.md) · [security](docs/security.md)
 - [Operations](docs/operations.md) (systemd, workers, worktrees) · [development](docs/development.md) · [releasing](docs/releasing.md)
 - [Architecture decisions (ADRs)](docs/adr/README.md)
 
