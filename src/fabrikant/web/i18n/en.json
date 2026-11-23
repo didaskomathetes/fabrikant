@@ -284,5 +284,20 @@
   "kpis.veto": "veto",
   "kpis.vetoTitle": "Share of reviewed runs with changes requested",
   "kpis.escape": "escape",
-  "kpis.escapeTitle": "Defect escape rate (caught/escaped): outcome failures after an earlier accepted run"
+  "kpis.escapeTitle": "Defect escape rate (caught/escaped): outcome failures after an earlier accepted run",
+  "proposals.badgeTitle": "{n} pending spec proposal(s) — click to expand",
+  "proposals.title": "Spec change proposal",
+  "proposals.by": "proposed by {who}",
+  "proposals.status.pending": "pending",
+  "proposals.status.applied": "applied",
+  "proposals.status.rejected": "rejected",
+  "proposals.stale": "The spec changed since this proposal was made. It can no longer be applied; ask the agent to propose again.",
+  "proposals.summary": "{added} loop(s) added, {changed} changed, {removed} removed",
+  "proposals.kind.added": "added",
+  "proposals.kind.changed": "changed",
+  "proposals.kind.removed": "removed",
+  "proposals.apply": "Apply",
+  "proposals.reject": "Reject",
+  "proposals.confirm.apply": "Apply this change to the spec of {project}? (a .bak copy is kept)",
+  "proposals.confirm.reject": "Reject this proposal for {project}?"
 }

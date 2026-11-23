@@ -1,6 +1,6 @@
 // fabrikant UI — vanilla JS, kein Build
 const $ = (s) => document.querySelector(s);
-let state = { projects: [], selected: null, runTimer: null, openLoop: null, graphOpen: null, openApprovals: null, openShelved: null, schedOpen: false, schedTimer: null };
+let state = { projects: [], selected: null, runTimer: null, openLoop: null, graphOpen: null, openApprovals: null, openProposals: null, openShelved: null, schedOpen: false, schedTimer: null };
 // Letztes geladenes Run-Record des offenen Panels — Basis für den Log-Toggle
 // (formatierte Ansicht ↔ rohes Log) und für den Refresh nach Approve/Reject.
 let runPanelRec = null;
@@ -208,6 +208,8 @@ function onProjectsClick(e) {
     case "select-project": selectProject(d.name); break;
     case "toggle-approvals": toggleApprovals(d.name); break;
     case "open-run": openRun(d.run); break;
+    case "toggle-proposals": toggleProposals(d.name); break;
+    case "open-proposal": openProposal(d.id); break;
     case "toggle-shelved": toggleShelved(d.name); break;
     case "shelved-retry":
     case "shelved-dismiss":
@@ -365,11 +367,12 @@ function renderProjects() {
     }
     return `<div class="project ${p.name === state.selected ? "active" : ""}"
         data-act="select-project" data-name="${esc(p.name)}">
-      <div class="pname">${esc(p.name)}${stateBadge(p.state)}${approvalBadge(p)}${shelvedBadge(p)}</div>
+      <div class="pname">${esc(p.name)}${stateBadge(p.state)}${approvalBadge(p)}${proposalBadge(p)}${shelvedBadge(p)}</div>
       <div class="pdesc">${esc(p.description)}</div>
       ${p.branch && p.branch !== "-" ? `<div class="pbranch">⎇ ${esc(p.branch)}</div>` : ""}
       ${loopSummary(p)}
       ${approvalList(p)}
+      ${proposalList(p)}
       ${shelvedList(p)}
     </div>`;
   }).join("");
@@ -418,6 +421,104 @@ function approvalList(p) {
 function toggleApprovals(name) {
   state.openApprovals = state.openApprovals === name ? null : name;
   renderProjects();
+}
+
+// Spec-Änderungsvorschläge (ADR 0066): Badge mit Anzahl, aufklappbare Liste, Diff-Modal
+// mit Apply/Reject. Das Diff rechnet der Server (GET /api/spec-proposals/<id>).
+const PROPOSALS_API = "/api/spec-proposals";
+const proposalUi = { diff: null, error: "" };
+
+function proposalBadge(p) {
+  const n = (p.pending_proposals || []).length;
+  if (!n) return "";
+  return `<span class="apprbadge propbadge" title="${esc(t("proposals.badgeTitle", { n }))}"
+      data-act="toggle-proposals" data-name="${esc(p.name)}">✎ ${n}</span>`;
+}
+
+function proposalList(p) {
+  const list = p.pending_proposals || [];
+  if (!list.length || state.openProposals !== p.name) return "";
+  return `<div class="applist">` + list.map((pr) => `<div class="apprline" data-act="open-proposal" data-id="${esc(pr.id)}">
+      <span class="apprloop">${esc(pr.proposed_by)}</span>
+      <span class="apprtime">${esc(fmtDateTime(pr.created))}</span>
+      <span class="apprwhat">${esc(pr.changes.join(", "))}</span>
+    </div>`).join("") + `</div>`;
+}
+
+function toggleProposals(name) {
+  state.openProposals = state.openProposals === name ? null : name;
+  renderProjects();
+}
+
+// Zeilen-Diff (unified) rot/grün; ``@@``-Köpfe gedimmt.
+function diffHtml(lines) {
+  return `<pre class="propdiff">` + lines.map((ln) => {
+    const cls = ln.startsWith("+") ? "add" : ln.startsWith("-") ? "del" : ln.startsWith("@@") ? "hunk" : "";
+    return `<span class="${cls}">${esc(ln)}\n</span>`;
+  }).join("") + `</pre>`;
+}
+
+function loopChangeHtml(c) {
+  const body = c.kind === "changed" ? diffHtml(c.diff)
+    : diffHtml((c.kind === "added" ? c.after : c.before).split("\n").filter(Boolean).map((l) => (c.kind === "added" ? "+" : "-") + l));
+  return `<details class="proploop"><summary><span class="propkind ${esc(c.kind)}">${esc(t(`proposals.kind.${c.kind}`))}</span> ${esc(c.name)}</summary>${body}</details>`;
+}
+
+function proposalHtml(d) {
+  const canDecide = d.status === "pending" && !d.error && auth.role !== "viewer";
+  const n = d.counts || {};
+  const fields = d.fields.map((f) => `<div class="propfield"><b>${esc(f.name)}</b> ${esc(f.before || "–")} → ${esc(f.after || "–")}</div>`).join("");
+  return `<div class="propmeta">${esc(d.project)} · ${esc(t("proposals.by", { who: d.proposed_by }))} · ${esc(fmtDateTime(d.created))}
+      · ${esc(t(`proposals.status.${d.status}`))}${d.decided_by ? ` (${esc(d.decided_by)})` : ""}</div>
+    ${d.stale ? `<div class="proposal-warn">${esc(t("proposals.stale"))}</div>` : ""}
+    ${d.error ? `<div class="proposal-warn">${esc(d.error)}</div>` : ""}
+    ${d.status === "pending" && !d.error ? `<div class="propsummary">${esc(t("proposals.summary", { added: n.added, changed: n.changed, removed: n.removed }))}</div>` : ""}
+    ${fields}${d.loops.map(loopChangeHtml).join("")}
+    <div class="proposal-err">${esc(proposalUi.error)}</div>
+    ${canDecide ? `<div class="propactions">
+      <button class="run" data-act="prop-apply"${d.stale ? " disabled" : ""}>${esc(t("proposals.apply"))}</button>
+      <button class="ghost" data-act="prop-reject">${esc(t("proposals.reject"))}</button></div>` : ""}`;
+}
+
+function renderProposal() {
+  $("#proposalbody").innerHTML = proposalUi.diff ? proposalHtml(proposalUi.diff) : `<div class="proposal-err">${esc(proposalUi.error)}</div>`;
+}
+
+async function openProposal(id) {
+  Object.assign(proposalUi, { diff: null, error: "" });
+  $("#proposalbackdrop").classList.remove("hidden");
+  $("#proposalpanel").classList.remove("hidden");
+  try {
+    proposalUi.diff = await api(`${PROPOSALS_API}/${encodeURIComponent(id)}`);
+  } catch (e) {
+    proposalUi.error = e.detail || e.message;
+  }
+  renderProposal();
+}
+
+function closeProposal() {
+  $("#proposalbackdrop").classList.add("hidden");
+  $("#proposalpanel").classList.add("hidden");
+}
+
+async function decideProposal(action) {
+  const d = proposalUi.diff;
+  if (!d || !confirm(t(`proposals.confirm.${action}`, { project: d.project }))) return;
+  try {
+    await api(`${PROPOSALS_API}/${encodeURIComponent(d.id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    closeProposal();
+    await refresh({ force: true });
+  } catch (e) {
+    proposalUi.error = e.detail || e.message;
+    renderProposal();
+  }
+}
+
+function onProposalClick(e) {
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "prop-apply") decideProposal("apply");
+  else if (act === "prop-reject") decideProposal("reject");
+  else if (act === "prop-close") closeProposal();
 }
 
 // Erschöpfte Retry-Ketten („Abgelegt“, ADR 0036, Entscheidung 6): analog
@@ -3272,7 +3373,8 @@ document.querySelectorAll("#runtabs button").forEach((b) => {
 });
 $("#runbackdrop").addEventListener("click", closeRun);
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("#settingspanel").classList.contains("hidden")) closeSettings();
+  if (e.key === "Escape" && !$("#proposalpanel").classList.contains("hidden")) closeProposal();
+  else if (e.key === "Escape" && !$("#settingspanel").classList.contains("hidden")) closeSettings();
   else if (e.key === "Escape" && !$("#runpanel").classList.contains("hidden")) closeRun();
 });
 $("#loginform").addEventListener("submit", doLogin);
@@ -3284,6 +3386,8 @@ $("#detail").addEventListener("click", onDetailClick);
 $("#graphctx").addEventListener("click", onGraphCtxClick);
 $("#runactions").addEventListener("click", onRunActionsClick);
 $("#schedpanel").addEventListener("click", onSchedClick);
+$("#proposalpanel").addEventListener("click", onProposalClick);
+$("#proposalbackdrop").addEventListener("click", closeProposal);
 $("#schedpanel").addEventListener("keydown", onSchedKeydown);
 // i18n: Kataloge laden, Sprache auflösen (localStorage > Browser > "en") und
 // anwenden (statische + dynamische Views). Die Chat-Begrüßung ist Content —

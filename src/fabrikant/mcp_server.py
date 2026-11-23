@@ -47,7 +47,7 @@ from .runs import (
     pending_approvals,
     reap_orphaned_runs,
 )
-from .secrets import redact_for_agent, redact_secret_keys, redact_text
+from .secrets import MASKED_VALUE, redact_for_agent, redact_secret_keys, redact_text
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
 from .specschema import validate_spec
 
@@ -65,6 +65,7 @@ DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 1000
 DEFAULT_LOG_LINES = 2000  # bound for get_run_log when `lines` is omitted
 DRAIN_TIMEOUT_S = 600  # on stdin EOF, wait this long for in-flight run workers
+REDACTED = MASKED_VALUE
 
 # --------------------------------------------------------------------------- #
 # Options / gating.
@@ -282,6 +283,9 @@ class ProposalList(BaseModel):
 # --------------------------------------------------------------------------- #
 # Helpers.
 # --------------------------------------------------------------------------- #
+
+
+_redact = redact_secret_keys
 
 
 def _known_project(name: str) -> dict:

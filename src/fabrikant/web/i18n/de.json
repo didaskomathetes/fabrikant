@@ -284,5 +284,20 @@
   "kpis.veto": "Veto",
   "kpis.vetoTitle": "Anteil der Runs mit Review, in denen Änderungen verlangt wurden",
   "kpis.escape": "Escape",
-  "kpis.escapeTitle": "Defect-Escape-Rate (gefangen/entkommen): Outcome-Fehler nach einem früheren erfolgreichen Run"
+  "kpis.escapeTitle": "Defect-Escape-Rate (gefangen/entkommen): Outcome-Fehler nach einem früheren erfolgreichen Run",
+  "proposals.badgeTitle": "{n} offene Spec-Vorschläge — Klick zum Aufklappen",
+  "proposals.title": "Spec-Änderungsvorschlag",
+  "proposals.by": "vorgeschlagen von {who}",
+  "proposals.status.pending": "offen",
+  "proposals.status.applied": "angewendet",
+  "proposals.status.rejected": "abgelehnt",
+  "proposals.stale": "Die Spec hat sich seit dem Vorschlag geändert. Er kann nicht mehr angewendet werden; den Agenten neu vorschlagen lassen.",
+  "proposals.summary": "{added} Loop(s) hinzugefügt, {changed} geändert, {removed} entfernt",
+  "proposals.kind.added": "neu",
+  "proposals.kind.changed": "geändert",
+  "proposals.kind.removed": "entfernt",
+  "proposals.apply": "Anwenden",
+  "proposals.reject": "Ablehnen",
+  "proposals.confirm.apply": "Diese Änderung auf die Spec von {project} anwenden? (eine .bak-Kopie bleibt erhalten)",
+  "proposals.confirm.reject": "Diesen Vorschlag für {project} ablehnen?"
 }
