@@ -133,7 +133,10 @@ def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
     """All proposals, newest first; optionally only those in ``status``."""
     if not proposals_dir().is_dir():
         return []
-    found = [SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in proposals_dir().glob(f"*{PROPOSAL_SUFFIX}")]
+    found = [
+        SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8")))
+        for p in proposals_dir().glob(f"*{PROPOSAL_SUFFIX}")
+    ]
     return sorted((p for p in found if status in (None, p.status)), key=lambda p: p.created, reverse=True)
 
 
