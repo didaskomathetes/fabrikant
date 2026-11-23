@@ -23,7 +23,10 @@ def test_run_without_usage_is_zero():
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
         "cost_usd": 0.0,
+        "subscription_cost_usd": 0.0,
         "unpriced_steps": 0,
     }
     assert rc.steps == [] and rc.by_backend == {}
@@ -103,3 +106,19 @@ def test_costs_report_rejects_bad_date(seeded):
 def test_search_rows_carry_cost(seeded):
     rows = runsearch.search_runs("p")["runs"]
     assert {r["cost"]["cost_usd"] for r in rows} == {1.0, 2.0}
+
+
+def test_totals_sum_cache_tokens_per_step_and_backend():
+    u1 = Usage(
+        provider="claude_code",
+        prompt_tokens=100,
+        completion_tokens=5,
+        cache_read_tokens=80,
+        cache_write_tokens=10,
+        cost_usd=0.1,
+    )
+    u2 = Usage(provider="claude_code", prompt_tokens=50, completion_tokens=5, cache_read_tokens=40, cost_usd=0.1)
+    d = costs.run_cost(_run([_step("a", u1), _step("b", u2)])).as_dict()
+    assert (d["cache_read_tokens"], d["cache_write_tokens"]) == (120, 10)
+    assert d["by_backend"]["claude_code"]["cache_read_tokens"] == 120
+    assert d["steps"][0]["cache_read_tokens"] == 80

@@ -7,15 +7,18 @@ import json
 import os
 import time
 
-from .. import config
+from .. import config, sandbox
 from ..backends import AgentBackend, create_backend, known_backends
 from ..backends._oneshot import OneShotCliBackend
+from ..billing import Billing
+from ..billing import for_step as billing_for_step
 from ..context import _cap, _substitute, step_workdir
 from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
-from ..gitops import github_env, subprocess_env, token_overrides
+from ..gitops import cleared_tokens, github_env, subprocess_env, token_overrides
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..spec_sources import resolve_relative
+from ..tokens import TokenCounts
 from .extra_context import render_extra_context
 from .shell import _step_shell
 
@@ -193,17 +196,21 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
     """`github_identity: dev|reviewer` → `gh` im Agent-Prozess läuft als diese Identity (ADR 0010).
 
     Nur One-Shot-CLI-Backends: `opencode serve` ist ein fremder Prozess, dessen Env
-    der Step nicht setzen kann. Ohne Identity bekommen One-Shot-Agents trotzdem die
-    Projekt-Einstellungen (Token-Datei, `commit_via` für `python -m fabrik.push`).
-    Liefert eine Fehlermeldung oder None."""
+    der Step nicht setzen kann. Ohne Identity bekommen One-Shot-Agents auf dem Host die
+    Projekt-Einstellungen (Token-Datei, `commit_via` für `python -m fabrik.push`). In der
+    Sandbox (ADR 0054) dagegen KEIN Token: ohne `github_identity` sind alle Token-Variablen leer —
+    sonst trüge jeder Container still das Builder-Token des Projekts (GitHub ist über den
+    Egress-Proxy erreichbar). Liefert eine Fehlermeldung oder None."""
     role = str(step.get("github_identity") or "").strip()
     if not role:
-        if isinstance(be, OneShotCliBackend):
+        if isinstance(be, OneShotCliBackend) and sandbox.sandbox_enabled():
+            be.extra_env = cleared_tokens()
+        elif isinstance(be, OneShotCliBackend):
             # Geerbte globale Tokens überlagern (leer = `gh` ignoriert sie), sonst läuft `gh` als falsche Identität.
             be.extra_env = {**token_overrides(), **subprocess_env()}
         return None
     if not isinstance(be, OneShotCliBackend):
-        return f"github_identity: nur für CLI-Backends (claude_code, codex, copilot), nicht {be.name}"
+        return f"github_identity: nur für CLI-Backends (claude_code, codex, copilot; opencode in der Sandbox), nicht {be.name}"
     try:
         be.extra_env = github_env(role)
     except (RuntimeError, ValueError) as e:
@@ -211,21 +218,27 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
     return None
 
 
-def _agent_usage(last: dict, backend_name: str, model: str, carry: dict | None = None) -> dict:
+def _detected_billing(be: AgentBackend) -> Billing:
+    """Abrechnungsart, die das Backend aus seiner Auth ableitet (optionaler Teil des Ports)."""
+    detect = getattr(be, "billing", None)
+    detected = detect() if callable(detect) else None
+    return detected if isinstance(detected, Billing) else Billing.UNKNOWN
+
+
+def _agent_usage(
+    last: dict, backend_name: str, model: str, carry: dict | None = None, billing: Billing = Billing.UNKNOWN
+) -> dict:
     """Usage-Dict (Tokens, Kosten) aus dem letzten Poll-Ergebnis.
 
     ``carry`` = Verbrauch früherer, neu gestarteter Versuche — auch fehlgeschlagene
     und abgebrochene Sessions kosten Tokens und gehören in die Summen."""
-    tok = last.get("tokens") or {}
     carry = carry or {}
-    t_in = int(tok.get("input", 0) or 0) + int(carry.get("prompt_tokens", 0))
-    t_out = int(tok.get("output", 0) or 0) + int(carry.get("completion_tokens", 0))
+    tokens = TokenCounts.from_poll(last.get("tokens")) + TokenCounts.from_usage(carry)
     usage: dict = {
         "model": model or "-",
         "provider": backend_name,
-        "prompt_tokens": t_in,
-        "completion_tokens": t_out,
-        "total_tokens": t_in + t_out,
+        **tokens.usage_fields(),
+        "billing": billing.value,
     }
     cost = float(last.get("cost") or 0) + float(carry.get("cost_usd", 0.0))
     if cost:
@@ -271,10 +284,13 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     endpoint = (step.get("endpoint") or os.environ.get("FABRIK_AGENT_ENDPOINT", "")).strip()
     model = (step.get("model") or os.environ.get("FABRIK_AGENT_MODEL", "")).strip()
     if backend_name == "opencode":
-        if not endpoint or not model:
+        # In der Sandbox (ADR 0054) kommt die Config aus der LLM-Verbindung — das endpoint
+        # wird ignoriert, nur das Modell (<verbindung>/<modell>) ist nötig.
+        if not model or (not endpoint and not sandbox.sandbox_enabled()):
             return failed(
                 "opencode-Backend: endpoint/model fehlen "
-                "(step.endpoint/model oder FABRIK_AGENT_ENDPOINT + FABRIK_AGENT_MODEL)",
+                "(step.endpoint/model oder FABRIK_AGENT_ENDPOINT + FABRIK_AGENT_MODEL; "
+                "in der Sandbox genügt model als <verbindung>/<modell>)",
                 FailureKind.ENVIRONMENT,
             )
     elif backend_name not in ("codex", "copilot") and not model:
@@ -285,6 +301,8 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
         )
     be: AgentBackend = create_backend(backend_name, step, endpoint, model, stale_after)
     identity_err = _apply_github_identity(be, step)
+    # Abrechnungsart: Spec-`billing:` vor Erkennung aus der Auth (Backends ohne Erkennung: unknown).
+    billing = billing_for_step(step, _detected_billing(be))
     if identity_err:
         return failed(identity_err, FailureKind.ENVIRONMENT)
     if not be.health():
@@ -366,10 +384,10 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                             f"({str(last.get('text', ''))[:80]}) — Retry in {wait}s "
                             f"(Versuch {attempt + 2}/{max_retries + 1})"
                         )
-                        carry = _agent_usage(last, backend_name, model, carry)
+                        carry = _agent_usage(last, backend_name, model, carry, billing)
                         time.sleep(wait)
                         break  # → nächste for-Iteration (neue Session)
-                    usage = _agent_usage(last, backend_name, model, carry)
+                    usage = _agent_usage(last, backend_name, model, carry, billing)
                     _record_cost(lg, sname, usage, last)
                     return _session_failed(last, sid, usage, emit)
                 time.sleep(15)
@@ -390,7 +408,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 # damit man sieht, WORAUF die Session gewartet hat (statt nur
                 # "timeout nach 1800s"). Bei anhaltendem Backend-Fehler die
                 # Ursache nennen (ADR 0012).
-                usage = _agent_usage(last, backend_name, model, carry)
+                usage = _agent_usage(last, backend_name, model, carry, billing)
                 _record_cost(lg, sname, usage, last)
                 if last_err:
                     return failed(
@@ -428,11 +446,12 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 emit(f"  agent final: {final_txt[:cap]}{'…' if len(final_txt) > cap else ''}")
             dur = round(time.time() - t0, 1)
             tools = last.get("tools") or []
-            usage = _agent_usage(last, backend_name, model, carry)
-            t_in, t_out = usage["prompt_tokens"], usage["completion_tokens"]
+            usage = _agent_usage(last, backend_name, model, carry, billing)
             premium = last.get("premium_requests")
+            cost = usage.get("cost_usd")
             summary = (
-                f"{dur}s · {t_in} in / {t_out} out tokens"
+                f"{dur}s · {TokenCounts.from_usage(usage).summary()}"
+                + (f" · ${cost:.2f}" if cost else "")
                 + (f" · {premium} premium requests" if premium is not None else "")
                 + (f" · tools: {', '.join(tools[:5])}" if tools else "")
             )

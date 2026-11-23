@@ -407,6 +407,52 @@ def test_run_modal_tabs_log_and_transcript(page):
     page.wait_for_function("document.querySelector('#runlog .runrawlog') === null")
 
 
+def test_run_modal_trace_tab(page, fabrik_home):
+    """#128: Trace-Tab zeigt die chronologische Step-Timeline aus dem Session-Log:
+    Step-Header (Status, Dauer, Usage), Agent-Events als Drill-down, Artefakt-Liste."""
+    from fabrik import sessionlog
+
+    lg = sessionlog.SessionLog(RUN_ID, "uitest", "lint")
+    lg.start()
+    lg.event("step_start", step_name="step-00", step_type="shell")
+    lg.event("prompt", step_name="step-00", step_type="agent", text="do the thing")
+    lg.event("tool_call", step_name="step-00", step_type="agent", tool={"name": "bash", "cmd": "make"})
+    lg.event("message", step_name="step-00", step_type="agent", text="all good")
+    lg.event(
+        "step_done",
+        step_name="step-00",
+        step_type="shell",
+        status="pass",
+        duration_s=5.0,
+        usage={"model": "m", "total_tokens": 1234, "cost_usd": 0.02},
+    )
+    lg.artifact("step-00", "report", "/tmp/report.md")
+    lg.finish("pass")
+
+    # Verdict lives in the run record (not the session log): give step-00 one.
+    rec_path = fabrik_home / "runs" / "uitest" / f"{RUN_ID}.json"
+    rec = json.loads(rec_path.read_text())
+    rec["steps"][0]["verdict"] = "pass"
+    rec_path.write_text(json.dumps(rec))
+
+    _select_project(page)
+    _open_run(page, RUN_ID)
+    page.wait_for_selector("#runpanel:not(.hidden)")
+    page.click('#runtabs [data-tab="trace"]')
+    page.wait_for_selector("#runlog .runtrace")
+    page.wait_for_function("document.querySelector('#runlog .trace-step .trace-stepname')?.textContent === 'step-00'")
+    assert page.locator("#runlog .trace-step").count() == 1
+    head = page.eval_on_selector("#runlog .trace-step .trace-stephead", "el => el.textContent")
+    assert "5s" in head and "1.2k" in head  # duration + compact token count
+    assert page.locator("#runlog .trace-step .badge.verdict").count() == 1  # verdict from the run record
+    # Agent-Events als (collapsed) Drill-down
+    assert page.locator("#runlog .trace-event").count() == 3
+    assert page.locator("#runlog .trace-event-tool_call").count() == 1
+    # Artefakt-Liste
+    assert page.locator("#runlog .trace-artifact").count() == 1
+    assert "/tmp/report.md" in page.eval_on_selector("#runlog .trace-artifact", "el => el.textContent")
+
+
 def test_run_log_live_update_and_follow_toggle(page, fabrik_home):
     """Neue Log-Zeilen eines laufenden Runs erscheinen ohne Reload; „folgen“ steuert Auto-Scroll."""
     rid = "20260103T000000Z-uitest-live"

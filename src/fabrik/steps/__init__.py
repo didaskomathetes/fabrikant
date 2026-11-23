@@ -1,8 +1,9 @@
-"""Step-Implementierungen (shell, git, pr, pr_review, pr_merge, human_gate,
+"""Step-Implementierungen (shell, git, pr, pr_review, pr_merge, human_gate, escalation,
 agent, http, issue, llm, notify, state, review, verify, alert_route)."""
 
 from .agent import _step_agent, _step_agent_backend
 from .alert_route import _step_alert_route
+from .escalation import _step_escalation
 from .git import _git, _step_git
 from .http import _step_http
 from .human_gate import _step_human_gate
@@ -24,6 +25,7 @@ __all__ = [
     "_step_agent",
     "_step_alert_route",
     "_step_agent_backend",
+    "_step_escalation",
     "_step_git",
     "_step_http",
     "_step_human_gate",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import re
 import threading
+from collections.abc import Iterable
 
 # Prometheus-Metrikname: [a-zA-Z_:][a-zA-Z0-9_:]* (OpenMetrics-Exposition).
 # Ungültige Namen würden den gesamten Text-Export ungültig machen.
@@ -34,6 +35,23 @@ def _escape_label_value(value: str) -> str:
     dann Zeilenumbruch.
     """
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def render_samples(
+    name: str, help: str, kind: str, label_names: list[str], items: Iterable[tuple[tuple[str, ...], float]]
+) -> str:
+    """Eine Metrik-Familie (HELP/TYPE + Samples) als Prometheus-Textformat.
+
+    HELP wird gemäß Expositionsformat escaped (Backslash → ``\\\\``); rohe Backslashes würden die
+    Zeile syntaktisch beschädigen. Label-Werte werden ebenfalls escaped."""
+    help_text = help.replace("\\", "\\\\")
+    lines = [f"# HELP {name} {help_text}", f"# TYPE {name} {kind}"]
+    for key, val in items:
+        label_str = ",".join(
+            f'{label}="{_escape_label_value(value)}"' for label, value in zip(label_names, key, strict=True)
+        )
+        lines.append(f"{name}{{{label_str}}} {val}")
+    return "\n".join(lines)
 
 
 class Counter:
@@ -93,14 +111,7 @@ class Counter:
         """
         with self._lock:
             items = sorted(self._values.items())
-        help_text = self.help.replace("\\", "\\\\")
-        lines = [f"# HELP {self.name} {help_text}", f"# TYPE {self.name} counter"]
-        for key, val in items:
-            label_str = ",".join(
-                f'{name}="{_escape_label_value(value)}"' for name, value in zip(self.labels, key, strict=True)
-            )
-            lines.append(f"{self.name}{{{label_str}}} {val}")
-        return "\n".join(lines)
+        return render_samples(self.name, self.help, "counter", self.labels, items)
 
 
 _counters: list[Counter] = []

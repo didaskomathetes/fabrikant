@@ -14,6 +14,9 @@
 - model structured data with types: when a dict with a known set of keys gets passed around (e.g. a request, a context, a record section), introduce a dataclass or small class with typed fields, defaults and the behavior that belongs to it (parsing, serialization, formatting). avoid opaque procedural code that pokes at keys that may or may not be there. plain dicts are fine at the boundaries (JSON I/O, ad-hoc lookups); convert at the edge.
 - before you start implementing a feature from scratch, check if there is already a well-maintained library or module that can be used. don't reinvent the wheel.
 
+## Language
+- write docs (README, ADRs), issues, PR descriptions, commit messages, comments and docstrings in English.
+
 ## ADRs, Critical descisions, and design docs
 - all critical decisions should be documented in ADRs (architecture decision records) or design docs.
 - docs are in docs/adr or docs/

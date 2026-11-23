@@ -167,13 +167,25 @@ def test_registry_complete_dispatches_to_cli(monkeypatch):
     assert res == {
         "text": "txt",
         "finish_reason": "stop",
-        "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5},
+        "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 1,
+            "total_tokens": 5,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+        },
     }
 
 
 @pytest.mark.parametrize("raw", [None, {"prompt_tokens": "x"}, "kaputt"])
 def test_usage_malformed_is_zero(raw):
-    assert llm._usage(raw) == {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    assert llm._usage(raw) == {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
 
 
 def test_complete_errors_carry_failure_kind(clean_llm_env, monkeypatch):

@@ -142,7 +142,13 @@ def test_poll_running_when_proc_not_started():
     be = ClaudeCodeBackend("", "sonnet")
     sid = be.create_task("/tmp/wd", "t")
     r = be.poll(sid, "/tmp/wd")
-    assert r == {"status": "running", "text": "", "tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+    assert r == {
+        "status": "running",
+        "text": "",
+        "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0},
+        "cost": 0.0,
+        "tools": [],
+    }
 
 
 def test_poll_running_while_process_alive():
@@ -162,7 +168,7 @@ def test_poll_done_with_success_json():
     r = be.poll(sid, "/tmp/wd")
     assert r["status"] == "done"
     assert r["text"] == "pong"
-    assert r["tokens"] == {"input": 2 + 16223 + 11168, "output": 4}
+    assert r["tokens"] == {"input": 2 + 16223 + 11168, "output": 4, "cache_read": 11168, "cache_write": 16223}
     assert r["cost"] == 0.13
     assert r["tools"] == []
 
@@ -177,7 +183,7 @@ def test_poll_failed_on_nonzero_rc():
     r = be.poll(sid, "/tmp/wd")
     assert r["status"] == "failed"
     assert "boom" in r["text"]
-    assert r["tokens"] == {"input": 0, "output": 0}
+    assert r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     assert r["cost"] == 0.0
 
 

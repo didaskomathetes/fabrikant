@@ -71,3 +71,9 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
 | [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIK_LAUNCHER`) | Akzeptiert (2026-11-18) |
 | [0058](0058-webhook-replay-protection.md) | Webhook-Replay-Schutz (opt-in `replay_protection`) | Akzeptiert (2026-11-18) |
+| [0059](0059-needs-human-escalation.md) | `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift | Akzeptiert (2026-11-19); Nachtrag 2026-11-16: Eskalationsart `access` (ADR 0060) |
+| [0060](0060-research-fetcher-access-profiles.md) | Fetcher für offene Recherche (Herkunftsprüfung, Bereinigung/Injection-Scan), Zugriffsprofile pro Loop/Run, einmalige Freigaben | Akzeptiert (2026-11-19) |
+| [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrik replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
+| [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
+| [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
+| [0064](0064-mcp-server-stdio.md) | MCP-Server — fabrik als stdio-Endpoint für MCP-fähige Agenten (Runs, Specs, Approvals) | Accepted (2026-11-21) |

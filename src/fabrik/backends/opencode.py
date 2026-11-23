@@ -12,6 +12,10 @@ Versions-Erkennung (lazy, gecacht): `GET /api/info` → 2.x, sonst
 `type`, `content`, top-level `tokens/cost/…`) werden in die 1.x-Envelope
 (`{info, parts}`) normalisiert, damit `poll()` eine gemeinsame
 Statuslogik hat.
+
+Mit `FABRIK_SANDBOX=1` wählt die Registry stattdessen den One-Shot-Adapter
+:class:`~fabrik.backends.opencode_cli.OpenCodeCliBackend` (eigene opencode-Instanz im
+Sandbox-Container, Config aus einer LLM-Verbindung) — kein geteilter `opencode serve` auf dem Host.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ import urllib.request
 from .. import httpsafe
 from ..failures import classify_exception
 from ..runmodel import FailureKind
+from ..tokens import TokenCounts
 
 
 def _default_permissions() -> list[dict]:
@@ -44,6 +49,23 @@ def _default_permissions() -> list[dict]:
         {"permission": "edit", "pattern": "*", "action": "allow"},
         {"permission": "bash", "pattern": "*", "action": "allow"},
     ]
+
+
+def opencode_tokens(t: object) -> TokenCounts:
+    """opencode-``tokens`` (``input``, ``output``, ``reasoning``, ``cache.read``/``cache.write``) → TokenCounts.
+
+    opencode zählt Cache-Tokens nicht in ``input`` — sie kommen dazu; Reasoning zählt zum Output."""
+    if not isinstance(t, dict):
+        return TokenCounts()
+    raw_cache = t.get("cache")
+    cache: dict = raw_cache if isinstance(raw_cache, dict) else {}
+    read, write = int(cache.get("read") or 0), int(cache.get("write") or 0)
+    return TokenCounts(
+        input=int(t.get("input") or 0) + read + write,
+        output=int(t.get("output") or 0) + int(t.get("reasoning") or 0),
+        cache_read=read,
+        cache_write=write,
+    )
 
 
 class _ServeApi:
@@ -321,8 +343,7 @@ class OpenCodeBackend:
         """
         msgs = self._require_api().fetch_messages(session_id, directory)
         a = [m for m in msgs if m.get("info", {}).get("role") == "assistant"]
-        tin = sum(m.get("info", {}).get("tokens", {}).get("input", 0) for m in msgs)
-        tout = sum(m.get("info", {}).get("tokens", {}).get("output", 0) for m in msgs)
+        tokens = sum((opencode_tokens(m.get("info", {}).get("tokens")) for m in msgs), TokenCounts())
         cost = sum(m.get("info", {}).get("cost") or 0 for m in msgs)
         tools = []
         for m in a:
@@ -332,7 +353,7 @@ class OpenCodeBackend:
                         tools.append(json.loads(p.get("text", "{}")).get("name", "tool"))
                     except Exception:
                         tools.append("tool")
-        base = {"tokens": {"input": tin, "output": tout}, "cost": cost, "tools": tools}
+        base = {"tokens": tokens.as_poll(), "cost": cost, "tools": tools}
         if not a:
             return {**base, "status": "running", "text": ""}
         last = a[-1]
