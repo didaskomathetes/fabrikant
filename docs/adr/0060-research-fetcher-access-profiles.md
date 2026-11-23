@@ -1,9 +1,8 @@
 # ADR 0060: Fetcher für offene Recherche, Zugriffsprofile pro Loop/Run, einmalige Freigaben
 
-**Status:** Vorgeschlagen (2026-11-16)
+**Status:** Akzeptiert (2026-11-19); vorgeschlagen (2026-11-16)
 Nachtrag 2026-11-22: in-process detector for stage C, scan verdict never grants capability, redirect
-re-approval (English text; the rest of this ADR is German). The ADR index says "Akzeptiert (2026-11-19)";
-that mismatch is not resolved by this amendment.
+re-approval (English text; the rest of this ADR is German).
 **Ergänzt:** ADR 0037 (Relay-Tasks), ADR 0051 (Egress-Proxy), ADR 0054 (Per-Run-Sandbox),
 ADR 0059 (`needs human`-Eskalation, PR #122).
 **Verwendet:** ADR 0030 (Rollen), ADR 0050 (Agent-Env-Allowlist), ADR 0052 (benannte Verbindungen).
