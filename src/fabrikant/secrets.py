@@ -8,6 +8,7 @@ import re
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .i18n import t
@@ -172,3 +173,44 @@ def redact_log_tail(text: str) -> str:
     except Exception:
         log.warning(t("secrets.log_tail_redaction_failed_alert"), exc_info=True)
         return text
+
+
+# Key-based masking of structured data (specs shown to agents/UI): values of secret-looking keys.
+MASKED_VALUE = "***redacted***"
+_SECRET_KEY_RE = re.compile(r"token|secret|passw|api[_-]?key|credential|authorization|private[_-]?key", re.I)
+# Token *counts and limits* (max_tokens, token_budget, ...) are not secrets; masking them would
+# hide ordinary settings from agents and, on a round trip, overwrite them with the mask.
+_NOT_SECRET_KEY_RE = re.compile(
+    r"^(?:\w*[_-])?(?:max|min|num|n|total|prompt|completion|input|output)[_-]?tokens?$"
+    r"|^tokens?[_-](?:budget|limit|count|used|usage|ttl|max|min)$",
+    re.I,
+)
+
+
+def is_secret_key(key: object) -> bool:
+    """Whether the value stored under ``key`` should be masked."""
+    name = str(key)
+    return bool(_SECRET_KEY_RE.search(name)) and not _NOT_SECRET_KEY_RE.match(name)
+
+
+def redact_secret_keys(obj: Any) -> Any:
+    """Recursively mask values of secret-looking keys (token, password, api key, ...).
+
+    A matching key masks its *entire* value (any type), so a secret held as a list or
+    nested dict (e.g. ``api_keys: [...]``, ``credentials: {user, pass}``) is not returned
+    verbatim.
+    """
+    if isinstance(obj, dict):
+        return {k: MASKED_VALUE if is_secret_key(k) else redact_secret_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_secret_keys(v) for v in obj]
+    return obj
+
+
+def contains_masked_value(obj: Any) -> bool:
+    """Whether ``obj`` holds the mask anywhere (a redacted value echoed back by an agent)."""
+    if isinstance(obj, dict):
+        return any(contains_masked_value(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(contains_masked_value(v) for v in obj)
+    return obj == MASKED_VALUE

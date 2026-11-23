@@ -18,11 +18,14 @@ import os
 import re
 import tempfile
 import uuid
+from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
 from . import config
+from .filelock import locked
+from .secrets import MASKED_VALUE, contains_masked_value
 from .specs import SpecConflict, SpecUpdate, save_spec, spec_path
 
 PROPOSALS_SUBDIR = "spec-proposals"
@@ -108,6 +111,15 @@ def _map_save_error(e: Exception, project: str) -> ProposalError:
     return ProposalError(f"could not apply the change: {e}")
 
 
+def _refuse_masked(patch: dict) -> None:
+    """Refuse a patch carrying the redaction mask: agents see masked secrets and could echo them back."""
+    if contains_masked_value(patch):
+        raise ProposalError(
+            f"the change contains {MASKED_VALUE!r}: secret values are masked when reading a spec; "
+            "send only the fields you want to change and leave secret fields out"
+        )
+
+
 def _check(project: str, update: SpecUpdate, base_hash: str) -> None:
     """Dry-run the change through ``save_spec``; map its failures to :class:`ProposalError`."""
     _spec_file(project)
@@ -124,13 +136,22 @@ def _path(proposal_id: str) -> Path:
 
 
 def _write(proposal: SpecProposal) -> None:
-    """Atomic write of the record."""
+    """Atomic write of the record (the temp file never outlives a failed write)."""
     target = _path(proposal.id)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=target.parent, suffix=".tmp", delete=False, encoding="utf-8") as fd:
-        json.dump(proposal.to_dict(), fd, indent=2)
         tmp = Path(fd.name)
-    os.replace(tmp, target)
+        try:
+            json.dump(proposal.to_dict(), fd, indent=2)
+        except BaseException:
+            fd.close()
+            tmp.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(tmp, target)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def get_proposal(proposal_id: str) -> SpecProposal:
@@ -167,6 +188,7 @@ def propose(project: str, patch: dict, base_hash: str, actor: str) -> SpecPropos
         raise ProposalError(f"invalid change: {e}") from e
     if not base_hash:
         raise ProposalError("base_hash required (the spec hash returned by get_spec)")
+    _refuse_masked(patch)
     _check(project, update, base_hash)
     proposal = SpecProposal(
         id=f"{config.utcnow().strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:12]}",
@@ -188,24 +210,35 @@ def apply(proposal_id: str, actor: str) -> SpecProposal:
     error) raises :class:`ProposalError`, so callers (CLI, web UI) see a clean error
     instead of a raw traceback.
     """
-    proposal = get_proposal(proposal_id)
-    if proposal.status is not ProposalStatus.PENDING:
-        raise ProposalError(f"proposal {proposal.id} is already {proposal.status}")
-    update = SpecUpdate.from_payload(proposal.patch)
-    _check(proposal.project, update, proposal.base_hash)
-    try:
-        save_spec(proposal.project, update, base_hash=proposal.base_hash, backup=True)
-    except (KeyError, SpecConflict, ValueError, OSError) as e:
-        raise _map_save_error(e, proposal.project) from e
-    return _decide(proposal, ProposalStatus.APPLIED, actor)
+    with _decision_lock():
+        proposal = _pending(proposal_id)
+        _refuse_masked(proposal.patch)  # also covers records written by an older version
+        update = SpecUpdate.from_payload(proposal.patch)
+        _check(proposal.project, update, proposal.base_hash)
+        try:
+            save_spec(proposal.project, update, base_hash=proposal.base_hash, backup=True)
+        except (KeyError, SpecConflict, ValueError, OSError) as e:
+            raise _map_save_error(e, proposal.project) from e
+        return _decide(proposal, ProposalStatus.APPLIED, actor)
 
 
 def reject(proposal_id: str, actor: str) -> SpecProposal:
     """Reject a pending proposal (kept as an audit record)."""
+    with _decision_lock():
+        return _decide(_pending(proposal_id), ProposalStatus.REJECTED, actor)
+
+
+def _decision_lock() -> AbstractContextManager[None]:
+    """Serialises apply/reject across processes (CLI, web UI, MCP), so a proposal is decided once."""
+    return locked(proposals_dir() / "decide")
+
+
+def _pending(proposal_id: str) -> SpecProposal:
+    """The proposal, which must still be pending."""
     proposal = get_proposal(proposal_id)
     if proposal.status is not ProposalStatus.PENDING:
         raise ProposalError(f"proposal {proposal.id} is already {proposal.status}")
-    return _decide(proposal, ProposalStatus.REJECTED, actor)
+    return proposal
 
 
 def _decide(proposal: SpecProposal, status: ProposalStatus, actor: str) -> SpecProposal:

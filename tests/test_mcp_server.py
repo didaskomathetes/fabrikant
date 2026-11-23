@@ -17,6 +17,7 @@ from mcp_support import call, list_tools, text
 
 from fabrikant import engine
 from fabrikant import mcp_server as mcp
+from fabrikant.secrets import MASKED_VALUE, redact_secret_keys
 
 
 def _write_spec(projects_dir, name="p", root=None, loops=None):
@@ -189,7 +190,7 @@ def test_get_spec_redacts_secret_values(projects_dir):
 
 def test_redact_masks_whole_value_under_secret_key():
     # A secret-looking key masks its entire value (any type), not just str/int leaves.
-    out = mcp._redact(
+    out = redact_secret_keys(
         {
             "api_keys": ["hunter2", "x"],
             "credentials": {"user": "u", "password": "pw"},
@@ -198,11 +199,11 @@ def test_redact_masks_whole_value_under_secret_key():
             "nested": {"ok": 1, "secret": ["leak"]},
         }
     )
-    assert out["api_keys"] == mcp.REDACTED
-    assert out["credentials"] == mcp.REDACTED
-    assert out["token"] == mcp.REDACTED
+    assert out["api_keys"] == MASKED_VALUE
+    assert out["credentials"] == MASKED_VALUE
+    assert out["token"] == MASKED_VALUE
     assert out["name"] == "n"
-    assert out["nested"] == {"ok": 1, "secret": mcp.REDACTED}
+    assert out["nested"] == {"ok": 1, "secret": MASKED_VALUE}
 
 
 def test_get_spec_unknown_project_raises(projects_dir):
@@ -264,9 +265,9 @@ def test_run_records_redact_secret_vars(projects_dir, runs_dir):
     _write_spec(projects_dir, "p")
     _write_run(runs_dir, "p", "r1", vars={"api_token": "s3cret-value", "n": 1})
     got = mcp.get_run_tool("r1", "p")
-    assert got["vars"]["api_token"] == mcp.REDACTED and got["vars"]["n"] == 1
+    assert got["vars"]["api_token"] == MASKED_VALUE and got["vars"]["n"] == 1
     listed = mcp.list_runs_tool("p").runs
-    assert listed[0]["vars"]["api_token"] == mcp.REDACTED
+    assert listed[0]["vars"]["api_token"] == MASKED_VALUE
     assert "s3cret-value" not in json.dumps(got) + json.dumps(listed)
 
 
@@ -378,6 +379,6 @@ def test_start_run_rejects_non_object_vars_through_protocol(projects_dir):
 
 # ---------------------------------------------------------------------- helpers
 def test_redact_masks_secret_keys_recursively():
-    out = mcp._redact({"a": {"api_key": "x", "name": "n"}, "l": [{"password": "p"}], "token": 5, "ok": 1})
-    assert out["a"] == {"api_key": mcp.REDACTED, "name": "n"}
-    assert out["l"] == [{"password": mcp.REDACTED}] and out["token"] == mcp.REDACTED and out["ok"] == 1
+    out = redact_secret_keys({"a": {"api_key": "x", "name": "n"}, "l": [{"password": "p"}], "token": 5, "ok": 1})
+    assert out["a"] == {"api_key": MASKED_VALUE, "name": "n"}
+    assert out["l"] == [{"password": MASKED_VALUE}] and out["token"] == MASKED_VALUE and out["ok"] == 1

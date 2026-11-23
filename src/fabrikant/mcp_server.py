@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import importlib.metadata
 import os
-import re
 import sys
 import threading
 import traceback
@@ -48,6 +47,7 @@ from .runs import (
     pending_approvals,
     reap_orphaned_runs,
 )
+from .secrets import redact_secret_keys
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
 from .specschema import validate_spec
 
@@ -65,8 +65,6 @@ DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 1000
 DEFAULT_LOG_LINES = 2000  # bound for get_run_log when `lines` is omitted
 DRAIN_TIMEOUT_S = 600  # on stdin EOF, wait this long for in-flight run workers
-REDACTED = "***redacted***"
-_SECRET_KEY_RE = re.compile(r"token|secret|passw|api[_-]?key|credential|authorization|private[_-]?key", re.I)
 
 # --------------------------------------------------------------------------- #
 # Options / gating.
@@ -286,20 +284,6 @@ class ProposalList(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
-def _redact(obj: Any) -> Any:
-    """Recursively mask values of secret-looking keys (token, password, api key, ...).
-
-    A matching key masks its *entire* value (any type), so a secret held as a list or
-    nested dict (e.g. ``api_keys: [...]``, ``credentials: {user, pass}``) is not returned
-    verbatim.
-    """
-    if isinstance(obj, dict):
-        return {k: REDACTED if _SECRET_KEY_RE.search(str(k)) else _redact(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_redact(v) for v in obj]
-    return obj
-
-
 def _known_project(name: str) -> dict:
     """Load one project spec or raise ``ToolError`` (unknown / failed to load)."""
     specs = load_projects()
@@ -332,7 +316,7 @@ def list_projects() -> ProjectList:
 def get_spec(project: _Project) -> dict[str, Any]:
     """Expanded spec of a project (loops, steps, triggers) plus content hash (``_hash``)."""
     spec = _known_project(project)
-    out = _redact({k: v for k, v in spec.items() if k != "_path"})  # no filesystem paths / secrets
+    out = redact_secret_keys({k: v for k, v in spec.items() if k != "_path"})  # no filesystem paths / secrets
     out["_hash"] = spec_hash(spec_path(project))
     return out
 
@@ -343,7 +327,7 @@ def get_raw_spec(project: _Project) -> dict[str, Any]:
     path = spec_path(project)
     if not path.is_file():
         raise ToolError(f"spec file not found for project {project!r}")
-    raw = _redact(load_spec_raw(path))
+    raw = redact_secret_keys(load_spec_raw(path))
     raw["_hash"] = spec_hash(path)
     return raw
 
@@ -389,7 +373,7 @@ def list_runs_tool(
     if status:
         runs = [r for r in runs if r.get("status") == status][:limit]
     # Run records carry ``vars`` (secrets may have been passed to start_run): mask them.
-    return RunList(runs=[_redact(r) for r in runs], count=len(runs))
+    return RunList(runs=[redact_secret_keys(r) for r in runs], count=len(runs))
 
 
 def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
@@ -397,7 +381,7 @@ def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
     rec = get_run(run_id, project or None)
     if rec is None:
         raise ToolError(f"run not found: {run_id!r}")
-    return _redact(rec)
+    return redact_secret_keys(rec)
 
 
 def get_run_log_tool(run_id: _RunId, project: _OptProject = None, lines: _LogLines | None = None) -> RunLog:

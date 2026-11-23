@@ -255,3 +255,50 @@ def test_cli_mcp_passes_flags_and_env_to_the_server(monkeypatch):
     monkeypatch.setenv(mcp.ALLOW_APPROVALS_ENV, "1")
     cli.main(["mcp", "--read-only", "--allow-spec-write"])
     assert seen["options"] == mcp.McpOptions(read_only=True, allow_approvals=True, allow_spec_write=True)
+
+
+def test_propose_refuses_a_patch_echoing_the_redaction_mask(proj):
+    # get_spec masks secrets; an agent echoing a whole loop back must not overwrite the real value.
+    echoed = {"loops": {"l": {"steps": [{"type": "shell", "cmd": "x", "env": {"api_key": "***redacted***"}}]}}}
+    with pytest.raises(sp.ProposalError, match="masked"):
+        sp.propose("p", echoed, _hash(proj), "mcp")
+    assert sp.list_proposals() == []
+
+
+def test_apply_refuses_a_stored_patch_with_the_mask(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    record = sp.get_proposal(pr.id)
+    record.patch = {"description": "***redacted***"}  # e.g. written by an older version
+    sp._write(record)
+    with pytest.raises(sp.ProposalError, match="masked"):
+        sp.apply(pr.id, "cli:me")
+    assert "old" in proj.read_text()
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
+
+
+def test_write_leaves_no_temp_file_on_failure(proj, monkeypatch):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(sp.os, "replace", boom)
+    with pytest.raises(OSError, match="disk full"):
+        sp._write(sp.get_proposal(pr.id))
+    assert not list(sp.proposals_dir().glob("*.tmp"))
+
+
+def test_apply_and_reject_are_serialised_by_a_lock(proj, monkeypatch):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    held: list[bool] = []
+    real_locked = sp.locked
+
+    def spy(path):
+        held.append(True)
+        return real_locked(path)
+
+    monkeypatch.setattr(sp, "locked", spy)
+    sp.reject(pr.id, "cli:me")
+    assert held and not (proj.parent / "p.fabrikant.yaml.bak").exists()
+    with pytest.raises(sp.ProposalError, match="already rejected"):
+        sp.apply(pr.id, "cli:me")
