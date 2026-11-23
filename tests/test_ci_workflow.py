@@ -62,3 +62,12 @@ def test_state_and_token_gitignored():
 def test_workflow_at_repo_root_where_github_discovers_it():
     assert WORKFLOW.is_file()
     assert REPO_ROOT == ROOT  # Workflow liegt direkt an der Repo-Root (kein Monorepo-Unterverzeichnis)
+
+
+def test_quality_gates_present():
+    """Coverage-Gate, JS-Lint und Dependency-Audit laufen in CI (AGENTS.md)."""
+    runs = [s.get("run", "") for s in _steps(_load())]
+    assert any("--cov=fabrik" in r and "not browser" in r for r in runs)
+    assert any("biome" in r and "lint" in r for r in runs)
+    assert any("pip-audit" in r for r in runs)
+    assert "fail_under" in (ROOT / "pyproject.toml").read_text()

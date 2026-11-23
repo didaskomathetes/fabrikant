@@ -24,6 +24,7 @@ oidc = ["pyjwt[crypto]>=2.8"]
 
 [project.scripts]
 fabrik = "fabrik.cli:main"
+fabrik-mcp = "fabrik.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fabrik"]
@@ -39,6 +40,7 @@ dev = [
     "bandit>=1.8",
     "diff-cover>=10.6.0",
     "pyjwt[crypto]>=2.8",
+    "pip-audit>=2.10.1",
 ]
 
 [tool.sonar]
@@ -69,6 +71,10 @@ executionEnvironments = [
 # Übersprungen: subprocess-Familie — die Fabrik orchestriert git/gh/uv per Argumentliste (ohne Shell);
 # B602 (shell=True) bleibt aktiv.
 skips = ["B404", "B603", "B607"]
+
+[tool.coverage.report]
+# Coverage-Gate der CI (AGENTS.md: >= 80 %; Ist-Stand ~96 %, Schwelle bewusst darüber gegen Erosion).
+fail_under = 90
 
 [tool.ruff]
 line-length = 120
