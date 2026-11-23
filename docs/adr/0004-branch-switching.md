@@ -1,54 +1,56 @@
-# ADR 0004: Branch-Wechsel zur Laufzeit (UI)
+# ADR 0004: Branch switching at runtime (UI)
 
-**Status:** Akzeptiert (2026-10-17); UI-Selector entfernt (2026-11-04) — API und Override-State bleiben
-**Entscheider:** Dominic
-**Kontext:** Die Ziel-Branch eines Projekts ist in der Spec fixiert
-(`repo.branch`). Ein Branch-Wechsel (z. B. `fabrik` von `main` auf
-`fabrik/v0.3`) erforderte ein manuelles YAML-Edit; die Web-UI zeigte den
-Branch nur read-only an.
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Entscheidung
+**Status:** Accepted (2026-10-17); UI selector removed (2026-11-04) — API and override state remain
+**Decided by:** Dominic
+**Context:** A project's target branch is fixed in the spec
+(`repo.branch`). Switching branches (e.g. `fabrik` from `main` to
+`fabrik/v0.3`) required a manual YAML edit; the web UI showed the
+branch read-only.
 
-Branch-Override als Laufzeit-State, **keine** Spec-Änderung:
+## Decision
 
-- `state/branch-overrides.json`: `{projekt: branch}` — kleine JSON-Datei in
-  `STATE_DIR` (gleiches Muster wie `state/active_llm.json`).
-- `specs.load_projects()` legt den Override am Ende auf die geladene Spec
-  (`repo.branch`) — alle Konsumenten (Server, Engine, CLI, Scheduler) sehen
-  denselben Branch an einer einzigen Stelle.
-- Die YAML bleibt der kanonische Default; die Datei (inkl. Comments) wird nie
-  umgeschrieben.
+Branch override as runtime state, **no** spec change:
+
+- `state/branch-overrides.json`: `{project: branch}` — a small JSON file in
+  `STATE_DIR` (same pattern as `state/active_llm.json`).
+- `specs.load_projects()` applies the override to the loaded spec at the end
+  (`repo.branch`) — all consumers (server, engine, CLI, scheduler) see
+  the same branch in a single place.
+- The YAML remains the canonical default; the file (including comments) is never
+  rewritten.
 - API:
   - `GET /api/projects/<name>/branches` → `{branches: [...], current: "…"}`
-    (lokale + Remote-Branches, dedupliziert, sortiert)
-  - `POST /api/projects/<name>/branch` `{"branch": "…"}` → validiert, dass der
-    Branch im Repo existiert (sonst 400), persistiert den Override
-- UI: pro Projekt ein Branch-Selector in der Detail-View (Dropdown,
-  `#llmselect`-Stil).
+    (local + remote branches, deduplicated, sorted)
+  - `POST /api/projects/<name>/branch` `{"branch": "…"}` → validates that the
+    branch exists in the repo (else 400), persists the override
+- UI: a branch selector per project in the detail view (dropdown,
+  `#llmselect` style).
 
-Der Worktree synchronisiert beim nächsten Run auf `origin/<branch>`
-(`gitops.ensure_worktree`) — kein zusätzlicher Mechanismus nötig.
+On the next run the worktree syncs to `origin/<branch>`
+(`gitops.ensure_worktree`) — no additional mechanism needed.
 
-## Begründung
+## Rationale
 
-- **Warum nicht die YAML umschreiben?** `yaml.dump` zerstört Comments; die
-  Spec-Dateien sind stark kommentiert. Eine separate State-Datei hält die
-  Spec als Single Source of Truth für den Default und macht den Override
-  sichtbar, editierbar und pro Deployment lokal.
-- **Warum beim Load anwenden, nicht im Worktree?** Alle Konsumenten lesen den
-  Branch aus der Spec; ein einzelner Anwendungspunkt in `load_projects()`
-  garantiert Konsistenz (kein Zweitspeicher, den Engine/Scheduler verpassen
-  könnten).
-- **Validierung:** Die POST-Route lehnt nicht existierende Branches ab (400) —
-  ein Tippfehler bricht nicht erst den nächsten Run.
-- **Reset:** Eintrag (oder die Datei) löschen → Projekt fällt auf den
-  Spec-Default zurück.
-- **Kein Security-Impact:** Die Endpunkte liegen hinter dem bestehenden
-  `FABRIK_TOKEN`-Gate wie alle anderen POST-Routen; der Branch-Wechsel selbst
-  ist read-only gegenüber dem Remote (nur `fetch` + detached Checkout).
+- **Why not rewrite the YAML?** `yaml.dump` destroys comments; the
+  spec files are heavily commented. A separate state file keeps the
+  spec as the single source of truth for the default and makes the override
+  visible, editable and local per deployment.
+- **Why apply at load time, not in the worktree?** All consumers read the
+  branch from the spec; a single application point in `load_projects()`
+  guarantees consistency (no second store that the engine/scheduler could
+  miss).
+- **Validation:** the POST route rejects non-existent branches (400) —
+  a typo does not break only the next run.
+- **Reset:** delete the entry (or the file) → the project falls back to the
+  spec default.
+- **No security impact:** the endpoints sit behind the existing
+  `FABRIK_TOKEN` gate like all other POST routes; the branch switch itself
+  is read-only towards the remote (only `fetch` + detached checkout).
 
-## Änderung 2026-11-04
+## Amendment 2026-11-04
 
-Der Branch-Selector in der Detail-View ist entfernt (kein praktischer Nutzen; stiller
-per-Deployment-Override). Der Branch wird weiter read-only in der Projektliste angezeigt.
-Endpunkte und `state/branch-overrides.json` bleiben unverändert bestehen.
+The branch selector in the detail view is removed (no practical use; a silent
+per-deployment override). The branch continues to be shown read-only in the project list.
+Endpoints and `state/branch-overrides.json` remain unchanged.

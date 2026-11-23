@@ -1,32 +1,32 @@
-"""OneShotCliBackend: gemeinsame One-Shot-CLI-Mechanik für CLI-Adapter.
+"""OneShotCliBackend: shared one-shot CLI mechanics for CLI adapters.
 
-Bündelt das, was `claude_code`, `codex` und `copilot` identisch brauchen:
-Session-Registry, `Popen` (Prompt via stdin, eigene Prozessgruppe), den
-`poll`-Liveness/Staleness-Loop und `killpg`-Cancel. Adapter (Subklassen)
-definieren nur noch die Unterschiede:
+Bundles what `claude_code`, `codex` and `copilot` need identically:
+session registry, `Popen` (prompt via stdin, own process group), the
+`poll` liveness/staleness loop and `killpg` cancel. Adapters (subclasses)
+only define the differences:
 
-  - `name`            Class-Attribut (Backend-Identifikator)
-  - `_cli()`          Binary-Name für `health()`
-  - `_build_cmd()`    argv OHNE Prompt (Prompt geht via stdin)
+  - `name`            class attribute (backend identifier)
+  - `_cli()`          binary name for `health()`
+  - `_build_cmd()`    argv WITHOUT prompt (prompt goes via stdin)
   - `_parse(out, err, rc)` → {status, text, tokens, cost, tools}
 
-Ein `failed`-Ergebnis trägt zusätzlich `exit_code` und `stderr_tail` (die letzten
-`STDERR_TAIL_CHARS` Zeichen von stderr): `_parse` kürzt seinen `text` auf den Anfang, bei
-einem Absturz (Crash-Banner der CLI, Python-Traceback) steht die Ursache aber am Ende.
+A `failed` result additionally carries `exit_code` and `stderr_tail` (the last
+`STDERR_TAIL_CHARS` characters of stderr): `_parse` truncates its `text` to the beginning, but on
+a crash (CLI crash banner, Python traceback) the cause is at the end.
 
-Optionale Hooks: `_env()` (zusätzliches Prozess-Env), `_sid_prefix()`,
-`_stale_after()` (None = Staleness-Check deaktiviert, z. B. claude_code).
-`extra_env` (vom Agent-Step gesetzt, z. B. die GitHub-Identity) überlagert
-das Prozess-Env aller Adapter.
+Optional hooks: `_env()` (additional process env), `_sid_prefix()`,
+`_stale_after()` (None = staleness check disabled, e.g. claude_code).
+`extra_env` (set by the agent step, e.g. the GitHub identity) overlays
+the process env of all adapters.
 
-Der Prompt wird immer als BYTES geschrieben (kein `text=True`) — einheitlich
-über alle Adapter; `poll` dekodiert stdout/stderr.
+The prompt is always written as BYTES (no `text=True`) — uniform
+across all adapters; `poll` decodes stdout/stderr.
 
-stdout/stderr werden ab dem Spawn von einem Daemon-Thread (`_PipeDrain`)
-geleert. Würden sie erst nach Prozessende gelesen, füllt sich bei großem
-Output (z. B. copilot-JSONL) der Pipe-Puffer (~64 KiB), die CLI blockiert
-beim Schreiben und verwirft beim Shutdown den Rest (copilot:
-`Timed out dispose: PromptMode.stdout`) — inkl. finalem `result`-Event.
+From the spawn on, stdout/stderr are drained by a daemon thread (`_PipeDrain`).
+If they were read only after the process ended, large output (e.g. copilot JSONL)
+would fill the pipe buffer (~64 KiB), the CLI would block on
+writing and discard the rest on shutdown (copilot:
+`Timed out dispose: PromptMode.stdout`) — including the final `result` event.
 """
 
 from __future__ import annotations
@@ -40,16 +40,17 @@ import uuid
 from .. import procs, sandbox
 from ..agentenv import build_agent_env
 from ..billing import Billing
+from ..i18n import t
 from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 
-# Ende von stderr, das ein `failed`-Ergebnis mitnimmt — groß genug für einen Crash-Banner samt
-# Stack (Bun-Panic, Python-Traceback), klein genug für Run-Record und Run-Log.
+# Tail of stderr carried by a `failed` result — large enough for a crash banner including
+# stack (Bun panic, Python traceback), small enough for run record and run log.
 STDERR_TAIL_CHARS = 4000
 
 
 def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:
-    """Letzte `limit` Zeichen von `text`, ab einer Zeilengrenze (sofern es im Ausschnitt eine gibt)."""
+    """Last `limit` characters of `text`, starting at a line boundary (if there is one in the excerpt)."""
     text = text.rstrip()
     if len(text) <= limit:
         return text
@@ -59,8 +60,8 @@ def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:
 
 
 class _PipeDrain:
-    """Liest stdout/stderr eines Prozesses im Hintergrund (`communicate()`),
-    damit die CLI nie an einem vollen Pipe-Puffer blockiert."""
+    """Reads a process's stdout/stderr in the background (`communicate()`),
+    so the CLI never blocks on a full pipe buffer."""
 
     def __init__(self, proc: subprocess.Popen):
         self._result: tuple = (b"", b"")
@@ -83,12 +84,12 @@ class _PipeDrain:
 
 
 class OneShotCliBackend:
-    """Base für One-Shot-CLI-Adapter (ein Subprozess pro Task, läuft bis zum Ende)."""
+    """Base for one-shot CLI adapters (one subprocess per task, runs to completion)."""
 
     name = "oneshot"
 
     def __init__(self, endpoint: str = "", model: str = "", stale_after: int = 900):
-        # endpoint ist für CLI-Adapter irrelevant (Interface-Kompatibilität zum Port).
+        # endpoint is irrelevant for CLI adapters (interface compatibility with the port).
         self.model = model
         self.stale_after = stale_after
         self.extra_env: dict[str, str] = {}
@@ -109,9 +110,9 @@ class OneShotCliBackend:
         return Billing.UNKNOWN
 
     def _env(self) -> dict | None:
-        """Zusätzliche Env-Variablen für den Subprozess (Overlay auf der Agent-Env-Allowlist,
-        ADR 0050). Das Basis-`os.environ` gehört NICHT dazu — die Allowlist (`agentenv`)
-        liefert die Basis."""
+        """Additional env variables for the subprocess (overlay on the agent env allowlist,
+        ADR 0050). The base `os.environ` is NOT part of it — the allowlist (`agentenv`)
+        provides the base."""
         return None
 
     def _sid_prefix(self) -> str:
@@ -126,10 +127,10 @@ class OneShotCliBackend:
 
     def diagnose(self) -> str | None:
         cli = self._cli()
-        return None if shutil.which(cli) else f"{self.name}-Backend: CLI '{cli}' nicht im PATH"
+        return None if shutil.which(cli) else t("backends._oneshot.backend_cli_not_in_path", v1=self.name, cli=cli)
 
     def unhealthy_kind(self) -> FailureKind:
-        return FailureKind.ENVIRONMENT  # unhealthy heißt hier: CLI nicht im PATH
+        return FailureKind.ENVIRONMENT  # unhealthy here means: CLI not in PATH
 
     def create_task(self, workdir: str, title: str, permissions: list | None = None) -> str:
         sid = f"{self._sid_prefix()}{uuid.uuid4().hex[:12]}"
@@ -139,19 +140,19 @@ class OneShotCliBackend:
     def send_prompt(self, session_id: str, prompt: str, directory: str) -> None:
         s = self._sessions[session_id]
         if s["proc"] is not None:
-            raise RuntimeError(f"{self.name}: One-Shot-Backend — genau ein Prompt pro Session")
+            raise RuntimeError(t("backends._oneshot.one_shot_backend_exactly_one", v1=self.name))
         kwargs: dict = dict(
             cwd=directory,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True,  # eigene PG — cancel() kann die Gruppe killen
+            start_new_session=True,  # own process group — cancel() can kill the group
         )
         env = build_agent_env({**(self._env() or {}), **self.extra_env})
         cmd = self._build_cmd()
         if sandbox.sandbox_enabled():
-            # ADR 0054: Agent-Befehl im gehärteten Container; Worktree-Stand per git-Bundle
-            # hinein, Ergebnis in poll() zurück (kein Mount des Worktrees).
+            # ADR 0054: agent command in the hardened container; worktree state goes in via git bundle,
+            # result comes back in poll() (no mount of the worktree).
             cfg = sandbox.SandboxConfig.from_env()
             s["sandbox"] = sandbox.prepare_exchange(session_id, directory)
             cmd = sandbox.render_docker_cmd(cfg, session_id, cmd, s["sandbox"], env)
@@ -161,14 +162,14 @@ class OneShotCliBackend:
         except OSError:
             self._discard_sandbox(s, directory)
             raise
-        procs.track(proc)  # Server-Ende beendet die Gruppe mit (eigene Session: kein Ctrl+C)
-        if proc.stdin is None:  # pragma: no cover — stdin=PIPE, nur Typsicherheit
-            raise RuntimeError(f"{self.name}: Popen ohne stdin")
+        procs.track(proc)  # Server end terminates the group too (own session: no Ctrl+C)
+        if proc.stdin is None:  # pragma: no cover — stdin=PIPE, type safety only
+            raise RuntimeError(t("backends._oneshot.popen_without_stdin", v1=self.name))
         proc.stdin.write(prompt.encode())
         proc.stdin.close()
-        # stdin ist zu (EOF für die CLI). Auf None setzen, damit poll()s
-        # proc.communicate() den geschlossenen Stream nicht erneut flushen
-        # will (sonst: ValueError: flush of closed file).
+        # stdin is closed (EOF for the CLI). Set to None so poll()'s
+        # proc.communicate() does not try to flush the closed stream again
+        # (otherwise: ValueError: flush of closed file).
         proc.stdin = None
         s["proc"] = proc
         s["drain"] = _PipeDrain(proc)
@@ -176,8 +177,8 @@ class OneShotCliBackend:
     def poll(self, session_id: str, directory: str) -> dict:
         """→ {status: running|done|failed, text, tokens, cost, tools}
 
-        Liveness/Staleness ist hier; die Terminal-Auswertung (done/failed,
-        Text, Tokens, Cost) delegiert an `_parse`.
+        Liveness/staleness is here; the terminal evaluation (done/failed,
+        text, tokens, cost) is delegated to `_parse`.
         """
         s = self._sessions[session_id]
         proc = s["proc"]
@@ -192,13 +193,13 @@ class OneShotCliBackend:
                 if age > stale:
                     if "sandbox" in s:  # Container stoppen, Austausch verwerfen
                         self.cancel(session_id, directory)
-                    # `retryable`: hängende CLI ist transient — eine frische
-                    # Session heilt es (Agent-Step-Retry, ADR 0035).
+                    # `retryable`: a hanging CLI is transient — a fresh
+                    # session heals it (agent step retry, ADR 0035).
                     return {
                         **base,
                         "status": "failed",
                         "retryable": True,
-                        "text": f"{self.name} inaktiv seit {int(age)}s (keine Aktivität)",
+                        "text": t("backends._oneshot.inactive_for_s_no_activity", v1=self.name, v2=int(age)),
                     }
             return {**base, "status": "running", "text": ""}
         procs.untrack(proc)
@@ -208,8 +209,8 @@ class OneShotCliBackend:
         err = err_b.decode(errors="replace") if isinstance(err_b, bytes) else (err_b or "")
         exchange = s.pop("sandbox", None)
         if exchange is not None:
-            # Ergebnis des Containers in den Worktree übernehmen — auch bei Exit ≠ 0
-            # (wie ein Agent auf dem Host, dessen Änderungen nach einem Fehler liegen bleiben).
+            # Take over the container's result into the worktree — also on exit ≠ 0
+            # (like an agent on the host whose changes remain after an error).
             error = sandbox.finish_exchange(exchange, directory)
             if error:
                 return self._with_exit({**base, "status": "failed", "text": f"{self.name}: Sandbox — {error}"}, rc, err)
@@ -217,31 +218,31 @@ class OneShotCliBackend:
 
     @staticmethod
     def _with_exit(res: dict, returncode: int, err: str) -> dict:
-        """`failed`-Ergebnis um `exit_code` und `stderr_tail` ergänzen (Moduldocstring)."""
+        """Add `exit_code` and `stderr_tail` to a `failed` result (module docstring)."""
         if res.get("status") != "failed":
             return res
         return {**res, "exit_code": returncode, "stderr_tail": _tail(err)}
 
     def transcript(self, session_id: str, directory: str) -> list[dict]:
-        """One-Shot-CLIs haben keinen abrufbaren Dialog → leer.
+        """One-shot CLIs have no retrievable dialog → empty.
 
-        Der Final-Output liegt in `poll()`'s `text`; `_step_agent_backend`
-        emittiert ihn ins Run-Log (`agent final: …`) und in die Session-Log-
-        DB (message-Event)."""
+        The final output is in `poll()`'s `text`; `_step_agent_backend`
+        emits it into the run log (`agent final: …`) and the session-log
+        DB (message event)."""
         return []
 
     def cancel(self, session_id: str, directory: str) -> None:
         s = self._sessions.get(session_id)
         if not s:
             return
-        # Zuerst: poll() darf das Ergebnis eines abgebrochenen Laufs nicht mehr übernehmen.
+        # First: poll() must no longer take over the result of a cancelled run.
         exchange = s.pop("sandbox", None)
         proc = s["proc"]
         if proc is not None and proc.poll() is None:
             procs.kill_group(proc)
             procs.untrack(proc)
         if exchange is not None:
-            # killpg beendet nur die docker-CLI — der Container läuft weiter.
+            # killpg only terminates the docker CLI — the container keeps running.
             sandbox.stop_container(session_id)
             sandbox.discard_exchange(exchange, directory)
 

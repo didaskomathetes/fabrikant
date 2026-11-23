@@ -1,9 +1,9 @@
-"""Zentrale Konfiguration: Pfade, Konstanten, Env-Loading, Zeit, Log-Lock.
+"""Central configuration: paths, constants, env loading, time, log lock.
 
-Single Source of Truth für die lauffähigen Pfade (RUNS_DIR, PROJECTS_DIR, …).
-Alle Module referenzieren `config.RUNS_DIR` / `config.PROJECTS_DIR` per
-Attribut-Zugriff (nicht `from .config import RUNS_DIR`), damit Tests die Pfade
-per `monkeypatch.setattr(fabrik.config, "RUNS_DIR", …)` tauschen können.
+Single source of truth for the runnable paths (RUNS_DIR, PROJECTS_DIR, …).
+All modules reference `config.RUNS_DIR` / `config.PROJECTS_DIR` via
+attribute access (not `from .config import RUNS_DIR`), so tests can swap the paths
+via `monkeypatch.setattr(fabrik.config, "RUNS_DIR", …)`.
 """
 
 from __future__ import annotations
@@ -16,16 +16,18 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .i18n import t
+
 # src/fabrik/config.py → 3 Ebenen hoch = Projekt-Root (fabrik/)
 FABRIK_HOME = Path(os.environ.get("FABRIK_HOME", Path(__file__).resolve().parent.parent.parent))
 
 
 def _load_env_file(p: Path):
-    """fabrik.env: KEY=VALUE-Zeilen (os.environ gewinnt).
+    """fabrik.env: KEY=VALUE lines (os.environ wins).
 
-    Explizit UTF-8: das Laden läuft bei jedem `import fabrik` — unter
-    `LC_ALL=C` (Container, systemd) wäre die Default-Encoding ASCII und
-    nicht-ASCII-Bytes in der Datei würden den Import crashen.
+    Explicitly UTF-8: loading runs on every `import fabrik` — under
+    `LC_ALL=C` (container, systemd) the default encoding would be ASCII and
+    non-ASCII bytes in the file would crash the import.
     """
     if not p.is_file():
         return
@@ -37,44 +39,44 @@ def _load_env_file(p: Path):
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-# Vor allen Env-abhängigen Konstanten laden: z. B. FABRIK_DATA wirkt auch aus fabrik.env.
+# Load before all env-dependent constants: e.g. FABRIK_DATA also takes effect from fabrik.env.
 _load_env_file(FABRIK_HOME / "fabrik.env")
 
-# Daten-/Konfigurationsverzeichnis der Installation (eigene Specs, Templates). Default
-# FABRIK_HOME: ohne FABRIK_DATA verhält sich die Fabrik wie bisher (Spec-Auflösung: ADR 0047).
+# Data/config directory of the installation (own specs, templates). Default
+# FABRIK_HOME: without FABRIK_DATA the factory behaves as before (spec resolution: ADR 0047).
 DATA_DIR = Path(os.environ.get("FABRIK_DATA", FABRIK_HOME))
-PROJECTS_DIR = DATA_DIR / "projects"  # primärer (schreibbarer) Spec-Ordner
-BUNDLED_PROJECTS_DIR = FABRIK_HOME / "projects"  # mitgelieferte Beispiel-Specs (niedrigste Priorität)
+PROJECTS_DIR = DATA_DIR / "projects"  # primary (writable) spec folder
+BUNDLED_PROJECTS_DIR = FABRIK_HOME / "projects"  # bundled example specs (lowest priority)
 TEMPLATES_DIR = FABRIK_HOME / "templates"  # mitgelieferte Loop-Vorlagen
 USER_TEMPLATES_DIR = DATA_DIR / "templates"
 RUNS_DIR = FABRIK_HOME / "runs"
 WORKTREES_ENV = "FABRIK_WORKTREES"
-XDG_STATE_DEFAULT = Path(".local") / "state"  # relativ zu $HOME (XDG Base Directory Spec)
+XDG_STATE_DEFAULT = Path(".local") / "state"  # relative to $HOME (XDG Base Directory spec)
 INSTALL_ID_HASH_LEN = 8
 
 
 def install_id(home: Path) -> str:
-    """Stabile Kennung einer Installation (`<ordner>-<hash>`): trennt die Worktrees zweier
-    Checkouts, deren Projekte gleich heißen (sonst räumt der eine die Runs des anderen ab)."""
+    """Stable identifier of an installation (`<folder>-<hash>`): separates the worktrees of two
+    checkouts whose projects have the same names (otherwise one cleans up the other's runs)."""
     resolved = home.resolve()
     digest = hashlib.sha256(str(resolved).encode()).hexdigest()[:INSTALL_ID_HASH_LEN]
     return f"{resolved.name}-{digest}"
 
 
 def default_worktrees_dir(home: Path, env: Mapping[str, str]) -> Path:
-    """Worktree-Wurzel (ADR 0047, Nachtrag 2026-11-03): `FABRIK_WORKTREES`, sonst
+    """Worktree root (ADR 0047, addendum 2026-11-03): `FABRIK_WORKTREES`, otherwise
     `$XDG_STATE_HOME/fabrik/worktrees/<install_id>`.
 
-    Bewusst außerhalb jedes Quell-Checkouts: IDEs/Indexer/File-Watcher, die das Repo
-    beobachten, würden jeden Run-Checkout (samt `.venv`) mitindizieren. Außerhalb von
-    `fabrik/` liegt der Pfad ohnehin (OpenCode lädt AGENTS.md vom Workdir aufwärts)."""
+    Deliberately outside every source checkout: IDEs/indexers/file watchers watching the
+    repo would otherwise index every run checkout (including `.venv`). The path is outside
+    `fabrik/` anyway (OpenCode loads AGENTS.md from the workdir upwards)."""
     explicit = env.get(WORKTREES_ENV, "").strip()
     if explicit:
         return Path(explicit).expanduser()
     state_home = env.get("XDG_STATE_HOME", "").strip()
     if state_home:
         base = Path(state_home).expanduser()
-        if not base.is_absolute():  # XDG-Spec: absolut; relativ → defensiv auf $HOME ankernd
+        if not base.is_absolute():  # XDG spec: absolute; relative → defensively anchored to $HOME
             base = Path.home() / base
     else:
         base = Path.home() / XDG_STATE_DEFAULT
@@ -82,45 +84,45 @@ def default_worktrees_dir(home: Path, env: Mapping[str, str]) -> Path:
 
 
 WORKTREES_DIR = default_worktrees_dir(FABRIK_HOME, os.environ)
-# Bis 2026-11 lagen Worktrees im Repo (`<repo>/.fabrik/worktrees`). Nur noch gelesen und
-# aufgeräumt, damit pausierte Runs (`needs_approval`) ihren Worktree beim Resume finden.
+# Until 2026-11 worktrees lived in the repo (`<repo>/.fabrik/worktrees`). Now only read and
+# cleaned up, so paused runs (`needs_approval`) find their worktree on resume.
 LEGACY_WORKTREES_DIR = FABRIK_HOME.parent / ".fabrik" / "worktrees"
 WEB_DIR = FABRIK_HOME / "web"
 STATE_DIR = FABRIK_HOME / "state"
-# Spec-Auflösung (ADR 0047): Suchpfad-Env (doppelpunkt-getrennt wie PATH), Spec-Datei im
-# Zielrepo, Register der per `fabrik project add` bekannten Zielrepos.
+# Spec resolution (ADR 0047): search-path env (colon-separated like PATH), spec file in the
+# target repo, register of the target repos known via `fabrik project add`.
 PROJECTS_PATH_ENV = "FABRIK_PROJECTS_PATH"
 TARGET_SPEC_RELPATH = Path(".fabrik") / "fabrik.yaml"
 SPEC_GLOBS = ("*.fabrik.yaml", "*.fabrik.json")
 REGISTRY_FILE = DATA_DIR / "state" / "registered-projects.json"
 TEMPLATE_SUFFIX = ".loop.yaml"
-# Worktree-Lease (ADR 0028): Eine lebende Lease darf nie ablaufen, solange ihr Run läuft.
-# Invariante: WORKTREE_LEASE_TIMEOUT_S > Heartbeat-Intervall + Puffer.
-# Der Cleanup hält den projektweiten Lock (`<projekt>.lock`) nur für die kurze
-# Lease-Prüfung/den Claim, nie über die `repo_lock`-Erwerbung in `remove_worktree`
-# (die bis zu ~600 s blockieren kann). Heartbeats lebender Runs können daher nie so
-# lange blockiert werden, dass eine lebende Lease abläuft; das Timeout muss nur das
-# Heartbeat-Intervall plus einen Puffer für ein blockiertes Schreiben übersteigen.
-# 300 s > 30 s + Puffer.
+# Worktree lease (ADR 0028): a live lease must never expire while its run is running.
+# Invariant: WORKTREE_LEASE_TIMEOUT_S > heartbeat interval + buffer.
+# The cleanup holds the project-wide lock (`<project>.lock`) only for the short
+# lease check/claim, never across the `repo_lock` acquisition in `remove_worktree`
+# (which can block for up to ~600 s). Heartbeats of live runs therefore can never be
+# blocked so long that a live lease expires; the timeout only has to exceed the
+# heartbeat interval plus a buffer for a blocked write.
+# 300 s > 30 s + buffer.
 WORKTREE_LEASE_SUFFIX = ".lease"
 WORKTREE_LEASE_HEARTBEAT_S = 30.0
 WORKTREE_LEASE_TIMEOUT_S = 300.0
 
 DEFAULT_PORT = 8321
-# Austauschverzeichnis Harness ↔ Agent im Worktree (lokal git-ignoriert): was der Agent lesen soll
-# (Brief, Session-Plan) und was er abliefert (z. B. Audit-Report). Die Sandbox (ADR 0054) trägt es
-# in den Container und zurück. Was darin auf seiner Seite bleiben soll (Arbeitskopien), steht in
-# `HARNESS_LOCAL_FILE`-Dateien (gitignore-Syntax, pro Verzeichnis). Harness-interner Zustand gehört
-# NICHT hierher — der Agent kann alles darin ändern.
+# Exchange directory harness ↔ agent in the worktree (locally git-ignored): what the agent should read
+# (brief, session plan) and what it delivers (e.g. audit report). The sandbox (ADR 0054) carries it
+# into the container and back. What should stay on its side (working copies) is listed in
+# `HARNESS_LOCAL_FILE` files (gitignore syntax, per directory). Harness-internal state does
+# NOT belong here — the agent can change anything in it.
 HARNESS_DIR = ".fabrik-session"
-# Harness-interner Zustand (Plan, Snapshot, Check-in) — NIE beim Agenten: Die Sandbox trägt
-# HARNESS_DIR in den Container und zurück, aber dieses Verzeichnis bleibt auf dem Host.
+# Harness-internal state (plan, snapshot, check-in) — NEVER at the agent: the sandbox carries
+# HARNESS_DIR into the container and back, but this directory stays on the host.
 HARNESS_PRIVATE_DIR = ".fabrik-harness"
 HARNESS_LOCAL_FILE = ".fabrik-local"
 DEFAULT_HOST = "127.0.0.1"
 MAX_STEP_OUTPUT = 200_000  # chars kept per step in run records
-# Agent-Konversation im Run-Log (runs/<projekt>/<id>.log): Caps, damit große
-# Prompts/Texte das Log nicht sprengen (Volltext bleibt in der Session).
+# Agent conversation in the run log (runs/<project>/<id>.log): caps so that large
+# prompts/texts do not blow up the log (full text stays in the session).
 AGENT_LOG_PROMPT_CAP = 2000  # Zeichen des Agent-Prompts (Input)
 AGENT_LOG_TEXT_CAP = 400  # Zeichen je Assistant-Message (Text-Part)
 
@@ -128,22 +130,22 @@ PROTECTED_DEFAULT = ["main", "master"]
 # GitHub-API: Retry bei transienten Netzwerkfehlern (DNS-Flakes, Resets).
 GH_RETRIES = 3
 GH_RETRY_DELAY_S = 2.0
-# GitHub-API: Obergrenze für `per_page` bei Listen-Endpunkten (API-Limit).
+# GitHub API: upper bound for `per_page` on list endpoints (API limit).
 GH_MAX_PER_PAGE = 100
-# Alert-Dedup (notify): Seiten-Größe des GitHub-Issue-Lookups (offene Issues
-# mit Alert-Labels), gekappt auf GH_MAX_PER_PAGE. Der Lookup paginiert über
-# alle Seiten (bis ALERT_LOOKUP_MAX_PAGES) — ein API-Call pro Seite.
+# Alert dedup (notify): page size of the GitHub issue lookup (open issues
+# with alert labels), capped at GH_MAX_PER_PAGE. The lookup paginates over
+# all pages (up to ALERT_LOOKUP_MAX_PAGES) — one API call per page.
 ALERT_OPEN_ISSUES_PAGE = GH_MAX_PER_PAGE
-# Alert-Dedup (notify): Fingerprint-Länge in Hex-Zeichen (16 = 64 Bit;
-# Kollisionsrisiko für die wenigen Fehlerbilder pro Projekt/Loop vernachlässigbar).
+# Alert dedup (notify): fingerprint length in hex characters (16 = 64 bit;
+# collision risk negligible for the few failure patterns per project/loop).
 ALERT_FP_LEN = 16
-# Alert-Dedup (notify): Cap für den normalisierten Fehlertext im Fingerprint.
+# Alert dedup (notify): cap for the normalized error text in the fingerprint.
 ALERT_REASON_CAP = 200
-# Alert-Dedup (notify): Rate-Limit-Schutz — nach N Seiten wird der Issue-Lookup
-# abgebrochen (ein Duplikat-Issue ist der günstigere Fehler als ein
-# aufgebrauchtes API-Budget). 50 × ALERT_OPEN_ISSUES_PAGE (100) = 5000 Issues.
+# Alert dedup (notify): rate-limit protection — after N pages the issue lookup is
+# aborted (a duplicate issue is the cheaper error compared to an
+# exhausted API budget). 50 × ALERT_OPEN_ISSUES_PAGE (100) = 5000 issues.
 ALERT_LOOKUP_MAX_PAGES = 50
-# Alert (notify): log_tail vor dem Versand pattern-basiert redigieren (ADR 0026).
+# Alert (notify): redact log_tail pattern-based before sending (ADR 0026).
 ALERT_LOG_REDACTION = True
 STEP_TYPES = (
     "shell",
@@ -167,30 +169,30 @@ STEP_TYPES = (
 TRIGGER_TYPES = ("manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook", "on_alert", "on_slack")
 # Polling-Trigger mit `poll`-Intervall (Sekunden, endliche Zahl >= 0).
 POLL_TRIGGER_TYPES = ("on_issue", "on_pr", "on_slack")
-# on_slack (ADR 0040): Defaults der optionalen Trigger-Felder `max_pages` und `max_alert_chars`.
+# on_slack (ADR 0040): defaults of the optional trigger fields `max_pages` and `max_alert_chars`.
 SLACK_DEFAULT_MAX_PAGES = 20  # conversations.history-Seiten pro Channel und Poll (je HISTORY_LIMIT Nachrichten)
-SLACK_DEFAULT_MAX_ALERT_CHARS = 4000  # längere `alert_text` werden mit Marker gekürzt
-# on_pr: zulässige PR-States für den `states`-Filter (GitHub-API-Werte).
+SLACK_DEFAULT_MAX_ALERT_CHARS = 4000  # longer `alert_text` is truncated with a marker
+# on_pr: allowed PR states for the `states` filter (GitHub API values).
 PR_STATES = ("open", "closed")
-# on_pr `reconcile: head`: Reconcile pro Head-SHA statt pro PR (ADR 0023) —
-# jeder neue Push feuert genau einmal, auch nach verworfenem Trigger/Restart.
+# on_pr `reconcile: head`: reconcile per head SHA instead of per PR (ADR 0023) —
+# every new push fires exactly once, even after a discarded trigger/restart.
 RECONCILE_PER_HEAD = "head"
-# Step-Typen, die den Git-Worktree des Projekts brauchen (Checkout, Commit,
-# Agent-Edits, Diff aus dem Worktree). Loops mit `worktree: false` dürfen sie
-# nicht enthalten (ADR 0020).
+# Step types that need the project's git worktree (checkout, commit,
+# agent edits, diff from the worktree). Loops with `worktree: false` must
+# not contain them (ADR 0020).
 WORKTREE_STEP_TYPES = ("git", "pr", "agent", "review", "pr_review")
-# Workdir für Loops ohne Worktree: leeres Verzeichnis pro Run (ADR 0020).
+# Workdir for loops without worktree: empty directory per run (ADR 0020).
 SCRATCH_DIR = STATE_DIR / "scratch"
 
-# Run-Store (ADR 0034): Backend und DB-URL, zur Aufrufzeit gelesen (Tests setzen die Env).
-# Default `sql` (Umschaltung #278, Bestand per `fabrik migrate-runs`); `json` = alte Run-JSON-Ablage.
+# Run store (ADR 0034): backend and DB URL, read at call time (tests set the env).
+# Default `sql` (switch #278, existing data via `fabrik migrate-runs`); `json` = old run-JSON storage.
 RUN_STORE_ENV = "FABRIK_RUN_STORE"
 RUN_STORE_JSON = "json"
 RUN_STORE_SQL = "sql"
 RUN_STORE_BACKENDS = (RUN_STORE_JSON, RUN_STORE_SQL)
 DB_URL_ENV = "FABRIK_DB_URL"
 DB_FILENAME = "fabrik.db"
-# SQLite: so lange (ms) auf einen Schreib-Lock eines anderen Prozesses warten, statt sofort zu scheitern.
+# SQLite: wait this long (ms) for a write lock of another process instead of failing immediately.
 SQLITE_BUSY_TIMEOUT_MS = 10_000
 
 
@@ -198,29 +200,32 @@ def run_store_backend() -> str:
     """Aktives Run-Store-Backend aus ``FABRIK_RUN_STORE`` (Default ``sql``); unbekannt → ValueError."""
     backend = os.environ.get(RUN_STORE_ENV, RUN_STORE_SQL).strip().lower() or RUN_STORE_SQL
     if backend not in RUN_STORE_BACKENDS:
-        raise ValueError(f"{RUN_STORE_ENV}={backend!r}: erwartet eines von {', '.join(RUN_STORE_BACKENDS)}")
+        raise ValueError(
+            t("config.expected_one_of", v1=RUN_STORE_ENV, backend=backend, v3=", ".join(RUN_STORE_BACKENDS))
+        )
     return backend
 
 
 def db_url() -> str:
-    """SQLAlchemy-URL des SQL-Run-Stores: ``FABRIK_DB_URL`` oder SQLite im State-Dir."""
+    """SQLAlchemy URL of the SQL run store: ``FABRIK_DB_URL`` or SQLite in the state dir."""
     return os.environ.get(DB_URL_ENV) or f"sqlite:///{STATE_DIR / DB_FILENAME}"
 
 
 def runs_archive_dir() -> Path:
-    """Archiv für importierte Run-JSON (ADR 0034 Nr. 8): ``state/runs-archive`` (Layout wie ``runs/``)."""
+    """Archive for imported run JSON (ADR 0034 no. 8): ``state/runs-archive`` (layout like ``runs/``)."""
     return STATE_DIR / "runs-archive"
 
 
-# Eskalation an einen Menschen (ADR 0059). Gleiche Werte wie in scripts/pr-status.py
-# (Host-Skript ohne Paket-Import; tests/test_escalation.py prüft den Gleichstand).
+# Escalation to a human (ADR 0059). Same values as in scripts/pr-status.py
+# (host script without package import; tests/test_escalation.py checks they match).
 HUMAN_LABEL = "needs human"
 ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 
-# human_gate-Defaults (ADR 0010): Diff-Heuristiken für die Kritizitäts-Check.
-# ADR-Pfade: Touch → immer menschliche Freigabe (Critical Decision).
+# human_gate defaults (ADR 0010): diff heuristics for the criticality check.
+# ADR paths: touch → always human approval (critical decision).
+
 HUMAN_GATE_ADR_PATHS = ["docs/adr"]
-HUMAN_GATE_MAX_FILES = 40  # mehr geänderte Dateien → kritisch (großes Refactoring)
+HUMAN_GATE_MAX_FILES = 40  # more changed files → critical (large refactoring)
 HUMAN_GATE_MAX_LINES = 1500  # mehr +/- Zeilen → kritisch
 HUMAN_GATE_KEYWORDS = [
     "gdpr",
@@ -235,29 +240,29 @@ HUMAN_GATE_KEYWORDS = [
     "secret rotation",
 ]
 
-# Parallele Runs pro Projekt (ADR 0028); überschreibbar per `max_parallel` in der Spec.
+# Parallel runs per project (ADR 0028); overridable via `max_parallel` in the spec.
 DEFAULT_MAX_PARALLEL = 3
-DEFAULT_WORKERS = 4  # Worker-Pool-Größe für Trigger-Runs, überschreibbar via FABRIK_WORKERS
+DEFAULT_WORKERS = 4  # Worker pool size for trigger runs, overridable via FABRIK_WORKERS
 
 
 def configured_workers() -> int:
-    """Konfigurierte Worker-Pool-Größe (FABRIK_WORKERS, Default :data:`DEFAULT_WORKERS`)."""
+    """Configured worker pool size (FABRIK_WORKERS, default :data:`DEFAULT_WORKERS`)."""
     return int(os.environ.get("FABRIK_WORKERS", str(DEFAULT_WORKERS)))
 
 
 LAUNCHER_ENV = "FABRIK_LAUNCHER"
-DEFAULT_LAUNCHER = "inprocess"  # Ausführungs-Substrat für Runs (launcher.registry)
+DEFAULT_LAUNCHER = "inprocess"  # Execution substrate for runs (launcher.registry)
 
 
 def configured_launcher() -> str:
-    """Konfiguriertes Run-Launcher-Substrat (FABRIK_LAUNCHER, Default :data:`DEFAULT_LAUNCHER`).
+    """Configured run-launcher substrate (FABRIK_LAUNCHER, default :data:`DEFAULT_LAUNCHER`).
 
-    Leerer Wert zählt als nicht gesetzt. Die gültigen Namen liefert
+    An empty value counts as unset. The valid names are provided by
     :func:`fabrik.launcher.registry.known_launchers`."""
     return os.environ.get(LAUNCHER_ENV, "").strip() or DEFAULT_LAUNCHER
 
 
-# Variablen, die einen Run an ein Issue/PR binden (Dedup: ein aktiver Run pro Loop + Bezug).
+# Variables that bind a run to an issue/PR (dedup: one active run per loop + reference).
 DEDUPE_VARS = ("issue_number", "pr_number")
 
 _log_lock = threading.Lock()
@@ -268,8 +273,8 @@ def utcnow() -> datetime:
 
 
 def now_id() -> str:
-    # uuid-Suffix (vollständiges uuid4, 128 Bit): zwei Runs im selben
-    # Sekundentakt (z. B. parallele Trigger) dürfen sich nicht auf dieselbe
-    # Run-Datei schreiben. 6 Hex-Zellen reichten nicht (Geburtstagsparadoxon:
-    # ~11 % Kollision bei 2000 Calls).
+    # uuid suffix (full uuid4, 128 bit): two runs in the same
+    # second (e.g. parallel triggers) must not write to the same
+    # run file. 6 hex digits were not enough (birthday paradox:
+    # ~11 % collision at 2000 calls).
     return utcnow().strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex

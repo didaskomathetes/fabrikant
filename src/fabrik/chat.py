@@ -13,45 +13,30 @@ from . import llm as llm_registry
 from .approval import ApprovalRequest
 from .auth import Principal
 from .engine import reject_run, run_loop, spawn_priority_worker, start_priority_run
+from .i18n import t
 from .runs import RunClaim, get_run, list_runs
 from .runstore import STORE, PreconditionError
 from .specs import _validate_spec, load_projects, load_spec, spec_path
 from .steps import _notify
 
-_CHAT_HELP = """**fabrik-Chat — Befehle:**
-- `list` — Projekte + Loops
-- `show <projekt>` — Spec anzeigen
-- `lauf <projekt> <loop> [anmerkung]` — Loop starten
-- `runs [projekt]` — letzte Runs
-- `log <lauf_id>` — Log-Ende eines Runs
-- `approve <lauf_id>` / `reject <lauf_id>` — Approval-Gate
-- `pause|resume|disable <projekt> [loop]` — Trigger anhalten/fortsetzen/sperren
-- `alert test [projekt]` — Test-Alert an die Kanäle
-- `apply <projekt>` — vorgeschlagene Spec übernehmen (nach LLM-Vorschlag)
-- alles andere → LLM-Copilot (wenn ein LLM-Provider konfiguriert ist, s. `_NO_LLM_HINT`)"""
-
 _CHAT_MAX_TOKENS = 8000
-# Konfig-Hinweis für den Copilot (Details: Docstring von `llm`). CLI-Provider
-# brauchen ihren Namen in FABRIK_LLM_PROVIDERS — `_CLI` allein reicht nicht.
-_NO_LLM_HINT = (
-    "FABRIK_LLM_PROVIDERS=<name> + FABRIK_LLM_<NAME>_URL oder _CLI + FABRIK_LLM_<NAME>_MODEL, "
-    "oder FABRIK_LLM_URL + FABRIK_LLM_MODEL, z. B. Ollama: http://127.0.0.1:11434/v1/chat/completions"
-)
+# Config hint for the copilot (details: docstring of `llm`). CLI providers
+# need their name in FABRIK_LLM_PROVIDERS — `_CLI` alone is not enough.
 _CHAT_TIMEOUT_S = 180
 
 _pending_specs: dict[str, tuple[str, Path]] = {}  # projekt -> (yaml-text, pfad)
 _pending_guard = threading.Lock()
 
-# In-Flight-Chat-Requests: req_id -> {"cancel": Event}
-# Ermöglicht, einen laufenden Chat-Request abzubrechen (UI-Button / POST /api/chat/cancel).
-# Der Abbruch wirkt über die Server-Handler-Warteschleife (Worker-Thread wird
-# nicht mehr abgewartet); der LLM-Call läuft im Hintergrund zu Ende (Daemon).
+# In-flight chat requests: req_id -> {"cancel": Event}
+# Makes it possible to cancel a running chat request (UI button / POST /api/chat/cancel).
+# The cancel takes effect via the server handler's wait loop (the worker thread is
+# no longer awaited); the LLM call runs to completion in the background (daemon).
 _inflight: dict[str, dict] = {}
 _inflight_guard = threading.Lock()
 
 
 def _register_chat(req_id: str) -> threading.Event:
-    """Idempotent: existiert der req_id schon, wird das bestehende Event zurückgegeben."""
+    """Idempotent: if the req_id already exists, the existing event is returned."""
     with _inflight_guard:
         slot = _inflight.get(req_id)
         if slot is None:
@@ -61,7 +46,7 @@ def _register_chat(req_id: str) -> threading.Event:
 
 
 def _cancel_chat(req_id: str) -> bool:
-    """Setzt das Cancel-Flag. True, wenn der req_id bekannt war."""
+    """Sets the cancel flag. True if the req_id was known."""
     with _inflight_guard:
         slot = _inflight.get(req_id)
     if not slot:
@@ -76,7 +61,7 @@ def _finish_chat(req_id: str) -> None:
 
 
 def _chat_start_run(name: str, lname: str, note: str, actor: str | None = None) -> str:
-    """Chat-Run starten; bei belegtem Projekt einreihen (Vorrang vor Trigger-Runs, ADR 0015)."""
+    """Start a chat run; queue it if the project is busy (priority over trigger runs, ADR 0015)."""
     blocked = pause.manual_block_reason(name, lname)
     if blocked:
         return f"⊘ {blocked}"
@@ -84,10 +69,10 @@ def _chat_start_run(name: str, lname: str, note: str, actor: str | None = None) 
     try:
         queued = start_priority_run(name, lname, "chat", run_id=run_id, note=note, actor=actor)
     except RuntimeError as e:
-        return f"✖ {name}/{lname}: Worker-Start fehlgeschlagen ({e})."
+        return t("chat.worker_start_failed", name=name, loop=lname, error=e)
     if queued:
-        return f"⏳ {name}/{lname} eingereiht ({run_id}) — startet, sobald der laufende Run fertig ist."
-    return f"▶ {name}/{lname} gestartet ({run_id}, Log: `fabrik runs --project {name}`)"
+        return t("chat.queued", name=name, loop=lname, run_id=run_id)
+    return t("chat.started", name=name, loop=lname, run_id=run_id)
 
 
 _STATE_VERBS = ("pause ", "pausiere ", "resume ", "fortsetzen ", "disable ", "deaktiviere ")
@@ -104,7 +89,7 @@ _VERB_STATE = {
 def _chat_set_state(parts: list[str], actor: str | None = None) -> str:
     """Chat-Befehl `pause|resume|disable <projekt> [loop]` (ADR 0019)."""
     if len(parts) < 2:
-        return "Format: `pause|resume|disable <projekt> [loop]`"
+        return t("chat.state_format")
     loop = parts[2] if len(parts) > 2 else None
     try:
         pause.set_state(parts[1], loop, _VERB_STATE[parts[0].lower()], actor=f"chat:{actor}" if actor else "chat")
@@ -115,16 +100,16 @@ def _chat_set_state(parts: list[str], actor: str | None = None) -> str:
 
 
 def _approval_detail(ctx: dict | None) -> str:
-    """Approval-Kontext als Chat-Zeile(n): was passiert, welche Rechte, welches Issue.
+    """Approval context as chat line(s): what happens, which permissions, which issue.
 
-    Leert, wenn der Run keinen strukturierten Kontext hat (ältere Runs)."""
+    Empty if the run has no structured context (older runs)."""
     lines = ApprovalRequest.from_dict(ctx).lines()
     return ("\n" + "\n".join(lines)) if lines else ""
 
 
-# Run-Ids, deren Resume-Worker in diesem Prozess bereits gestartet ist (läuft
-# oder wartet auf einen Run-Slot) — verhindert doppelte Worker bei
-# Mehrfach-Approve und beim Requeue nach Restart (ADR 0015).
+# Run ids whose resume worker has already been started in this process (running
+# or waiting for a run slot) — prevents duplicate workers on
+# repeated approve and on requeue after restart (ADR 0015).
 _resume_workers: set[str] = set()
 _resume_guard = threading.Lock()
 
@@ -137,23 +122,23 @@ def _append_run_log(project: str, run_id: str, message: str) -> None:
 
 
 def _revoke_approval(project: str, run_id: str) -> None:
-    """Freigabe eines nicht fortgesetzten Runs zurücknehmen (best-effort): wurde der Run
-    inzwischen entschieden (fortgesetzt/abgelehnt), bleibt er unverändert."""
+    """Revoke the approval of a run that was not resumed (best effort): if the run
+    has meanwhile been decided (resumed/rejected), it stays unchanged."""
     with contextlib.suppress(PreconditionError):
         STORE.revoke_approval(project, run_id)
 
 
 def _start_resume_worker(project: str, run: dict) -> bool:
-    """Startet den Resume-Worker für einen freigegebenen Run.
+    """Starts the resume worker for an approved run.
 
-    Der Worker wartet bei Bedarf blockierend (mit Vorrang vor neuen
-    Trigger-Runs, ADR 0015) auf einen freien Slot bzw. das Ende eines aktiven
-    Runs für Loop + Issue/PR (Dedup) und prüft danach erneut, ob der Run noch
-    needs_approval ist (ein Reject während des Wartens gewinnt) und der Loop
-    nicht inzwischen disabled wurde (ADR 0019 — der Run bleibt dann
-    needs_approval und kann nach Resume erneut freigegeben werden). False,
-    wenn bereits ein Worker für den Run existiert oder der Thread-Start
-    fehlschlägt."""
+    The worker blocks as needed (with priority over new
+    trigger runs, ADR 0015) until a slot is free or an active run for
+    loop + issue/PR (dedup) ends, then checks again whether the run is still
+    needs_approval (a reject while waiting wins) and the loop has not
+    been disabled in the meantime (ADR 0019 — the run then stays
+    needs_approval and can be approved again after resume). False
+    if a worker for the run already exists or the thread start
+    fails."""
     run_id = run["id"]
     with _resume_guard:
         if run_id in _resume_workers:
@@ -166,10 +151,10 @@ def _start_resume_worker(project: str, run: dict) -> bool:
 
     def work(held: RunClaim) -> None:
         try:
-            # Während des Wartens deaktiviert (ADR 0019) → nicht fortsetzen;
-            # der Run bleibt needs_approval, die Freigabe wird zurückgenommen
-            # (sonst setzte requeue_approved_runs ihn bei jedem Start erneut
-            # an) und discard() erlaubt ein erneutes Approve.
+            # Disabled while waiting (ADR 0019) → do not resume;
+            # the run stays needs_approval, the approval is revoked
+            # (otherwise requeue_approved_runs would schedule it again on every start)
+            # and discard() allows approving again.
             if blocked := pause.manual_block_reason(project, run["loop"]):
                 print(f"[fabrik] Resume {run_id} verworfen: {blocked}")
                 _revoke_approval(project, run_id)
@@ -202,66 +187,62 @@ def _start_resume_worker(project: str, run: dict) -> bool:
 
 
 def _chat_resume(project: str, run_id: str, approve: bool, actor: str | None = None) -> tuple[str, bool]:
-    """Approve/Reject eines needs_approval-Runs.
+    """Approve/reject a needs_approval run.
 
-    Gibt (reply, resumed) zurück: resumed=True, wenn ein Resume-Worker für den
-    Run existiert — NICHT, dass er bereits "running" auf Disk geschrieben hat.
-    Ist das Projekt am Limit (max_parallel), wird die Freigabe als
-    `approval_queued` persistiert und der Worker wartet auf einen Slot (ADR 0015);
-    der Run bleibt bis dahin needs_approval. False = Thread-Start-Fehler.
-    actor: Benutzername fürs Audit (``approved_by``/``rejected_by`` im Run-Record)."""
+    Returns (reply, resumed): resumed=True if a resume worker for the
+    run exists — NOT that it has already written "running" to disk.
+    If the project is at its limit (max_parallel), the approval is persisted as
+    `approval_queued` and the worker waits for a slot (ADR 0015);
+    the run stays needs_approval until then. False = thread start error.
+    actor: user name for the audit (``approved_by``/``rejected_by`` in the run record)."""
     run = get_run(run_id, project)
     if not run:
-        return f"✖ Run {run_id} nicht gefunden.", False
+        return t("chat.run_not_found", run_id=run_id), False
     if run["status"] != "needs_approval":
-        return f"✖ Run {run['id']} ist '{run['status']}', nicht needs_approval.", False
+        return t("chat.not_needs_approval", run_id=run["id"], status=run["status"]), False
     run.setdefault("started_by", None)
     run.setdefault("approved_by", None)
     run.setdefault("rejected_by", None)
     detail = _approval_detail(run.get("approval") or {})
     if not approve:
-        # Atomare Ablehnung (schließt einen gleichzeitigen Resume aus, ADR 0034) inkl. Cleanup
-        # und Retry-Ketten-Buchung.
+        # Atomic rejection (rules out a concurrent resume, ADR 0034) incl. cleanup
+        # and retry-chain booking.
         try:
             run = reject_run(project, run, actor, lambda msg: _append_run_log(project, run_id, msg))
         except PreconditionError as e:
-            return f"⚠ {run['id']} konnte nicht abgelehnt werden: {e}", False
-        return f"⊘ {run['id']} abgelehnt — der Loop endet hier.{detail}", False
+            return t("chat.cannot_reject", run_id=run["id"], error=e), False
+        return t("chat.rejected", run_id=run["id"], detail=detail), False
     with _resume_guard:
         already = run_id in _resume_workers
     if already:
-        return f"⏳ {run['id']} ist bereits freigegeben und wartet auf {project}.", True
+        return t("chat.already_approved", run_id=run["id"], project=project), True
     if actor:
-        # Auch bei wartender Freigabe: sie ist akzeptiert (approval_queued) — Audit nicht verlieren.
+        # Also with a waiting approval: it is accepted (approval_queued) — do not lose the audit.
         try:
             STORE.approve(project, run_id, run, actor)
         except PreconditionError as e:
-            return f"⚠ {run['id']} konnte nicht freigegeben werden: {e}", False
+            return t("chat.cannot_approve", run_id=run["id"], error=e), False
     try:
         started = _start_resume_worker(project, run)
     except PreconditionError as e:
-        # mark_approval_queued fehlgeschlagen (z. B. Reject während des Wartens) — Run ist
-        # bereits entschieden, nichts zu tun.
-        return f"⚠ {run['id']}: {e}", False
+        # mark_approval_queued failed (e.g. reject while waiting) — the run is
+        # already decided, nothing to do.
+        return t("chat.resume_error", run_id=run["id"], error=e), False
     if not started:
         if run.get("approval_queued") or actor:
-            # Kein Worker gestartet: Approval-Audit/Queue-Marker zurücknehmen (Run bleibt freigabepflichtig).
+            # No worker started: revoke approval audit/queue marker (run stays subject to approval).
             _revoke_approval(project, run_id)
-        return f"✖ Thread-Start fehlgeschlagen — {run['id']} bleibt needs_approval.", False
+        return t("chat.thread_start_failed", run_id=run["id"]), False
     if run.get("approval_queued"):
-        return (
-            f"⏳ Freigabe für {run['id']} gespeichert — {project} ist ausgelastet, "
-            f"der Run setzt danach automatisch fort.{detail}",
-            True,
-        )
-    return f"▶ Approval — {run['id']} setzt fort (Step: {run.get('waiting_step', '?')}){detail}", True
+        return t("chat.approval_saved", run_id=run["id"], project=project, detail=detail), True
+    return t("chat.approval_resuming", run_id=run["id"], step=run.get("waiting_step", "?"), detail=detail), True
 
 
 def requeue_approved_runs() -> list[str]:
-    """Startet Resume-Worker für freigegebene, noch wartende Runs (Server-Start).
+    """Starts resume workers for approved runs that are still waiting (server start).
 
-    Ohne das ginge eine Freigabe, die beim Restart noch auf einen Run-Slot
-    wartete, verloren (der Run hinge in needs_approval). Gibt die Run-Ids zurück."""
+    Without this, an approval that was still waiting for a run slot at restart
+    would be lost (the run would hang in needs_approval). Returns the run ids."""
     started = []
     for run in list_runs(limit=None):
         queued = run.get("status") == "needs_approval" and run.get("approval_queued")
@@ -289,19 +270,15 @@ def _chat_alert_test(project: str | None) -> str:
         }
         sent_all += [f"{name}:{s}" for s in _notify(spec, rec)]
     if not sent_all:
-        return (
-            "⚠ Kein Projekt mit `notify:`-Konfiguration gefunden. "
-            "In der Spec: `notify: {slack: https://hooks.slack.com/...}` "
-            "oder `webhooks: [{name: datadog, url: ...}]`."
-        )
-    return "⚠ Test-Alerts gesendet: " + ", ".join(sent_all)
+        return t("chat.alert_no_notify")
+    return t("chat.alert_sent", sent=", ".join(sent_all))
 
 
 def _llm_chat(message: str, cancel_event: threading.Event | None = None, req_id: str = "") -> str | None:
-    """OpenAI-kompatibler Endpunkt (aktiver Provider). Ohne Config → None.
+    """OpenAI-compatible endpoint (active provider). Without config → None.
 
-    ``cancel_event``: wird gesetzt → der laufende LLM-Read wird abgebrochen
-    (Verbindung geschlossen) und es kommt '⊘ abgebrochen' zurück."""
+    ``cancel_event``: if set → the running LLM read is aborted
+    (connection closed) and '⊘ cancelled' is returned."""
     prov = llm_registry.active_provider()
     if not prov:
         return None
@@ -319,42 +296,28 @@ def _llm_chat(message: str, cancel_event: threading.Event | None = None, req_id:
                 if len(fails) >= 2:
                     break
     sys_prompt = (
-        "Du bist der Copilot der Software-Fabrik (fabrik). Du hilfst, Dev-Loop-Specs "
-        "zu bauen, anzupassen und Runs zu debuggen. Antworte kurz und auf Deutsch. "
-        "Spec-Format: YAML mit name, root, repo {branch, subpath}, github: owner/name, "
-        "notify {slack, webhooks, github_issue}, loops: {name: {description, tier (1-4), "
-        "triggers ([manual|cron|on_file|on_issue|on_pr]), "
-        "steps ([shell|git|pr|agent|report|http|llm|notify], "
-        "shell hat cmd/timeout, report hat text/write, http hat url/method/emit, "
-        "llm hat prompt/schema/untrusted, notify hat message/slack/webhooks, "
-        "Steps können approval: true haben; T2+ endet mit Tier-Approval)}}. "
-        "Wenn eine Spec-Änderung sinnvoll ist, gib die KOMPLETTE neue Spec als "
-        "```yaml-Block aus (mit korrektem name:) und sag, dass der User 'apply "
-        "<projekt>' sagen muss. Sonst antworte nur textuell.\n\n"
-        f"AKTUELLE SPECS:\n{spec_text}\n\n"
-        f"LETZTE FEHLERLÄUFE:\n" + ("\n".join(fails) if fails else "(keine)")
+        f"{t('chat.sys_prompt')}\n\n{t('chat.sys_specs_header')}\n{spec_text}\n\n"
+        f"{t('chat.sys_fails_header')}\n" + ("\n".join(fails) if fails else t("chat.sys_no_fails"))
     )
     if cancel_event is not None and cancel_event.is_set():
-        return "⊘ abgebrochen"
+        return t("chat.cancelled")
     try:
         res = llm_registry.complete(
             prov,
             sys_prompt,
             message,
-            # 8000: Qwen3-Denk-Tokens + komplette Spec (YAML-Block) müssen rein,
-            # sonst wird der Vorschlag abgeschnitten und ist nicht anwendbar.
+            # 8000: Qwen3 thinking tokens + complete spec (YAML block) must fit,
+            # otherwise the proposal is truncated and not applicable.
             max_tokens=_CHAT_MAX_TOKENS,
             timeout=_CHAT_TIMEOUT_S,
             cancel_event=cancel_event,
         )
     except Exception as e:
         if cancel_event is not None and cancel_event.is_set():
-            return "⊘ abgebrochen"
-        return f"✖ LLM-Call fehlgeschlagen: {e}"
+            return t("chat.cancelled")
+        return t("chat.llm_failed", error=e)
     if not res["text"]:
-        return (
-            f"⚠ LLM hat eine leere Antwort geliefert (finish_reason: {res['finish_reason']}) — bitte erneut versuchen."
-        )
+        return t("chat.llm_empty", reason=res["finish_reason"])
     text = res["text"].strip()
     # Spec-Vorschlag? → validieren + pfeilen
     m = re.search(r"```ya?ml\n(.*?)```", text, re.S)
@@ -367,22 +330,17 @@ def _llm_chat(message: str, cancel_event: threading.Event | None = None, req_id:
                 name = data2["name"]
                 p = spec_path(name)
                 if not Path(data2.get("root", "")).is_dir():
-                    return (
-                        f"⚠ Vorschlag für `{name}`: root `{data2.get('root')}` existiert nicht — abgelehnt.\n\n{text}"
-                    )
+                    return t("chat.proposal_missing_root", name=name, root=data2.get("root"), text=text)
                 _validate_spec(data2)
                 with _pending_guard:
                     _pending_specs[name] = (m.group(1).strip(), p)
-                text += f"\n\n✅ Vorschlag validiert — sagen `apply {name}`, dann wird {p} überschrieben."
+                text += t("chat.proposal_valid", name=name, path=p)
         except Exception as e:
-            text += f"\n\n⚠ YAML-Vorschlag ungültig ({e}) — nicht übernommen."
+            text += t("chat.proposal_invalid", error=e)
     elif re.search(r"```ya?ml", text):
-        # Öffnender Fence ohne schließenden → Antwort wurde abgeschnitten
-        # (max_tokens/Context) → kein anwendbarer Vorschlag.
-        text += (
-            "\n\n⚠ Antwort abgeschnitten — der YAML-Block ist unvollständig (kein schließendes ```). "
-            "Vorschlag NICHT validiert/gespeichert. Bitte erneut versuchen."
-        )
+        # Opening fence without closing one → answer was truncated
+        # (max_tokens/context) → no applicable proposal.
+        text += t("chat.proposal_truncated")
     return text
 
 
@@ -394,7 +352,7 @@ def _chat(message: str, project_hint: str = "", req_id: str = "", who: Principal
     projects = load_projects()
 
     if low in ("help", "hilfe", "?"):
-        return _CHAT_HELP
+        return t("chat.help")
     if low in ("list", "liste", "projekte"):
         lines = []
         for name, spec in projects.items():
@@ -403,29 +361,29 @@ def _chat(message: str, project_hint: str = "", req_id: str = "", who: Principal
                 continue
             loops = ", ".join(spec["loops"])
             lines.append(f"● {name} — {loops}")
-        return "\n".join(lines) or "(keine Projekte)"
+        return "\n".join(lines) or t("chat.no_projects")
     if low.startswith(("show ", "spec ")):
         name = parts[1] if len(parts) > 1 else project_hint
         p = spec_path(name, projects)
         if not p.is_file():
-            return f"✖ Kein Projekt '{name}' (verfügbar: {', '.join(projects)})"
+            return t("chat.no_project", name=name, available=", ".join(projects))
         return f"```yaml\n{p.read_text()}\n```"
     if low.startswith(("lauf ", "run ")):
         if len(parts) < 3:
-            return "Format: `lauf <projekt> <loop> [anmerkung …]`"
+            return t("chat.run_format")
         name, lname = parts[1], parts[2]
         if name not in projects:
-            return f"✖ Projekt unbekannt: {name}"
+            return t("chat.unknown_project", name=name)
         if lname not in (projects[name].get("loops") or {}):
-            return f"✖ Loop unbekannt: {lname} (verfügbar: {', '.join(projects[name]['loops'])})"
+            return t("chat.unknown_loop", loop=lname, available=", ".join(projects[name]["loops"]))
         return _chat_start_run(name, lname, " ".join(parts[3:]), actor=actor)
     if low in ("runs",) or low.startswith("runs "):
         proj = parts[1] if len(parts) > 1 else None
         lines = [f"{r['id']}  {r['project']}/{r['loop']}  {r['status']}" for r in list_runs(proj, 10)]
-        return "\n".join(lines) or "(keine Runs)"
+        return "\n".join(lines) or t("chat.no_runs")
     if low.startswith(("log ", "logs ")):
         if len(parts) < 2:
-            return "Format: `log <lauf_id>`"
+            return t("chat.log_format")
         rid = parts[1]
         f = None
         if config.RUNS_DIR.is_dir():
@@ -434,7 +392,7 @@ def _chat(message: str, project_hint: str = "", req_id: str = "", who: Principal
                     f = d / f"{rid}.log"
                     break
         if not f:
-            return f"✖ Log {rid} nicht gefunden"
+            return t("chat.log_not_found", run_id=rid)
         return "```\n" + "\n".join(f.read_text(encoding="utf-8").splitlines()[-40:]) + "\n```"
     if low.startswith(("approve ", "freigeben ")):
         rid = parts[1] if len(parts) > 1 else ""
@@ -452,19 +410,19 @@ def _chat(message: str, project_hint: str = "", req_id: str = "", who: Principal
         return _chat_alert_test(parts[2] if len(parts) > 2 else None)
     if low.startswith("apply "):
         if who and not who.allows(auth.ADMIN):
-            return "✖ Spec ändern braucht die Rolle 'admin'."
+            return t("chat.admin_required")
         name = parts[1]
         with _pending_guard:
             pend = _pending_specs.get(name)
         if not pend:
-            return f"✖ Kein validierter Vorschlag für '{name}' (erst per LLM erstellen)."
+            return t("chat.no_proposal", name=name)
         text, p = pend
         p.write_text(text + "\n")
         _validate_spec(load_spec(p))
         with _pending_guard:
             _pending_specs.pop(name, None)
-        return f"✅ Spec {p} aktualisiert. (serve lädt Specs pro Request — gilt sofort.)"
-    # sonst: LLM (abbruchbar über das In-Flight-Registry)
+        return t("chat.spec_updated", path=p)
+    # otherwise: LLM (cancellable via the in-flight registry)
     if not req_id:
         req_id = config.now_id()
     cancel_event = _register_chat(req_id)
@@ -473,5 +431,5 @@ def _chat(message: str, project_hint: str = "", req_id: str = "", who: Principal
     finally:
         _finish_chat(req_id)
     if ans is None:
-        return f"⚠ Kein LLM konfiguriert ({_NO_LLM_HINT}). Befehle: `help`"
+        return t("chat.no_llm", hint=t("chat.no_llm_hint"))
     return ans

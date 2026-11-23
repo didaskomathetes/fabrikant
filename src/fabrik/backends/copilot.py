@@ -1,24 +1,24 @@
-"""copilot-Adapter: GitHub Copilot CLI (`copilot -p`, One-Shot pro Prompt).
+"""copilot adapter: GitHub Copilot CLI (`copilot -p`, one-shot per prompt).
 
-One-Shot-Modell (Mechanik in `OneShotCliBackend`): Prompt über STDIN
-(`echo … | copilot` — keine ARG-Limits, keine Shell-Interpolation; `-p`
-würde an `MAX_ARG_STRLEN` stoßen). Output: `--output-format json` → JSONL
-(eine JSON-Zeile pro Event); das finale Ergebnis wird defensiv extrahiert
-(Schema nicht vollständig dokumentiert), Fallback ist der rohe stdout.
+One-shot model (mechanics in `OneShotCliBackend`): prompt via STDIN
+(`echo … | copilot` — no ARG limits, no shell interpolation; `-p`
+would hit `MAX_ARG_STRLEN`). Output: `--output-format json` → JSONL
+(one JSON line per event); the final result is extracted defensively
+(schema not fully documented), fallback is the raw stdout.
 
-Permissions: Default `--allow-all-tools` (Agent editiert Dateien + Shell).
-ECHTE Isolation (non-root User, Container, VM) ist eine DEPLOYMENT-
-Voraussetzung, keine Config-Option. Override: `step.tools` /
-`FABRIK_COPILOT_TOOLS` (z. B. `shell,write`) → `--allow-tool=<list>`.
+Permissions: default `--allow-all-tools` (agent edits files + shell).
+REAL isolation (non-root user, container, VM) is a DEPLOYMENT
+prerequisite, not a config option. Override: `step.tools` /
+`FABRIK_COPILOT_TOOLS` (e.g. `shell,write`) → `--allow-tool=<list>`.
 
 Auth: `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (fine-grained
-PAT mit "Copilot Requests") — Deployment-Umgebung, nicht Spec.
-`COPILOT_AUTO_UPDATE=false` wird pro Prozess gesetzt.
+PAT with "Copilot Requests") — deployment environment, not spec.
+`COPILOT_AUTO_UPDATE=false` is set per process.
 
-Usage: Copilot rechnet mit Premium Requests, nicht mit Tokens. Das `result`-Event
-trägt `usage.premiumRequests`; der Adapter meldet ihn als `premium_requests` im
-Poll-Ergebnis (Step-Summary + `cost`-Event im Session-Log). Tokens und USD-Kosten
-liefert die CLI nicht — sie bleiben 0 (dokumentierte Lücke, kein Pricing-Table).
+Usage: Copilot accounts in premium requests, not tokens. The `result` event
+carries `usage.premiumRequests`; the adapter reports it as `premium_requests` in the
+poll result (step summary + `cost` event in the session log). Tokens and USD costs
+are not provided by the CLI — they stay 0 (documented gap, no pricing table).
 """
 
 from __future__ import annotations
@@ -28,11 +28,12 @@ import os
 
 from ..agentenv import COPILOT_AUTH_VARS, passthrough
 from ..billing import Billing
+from ..i18n import t as _t
 from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend
 
-# JSONL-Event-Typen des Copilot-CLI-Schemas (defensiv gelesen — das Schema ist
-# nicht vollständig dokumentiert; neue/ältere Varianten werden ignoriert).
+# JSONL event types of the Copilot CLI schema (read defensively — the schema is
+# not fully documented; new/older variants are ignored).
 _EVENT_SESSION_START = "session.start"
 _EVENT_TURN_START = "assistant.turn_start"
 _EVENT_RESULT = "result"
@@ -49,7 +50,7 @@ class CopilotBackend(OneShotCliBackend):
     name = "copilot"
 
     def __init__(self, endpoint: str = "", model: str = "", stale_after: int = 900, tools: str | None = None):
-        # opencode nutzt `provider/model`; `copilot --model` will nur das Model.
+        # opencode uses `provider/model`; `copilot --model` wants only the model.
         super().__init__(endpoint, model.removeprefix("anthropic/").strip(), stale_after)
         self.tools = (tools or os.environ.get("FABRIK_COPILOT_TOOLS", "")).strip()
 
@@ -77,11 +78,11 @@ class CopilotBackend(OneShotCliBackend):
         return Billing.SUBSCRIPTION
 
     def _env(self) -> dict:
-        """Adapter-Zusatz auf der Agent-Env-Allowlist (ADR 0050) — kein `os.environ`-Klon.
+        """Adapter addition on the agent env allowlist (ADR 0050) — no `os.environ` clone.
 
-        Nur `COPILOT_GITHUB_TOKEN` (fine-grained PAT, „Copilot Requests“) wird durchgereicht —
-        die eigene Arbeits-Identität der CLI. `GITHUB_TOKEN`/`GH_TOKEN` sind fabriks
-        API-Token und bleiben draußen; ein Step bekommt sie nur per `github_identity:`."""
+        Only `COPILOT_GITHUB_TOKEN` (fine-grained PAT, "Copilot Requests") is passed through —
+        the CLI's own working identity. `GITHUB_TOKEN`/`GH_TOKEN` are fabrik's
+        API token and stay out; a step only gets them via `github_identity:`."""
         return {"COPILOT_AUTO_UPDATE": "false", **passthrough(COPILOT_AUTH_VARS)}
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
@@ -92,34 +93,34 @@ class CopilotBackend(OneShotCliBackend):
         if returncode == 0:
             text, found = self._extract_result(out)
             if not found:
-                # Stille Fehlschlag: CLI exit 0, aber der Stream enthält keine
-                # finale Antwort — entweder stirbt der Model-Call (z. B. nach
-                # model.call_start) oder der JSONL-Stream wird beim Shutdown
-                # abgeschnitten (stdout-Dispose-Timeout; dann fehlt das
-                # terminierende result-Event und nur ein Zwischen-Turn-Text
-                # wie ein Plan bleibt). Ohne diesen Check würde der Run als
-                # "pass" enden, obwohl der Agent nichts getan hat
-                # (Regression: review-pr 2026-10-18).
-                # `retryable`: typischerweise transienter API-Ausfall → der
-                # Agent-Step darf die Session neu starten (statt den Run zu killen).
+                # Silent failure: CLI exit 0, but the stream contains no
+                # final answer — either the model call dies (e.g. after
+                # model.call_start) or the JSONL stream is cut off at shutdown
+                # (stdout dispose timeout; then the terminating result event
+                # is missing and only an intermediate-turn text such as a plan
+                # remains). Without this check the run would end as
+                # "pass" although the agent did nothing
+                # (regression: review-pr 2026-10-18).
+                # `retryable`: typically a transient API outage → the
+                # agent step may restart the session (instead of killing the run).
                 return {
                     **base,
                     "status": "failed",
                     "retryable": True,
-                    "text": "copilot: Session endete ohne finale Antwort (JSONL ohne result-Event) — möglicher API-Ausfall oder abgeschnittener Stream",
+                    "text": _t("backends.copilot.copilot_session_ended_without_a"),
                 }
             return {**base, "status": "done", "text": text}
-        # Exit ≠ 0: der eigentliche Grund steht oft im `session.error`-Event des
-        # JSONL-Streams (z. B. Quota/HTTP 402), nicht in stderr — den voranstellen,
-        # damit die Fehlermeldung die Ursache zeigt statt nur der ersten stdout-Zeile.
-        detail = (err.strip() or out.strip() or "copilot: kein Output")[:300]
+        # Exit ≠ 0: the actual reason is often in the `session.error` event of the
+        # JSONL stream (e.g. quota/HTTP 402), not in stderr — put it first,
+        # so the error message shows the cause instead of just the first stdout line.
+        detail = (err.strip() or out.strip() or _t("backends.copilot.copilot_no_output"))[:300]
         reason = self._session_error_reason(out)
         text = f"copilot: {reason}\n{detail}" if reason else detail
         return {**base, "status": "failed", "text": text}
 
     @staticmethod
     def _premium_requests(out: str) -> int | None:
-        """``usage.premiumRequests`` des letzten ``result``-Events; None, wenn nicht vorhanden."""
+        """``usage.premiumRequests`` of the last ``result`` event; None if not present."""
         found = None
         for ln in out.splitlines():
             try:
@@ -134,8 +135,8 @@ class CopilotBackend(OneShotCliBackend):
 
     @staticmethod
     def _content_text(v) -> str:
-        """Assistant-Content → Text: String direkt, Liste von Text-Blöcken
-        `[{"type":"text","text":…}]` wird konkateniert."""
+        """Assistant content → text: a string directly, a list of text blocks
+        `[{"type":"text","text":…}]` is concatenated."""
         if isinstance(v, str):
             return v
         if isinstance(v, list):
@@ -144,12 +145,12 @@ class CopilotBackend(OneShotCliBackend):
 
     @staticmethod
     def _session_error_reason(out: str) -> str:
-        """Grund aus dem `session.error`-Event des JSONL-Streams (z. B. Quota/HTTP 402).
+        """Reason from the `session.error` event of the JSONL stream (e.g. quota/HTTP 402).
 
-        Defensive: das Copilot-CLI-Schema ist nicht vollständig dokumentiert, daher
-        werden mehrere plausible Felder gelesen (`type`/`code` für die Fehlerart,
-        `message`/`error`/`reason` für die Beschreibung). Liefert "" ohne
-        `session.error`-Event im Stream."""
+        Defensive: the Copilot CLI schema is not fully documented, so
+        several plausible fields are read (`type`/`code` for the error kind,
+        `message`/`error`/`reason` for the description). Returns "" without a
+        `session.error` event in the stream."""
         for ln in out.splitlines():
             ln = ln.strip()
             if not ln:
@@ -173,29 +174,29 @@ class CopilotBackend(OneShotCliBackend):
 
     @staticmethod
     def _extract_result(out: str) -> tuple[str, bool]:
-        """Finale Antwort aus JSONL-stdout extrahieren (defensiv).
+        """Extract the final answer from JSONL stdout (defensive).
 
-        Liefert `(text, found)`. `found=False`: Der Stream enthält JSONL-Zeilen,
-        aber KEINE finale Antwort (kein result/assistant.message/Delta mit
-        Content) — die Session ist ohne Ergebnis beendet (stiller Fehlschlag,
-        z. B. Model-Call-Abbruch). Liegt gar KEIN JSON vor, ist der rohe
-        stdout die Antwort (Schema-Fallback, `found=True`).
+        Returns `(text, found)`. `found=False`: the stream contains JSONL lines
+        but NO final answer (no result/assistant.message/delta with
+        content) — the session ended without a result (silent failure,
+        e.g. model call abort). If there is NO JSON at all, the raw
+        stdout is the answer (schema fallback, `found=True`).
 
-        Echtes Copilot-CLI-Schema (verifiziert 1.0.98): die finale Antwort liegt
-        in `assistant.message` → `data.content`; Streaming-Deltas in
-        `assistant.message_delta` → `data.deltaContent`. Die `result`-Zeile hat
-        NUR `exitCode`/`usage` — keinen Text. Priorität:
-        1. explizites `result`-Feld (ältere/andere Schemas),
-        2. finale `assistant.message` (data.content),
-        3. akkumulierte Deltas (data.deltaContent),
-        4. generischer Assistant-Text (role=assistant / type=message),
-        5. roher stdout (Fallback, z. B. wenn JSON ausfällt).
+        Real Copilot CLI schema (verified 1.0.98): the final answer is in
+        `assistant.message` → `data.content`; streaming deltas in
+        `assistant.message_delta` → `data.deltaContent`. The `result` line has
+        ONLY `exitCode`/`usage` — no text. Priority:
+        1. explicit `result` field (older/other schemas),
+        2. final `assistant.message` (data.content),
+        3. accumulated deltas (data.deltaContent),
+        4. generic assistant text (role=assistant / type=message),
+        5. raw stdout (fallback, e.g. if JSON fails).
 
-        Abgeschnittener Stream: Session-Events (session.start/turn_start) sind
-        vorhanden, aber das terminierende `result`-Event fehlt (CLI-stdout-
-        Dispose-Timeout beim Shutdown) → der "finale" Text stammt aus einem
-        Zwischen-Turn (z. B. ein Plan), nicht aus der echten Antwort →
-        `found=False` (stiller Fehlschlag, retryable).
+        Truncated stream: session events (session.start/turn_start) are
+        present, but the terminating `result` event is missing (CLI stdout
+        dispose timeout at shutdown) → the "final" text comes from an
+        intermediate turn (e.g. a plan), not from the real answer →
+        `found=False` (silent failure, retryable).
         """
         lines = [ln for ln in out.splitlines() if ln.strip()]
         result_val = None
@@ -237,9 +238,9 @@ class CopilotBackend(OneShotCliBackend):
                         last_content = v
         for val in (result_val, last_content, last_delta):
             if val and val.strip():
-                # Abgeschnitten: Session lief, aber kein terminierendes
-                # `result`-Event (und kein result-Feld älterer Schemas) →
-                # der Text ist ein Zwischenstand, keine finale Antwort.
+                # Truncated: the session ran, but no terminating
+                # `result` event (and no result field of older schemas) →
+                # the text is an intermediate state, not a final answer.
                 if saw_session and not saw_result_event and result_val is None:
                     return "", False
                 return val.strip(), True

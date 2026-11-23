@@ -1,8 +1,8 @@
-"""Authentifizierung + Autorisierung: lokale Benutzer, Rollen, Sessions, CSRF (ADR 0030).
+"""Authentication + authorization: local users, roles, sessions, CSRF (ADR 0030).
 
-Modi (``FABRIK_AUTH``): ``none`` (Default, nur Loopback), ``local`` und ``oidc`` (ADR 0046,
-Login-Ablauf in ``oidc.py``). Der Benutzer-Store liegt in ``state/users.json`` (scrypt-Hashes),
-Sessions nur im Speicher.
+Modes (``FABRIK_AUTH``): ``none`` (default, loopback only), ``local`` and ``oidc`` (ADR 0046,
+login flow in ``oidc.py``). The user store lives in ``state/users.json`` (scrypt hashes),
+sessions only in memory.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 from . import config
+from .i18n import t
 
 VIEWER, OPERATOR, ADMIN = "viewer", "operator", "admin"
 ROLES = (VIEWER, OPERATOR, ADMIN)  # aufsteigende Rechte
@@ -33,10 +34,10 @@ DEFAULT_SESSION_TTL_S = 8 * 3600
 MIN_PASSWORD_LEN = 8
 SCRYPT_N, SCRYPT_R, SCRYPT_P, SCRYPT_SALT_BYTES = 2**14, 8, 1, 16
 SCRYPT_MAXMEM = 64 * 1024 * 1024
-TOKEN_USER = "token"  # Principal-Name für FABRIK_TOKEN-Aufrufer  # nosec B105
+TOKEN_USER = "token"  # Principal name for FABRIK_TOKEN callers  # nosec B105
 
-# Routes ohne Login (Login-Maske, Liveness, Session-Status). Statische UI-Dateien
-# (alles außerhalb von /api/) sind ebenfalls öffentlich und enthalten keine Daten.
+# Routes without login (login form, liveness, session status). Static UI files
+# (everything outside /api/) are also public and contain no data.
 PUBLIC_API = ("/api/health", "/api/login", "/api/session", "/api/login/oidc", "/api/oidc/callback")
 PUBLIC_API_PREFIXES = ("/api/webhook/",)
 CONNECTIONS_PREFIX = "/api/connections"  # Schreiben (PUT/DELETE) nur admin (ADR 0052)
@@ -47,7 +48,7 @@ _sessions_lock = threading.Lock()
 
 
 class AuthError(ValueError):
-    """Ungültige Auth-Konfiguration oder Benutzerverwaltung."""
+    """Invalid auth configuration or user management."""
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ class Principal:
 
     name: str
     role: str
-    csrf: str | None = None  # nur bei Session-Auth; Token-Aufrufer sind CSRF-immun
+    csrf: str | None = None  # only with session auth; token callers are CSRF-immune
 
     def allows(self, required: str) -> bool:
         return ROLES.index(self.role) >= ROLES.index(required)
@@ -67,7 +68,7 @@ def mode() -> str:
     """Aktiver Auth-Modus aus ``FABRIK_AUTH`` (Default ``none``)."""
     value = os.environ.get("FABRIK_AUTH", MODE_NONE).strip().lower() or MODE_NONE
     if value not in MODES:
-        raise AuthError(f"FABRIK_AUTH={value!r} unbekannt (erlaubt: {', '.join(MODES)})")
+        raise AuthError(t("auth.fabrik_auth_unknown_allowed", value=value, v2=", ".join(MODES)))
     return value
 
 
@@ -80,7 +81,7 @@ def session_ttl() -> int:
 
 
 def is_loopback(host: str) -> bool:
-    """True für Loopback-Bind-Adressen (``localhost``, 127.0.0.0/8, ::1)."""
+    """True for loopback bind addresses (``localhost``, 127.0.0.0/8, ::1)."""
     if host == "localhost":
         return True
     try:
@@ -90,15 +91,12 @@ def is_loopback(host: str) -> bool:
 
 
 def check_bind(host: str) -> None:
-    """Bind auf Nicht-Loopback ohne Auth verweigern (``AuthError``)."""
+    """Refuse binding to non-loopback without auth (``AuthError``)."""
     if not is_loopback(host) and mode() == MODE_NONE:
-        raise AuthError(
-            f"Bind auf {host} verweigert: Nicht-Loopback braucht FABRIK_AUTH=local|oidc "
-            "(Benutzer anlegen: `fabrik user add <name>`)."
-        )
+        raise AuthError(t("auth.bind_to_refused_non_loopback", host=host))
 
 
-# ---------------------------------------------------------------- Passwörter
+# ---------------------------------------------------------------- passwords
 def hash_password(password: str) -> str:
     """scrypt-Hash im Format ``scrypt$n$r$p$salt$hash`` (hex)."""
     salt = secrets.token_bytes(SCRYPT_SALT_BYTES)
@@ -111,7 +109,7 @@ def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
 
 
 def verify_password(password: str, stored: str) -> bool:
-    """Passwort gegen gespeicherten Hash prüfen (konstante Zeit, kaputter Hash → False)."""
+    """Check a password against the stored hash (constant time, broken hash → False)."""
     try:
         scheme, n, r, p, salt, digest = stored.split("$")
         if scheme != "scrypt":
@@ -127,7 +125,7 @@ _DUMMY_HASH = hash_password(secrets.token_hex(8))  # gleiche Rechenzeit bei unbe
 
 # ---------------------------------------------------------------- Benutzer-Store
 class UserEntry(TypedDict):
-    """Persistierter Benutzer-Eintrag; fehlende ``role`` gilt als ``viewer``."""
+    """Persisted user entry; a missing ``role`` counts as ``viewer``."""
 
     hash: str
     role: NotRequired[str]
@@ -138,10 +136,10 @@ def _users_path() -> Path:
 
 
 def load_users() -> dict[str, UserEntry]:
-    """``{name: {"hash", "role"}}``; fehlende/defekte Datei → leer.
+    """``{name: {"hash", "role"}}``; missing/broken file → empty.
 
-    Ungültige Einträge (kein Mapping, ``hash`` fehlt/kein String, unbekannte Rolle)
-    werden verworfen — ein Login scheitert dann sauber statt mit 500."""
+    Invalid entries (not a mapping, ``hash`` missing/not a string, unknown role)
+    are discarded — a login then fails cleanly instead of with a 500."""
     try:
         data = json.loads(_users_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -166,35 +164,35 @@ def _save_users(users: dict[str, UserEntry]) -> None:
 
 def _check_role(role: str) -> None:
     if role not in ROLES:
-        raise AuthError(f"Rolle '{role}' unbekannt (erlaubt: {', '.join(ROLES)})")
+        raise AuthError(t("auth.role_unknown_allowed", role=role, v2=", ".join(ROLES)))
 
 
 def _check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LEN:
-        raise AuthError(f"Passwort zu kurz (mindestens {MIN_PASSWORD_LEN} Zeichen)")
+        raise AuthError(t("auth.password_too_short_at_least", v1=MIN_PASSWORD_LEN))
 
 
 def add_user(name: str, password: str, role: str = VIEWER) -> None:
-    """Benutzer anlegen (``AuthError`` bei ungültigem Namen/Passwort/Rolle oder Duplikat)."""
+    """Create a user (``AuthError`` on invalid name/password/role or duplicate)."""
     name = name.strip()
     if not name or any(c.isspace() or c in ":/" for c in name):
-        raise AuthError("Benutzername ungültig (leer, Leerzeichen, ':' und '/' verboten)")
+        raise AuthError(t("auth.invalid_username_empty_spaces_and"))
     _check_role(role)
     _check_password(password)
     with _users_lock:
         users = load_users()
         if name in users:
-            raise AuthError(f"Benutzer '{name}' existiert bereits")
+            raise AuthError(t("auth.user_already_exists", name=name))
         users[name] = {"hash": hash_password(password), "role": role}
         _save_users(users)
 
 
 def _update_user(name: str, *, hash: str | None = None, role: str | None = None) -> None:
-    """Nur die übergebenen Felder (``hash``/``role``) des Benutzers aktualisieren."""
+    """Update only the passed fields (``hash``/``role``) of the user."""
     with _users_lock:
         users = load_users()
         if name not in users:
-            raise AuthError(f"Benutzer '{name}' unbekannt")
+            raise AuthError(t("auth.user_unknown", name=name))
         if hash is not None:
             users[name]["hash"] = hash
         if role is not None:
@@ -203,14 +201,14 @@ def _update_user(name: str, *, hash: str | None = None, role: str | None = None)
 
 
 def set_password(name: str, password: str) -> None:
-    """Passwort ändern und alle Sessions des Benutzers beenden."""
+    """Change the password and end all of the user's sessions."""
     _check_password(password)
     _update_user(name, hash=hash_password(password))
     drop_user_sessions(name)
 
 
 def set_role(name: str, role: str) -> None:
-    """Rolle ändern (wirkt sofort, die Rolle wird pro Request nachgeschlagen)."""
+    """Change the role (takes effect immediately, the role is looked up per request)."""
     _check_role(role)
     _update_user(name, role=role)
 
@@ -221,14 +219,14 @@ class _Session:
     user: str
     csrf: str
     expires: float
-    role: str | None = None  # gesetzt bei OIDC-Sessions (kein Eintrag im Benutzer-Store)
+    role: str | None = None  # set for OIDC sessions (no entry in the user store)
 
 
 _sessions: dict[str, _Session] = {}
 
 
 def login(name: str, password: str) -> tuple[str, Principal] | None:
-    """Zugangsdaten prüfen; bei Erfolg ``(session_id, principal)``, sonst ``None``."""
+    """Check credentials; on success ``(session_id, principal)``, otherwise ``None``."""
     user = load_users().get(name)
     ok = verify_password(password, user["hash"] if user else _DUMMY_HASH)
     if not (user and ok):
@@ -237,10 +235,10 @@ def login(name: str, password: str) -> tuple[str, Principal] | None:
 
 
 def create_session(name: str, role: str, *, stored: bool = False) -> tuple[str, Principal]:
-    """Session anlegen und ``(session_id, principal)`` liefern.
+    """Create a session and return ``(session_id, principal)``.
 
-    ``stored=True``: Benutzer liegt im lokalen Store, die Rolle wird pro Request dort
-    nachgeschlagen. Sonst (OIDC) ist die Rolle in der Session fixiert."""
+    ``stored=True``: the user is in the local store, the role is looked up there per
+    request. Otherwise (OIDC) the role is fixed in the session."""
     sid, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     now = time.time()
     with _sessions_lock:
@@ -251,7 +249,7 @@ def create_session(name: str, role: str, *, stored: bool = False) -> tuple[str, 
 
 
 def session_principal(sid: str | None) -> Principal | None:
-    """Principal zur Session-Id; abgelaufen/unbekannt/Benutzer gelöscht → ``None``."""
+    """Principal for the session id; expired/unknown/user deleted → ``None``."""
     if not sid:
         return None
     with _sessions_lock:
@@ -274,7 +272,7 @@ def logout(sid: str | None) -> None:
 
 
 def drop_user_sessions(name: str) -> None:
-    """Alle Sessions eines lokalen Benutzers beenden (nur im eigenen Prozess wirksam)."""
+    """End all sessions of a local user (effective only in the own process)."""
     with _sessions_lock:
         for key in [k for k, s in _sessions.items() if s.user == name and s.role is None]:
             del _sessions[key]
@@ -282,9 +280,9 @@ def drop_user_sessions(name: str) -> None:
 
 # ---------------------------------------------------------------- Autorisierung
 def required_role(method: str, path: str) -> str | None:
-    """Mindestrolle für Route; ``None`` = öffentlich.
+    """Minimum role for a route; ``None`` = public.
 
-    GET → viewer; Schreib-Routes → operator; Settings (LLM-Provider, Branch, Connections) → admin."""
+    GET → viewer; write routes → operator; settings (LLM provider, branch, connections) → admin."""
     if not path.startswith("/api/") or path in PUBLIC_API or path.startswith(PUBLIC_API_PREFIXES):
         return None
     if method in ("GET", "HEAD"):
@@ -305,12 +303,12 @@ def token_principal(authorization: str) -> Principal | None:
 
 
 def csrf_ok(principal: Principal, supplied: str) -> bool:
-    """CSRF-Header prüfen; Token-Aufrufer (kein Cookie) brauchen keinen."""
+    """Check the CSRF header; token callers (no cookie) do not need one."""
     return principal.csrf is None or hmac.compare_digest(principal.csrf, supplied)
 
 
 def cookie_value(cookie_header: str, name: str = COOKIE_NAME) -> str | None:
-    """Wert des Cookies ``name`` (Default: Session-Id) aus dem ``Cookie``-Header ziehen."""
+    """Extract the value of cookie ``name`` (default: session id) from the ``Cookie`` header."""
     for part in cookie_header.split(";"):
         key, _, value = part.strip().partition("=")
         if key == name and value:
@@ -319,7 +317,7 @@ def cookie_value(cookie_header: str, name: str = COOKIE_NAME) -> str | None:
 
 
 def cookie_header(name: str, value: str, max_age: int, *, same_site: str = "Strict") -> str:
-    """``Set-Cookie``-Wert (HttpOnly; ``Secure`` per ``FABRIK_COOKIE_SECURE=1``); ``max_age=0`` löscht."""
+    """``Set-Cookie`` value (HttpOnly; ``Secure`` via ``FABRIK_COOKIE_SECURE=1``); ``max_age=0`` deletes."""
     attrs = f"{name}={value}; Path=/; HttpOnly; SameSite={same_site}; Max-Age={max_age}"
     if os.environ.get("FABRIK_COOKIE_SECURE") == "1":
         attrs += "; Secure"

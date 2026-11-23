@@ -1,10 +1,10 @@
-"""Live-Stream eines Runs per Server-Sent Events (``GET /api/run/<id>/stream``).
+"""Live stream of a run via server-sent events (``GET /api/run/<id>/stream``).
 
-Das Run-Log (``runs/<projekt>/<id>.log``) wird tail-artig gelesen und in
-vollständigen Zeilen gepusht; Statuswechsel kommen aus dem Run-Record. Jedes
-``log``-Event trägt als ``id`` den Byte-Offset *hinter* der Zeile — ein Reconnect
-mit ``Last-Event-ID`` setzt exakt dort fort (keine Duplikate). Jeder Payload
-läuft durch ``secrets._redact``.
+The run log (``runs/<project>/<id>.log``) is read tail-like and pushed in
+complete lines; status changes come from the run record. Every
+``log`` event carries as ``id`` the byte offset *after* the line — a reconnect
+with ``Last-Event-ID`` resumes exactly there (no duplicates). Every payload
+runs through ``secrets._redact``.
 """
 
 from __future__ import annotations
@@ -15,18 +15,19 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from . import secrets
+from .i18n import t
 from .runs import get_run, get_run_log_path
 from .secrets import _redact
 
 POLL_INTERVAL_S = 0.5  # Log-/Status-Polling serverseitig (Ziel: < 2 s Latenz)
-HEARTBEAT_S = 15.0  # SSE-Kommentar, hält Proxys offen und erkennt tote Clients
-CHUNK_BYTES = 64 * 1024  # max. Bytes pro log-Event (große Logs kommen in Häppchen)
+HEARTBEAT_S = 15.0  # SSE comment, keeps proxies open and detects dead clients
+CHUNK_BYTES = 64 * 1024  # max. bytes per log event (large logs come in small chunks)
 READ_BYTES = 1024 * 1024  # Lesefenster je Poll (Speicher/Redaction bleiben bounded)
 ACTIVE_STATUSES = frozenset({"running", "queued", "needs_approval"})
 
 
 def parse_offset(raw: str | None) -> int:
-    """``Last-Event-ID``/``offset`` → Byte-Offset; ungültig oder negativ → 0."""
+    """``Last-Event-ID``/``offset`` → byte offset; invalid or negative → 0."""
     try:
         return max(0, int((raw or "").strip()))
     except ValueError:
@@ -42,12 +43,11 @@ def sse(event: str, data: object, event_id: int | None = None) -> str:
 def _redact_with_offsets(text: str, offset: int) -> tuple[str, list[int]]:
     """Redact text while retaining the source byte offset of each output char.
 
-    Payload und Offsets kommen aus dem SELBEN Durchlauf, damit ihre Längen nie
-    auseinanderlaufen können (eine Divergenz würde die für den SSE-Reconnect
-    verwendeten Byte-Offsets korrigieren und Daten verlieren). Das Ergebnis wird
-    gegen den Repo-Helfer ``secrets._redact`` geprüft, der weiterhin die
-    Payload-Quelle der Wahrheit ist: weichen die beiden je auseinander, schlägt
-    das hier laut fehl, statt die falschen Bytes zu maskieren.
+    Payload and offsets come from the SAME pass so their lengths can never
+    diverge (a divergence would shift the byte offsets used for the SSE reconnect
+    and lose data). The result is checked against the repo helper ``secrets._redact``,
+    which remains the payload source of truth: if the two ever diverge, this
+    fails loudly instead of masking the wrong bytes.
     """
     original = text
     chars = list(text)
@@ -78,18 +78,18 @@ def _redact_with_offsets(text: str, offset: int) -> tuple[str, list[int]]:
         chars, boundaries = redacted, redacted_boundaries
         text = "".join(chars)
     redacted_text = "".join(chars)
-    # Gleicher Durchlauf wie `boundaries` → Längen stimmen immer überein.
-    # Cross-Check gegen den Repo-Helfer, damit eine Änderung an `_redact`
-    # hier laut auffällt, statt die Offsets still zu verschieben.
-    assert redacted_text == _redact(original), "Stream-Redaction weicht von secrets._redact ab"
+    # Same pass as `boundaries` → lengths always match.
+    # Cross-check against the repo helper so a change to `_redact`
+    # becomes loudly visible here instead of silently shifting the offsets.
+    assert redacted_text == _redact(original), t("stream.stream_redaction_deviates_from_secrets")
     return redacted_text, boundaries
 
 
 def _read_lines(path: Path, offset: int, final: bool) -> bytes:
-    """Bytes ab ``offset`` bis zur letzten Zeilengrenze im (bounded) Lesefenster.
+    """Bytes from ``offset`` to the last line boundary in the (bounded) read window.
 
-    Am Dateiende mit ``final`` auch die unvollständige Schlusszeile; ohne
-    Zeilengrenze im Fenster wird in ``READ_BYTES``-Schritten weitergelesen."""
+    At end of file with ``final`` also the incomplete last line; without a
+    line boundary in the window, reading continues in ``READ_BYTES`` steps."""
     buf = bytearray()
     with path.open("rb") as f:
         f.seek(offset)
@@ -106,13 +106,13 @@ def _read_lines(path: Path, offset: int, final: bool) -> bytes:
 
 
 def _read_chunk_with_offsets(path: Path | None, offset: int, final: bool = False) -> tuple[str, int, list[int]]:
-    """Ab ``offset`` bis zur letzten vollständigen Zeile lesen → (redigierter Text, neuer Offset).
+    """Read from ``offset`` to the last complete line → (redacted text, new offset).
 
-    Liest höchstens ``READ_BYTES`` je Aufruf (Rest folgt im nächsten Aufruf) und
-    schneidet an einer Zeilengrenze; nur eine einzelne Zeile, die länger als das
-    Fenster ist, vergrößert es. Redigiert wird der gelesene Bereich in einem
-    Durchlauf, ein Secret (einzeilig) kann also nicht über Fenster hinweg
-    unmaskiert bleiben. Unvollständige Schlusszeilen bleiben liegen, außer ``final``."""
+    Reads at most ``READ_BYTES`` per call (the rest follows in the next call) and
+    cuts at a line boundary; only a single line longer than the
+    window enlarges it. The read range is redacted in one
+    pass, so a secret (single-line) cannot stay unmasked across windows.
+    Incomplete last lines stay unread, except ``final``."""
     if path is None:
         return "", offset, []
     try:
@@ -126,7 +126,7 @@ def _read_chunk_with_offsets(path: Path | None, offset: int, final: bool = False
 
 
 def read_chunk(path: Path | None, offset: int, final: bool = False) -> tuple[str, int]:
-    """Ab ``offset`` bis zur letzten vollständigen Zeile lesen → (Text, Byte-Offset)."""
+    """Read from ``offset`` to the last complete line → (text, byte offset)."""
     text, new_offset, _ = _read_chunk_with_offsets(path, offset, final)
     return text, new_offset
 
@@ -149,11 +149,11 @@ def iter_run_events(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> Iterator[str]:
-    """SSE-Events eines Runs: ``log`` (id = Offset), ``status``, am Ende ``end``.
+    """SSE events of a run: ``log`` (id = offset), ``status``, at the end ``end``.
 
-    Endet nach dem letzten Log-Rest, sobald der Run nicht mehr aktiv ist (oder gar
-    nicht existiert). Der Status wird *vor* dem Log gelesen, damit der Drain nach
-    einem Terminalstatus nichts verpasst."""
+    Ends after the last log remainder as soon as the run is no longer active (or does not
+    exist at all). The status is read *before* the log so the drain
+    misses nothing after a terminal status."""
     last_status: str | None = None
     last_sent = clock()
     while True:

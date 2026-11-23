@@ -20,12 +20,12 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 
 | # | Titel | Status |
 |---|-------|--------|
-| [0001](0001-dogfooding-loops.md) | Fabrik-Dogfooding — Fabrik entwickelt Fabrik | Akzeptiert |
-| [0002](0002-sessionlog-sqlite.md) | Durable Session-Log in SQLite (End-Schema) | Akzeptiert, teilweise ersetzt durch 0034 |
-| [0003](0003-review-step.md) | `review`-Step — Cross-Model Cold Critic | Akzeptiert |
-| [0004](0004-branch-switching.md) | Branch-Wechsel zur Laufzeit (UI) | Akzeptiert, UI-Teil entfernt (2026-11-04) |
-| [0005](0005-opencode-dual-version.md) | opencode-Backend — Dual-Support 1.x/2.x | Akzeptiert |
-| [0006](0006-issue-refine-loop.md) | Issue-Refine-Loop (ersetzt Triage) | Akzeptiert |
+| [0001](0001-dogfooding-loops.md) | Fabrik dogfooding — Fabrik develops Fabrik | Accepted |
+| [0002](0002-sessionlog-sqlite.md) | Durable session log in SQLite (end schema) | Accepted, partially superseded by 0034 |
+| [0003](0003-review-step.md) | `review` step — cross-model cold critic | Accepted |
+| [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04) |
+| [0005](0005-opencode-dual-version.md) | opencode backend — dual support 1.x/2.x | Accepted |
+| [0006](0006-issue-refine-loop.md) | Issue refine loop (replaces triage) | Accepted |
 | [0008](0008-shell-untrusted-input-env.md) | Shell steps with untrusted input — `env:` instead of inline substitution | Accepted (amended 2026-11-03: trust default `extra_context`) |
 | [0009](0009-run-id-response.md) | `run_id` before worker start + `resumed` flag in the API | Draft |
 | [0010](0010-dual-identity-pr-pipeline.md) | Dual-identity PR pipeline (builder ≠ reviewer, human only when critical) | Accepted; amendment 2026-10-27: concrete identities = config; amendment 2026-11-03: per-project identities, signed API commits |
@@ -77,3 +77,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
 | [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
 | [0064](0064-mcp-server-stdio.md) | MCP-Server — fabrik als stdio-Endpoint für MCP-fähige Agenten (Runs, Specs, Approvals) | Accepted (2026-11-21) |
+| [0065](0065-golden-runs-eval-harness.md) | Golden Runs — gepinnte Baseline + Eval-Harness (`fabrik eval`, opt-in CI-Gate) | Accepted (2026-11-21) |

@@ -1,4 +1,4 @@
-"""Benannte Verbindungen (ADR 0052): Tabelle ``connections`` für LLM-Provider und Agent-Backends.
+"""Named connections (ADR 0052): table ``connections`` for LLM providers and agent backends.
 
 Revision ID: 0002
 Revises: 0001

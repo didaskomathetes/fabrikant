@@ -1,30 +1,30 @@
-"""Push über die GitHub-API: lokale Commits als von GitHub signierte Commits nachbauen.
+"""Push via the GitHub API: rebuild local commits as GitHub-signed commits.
 
-Repos mit `required_signatures` lehnen lokal erzeugte, unsignierte Commits ab. Statt
-`git push` baut :class:`ApiPusher` jeden noch nicht auf GitHub liegenden Commit über die
-Git-Data-API nach (Blobs → Tree → Commit → Ref). Ohne eigene Author-/Committer-Angaben
-signiert GitHub Commits, die eine GitHub-App so anlegt, selbst ("Verified", Autor = App-Bot).
-Kein Schlüssel auf dem Host nötig.
+Repos with `required_signatures` reject locally created, unsigned commits. Instead of
+`git push`, :class:`ApiPusher` rebuilds every commit not yet on GitHub via the
+Git Data API (blobs → tree → commit → ref). Without explicit author/committer data,
+GitHub signs commits created by a GitHub App itself ("Verified", author = app bot).
+No key is needed on the host.
 
-Ablauf von :meth:`ApiPusher.push`:
-  1. Remote-Head des Branches lesen (API) und lokal holen; ohne `force` muss er Vorfahr
-     des lokalen Branches sein (sonst wie `git push`: abgelehnt, non-fast-forward).
-  2. Commits `<branch> --not --remotes=origin` in Topo-Reihenfolge nachbauen; Parents, die selbst
-     nachgebaut wurden, werden ersetzt. Der Tree eines API-Commits ist inhaltsgleich zum lokalen
-     und hat deshalb dieselbe SHA — das wird pro Commit geprüft.
-  3. Ref setzen (neu: POST, sonst PATCH, `force` nur auf Wunsch).
-  4. Lokal angleichen: Remote-Branch holen, `reset --soft` auf den neuen Head (Index und
-     Arbeitsbaum bleiben, weil der Tree identisch ist).
+Flow of :meth:`ApiPusher.push`:
+  1. Read the branch's remote head (API) and fetch it locally; without `force` it must be an
+     ancestor of the local branch (otherwise like `git push`: rejected, non-fast-forward).
+  2. Rebuild commits `<branch> --not --remotes=origin` in topological order; parents that were
+     rebuilt themselves are replaced. The tree of an API commit has identical content to the local
+     one and therefore the same SHA — this is checked per commit.
+  3. Set the ref (new: POST, otherwise PATCH, `force` only on request).
+  4. Align locally: fetch the remote branch, `reset --soft` to the new head (index and
+     working tree stay, because the tree is identical).
 
-GitHub-spezifisch (Git-Data-API, Signatur durch GitHub); gehört mit den Provider-Ports
-(ADR 0062) in den GitHub-Adapter. Auf anderen Hosts verweigert :func:`push_branch`
-den API-Weg mit `HostingNotSupported`.
+GitHub-specific (Git Data API, signing by GitHub); belongs with the provider ports
+(ADR 0062) in the GitHub adapter. On other hosts :func:`push_branch` refuses
+the API path with `HostingNotSupported`.
 
-Grenzen: Root-Commits (ohne Parent) werden nicht unterstützt. Autor/Datum der lokalen
-Commits gehen verloren (Autor = App); die Message bleibt.
+Limits: root commits (without parent) are not supported. Author/date of the local
+commits are lost (author = app); the message stays.
 
-:func:`push_branch` wählt den Weg nach `gitops.commit_via()` (Spec `commit_via: git|api`).
-CLI für Agents (pusht den aktuellen Branch, Weg wie im Projekt eingestellt)::
+:func:`push_branch` picks the path according to `gitops.commit_via()` (spec `commit_via: git|api`).
+CLI for agents (pushes the current branch, path as configured in the project)::
 
     python -m fabrik.push [--force]
 """
@@ -46,6 +46,7 @@ from . import config, gitops
 from .failures import GitError, classify_exception, exit_code
 from .hosting import GITHUB_HOST, HostingNotSupported, current_spec, repo_host
 from .hosting.select import HOSTING_KEY
+from .i18n import t
 from .secrets import _redact
 
 GIT_TIMEOUT_S = 300
@@ -54,13 +55,13 @@ MODE_SUBMODULE = "160000"
 HTTP_NOT_FOUND = 404
 HTTP_UNPROCESSABLE = 422
 _GITHUB_REMOTE = re.compile(r"github\.com[:/](?P<repo>[^/]+/[^/]+?)(?:\.git)?/?$")
-# Wortlaut wie bei `git push`, damit Logs/Fehlerklassen gleich aussehen.
+# Wording as with `git push`, so logs/failure classes look the same.
 NON_FAST_FORWARD = "rejected (non-fast-forward)"
 
 
 @dataclass(frozen=True)
 class Change:
-    """Eine Zeile aus `git diff-tree --raw`: neuer Stand eines Pfads (gelöscht → `deleted`)."""
+    """One line of `git diff-tree --raw`: new state of a path (deleted → `deleted`)."""
 
     path: str
     mode: str
@@ -89,7 +90,7 @@ def parse_diff_tree(raw: str) -> list[Change]:
             continue
         _old_mode, new_mode, _old_sha, new_sha, status = meta[1:].split(" ")
         if "\ufffd" in path:
-            msg = f"Pfad {path!r} ist nicht UTF-8 — per API nicht pushbar (commit_via: git nutzen)"
+            msg = t("apicommit.path_is_not_utf_8", path=path)
             raise GitError(msg, msg)
         changes.append(Change(path=path, mode=new_mode, sha=new_sha, deleted=status.startswith("D")))
     return changes
@@ -99,7 +100,7 @@ def repo_from_remote(url: str) -> str:
     """`https://github.com/o/r.git` oder `git@github.com:o/r` → `o/r`."""
     m = _GITHUB_REMOTE.search(url.strip())
     if not m:
-        raise ValueError(f"kein GitHub-Remote: {_redact(url)!r}")
+        raise ValueError(t("apicommit.no_github_remote", v1=_redact(url)))
     return m.group("repo")
 
 
@@ -108,10 +109,10 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
 
 
 def _git(root: Path, *args: str) -> str:
-    """`git -C root <args>` → stdout; Fehler als GitError mit redigierter Ausgabe.
+    """`git -C root <args>` → stdout; errors as GitError with redacted output.
 
-    Ausgabe wird tolerant dekodiert (kein UnicodeDecodeError mitten im Push); nicht-UTF-8-Pfade
-    erkennt :func:`parse_diff_tree` am Ersatzzeichen."""
+    Output is decoded tolerantly (no UnicodeDecodeError in the middle of a push); non-UTF-8 paths
+    are recognized by :func:`parse_diff_tree` via the replacement character."""
     p = _run_git(root, *args)
     if p.returncode != 0:
         output = _redact((p.stderr or p.stdout).decode(errors="replace").strip())
@@ -121,7 +122,7 @@ def _git(root: Path, *args: str) -> str:
 
 @dataclass
 class PushResult:
-    """Ergebnis eines API-Pushs: neuer Head, Anzahl nachgebauter Commits, alle signiert?"""
+    """Result of an API push: new head, number of rebuilt commits, all signed?"""
 
     branch: str
     sha: str
@@ -136,7 +137,7 @@ class PushResult:
 
 
 class ApiPusher:
-    """Pusht den lokalen `branch` eines Worktrees per Git-Data-API nach `repo` (Token: Builder)."""
+    """Pushes a worktree's local `branch` to `repo` via the Git Data API (token: builder)."""
 
     def __init__(self, root: Path, repo: str, token: str, fetch: Callable[[str], None] | None = None):
         self.root = Path(root)
@@ -161,7 +162,7 @@ class ApiPusher:
     def _blob(self, sha: str) -> bytes:
         p = self._run("cat-file", "blob", sha)
         if p.returncode != 0:
-            raise GitError(f"git cat-file {sha}: fehlt", p.stderr.decode(errors="replace"))
+            raise GitError(t("apicommit.git_cat_file_missing", sha=sha), p.stderr.decode(errors="replace"))
         return p.stdout
 
     # ── API ──────────────────────────────────────────────────────────────────
@@ -182,9 +183,9 @@ class ApiPusher:
 
     # ── Push ─────────────────────────────────────────────────────────────────
     def push(self, branch: str, *, force: bool = False) -> PushResult:
-        """Lokalen `branch` als signierte Commits pushen (wie `git push origin <branch>`).
+        """Push the local `branch` as signed commits (like `git push origin <branch>`).
 
-        `force` überschreibt einen abweichenden Remote-Stand."""
+        `force` overwrites a diverging remote state."""
         head = self.git("rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}").strip()
         remote = self.remote_head(branch)
         if remote:
@@ -193,11 +194,11 @@ class ApiPusher:
                 return PushResult(branch=branch, sha=head)
             if not self._is_ancestor(remote, head):
                 if self._same_tree(remote, head):
-                    # Früherer Push ist durchgelaufen, nur das lokale Angleichen nicht: nachholen.
+                    # An earlier push went through, only the local alignment did not: catch up.
                     self._sync_local(branch, remote)
                     return PushResult(branch=branch, sha=remote)
                 if not force:
-                    msg = f"{NON_FAST_FORWARD}: {branch} hat auf GitHub Commits, die lokal fehlen"
+                    msg = t("apicommit.has_commits_on_github_that", v1=NON_FAST_FORWARD, branch=branch)
                     raise GitError(msg, msg)
         exclude = [remote] if remote else []
         pending = self.git("rev-list", "--reverse", "--topo-order", head, "--not", "--remotes=origin", *exclude)
@@ -213,7 +214,7 @@ class ApiPusher:
     def _recreate(self, commit: str, result: PushResult) -> str:
         parents = self.git("rev-list", "--parents", "-n", "1", commit).split()[1:]
         if not parents:
-            msg = f"Root-Commit {commit[:7]} kann nicht per API gepusht werden"
+            msg = t("apicommit.root_commit_cannot_be_pushed", v1=commit[:7])
             raise GitError(msg, msg)
         tree = self.git("rev-parse", f"{commit}^{{tree}}").strip()
         changes = parse_diff_tree(self.git("diff-tree", "-r", "--raw", "-z", "--no-renames", parents[0], commit))
@@ -228,10 +229,7 @@ class ApiPusher:
             )
         except urllib.error.HTTPError as e:
             if e.code == HTTP_UNPROCESSABLE:
-                msg = (
-                    f"Commit {commit[:7]}: GitHub kennt einen Parent nicht (veralteter origin-Tracking-Ref? "
-                    "`git fetch --prune origin`)"
-                )
+                msg = t("apicommit.commit_github_does_not_know", v1=commit[:7])
                 raise GitError(msg, msg) from e
             raise
         result.verified = result.verified and bool((created.get("verification") or {}).get("verified"))
@@ -262,21 +260,21 @@ class ApiPusher:
                 self._api("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": sha})
         except urllib.error.HTTPError as e:
             if e.code == HTTP_UNPROCESSABLE:
-                msg = f"{NON_FAST_FORWARD}: Ref {branch} nicht gesetzt (HTTP 422)"
+                msg = t("apicommit.ref_not_set_http_422", v1=NON_FAST_FORWARD, branch=branch)
                 raise GitError(msg, msg) from e
             raise
 
     def _sync_local(self, branch: str, sha: str) -> None:
-        """Lokalen Branch auf die signierten Commits setzen; Index/Arbeitsbaum bleiben (gleicher Tree)."""
+        """Set the local branch to the signed commits; index/working tree stay (same tree)."""
         self.fetch(branch)
         checkout = self._checkout_dir(branch)
-        if checkout:  # auch ein anderer Worktree: dort bleiben Index/Arbeitsbaum konsistent
+        if checkout:  # also another worktree: there the index/working tree stay consistent
             _git(checkout, "reset", "--soft", sha)
         else:
             self.git("update-ref", f"refs/heads/{branch}", sha)
 
     def _checkout_dir(self, branch: str) -> Path | None:
-        """Worktree-Verzeichnis, in dem `branch` ausgecheckt ist (None: nirgends)."""
+        """Worktree directory in which `branch` is checked out (None: nowhere)."""
         current: Path | None = None
         for line in self.git("worktree", "list", "--porcelain").splitlines():
             if line.startswith("worktree "):
@@ -294,27 +292,29 @@ def push_branch(
     repo: str | None = None,
     protected: list[str] | None = None,
 ) -> str:
-    """`branch` pushen — per `git push origin` oder (Projekt `commit_via: api`) per API. Liefert Summary.
+    """Push `branch` — via `git push origin` or (project `commit_via: api`) via the API. Returns a summary.
 
-    Geschützte Branches (`protected`, Default `config.PROTECTED_DEFAULT`) und detached HEAD werden verweigert.
-    `commit_via: api` ist GitHub-spezifisch (GitHub signiert die API-Commits); auf anderen
-    Hosts wirft es `HostingNotSupported` (dokumentierte Lücke, ADR 0062)."""
+    Protected branches (`protected`, default `config.PROTECTED_DEFAULT`) and detached HEAD are refused.
+    `commit_via: api` is GitHub-specific (GitHub signs the API commits); on other
+    hosts it raises `HostingNotSupported` (documented gap, ADR 0062)."""
+
     root = Path(root)
     if branch == "HEAD" or branch in (protected or config.PROTECTED_DEFAULT):
-        msg = f"BLOCKED: push auf geschützten Branch '{branch}' verweigert"
+        msg = t("apicommit.blocked_push_to_protected_branch", branch=branch)
         raise GitError(msg, msg)
     if gitops.commit_via() != gitops.COMMIT_VIA_API:
         _git(root, "push", *(["--force-with-lease"] if force else []), "origin", branch)
         return f"push {branch}"
     remote_url = repo or _git(root, "remote", "get-url", "origin")
-    # Entscheidung über den Host, bevor ein Provider (und dessen Credentials) gebaut wird.
+    # Decide on the host before a provider (and its credentials) is built.
     host = repo_host(remote_url)
     if host not in (None, GITHUB_HOST):
         raise HostingNotSupported(
             "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
             f"der Repo-Host ({host}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
         )
-    # Ein nackter owner/name-Slug verrät den Host nicht — dann entscheidet `hosting:` der aktiven Spec.
+    # A bare owner/name slug does not reveal the host — then `hosting:` of the active spec decides.
+
     spec_hosting = current_spec().get(HOSTING_KEY)
     if isinstance(spec_hosting, str) and spec_hosting.strip().lower() != "github":
         raise HostingNotSupported(
@@ -327,12 +327,12 @@ def push_branch(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI für Agents: aktuellen Branch pushen (Weg wie im Projekt eingestellt, FABRIK_COMMIT_VIA)."""
+    """CLI for agents: push the current branch (path as configured in the project, FABRIK_COMMIT_VIA)."""
     parser = argparse.ArgumentParser(
         prog="python -m fabrik.push", description=__doc__.splitlines()[0] if __doc__ else None
     )
-    parser.add_argument("--force", action="store_true", help="abweichenden Remote-Stand überschreiben")
-    parser.add_argument("--repo", help="owner/name (Default: aus origin)")
+    parser.add_argument("--force", action="store_true", help=t("apicommit.overwrite_diverging_remote_state"))
+    parser.add_argument("--repo", help=t("apicommit.owner_name_default_from_origin"))
     args = parser.parse_args(argv)
     root = Path.cwd()
     try:

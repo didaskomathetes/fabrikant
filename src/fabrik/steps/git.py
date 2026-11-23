@@ -1,15 +1,15 @@
-"""Step: git (fetch/branch/commit/push, geschützte Branches).
+"""Step: git (fetch/branch/commit/push, protected branches).
 
-`commit` auf einem sauberen Tree ist ein erfolgreicher No-Op
-("nothing to commit") — idempotente Re-Runs/Resumes brechen nicht ab.
+`commit` on a clean tree is a successful no-op
+("nothing to commit") — idempotent re-runs/resumes do not abort.
 
-`push` geht je nach Projekt (`commit_via`) per `git push` oder als von GitHub
-signierte API-Commits (`apicommit`).
+`push` goes, depending on the project (`commit_via`), via `git push` or as
+GitHub-signed API commits (`apicommit`).
 
-`commit.add` sind Git-Pathspecs relativ zum workdir (bei Monorepos der
-Projekt-Subpfad!). Default ist `:/` = ganzes Repo. Bleiben nach dem Staging
-Änderungen übrig (z. B. `.github/` außerhalb von `.`), schlägt der Step fehl,
-statt sie still zu verwerfen (Issue #83 / PR #201).
+`commit.add` are git pathspecs relative to the workdir (for monorepos the
+project subpath!). Default is `:/` = whole repo. If changes remain after
+staging (e.g. `.github/` outside `.`), the step fails instead of
+silently discarding them (issue #83 / PR #201).
 """
 
 from __future__ import annotations
@@ -22,11 +22,12 @@ from ..apicommit import push_branch
 from ..context import _substitute, missing_vars
 from ..failures import GitError, failed
 from ..gitops import repo_lock
+from ..i18n import t
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..validation import validate_branch_name
 
-# Pathspec-Magic für die Repo-Wurzel — unabhängig vom cwd (Subpfad-Worktrees).
+# Pathspec magic for the repo root — independent of cwd (subpath worktrees).
 STAGE_ALL = ":/"
 
 
@@ -39,13 +40,13 @@ def _git(ctx: dict, base: Path, *args: str, check: bool = True) -> str:
 
 
 def _nothing_staged(base: Path) -> bool:
-    """True, wenn der Index nichts zu committen hat (Exit-Code, locale-unabhängig)."""
+    """True if the index has nothing to commit (exit code, locale-independent)."""
     p = subprocess.run(["git", "-C", str(base), "diff", "--cached", "--quiet"], capture_output=True, timeout=300)
     return p.returncode == 0
 
 
 def _unstaged_paths(ctx: dict, base: Path) -> list[str]:
-    """Repo-relative Pfade mit ungestagten oder untracked Änderungen (ohne Ignored)."""
+    """Repo-relative paths with unstaged or untracked changes (without ignored)."""
     changed = _git(ctx, base, "diff", "--name-only", "--", STAGE_ALL)
     untracked = _git(ctx, base, "ls-files", "--others", "--exclude-standard", "--full-name", "--", STAGE_ALL)
     return sorted({p for p in (changed + "\n" + untracked).splitlines() if p})
@@ -55,19 +56,19 @@ def _step_git(ctx: dict, step: dict) -> dict:
     base = Path(ctx["workdir"])
     summary_parts = []
     if step.get("fetch"):
-        with repo_lock(base):  # gemeinsames Repo: nicht parallel zu worktree add (Issue #460)
+        with repo_lock(base):  # shared repo: not parallel to worktree add (issue #460)
             _git(ctx, base, "fetch", "origin")
         summary_parts.append("fetch")
     if step.get("branch") and (missing := missing_vars(step["branch"], ctx)):
-        # Typisch ein manueller Run ohne Trigger-Variablen — klar benennen statt "unzulässige Zeichen".
+        # Typically a manual run without trigger variables — name it clearly instead of "illegal characters".
         hint = " ".join(f"--var {name}=…" for name in missing)
         raise ValueError(f"Branch {step['branch']!r}: Variable(n) fehlen: {', '.join(missing)} (manuell: {hint})")
     branch = _substitute(step["branch"], ctx) if step.get("branch") else None
     if branch:
         validate_branch_name(branch)
-        # Startpunkt-Priorität: origin/<branch> (track, Remote-Ref existiert)
-        # → lokaler Branch (existiert) → HEAD (NEUER Branch aus der Base).
-        # check=False: fehlender Ref ist exit 1 — Normalfall, kein Gate.
+        # Start point priority: origin/<branch> (track, remote ref exists)
+        # → local branch (exists) → HEAD (NEW branch from the base).
+        # check=False: a missing ref is exit 1 — normal case, no gate.
         start_point = "HEAD"
         if _git(ctx, base, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False):
             start_point = branch
@@ -84,13 +85,12 @@ def _step_git(ctx: dict, step: dict) -> dict:
         leftover = _unstaged_paths(ctx, base)
         if leftover:
             return failed(
-                f"BLOCKED: {len(leftover)} Änderung(en) außerhalb von commit.add "
-                f"nicht gestaged: {', '.join(leftover[:5])}",
-                FailureKind.ENVIRONMENT,  # commit.add der Spec deckt die Änderungen nicht ab
+                t("steps.git.blocked_change_s_outside_commit", v1=len(leftover), v2=", ".join(leftover[:5])),
+                FailureKind.ENVIRONMENT,  # the spec's commit.add does not cover the changes
                 output="\n".join(leftover),
             )
         if _nothing_staged(base):
-            # Clean tree (idempotenter Re-Run/Resume): No-Op, kein Fehler.
+            # Clean tree (idempotent re-run/resume): no-op, no error.
             summary_parts.append("commit (no-op: nothing to commit)")
         else:
             _git(ctx, base, "commit", "-m", _substitute(commit["message"], ctx))
@@ -99,9 +99,7 @@ def _step_git(ctx: dict, step: dict) -> dict:
         protected = step.get("protected") or config.PROTECTED_DEFAULT
         cur = _git(ctx, base, "rev-parse", "--abbrev-ref", "HEAD")
         if cur in protected or cur == "HEAD":
-            return failed(
-                f"BLOCKED: push auf geschützten Branch '{cur}' verweigert", FailureKind.ENVIRONMENT, output=""
-            )
+            return failed(t("steps.git.blocked_push_to_protected_branch", cur=cur), FailureKind.ENVIRONMENT, output="")
         validate_branch_name(cur)
         summary_parts.append(push_branch(base, cur, protected=protected))
-    return {"ok": True, "summary": ", ".join(summary_parts) or "kein-op"}
+    return {"ok": True, "summary": ", ".join(summary_parts) or t("steps.git.no_op")}

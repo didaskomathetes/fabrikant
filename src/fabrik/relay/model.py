@@ -1,6 +1,6 @@
-"""Relay-Domänenmodell (ADR 0037): Brief (Issue), Handoff (Branch-Datei), Entscheidung pro Task.
+"""Relay domain model (ADR 0037): brief (issue), handoff (branch file), decision per task.
 
-Reine Logik ohne I/O — GitHub, Git und Run-API liegen in `github`/`workspace`/`commands`.
+Pure logic without I/O — GitHub, git and run API live in `github`/`workspace`/`commands`.
 """
 
 from __future__ import annotations
@@ -14,21 +14,22 @@ from functools import cached_property
 
 import yaml
 
+from ..i18n import t
 from ..retry import RetryPolicy
 from ..runmodel import FailureKind
 
 DEFAULT_MAX_SESSIONS = 30
 DEFAULT_SESSION_MINUTES = 30
-# Sessions ohne messbaren Fortschritt in Folge → blocked (sonst verbrennt ein Task Sessions).
+# Sessions without measurable progress in a row → blocked (otherwise a task burns sessions).
 STALL_LIMIT = 2
 
-# Pflicht-Abschnitte des Briefs (`## Goal` …); ohne sie startet keine Session.
+# Required sections of the brief (`## Goal` …); without them no session starts.
 REQUIRED_SECTIONS = ("goal", "session", "verify")
 SETTINGS_SECTION = "settings"
 AUDIT_ACCESS_SECTION = "audit access"
 AUDIT_FACTS_SECTION = "audit facts"
 LOG_SECTION = "log"
-# Vom Agent bei `done` geschrieben bzw. von audit-publish gesetzt; beide zeigt der Status-Kommentar.
+# Written by the agent on `done` or set by audit-publish; the status comment shows both.
 RESULT_SECTION = "result"
 AUDIT_SECTION = "audit"
 
@@ -38,7 +39,7 @@ _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.S)
 
 
 class Status(StrEnum):
-    """Task-Status im Handoff (vom Agent gesetzt, von der Harness geprüft)."""
+    """Task status in the handoff (set by the agent, checked by the harness)."""
 
     ACTIVE = "active"
     BLOCKED = "blocked"
@@ -46,7 +47,7 @@ class Status(StrEnum):
 
 
 class Action(StrEnum):
-    """Was der Dispatcher mit einem Task tut."""
+    """What the dispatcher does with a task."""
 
     SESSION = "session"
     AUDIT = "audit"
@@ -60,7 +61,7 @@ class HandoffError(ValueError):
 
 @dataclass(frozen=True)
 class Labels:
-    """GitHub-Labels eines Relay-Tasks; nur das Opt-in-Label ist konfigurierbar."""
+    """GitHub labels of a relay task; only the opt-in label is configurable."""
 
     task: str = "fabrik-relay"
     blocked: str = "relay: blocked"
@@ -69,7 +70,7 @@ class Labels:
 
 
 def normalize_login(login: str | None) -> str:
-    """GitHub-Login vergleichbar machen (`app/x`, `x[bot]`, Groß/Klein → `x`)."""
+    """Make a GitHub login comparable (`app/x`, `x[bot]`, upper/lower case → `x`)."""
     name = (login or "").strip().lower()
     name = name.removeprefix("app/")
     return name.removesuffix("[bot]")
@@ -85,12 +86,12 @@ def parse_time(value: object) -> datetime | None:
         try:
             dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
         except ValueError as e:
-            raise HandoffError(f"keine ISO-Zeit: {value!r}") from e
+            raise HandoffError(t("relay.model.not_an_iso_time", value=value)) from e
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 def format_time(dt: datetime | None) -> str:
-    """aware datetime → `2026-10-21T14:02:00Z` (leer für None)."""
+    """aware datetime → `2026-10-21T14:02:00Z` (empty for None)."""
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if dt else ""
 
 
@@ -115,11 +116,11 @@ def _positive_int(raw: str | None, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
-    """`## Settings` des Briefs (`key: value`-Zeilen); unbekannte Keys werden ignoriert."""
+    """`## Settings` of the brief (`key: value` lines); unknown keys are ignored."""
 
     max_sessions: int = DEFAULT_MAX_SESSIONS
     session_minutes: int = DEFAULT_SESSION_MINUTES
-    # Zusätzliche Pfade (Globs), die Sessions committen dürfen; das Relay-Verzeichnis immer.
+    # Additional paths (globs) sessions may commit; the relay directory always.
     scope: tuple[str, ...] = ()
 
     @classmethod
@@ -157,7 +158,7 @@ class Brief:
 
     @property
     def verify_sha256(self) -> str:
-        """Hash der `## Verify`-Fassung (Whitespace-normalisiert) — pinnt die Invarianten."""
+        """Hash of the `## Verify` version (whitespace-normalized) — pins the invariants."""
         normalized = "\n".join(line.rstrip() for line in self.verify.strip().splitlines())
         return hashlib.sha256(normalized.encode()).hexdigest()
 
@@ -172,14 +173,14 @@ class Brief:
         return Settings.parse(self.sections.get(SETTINGS_SECTION, ""))
 
 
-# Felder, die nur die Harness schreibt; Agent-Änderungen daran setzt der Check-in zurück.
+# Fields only the harness writes; agent changes to them are reset by the check-in.
 HARNESS_FIELDS = ("issue", "session", "verify_sha256", "verify_result", "stalled", "last_session")
 _TIME_FIELDS = ("not_before", "last_session")
 
 
 @dataclass
 class Handoff:
-    """`.fabrik/relay/<N>/HANDOFF.md`: YAML-Front-Matter (Zustand) + Markdown (Gedächtnis)."""
+    """`.fabrik/relay/<N>/HANDOFF.md`: YAML front matter (state) + Markdown (memory)."""
 
     issue: int
     status: Status = Status.ACTIVE
@@ -208,13 +209,13 @@ class Handoff:
     def parse(cls, text: str) -> Handoff:
         m = _FRONT_MATTER_RE.match(text.replace("\r\n", "\n"))
         if not m:
-            raise HandoffError("Front Matter (--- … ---) fehlt")
+            raise HandoffError(t("relay.model.front_matter_missing"))
         try:
             meta = yaml.safe_load(m.group(1)) or {}
         except yaml.YAMLError as e:
-            raise HandoffError(f"Front Matter ist kein YAML: {e}") from e
+            raise HandoffError(t("relay.model.front_matter_is_not_yaml", e=e)) from e
         if not isinstance(meta, dict):
-            raise HandoffError("Front Matter muss ein Mapping sein")
+            raise HandoffError(t("relay.model.front_matter_must_be_a"))
         known = {f.name for f in fields(cls)} - {"body"}
         values = {k: v for k, v in meta.items() if k in known}
         try:
@@ -223,9 +224,9 @@ class Handoff:
             values["stalled"] = int(values.get("stalled") or 0)
             values["status"] = Status(str(values.get("status") or Status.ACTIVE))
         except KeyError as e:
-            raise HandoffError(f"Pflichtfeld fehlt: {e}") from e
+            raise HandoffError(t("relay.model.required_field_missing", e=e)) from e
         except (TypeError, ValueError) as e:
-            raise HandoffError(f"ungültiger Wert: {e}") from e
+            raise HandoffError(t("relay.model.invalid_value", e=e)) from e
         for name in _TIME_FIELDS:
             values[name] = parse_time(values.get(name))
         for name in ("progress", "blocked_reason", "verify_sha256", "verify_result"):
@@ -241,7 +242,7 @@ class Handoff:
         return f"---\n{front}---\n{self.body}"
 
     def adopt_harness_fields(self, other: Handoff) -> list[str]:
-        """Harness-Felder von `other` übernehmen; liefert die Namen, die abwichen."""
+        """Adopt harness fields from `other`; returns the names that differed."""
         changed = [name for name in HARNESS_FIELDS if getattr(self, name) != getattr(other, name)]
         for name in changed:
             setattr(self, name, getattr(other, name))
@@ -251,7 +252,7 @@ class Handoff:
         return markdown_sections(self.body).get(name.lower(), "")
 
     def set_section(self, name: str, text: str) -> None:
-        """`## <name>` ersetzen bzw. vor `## Log` einfügen (Log bleibt der letzte Abschnitt); leer = entfernen."""
+        """Replace `## <name>` or insert before `## Log` (log stays the last section); empty = remove."""
         matches = list(_HEADING_RE.finditer(self.body))
         block = f"## {name}\n{text.strip()}\n" if text.strip() else ""
         idx = next((i for i, m in enumerate(matches) if m.group(1).strip().lower() == name.lower()), None)
@@ -274,7 +275,7 @@ class Handoff:
         self.blocked_reason = reason
 
     def append_log(self, line: str) -> None:
-        """Eine Zeile an `## Log` anhängen (Abschnitt wird bei Bedarf angelegt)."""
+        """Append a line to `## Log` (section is created if needed)."""
         entry = f"- {line}\n"
         matches = list(_HEADING_RE.finditer(self.body))
         log = next((i for i, m in enumerate(matches) if m.group(1).strip().lower() == LOG_SECTION), None)
@@ -288,7 +289,7 @@ class Handoff:
 
 @dataclass(frozen=True)
 class Task:
-    """GitHub-Sicht auf ein Relay-Issue (wer hat Label/Brief zuletzt angefasst?)."""
+    """GitHub view of a relay issue (who touched label/brief last?)."""
 
     number: int
     title: str
@@ -306,42 +307,42 @@ class Task:
         return Brief(self.title, self.body)
 
     def authorization_error(self, allowed: frozenset[str], label: str) -> str | None:
-        """None, wenn der Brief ausgeführt werden darf.
+        """None if the brief may be executed.
 
-        Der Brief ist eine Anweisung an einen Agent mit Shell auf dem Host: das Opt-in-Label
-        muss von einem `allowed`-Login stammen UND die aktuelle Body-Fassung muss von einem
-        `allowed`-Login sein — oder das Label wurde nach der letzten Bearbeitung neu gesetzt
-        (Neu-Labeln = Freigabe der aktuellen Fassung). Ohne das Label (entfernt = angehalten) nie,
-        auch nicht für einen von Hand gestarteten Run."""
+        The brief is an instruction to an agent with a shell on the host: the opt-in label
+        must come from an `allowed` login AND the current body version must be from an
+        `allowed` login — or the label was set again after the last edit
+        (re-labeling = approval of the current version). Without the label (removed = halted) never,
+        not even for a manually started run."""
         if label not in self.labels:
-            return f"Label `{label}` fehlt (Task angehalten)"
+            return t("relay.model.label_missing_task_halted", label=label)
         allowed_norm = {normalize_login(a) for a in allowed}
         if normalize_login(self.label_actor) not in allowed_norm:
-            return f"Label `{label}` von {self.label_actor or '?'} gesetzt (nicht in relay.allowed)"
+            return t("relay.model.label_set_by_not_in", label=label, v2=self.label_actor or "?")
         editor = self.body_editor or self.author
         if normalize_login(editor) in allowed_norm:
             return None
         edited_at = self.body_edited_at or self.created_at
         if self.label_at and edited_at and self.label_at >= edited_at:
             return None
-        return f"Brief zuletzt von {editor} bearbeitet — Label `{label}` neu setzen gibt die Fassung frei"
+        return t("relay.model.brief_last_edited_by_re", editor=editor, label=label)
 
 
 @dataclass(frozen=True)
 class RunOutcome:
-    """Ein beendeter Relay-Run eines Tasks aus der Run-Historie."""
+    """A finished relay run of a task from the run history."""
 
-    run_id: str  # beginnt mit dem Startzeitpunkt → lexikografisch sortierbar
-    published: bool  # publish/audit-publish lief durch (Fortschritt ist auf dem Branch)
+    run_id: str  # starts with the start time → lexicographically sortable
+    published: bool  # publish/audit-publish went through (progress is on the branch)
     failure_kind: FailureKind | None = None  # ADR 0035; None = `unknown` (Altbestand / nicht klassifiziert)
     finished: datetime | None = None
-    retry_after: datetime | None = None  # ADR 0035: frühester sinnvoller Versuch (nur bei `transient`)
+    retry_after: datetime | None = None  # ADR 0035: earliest sensible attempt (only for `transient`)
 
 
 def failure_streak(recent: list[RunOutcome], acknowledged: str = "") -> list[RunOutcome]:
-    """Unveröffentlichte Runs am Stück (neueste zuerst), ohne die bereits quittierten.
+    """Unpublished runs in a row (newest first), without the already acknowledged ones.
 
-    `acknowledged` = neueste Run-Id, für die schon geblockt wurde; Label entfernen setzt so neu auf."""
+    `acknowledged` = newest run id for which blocking already happened; removing the label thus starts afresh."""
     streak = []
     for outcome in sorted(recent, key=lambda o: o.run_id, reverse=True):
         if outcome.published or (acknowledged and outcome.run_id <= acknowledged):
@@ -351,42 +352,43 @@ def failure_streak(recent: list[RunOutcome], acknowledged: str = "") -> list[Run
 
 
 def _retry_decision(streak: list[RunOutcome], policy: RetryPolicy | None, now: datetime) -> Decision | None:
-    """Fehlerbremse: None = normal weiter; sonst BLOCK (kein/erschöpfter Retry) oder SKIP (Backoff).
+    """Failure brake: None = continue normally; otherwise BLOCK (no/exhausted retry) or SKIP (backoff).
 
-    `max` zählt zusätzliche Versuche: n gescheiterte Runs am Stück = n - 1 verbrauchte Retries."""
+    `max` counts additional attempts: n failed runs in a row = n - 1 retries used."""
     if not streak:
         return None
     last = streak[0]
     kind = last.failure_kind or FailureKind.UNKNOWN
     ack = last.run_id
     if policy is None or not policy.allows(kind) or last.finished is None:
-        # Ohne Endzeit lässt sich kein Backoff berechnen → wie nicht wiederholbar behandeln (fail closed).
+        # Without an end time no backoff can be computed → treat as not retryable (fail closed).
         return Decision(
             Action.BLOCK,
-            f"Run {last.run_id} scheiterte (`{kind}`), keine automatische Wiederholung "
-            "— Label entfernen versucht es erneut",
+            t("relay.model.run_failed_no_automatic_retry", v1=last.run_id, kind=kind),
             failures_seen=ack,
         )
-    attempt = len(streak)  # nächster Versuch (1-basiert)
+    attempt = len(streak)  # next attempt (1-based)
     if attempt > policy.max:
         return Decision(
             Action.BLOCK,
-            f"Wiederholungen erschöpft ({policy.max} Retries, zuletzt {last.run_id}, "
-            f"`{kind}`) — Label entfernen versucht es erneut",
+            t("relay.model.retries_exhausted_retries_last_removing", v1=policy.max, v2=last.run_id, kind=kind),
             failures_seen=ack,
         )
     due = policy.next_attempt_at(attempt, last.finished, last.retry_after)
     if due > now:
-        return Decision(Action.SKIP, f"Retry {attempt}/{policy.max} nach `{kind}` nicht vor {format_time(due)}")
+        return Decision(
+            Action.SKIP,
+            t("relay.model.retry_after_not_before", attempt=attempt, v2=policy.max, kind=kind, v4=format_time(due)),
+        )
     return None
 
 
 @dataclass(frozen=True)
 class TrailRef:
-    """Verweis auf ein archiviertes Trail-Exemplar (ADR 0037, Nachtrag 2026-11-03).
+    """Reference to an archived trail copy (ADR 0037, addendum 2026-11-03).
 
-    `sha256` ist der kanonische Inhalts-Hash des Trails (`archive.trail_digest`); an ihn, nicht an den
-    Ablageort, bindet das Audit-Verdikt. `index` ist die fortlaufende Archiv-Nummer (`audit-<k>`)."""
+    `sha256` is the canonical content hash of the trail (`archive.trail_digest`); the audit verdict binds to it, not to
+    the storage location. `index` is the sequential archive number (`audit-<k>`)."""
 
     method: str
     issue: int
@@ -405,7 +407,7 @@ class TrailRef:
 
     @classmethod
     def from_dict(cls, data: object) -> TrailRef | None:
-        """Tolerant: unvollständig/kaputt → None (ein kaputter Zustandsblock darf nicht crashen)."""
+        """Tolerant: incomplete/broken → None (a broken state block must not crash)."""
         if not isinstance(data, dict):
             return None
         try:
@@ -426,14 +428,14 @@ class TrailRef:
 class StatusState:
     """Maschinenlesbarer Teil des Status-Kommentars (Dispatcher ↔ Sessions)."""
 
-    verify_pending: str | None = None  # neue Verify-Fassung, für die schon geblockt wurde
+    verify_pending: str | None = None  # new verify version for which blocking already happened
     audit: str = ""  # "", "pass", "fail"
     last_commit: str = ""
-    note: str = ""  # Grund, warum der Dispatcher nicht startet (z. B. Autorisierung)
-    failures_seen: str = ""  # neueste gescheiterte Run-Id, für die schon geblockt wurde
-    trail_sha256: str = ""  # Hash des Trails, an den das letzte Audit-Verdikt gebunden ist
+    note: str = ""  # Reason why the dispatcher does not start (e.g. authorization)
+    failures_seen: str = ""  # newest failed run id for which blocking already happened
+    trail_sha256: str = ""  # Hash of the trail to which the last audit verdict is bound
     archive: TrailRef | None = None  # letztes Trail-Archiv; gesetzt → Trail ist vom Branch entfernt
-    trail_warning: str = ""  # PR enthält den Trail noch (kein `trail_archive` konfiguriert)
+    trail_warning: str = ""  # PR still contains the trail (no `trail_archive` configured)
 
     def to_dict(self) -> dict:
         return {
@@ -465,11 +467,11 @@ class StatusState:
 
 @dataclass(frozen=True)
 class Decision:
-    """Ergebnis von `evaluate` für einen Task."""
+    """Result of `evaluate` for a task."""
 
     action: Action
     reason: str = ""
-    repin: bool = False  # neue Verify-Fassung übernehmen (Mensch hat entblockt)
+    repin: bool = False  # adopt new verify version (a human unblocked)
     notify: bool = False  # SKIP-Grund im Status-Kommentar zeigen
     verify_pending: str | None = None
     failures_seen: str = ""
@@ -487,15 +489,18 @@ def evaluate(
     recent: list[RunOutcome] | None = None,
     retry: RetryPolicy | None = None,
 ) -> Decision:
-    """Entscheidet deterministisch, ob für `task` jetzt eine Session/ein Audit läuft.
+    """Decides deterministically whether a session/audit runs for `task` now.
 
-    `recent`: beendete Relay-Runs des Tasks (Run-Historie); `retry`: Policy für gescheiterte Runs."""
+    `recent`: finished relay runs of the task (run history); `retry`: policy for failed runs."""
     if err := task.authorization_error(allowed, labels.task):
         return Decision(Action.SKIP, err, notify=True)
     brief = task.brief
     if missing := brief.missing_sections():
         return Decision(
-            Action.BLOCK, "Brief unvollständig: " + ", ".join(f"`## {s.title()}`" for s in missing) + " fehlt"
+            Action.BLOCK,
+            t("relay.model.brief_incomplete")
+            + ", ".join(f"`## {s.title()}`" for s in missing)
+            + t("relay.model.missing"),
         )
     if labels.blocked in task.labels:
         return Decision(Action.SKIP, "blocked (Label)")
@@ -512,15 +517,13 @@ def evaluate(
         if state.verify_pending != brief.verify_sha256:
             return Decision(
                 Action.BLOCK,
-                "`## Verify` wurde geändert — Label entfernen übernimmt die neue Fassung",
+                t("relay.model.verify_was_changed_removing_the"),
                 verify_pending=brief.verify_sha256,
             )
         repin = True
     max_sessions = brief.settings.max_sessions
     if handoff.session >= max_sessions:
-        return Decision(
-            Action.BLOCK, f"max_sessions ({max_sessions}) erreicht — in `## Settings` erhöhen, dann Label entfernen"
-        )
+        return Decision(Action.BLOCK, t("relay.model.max_sessions_reached_raise_it", max_sessions=max_sessions))
     if handoff.status is Status.ACTIVE and handoff.not_before and handoff.not_before > now:
-        return Decision(Action.SKIP, f"nicht vor {format_time(handoff.not_before)}")
-    return Decision(Action.SESSION, "fällig", repin=repin)
+        return Decision(Action.SKIP, t("relay.model.not_before", v1=format_time(handoff.not_before)))
+    return Decision(Action.SESSION, t("relay.model.due"), repin=repin)

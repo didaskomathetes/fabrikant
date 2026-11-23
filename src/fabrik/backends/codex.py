@@ -1,20 +1,20 @@
-"""codex-Adapter: OpenAI Codex CLI (`codex exec`, One-Shot pro Prompt).
+"""codex adapter: OpenAI Codex CLI (`codex exec`, one-shot per prompt).
 
-One-Shot-Modell (Mechanik in `OneShotCliBackend`): Prompt über STDIN
-(keine ARG-Limits, kein Shell-Interpolation). Sandbox: Default
-`workspace-write` (Codex-Sandbox, bubblewrap-basiert); `step.sandbox` /
-`FABRIK_CODEX_SANDBOX` als Override — in Gateway-/Service-Kontexten ohne
-bubblewrap oft `danger-full-access` notwendig (Containment dann über
-User/VM, nicht über die Sandbox).
+One-shot model (mechanics in `OneShotCliBackend`): prompt via STDIN
+(no ARG limits, no shell interpolation). Sandbox: default
+`workspace-write` (Codex sandbox, bubblewrap-based); `step.sandbox` /
+`FABRIK_CODEX_SANDBOX` as override — in gateway/service contexts without
+bubblewrap `danger-full-access` is often necessary (containment then via
+user/VM, not via the sandbox).
 
-Usage: `codex exec --json` streamt JSONL; `turn.completed.usage`
-(`input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`) ist die
-**kumulierte** Summe des Threads — es zählt das letzte Event, nicht die Summe (`input_tokens`
-enthält den gecachten Anteil bereits). Credits/Limits (`rate_limits`) stehen nicht im
-`--json`-Stream, nur in der Rollout-Datei unter `$CODEX_HOME/sessions`. Die finale
-Antwort ist die letzte `item.completed`/`agent_message`; Fehler stehen in
-`turn.failed`/`error`. Keine Kosten in USD — die CLI liefert keine (`cost`
-bleibt 0.0). Ohne JSON im stdout (ältere CLI) gilt der rohe stdout als Antwort.
+Usage: `codex exec --json` streams JSONL; `turn.completed.usage`
+(`input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`) is the
+**cumulative** total of the thread — the last event counts, not the sum (`input_tokens`
+already includes the cached share). Credits/limits (`rate_limits`) are not in the
+`--json` stream, only in the rollout file under `$CODEX_HOME/sessions`. The final
+answer is the last `item.completed`/`agent_message`; errors are in
+`turn.failed`/`error`. No cost in USD — the CLI provides none (`cost`
+stays 0.0). Without JSON in stdout (older CLI) the raw stdout counts as the answer.
 """
 
 from __future__ import annotations
@@ -24,10 +24,11 @@ import os
 
 from ..agentenv import CODEX_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
+from ..i18n import t
 from ..tokens import TokenCounts, as_count
 from ._oneshot import OneShotCliBackend
 
-# ChatGPT-Login als Env (base64 von auth.json); ohne ihn liest die CLI ~/.codex/auth.json — Art offen.
+# ChatGPT login as env (base64 of auth.json); without it the CLI reads ~/.codex/auth.json — billing mode unknown.
 _CHATGPT_LOGIN_VAR = "CODEX_AUTH_JSON_B64"
 _EVENT_TURN_COMPLETED = "turn.completed"
 _EVENT_TURN_FAILED = "turn.failed"
@@ -77,15 +78,16 @@ class CodexBackend(OneShotCliBackend):
         base = {"tokens": tokens.as_poll(), "cost": 0.0, "tools": []}
         if returncode == 0:
             return {**base, "status": "done", "text": text.strip()}
-        reason = error or err.strip() or out.strip() or "codex: kein Output"
+        reason = error or err.strip() or out.strip() or t("backends.codex.codex_no_output")
         return {**base, "status": "failed", "text": reason[:300]}
 
     @staticmethod
     def _read_events(out: str) -> tuple[str, TokenCounts, str]:
-        """JSONL-stdout → (finaler Agent-Text, Token-Summe, Fehlermeldung).
+        """JSONL stdout → (final agent text, token total, error message).
 
-        Defensiv: Nicht-JSON-Zeilen und unbekannte Events werden ignoriert; liegt gar kein JSON
-        vor, ist der rohe stdout der Text (Schema-Fallback)."""
+
+        Defensive: non-JSON lines and unknown events are ignored; if there is no JSON
+        at all, the raw stdout is the text (schema fallback)."""
         text, error = "", ""
         tokens = TokenCounts()
         parsed_json = False
@@ -100,7 +102,8 @@ class CodexBackend(OneShotCliBackend):
             kind = ev.get("type")
             if kind == _EVENT_TURN_COMPLETED and isinstance(ev.get("usage"), dict):
                 usage = ev["usage"]
-                # Kumulativ je Thread (codex exec): das letzte Event ersetzt, nicht addieren.
+                # Cumulative per thread (codex exec): the last event replaces, do not add.
+
                 tokens = TokenCounts(
                     input=as_count(usage.get("input_tokens")),
                     output=as_count(usage.get("output_tokens")),

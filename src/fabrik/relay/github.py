@@ -1,4 +1,4 @@
-"""GitHub-Zugriff für Relay (Builder-Identität): Tasks, Handoff auf dem Branch, Status-Kommentar, Labels."""
+"""GitHub access for relay (builder identity): tasks, handoff on the branch, status comment, labels."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 
 from .. import gitops
 from ..failures import ConfigError
+from ..i18n import t
 from .model import StatusState, Task, normalize_login, parse_time
 from .status import STATUS_MARKER, parse_state
 
@@ -67,13 +68,13 @@ def task_from_node(node: dict, label: str) -> Task:
 
 
 class RelayGitHub:
-    """Dünner Client; das Token wird pro Call frisch gelesen (1h-App-Tokens, ADR 0010)."""
+    """Thin client; the token is read fresh per call (1h app tokens, ADR 0010)."""
 
     def __init__(self, repo: str, *, role: str = "dev", bot_login: str):
-        """`bot_login` ist Pflicht: Status-Kommentare werden nur von dieser Identität vertraut
-        (ohne gepinnte Identität wäre jeder Bot mit Kommentarrecht vertrauenswürdig)."""
+        """`bot_login` is required: status comments are only trusted from this identity
+        (without a pinned identity every bot with comment rights would be trusted)."""
         if not bot_login:
-            raise ValueError("bot_login ist Pflicht (Status-Kommentare nur von der gepinnten Identität)")
+            raise ValueError(t("relay.github.bot_login_is_required_status"))
         self.repo = repo
         self.owner, self.name = repo.split("/", 1)
         self.role = role
@@ -92,7 +93,7 @@ class RelayGitHub:
         return res.get("data") or {}
 
     def tasks(self, label: str) -> list[Task]:
-        """Offene Issues mit dem Opt-in-Label (vollständige Cursor-Pagination)."""
+        """Open issues with the opt-in label (complete cursor pagination)."""
         out: list[Task] = []
         after: str | None = None
         while True:
@@ -108,15 +109,15 @@ class RelayGitHub:
         data = self._graphql(_TASK_QUERY, owner=self.owner, name=self.name, number=number)
         node = (data.get("repository") or {}).get("issue")
         if not node:
-            raise GitHubError(f"Issue #{number} nicht gefunden in {self.repo}")
+            raise GitHubError(t("relay.github.issue_not_found_in", number=number, v2=self.repo))
         return task_from_node(node, label)
 
     def file(self, path: str, ref: str) -> str | None:
-        """Dateiinhalt auf `ref`; None, wenn Branch oder Datei fehlen; leere Datei → `''`.
+        """File content at `ref`; None if branch or file is missing; empty file → `''`.
 
-        Die REST-Contents-API liefert für Dateien > 1 MB keinen Inhalt (leerer String).
-        Ein überdimensionaler Handoff ist ein Bug und scheitert deshalb fail-closed am
-        `Handoff.parse` (`HandoffError`) — statt stumm mit leerem Inhalt weiterzulaufen."""
+        The REST contents API returns no content for files > 1 MB (empty string).
+        An oversized handoff is a bug and therefore fails closed at
+        `Handoff.parse` (`HandoffError`) — instead of silently continuing with empty content."""
         query = urllib.parse.urlencode({"ref": ref})
         try:
             res = self._rest("GET", f"contents/{urllib.parse.quote(path)}?{query}")
@@ -127,46 +128,46 @@ class RelayGitHub:
         return base64.b64decode(res.get("content") or "").decode("utf-8")
 
     def create_ref(self, ref: str, sha: str) -> None:
-        """Ref anlegen (auch außerhalb von heads/tags, z. B. `refs/fabrik/…`); 422, wenn er existiert."""
+        """Create a ref (also outside heads/tags, e.g. `refs/fabrik/…`); 422 if it exists."""
         self._rest("POST", "git/refs", {"ref": ref, "sha": sha})
 
     def ref_sha(self, ref: str) -> str | None:
-        """Commit-SHA, auf den `ref` zeigt; None, wenn es ihn nicht gibt."""
+        """Commit SHA that `ref` points to; None if it does not exist."""
         try:
             res = self._rest("GET", f"git/ref/{urllib.parse.quote(ref.removeprefix('refs/'))}")
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
             raise
-        # Bei einem Präfix ohne exakten Treffer liefert die API eine Liste — dann gibt es ihn nicht.
+        # With a prefix without an exact match the API returns a list — then it does not exist.
         return str(res["object"]["sha"]) if isinstance(res, dict) and res.get("ref") == ref else None
 
     def open_pr(self, branch: str) -> int | None:
-        """Nummer des offenen PRs vom Branch `branch` (im selben Repo), sonst None."""
+        """Number of the open PR from branch `branch` (in the same repo), otherwise None."""
         query = urllib.parse.urlencode({"head": f"{self.owner}:{branch}", "state": "open", "per_page": 1})
         pulls = self._rest("GET", f"pulls?{query}") or []
         return int(pulls[0]["number"]) if pulls else None
 
     def pr_body(self, number: int) -> str:
-        """Aktueller Body des PRs `number` (leer, wenn keiner gesetzt ist)."""
+        """Current body of PR `number` (empty if none is set)."""
         return str((self._rest("GET", f"pulls/{number}") or {}).get("body") or "")
 
     def set_pr_body(self, number: int, body: str) -> None:
         self._rest("PATCH", f"pulls/{number}", {"body": body})
 
     def commit_identity(self) -> tuple[str, str]:
-        """(name, email) des Bots für Commits (`<id>+<login>[bot]@users.noreply…`)."""
+        """(name, email) of the bot for commits (`<id>+<login>[bot]@users.noreply…`)."""
         login = f"{self.bot_login}[bot]"
         user = gitops._gh_api("GET", f"{API}/users/{urllib.parse.quote(login)}", self.token())
         return login, f"{user['id']}+{login}@users.noreply.github.com"
 
     def _trusted(self, comment: dict) -> bool:
-        """Nur die gepinnte `bot_login` — `type == "Bot"` allein würde jeden fremden Bot vertrauen."""
+        """Only the pinned `bot_login` — `type == "Bot"` alone would trust any foreign bot."""
         user = comment.get("user") or {}
         return normalize_login(user.get("login")) == self.bot_login
 
     def status_comment(self, number: int) -> tuple[int, str] | None:
-        """(id, body) des Status-Kommentars — nur vom Bot verfasst (Marker allein ist fälschbar)."""
+        """(id, body) of the status comment — authored by the bot only (the marker alone is forgeable)."""
         page = 1
         while True:
             batch = self._rest("GET", f"issues/{number}/comments?per_page={COMMENTS_PER_PAGE}&page={page}") or []
@@ -182,11 +183,11 @@ class RelayGitHub:
         return parse_state(found[1]) if found else StatusState()
 
     def upsert_status(self, number: int, body: str) -> None:
-        """Status-Kommentar anlegen oder in-place editieren (kein Call, wenn unverändert).
+        """Create the status comment or edit it in place (no call if unchanged).
 
-        Beim Anlegen wird der Autor gegen `bot_login` geprüft: passt das Builder-Token nicht, fände
-        `status_comment` den Kommentar nie wieder — jeder Tick legte einen neuen an, der Zustand
-        (`failures_seen`, `verify_pending`) ginge verloren. Dann: Kommentar löschen, ConfigError."""
+        On creation the author is checked against `bot_login`: if the builder token does not match,
+        `status_comment` would never find the comment again — every tick would create a new one, the state
+        (`failures_seen`, `verify_pending`) would be lost. Then: delete the comment, ConfigError."""
         found = self.status_comment(number)
         if found is None:
             created = self._rest("POST", f"issues/{number}/comments", {"body": body}) or {}
@@ -194,14 +195,12 @@ class RelayGitHub:
                 author = _login(created.get("user"))
                 if created.get("id"):
                     self._rest("DELETE", f"issues/comments/{created['id']}")
-                raise ConfigError(
-                    f"relay.bot_login ist {self.bot_login!r}, das Builder-Token kommentiert aber als {author!r}"
-                )
+                raise ConfigError(t("relay.github.relay_bot_login_is_but", v1=self.bot_login, author=author))
         elif found[1] != body:
             self._rest("PATCH", f"issues/comments/{found[0]}", {"body": body})
 
     def sync_labels(self, number: int, current: frozenset[str], add: set[str], remove: set[str]) -> None:
-        """Labels setzen/entfernen — nur, was sich gegenüber `current` ändert."""
+        """Set/remove labels — only what changes compared to `current`."""
         to_add = sorted(add - current)
         if to_add:
             self._rest("POST", f"issues/{number}/labels", {"labels": to_add})

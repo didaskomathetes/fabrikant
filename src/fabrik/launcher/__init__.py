@@ -1,9 +1,9 @@
-"""Run-Launcher (Ports & Adapters): Substrat, das Run-Work ausführt.
+"""Run launcher (ports & adapters): substrate that executes run work.
 
-Der Port (:class:`RunLauncher`) trennt die Scheduling-Policy des Core
-(``engine.py``) vom Ausführungs-Substrat. Heute: :class:`InProcessLauncher`
-(Worker-Pool + Daemon-Threads). Später: k8s-Jobs, ECS-Tasks — registriert in
-:mod:`fabrik.launcher.registry`, ohne den Core zu ändern.
+The port (:class:`RunLauncher`) separates the core's scheduling policy
+(``engine.py``) from the execution substrate. Today: :class:`InProcessLauncher`
+(worker pool + daemon threads). Later: k8s jobs, ECS tasks — registered in
+:mod:`fabrik.launcher.registry` without changing the core.
 """
 
 from __future__ import annotations

@@ -1,34 +1,36 @@
-# ADR 0002: Durable Session-Log in SQLite (End-Schema)
+# ADR 0002: Durable session log in SQLite (end schema)
+
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
 **Status:** Accepted (2026-10-17)
-**Teilweise ersetzt durch:** ADR 0034 (2026-10-21) — Run-JSON ist nicht mehr Source of Truth, das Session-Log keine Projektion mehr; beides geht im relationalen Run-Store auf. Das Event-Schema bleibt die Grundlage.
+**Partially superseded by:** ADR 0034 (2026-10-21) — run JSON is no longer the source of truth and the session log no longer a projection; both are absorbed into the relational run store. The event schema remains the foundation.
 **Issue:** #14
 
-## Kontext
+## Context
 
-P0 speichert Runs als JSON-Dateien (`runs/<projekt>/<id>.json`). Das ist stateless
-und für den Homelab-Betrieb richtig — aber es gibt keine querybare Historie,
-keine lückenlose Event-Reihenfolge und keine Agent-Telemetrie (Tool-Calls,
-Kosten pro Session). Der Framework-Draft definiert die Phasen-Grenze:
-"Run-JSON bleibt importierbarer Subset des P1-Session-Log-Schemas — Schema wird
-in P1 definiert (als P2-End-Schema)."
+P0 stores runs as JSON files (`runs/<project>/<id>.json`). That is stateless
+and right for homelab operation — but there is no queryable history,
+no gapless event ordering and no agent telemetry (tool calls,
+cost per session). The framework draft defines the phase boundary:
+"Run JSON remains an importable subset of the P1 session-log schema — the schema is
+defined in P1 (as the P2 end schema)."
 
-Ziel: ein SQLite-Session-Log, das in P1 das **End-Schema** trägt. P2 tauscht dann
-nur das Storage-Backend (Postgres = SQLite + Server), nicht die Semantik.
+Goal: a SQLite session log that carries the **end schema** in P1. P2 then swaps
+only the storage backend (Postgres = SQLite + server), not the semantics.
 
-## Entscheidung
+## Decision
 
-**Ein SQLite-File als append-only Event-Store** neben den Run-JSONs. Die
-Run-JSON bleibt Single Source of Truth für die Engine (stateless Worker,
-Resume-Logik unangetastet). Das Session-Log ist eine **durable, querybare
-Projektion** — kein zweiter Storage mit eigener Semantik (gleiche
-Architektur-Logik wie der Tracing-Exporter: Rohdaten exportieren, nicht forken).
+**One SQLite file as an append-only event store** next to the run JSONs. The
+run JSON remains the single source of truth for the engine (stateless workers,
+resume logic untouched). The session log is a **durable, queryable
+projection** — not a second storage with its own semantics (same
+architectural logic as the tracing exporter: export raw data, don't fork).
 
 ### Schema (v1)
 
 ```sql
 CREATE TABLE sessions (
-    session_id   TEXT PRIMARY KEY,          -- = Run-ID
+    session_id   TEXT PRIMARY KEY,          -- = run ID
     project      TEXT NOT NULL,
     loop         TEXT NOT NULL,
     trigger      TEXT NOT NULL DEFAULT '',
@@ -38,14 +40,14 @@ CREATE TABLE sessions (
     finished_at  TEXT,
     tokens_in    INTEGER NOT NULL DEFAULT 0,
     tokens_out   INTEGER NOT NULL DEFAULT 0,
-    cost_usd     REAL NOT NULL DEFAULT 0,   -- Rohdaten vom Agent (keine Preistabelle!)
+    cost_usd     REAL NOT NULL DEFAULT 0,   -- raw data from the agent (no price table!)
     source       TEXT NOT NULL DEFAULT 'native'  -- native | import
 );
 
 CREATE TABLE events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id  TEXT NOT NULL REFERENCES sessions(session_id),
-    seq         INTEGER NOT NULL,           -- Reihenfolge innerhalb der Session
+    seq         INTEGER NOT NULL,           -- order within the session
     ts          TEXT NOT NULL,              -- ISO-8601 UTC
     kind        TEXT NOT NULL,              -- run_start|run_end|step_start|step_done|
                                             -- tool_call|message|cost|approval
@@ -69,72 +71,72 @@ CREATE TABLE checkpoints (
     session_id  TEXT NOT NULL REFERENCES sessions(session_id),
     step_idx    INTEGER NOT NULL,
     step_name   TEXT NOT NULL,
-    status      TEXT NOT NULL,              -- nur 'pass' wird gecheckpointet
+    status      TEXT NOT NULL,              -- only 'pass' is checkpointed
     data        TEXT NOT NULL DEFAULT '{}', -- JSON: duration, usage, summary
     PRIMARY KEY (session_id, step_idx)
 );
 ```
 
-### Event-Kinds
+### Event kinds
 
-| kind | Quelle | data |
+| kind | Source | data |
 |------|--------|------|
-| `run_start` | Engine bei Run-Anfang | `{"loop", "trigger"}` |
-| `run_end` | Engine bei Run-Ende | `{status}` |
-| `step_start` | Engine vor Step-Dispatch | `{type}` |
-| `step_done` | Engine nach Step | `{status, duration_s, usage?}` |
-| `tool_call` | Agent-Step pro neuem Tool | `{tool}` |
-| `message` | Agent-Step bei Session-Ende | `{text}` (gecappt) |
-| `cost` | Agent-Step bei Session-Ende | `{tokens_in, tokens_out, cost_usd}` |
-| `approval` | Engine bei Gate-Pause | `{step}` |
+| `run_start` | engine at run start | `{"loop", "trigger"}` |
+| `run_end` | engine at run end | `{status}` |
+| `step_start` | engine before step dispatch | `{type}` |
+| `step_done` | engine after step | `{status, duration_s, usage?}` |
+| `tool_call` | agent step per new tool | `{tool}` |
+| `message` | agent step at session end | `{text}` (capped) |
+| `cost` | agent step at session end | `{tokens_in, tokens_out, cost_usd}` |
+| `approval` | engine at gate pause | `{step}` |
 
-### Invarianten
+### Invariants
 
-1. **Append-only:** events/checkpoints/artifacts werden nie aktualisiert, nur
-   eingefügt. `sessions` wird per `UPDATE` finalisiert (status, finished_at,
-   Token-/Kosten-Summen) — die einzige mutable Zeile pro Session.
-2. **Redaction am Write-Pfad:** alle `data`-Blobs und `message`-Texte laufen
-   durch `secrets._redact`, bevor sie persistiert werden.
-3. **Rohdaten, keine Kalkulation:** `cost_usd` stammt vom Agent-Backend
-   (opencode `cost`-Feld). Keine Preistabelle in fabrik — ein Exporter rechnet
-   Preise aus den Rohdaten (Tokens + Model + Provider).
-4. **P0-Run-JSONs bleiben importierbar:** `fabrik import-runs` liest
-   `runs/*.json` und projiziert sie (sessions + step_done-events +
-   checkpoints, `source='import'`, Totals aus Step-Usage backgefillt).
-   Import ist idempotent: bestehende Sessions werden nicht überschrieben
-   (native Runs gewinnen). Best-effort: Connect-Fehler → 0, defekte
-   Dateien werden übersprungen, Commit pro Datei.
-5. **Keine Engine-Abhängigkeit:** Das Log ist best-effort — ein Log-Fehler
-   (z. B. defekte DB) fällt einen Run nicht. Die Run-JSON bleibt der
-   autoritative Zustand.
+1. **Append-only:** events/checkpoints/artifacts are never updated, only
+   inserted. `sessions` is finalized via `UPDATE` (status, finished_at,
+   token/cost totals) — the only mutable row per session.
+2. **Redaction on the write path:** all `data` blobs and `message` texts go
+   through `secrets._redact` before they are persisted.
+3. **Raw data, no calculation:** `cost_usd` comes from the agent backend
+   (opencode `cost` field). No price table in fabrik — an exporter computes
+   prices from the raw data (tokens + model + provider).
+4. **P0 run JSONs remain importable:** `fabrik import-runs` reads
+   `runs/*.json` and projects them (sessions + step_done events +
+   checkpoints, `source='import'`, totals backfilled from step usage).
+   The import is idempotent: existing sessions are not overwritten
+   (native runs win). Best effort: connect error → 0, broken
+   files are skipped, commit per file.
+5. **No engine dependency:** the log is best effort — a log failure
+   (e.g. broken DB) does not fail a run. The run JSON remains the
+   authoritative state.
 
 ### Storage
 
-- Pfade: `FABRIK_HOME/sessionlog.db` (Override: `FABRIK_SESSIONLOG`)
-- WAL-Mode (parallele Lese während Runs schreiben)
-- Ein globaler Connection + Lock (Homelab-Skalierung: wenige Runs, viel I/O
-  wäre überdimensioniert). P2: Connection-Pool, dann Postgres.
+- Paths: `FABRIK_HOME/sessionlog.db` (override: `FABRIK_SESSIONLOG`)
+- WAL mode (parallel reads while runs write)
+- One global connection + lock (homelab scale: few runs, a lot of I/O
+  would be oversized). P2: connection pool, then Postgres.
 
-## Konsequenzen
+## Consequences
 
-+ Querybare Historie (SQL) über alle Runs, inkl. P0-Runs via Importer
-+ Agent-Telemetrie (Tool-Calls, Kosten) ohne Backend-Änderung am Polling
-+ Checkpoints als P2-Basis für Worker-Resume (stateless Worker zieht den
-  letzten Checkpoint, nicht die ganze JSON)
-+ Schema ist Postgres-kompatibel (keine SQLite-spezifischen Typen) → P2
-  Storage-Swap ohne Schema-Migration
-- Zweites Persistenz-File neben den Run-JSONs (bewusste Redundanz:
-  Projektion vs. Source of Truth)
-- WAL-File (`sessionlog.db-wal/-shm`) in `FABRIK_HOME` — Backup-Skripte
-  sollten das DB-File per `sqlite3 .backup` sichern, nicht per `cp`
++ Queryable history (SQL) across all runs, including P0 runs via the importer
++ Agent telemetry (tool calls, cost) without a backend change to polling
++ Checkpoints as the P2 basis for worker resume (a stateless worker pulls the
+  last checkpoint, not the whole JSON)
++ The schema is Postgres-compatible (no SQLite-specific types) → P2
+  storage swap without a schema migration
+- A second persistence file next to the run JSONs (deliberate redundancy:
+  projection vs. source of truth)
+- WAL files (`sessionlog.db-wal/-shm`) in `FABRIK_HOME` — backup scripts
+  should back up the DB file with `sqlite3 .backup`, not with `cp`
 
-## Alternativen (abgelehnt)
+## Alternatives (rejected)
 
-- **Events direkt in die Run-JSON:** keine sequenzielle Querybarkeit,
-  Datei-Größe explodiert bei Agent-Runs (Hunderte Tool-Calls), Resume-Pfad
-  wird komplizierter.
-- **Postgres von Anfang an:** P2-Infrastruktur (Server) für ein P1-Feature.
-  SQLite ist der Endpfad minus Server — der Draft-Entscheid.
-- **OTel-Collector als Log:** ein Daemon pro Homelab-Machine für Telemetrie,
-  die ohnehin aus den Run-Daten projizierbar ist. Exporter (OTel/Langfuse)
-  kommen später **dazu**, sie ersetzen dieses Log nicht.
+- **Events directly in the run JSON:** no sequential queryability,
+  file size explodes on agent runs (hundreds of tool calls), the resume path
+  becomes more complicated.
+- **Postgres from the start:** P2 infrastructure (server) for a P1 feature.
+  SQLite is the end path minus the server — the draft's decision.
+- **OTel collector as the log:** a daemon per homelab machine for telemetry
+  that can be projected from the run data anyway. Exporters (OTel/Langfuse)
+  come later **in addition**; they do not replace this log.

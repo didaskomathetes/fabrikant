@@ -1,9 +1,9 @@
-"""Typisiertes Run-Domänenmodell + Zustandsautomaten (ADR 0034, Schritt 1).
+"""Typed run domain model + state machines (ADR 0034, step 1).
 
-Run, Step, Approval, Usage und Review-Ergebnis sind unveränderliche Dataclasses mit
-Enums für alle Status-Werte — unabhängig von der Persistenz. Erlaubte Statusübergänge
-stehen pro Automat in genau einer Tabelle (``RUN_TRANSITIONS``, ``STEP_TRANSITIONS``,
-``APPROVAL_TRANSITIONS``); :func:`check_transition` erzwingt sie und wirft
+Run, step, approval, usage and review result are immutable dataclasses with
+enums for all status values — independent of persistence. Allowed status transitions
+live in exactly one table per state machine (``RUN_TRANSITIONS``, ``STEP_TRANSITIONS``,
+``APPROVAL_TRANSITIONS``); :func:`check_transition` enforces them and raises
 :class:`InvalidTransition`.
 """
 
@@ -16,9 +16,11 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import TypeVar
 
+from .i18n import t
+
 
 class RunStatus(StrEnum):
-    """Status eines Runs (Werte = Strings im Run-JSON)."""
+    """Status of a run (values = strings in the run JSON)."""
 
     QUEUED = "queued"
     RUNNING = "running"
@@ -38,11 +40,11 @@ class StepStatus(StrEnum):
     FAIL = "fail"
     TIMEOUT = "timeout"
     ERROR = "error"
-    SKIPPED = "skipped"  # hinter einem `done`-Step nicht mehr ausgeführt (Run vorzeitig erfolgreich)
+    SKIPPED = "skipped"  # not executed any more behind a `done` step (run successful early)
 
 
 class ApprovalStatus(StrEnum):
-    """Zustand einer Freigabe. ``QUEUED`` = akzeptiert, wartet auf einen Run-Slot (ADR 0015)."""
+    """State of an approval. ``QUEUED`` = accepted, waiting for a run slot (ADR 0015)."""
 
     PENDING = "pending"
     QUEUED = "queued"
@@ -51,8 +53,8 @@ class ApprovalStatus(StrEnum):
 
 
 class ApprovalReason(StrEnum):
-    """Warum der Run pausiert: Step-Gate, dynamisches Gate (ADR 0010), Tier-Freigabe (T2+) oder
-    Kritikalität (``human_gate``) oder Eskalation an einen Menschen (ADR 0059)."""
+    """Why the run pauses: step gate, dynamic gate (ADR 0010), tier approval (T2+),
+    criticality (``human_gate``) or escalation to a human (ADR 0059)."""
 
     STEP = "step"
     GATE = "gate"
@@ -62,16 +64,16 @@ class ApprovalReason(StrEnum):
 
 
 class FailureKind(StrEnum):
-    """Klasse eines gescheiterten Steps/Runs (ADR 0035); bestimmt die Reaktion, nicht die Quelle."""
+    """Class of a failed step/run (ADR 0035); determines the reaction, not the source."""
 
-    INTERRUPTED = "interrupted"  # von außen abgebrochen (Reaper, Dead-Man's-Switch)
-    TRANSIENT = "transient"  # externe Abhängigkeit kurz nicht verfügbar
+    INTERRUPTED = "interrupted"  # aborted from outside (reaper, dead-man's switch)
+    TRANSIENT = "transient"  # external dependency briefly unavailable
     ENVIRONMENT = "environment"  # Umgebung/Konfiguration kaputt — braucht einen Menschen
     OUTCOME = "outcome"  # echtes negatives Ergebnis (Tests rot, Quality Gate, Review)
-    UNKNOWN = "unknown"  # nicht klassifiziert — nie automatisch behandeln
+    UNKNOWN = "unknown"  # not classified — never handle automatically
 
 
-# Gescheiterte Status (ADR 0035: nur sie tragen `failure_kind`). StrEnum: `"fail" in FAILED_RUN_STATUSES` gilt.
+# Failed statuses (ADR 0035: only they carry `failure_kind`). StrEnum: `"fail" in FAILED_RUN_STATUSES` holds.
 FAILED_RUN_STATUSES = frozenset({RunStatus.FAIL, RunStatus.ERROR})
 FAILED_STEP_STATUSES = frozenset({StepStatus.FAIL, StepStatus.TIMEOUT, StepStatus.ERROR})
 
@@ -80,7 +82,7 @@ TIER_APPROVAL_STEP = "tier-approval"  # Name des synthetischen Tier-Gate-Steps (
 _S, _R = RunStatus, StepStatus
 _A = ApprovalStatus
 
-# Erlaubte Run-Übergänge (ADR 0034 Nr. 2). Terminal: pass, fail, error, rejected.
+# Allowed run transitions (ADR 0034 no. 2). Terminal: pass, fail, error, rejected.
 RUN_TRANSITIONS: Mapping[RunStatus, frozenset[RunStatus]] = {
     _S.QUEUED: frozenset({_S.RUNNING, _S.ERROR}),  # ERROR: Start gescheitert (Loop unbekannt, Worker-Start)
     _S.RUNNING: frozenset({_S.NEEDS_APPROVAL, _S.PASS, _S.FAIL, _S.ERROR}),  # ERROR auch: Reaper, Stale-Check
@@ -91,11 +93,11 @@ RUN_TRANSITIONS: Mapping[RunStatus, frozenset[RunStatus]] = {
     _S.REJECTED: frozenset(),
 }
 
-# Erlaubte Step-Übergänge. ``WAITING`` ist auch Startzustand (Gate vor der Ausführung),
-# ``SKIPPED`` nur Startzustand (Steps hinter einem ``done``-Step).
+# Allowed step transitions. ``WAITING`` is also a start state (gate before execution),
+# ``SKIPPED`` only a start state (steps behind a ``done`` step).
 STEP_TRANSITIONS: Mapping[StepStatus, frozenset[StepStatus]] = {
     _R.RUNNING: frozenset({_R.WAITING, _R.PASS, _R.FAIL, _R.TIMEOUT, _R.ERROR}),
-    _R.WAITING: frozenset({_R.RUNNING}),  # Resume führt den pausierten Step erneut aus
+    _R.WAITING: frozenset({_R.RUNNING}),  # Resume executes the paused step again
     _R.PASS: frozenset(),
     _R.FAIL: frozenset(),
     _R.TIMEOUT: frozenset(),
@@ -103,7 +105,7 @@ STEP_TRANSITIONS: Mapping[StepStatus, frozenset[StepStatus]] = {
     _R.SKIPPED: frozenset(),
 }
 
-# Erlaubte Approval-Übergänge. ``QUEUED → PENDING``: Worker-Start scheiterte, Freigabe zurückgenommen.
+# Allowed approval transitions. ``QUEUED → PENDING``: worker start failed, approval revoked.
 APPROVAL_TRANSITIONS: Mapping[ApprovalStatus, frozenset[ApprovalStatus]] = {
     _A.PENDING: frozenset({_A.QUEUED, _A.APPROVED, _A.REJECTED}),
     _A.QUEUED: frozenset({_A.APPROVED, _A.REJECTED, _A.PENDING}),
@@ -115,25 +117,25 @@ TERMINAL_RUN_STATUSES = frozenset(s for s, targets in RUN_TRANSITIONS.items() if
 
 
 class InvalidTransition(ValueError):
-    """Unerlaubter Statusübergang eines Zustandsautomaten."""
+    """Illegal status transition of a state machine."""
 
 
 _E = TypeVar("_E", bound=StrEnum)
 
 
 def check_transition(table: Mapping[_E, frozenset[_E]], current: _E, target: _E) -> _E:
-    """Prüft ``current → target`` gegen ``table``; liefert ``target`` oder wirft :class:`InvalidTransition`."""
+    """Checks ``current → target`` against ``table``; returns ``target`` or raises :class:`InvalidTransition`."""
     if target not in table.get(current, frozenset()):
-        raise InvalidTransition(f"{type(current).__name__}: {current.value} → {target.value} nicht erlaubt")
+        raise InvalidTransition(t("runmodel.not_allowed", v1=type(current).__name__, v2=current.value, v3=target.value))
     return target
 
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """Token-/Kosten-Verbrauch eines Steps (LLM/Agent). ``cost_usd`` ist None, wenn unbekannt.
+    """Token/cost consumption of a step (LLM/agent). ``cost_usd`` is None if unknown.
 
-    ``prompt_tokens`` enthält den Cache-Anteil; ``cache_read_tokens``/``cache_write_tokens`` schlüsseln
-    ihn auf (0 = nicht gemeldet, z. B. ältere Runs) — siehe :mod:`fabrik.tokens`."""
+    ``prompt_tokens`` includes the cache share; ``cache_read_tokens``/``cache_write_tokens`` break
+    it down (0 = not reported, e.g. older runs) — see :mod:`fabrik.tokens`."""
 
     model: str = ""
     provider: str = ""
@@ -189,39 +191,40 @@ class Step:
     usage: Usage | None = None
     review: ReviewResult | None = None
     verify: tuple[VerifyCheck, ...] = ()
-    failure_kind: FailureKind | None = None  # nur bei fail/timeout/error gesetzt
-    retry_after: str = ""  # ISO-Zeitpunkt (UTC), nur bei transient
-    verdict: str = ""  # fachliches Ergebnis des Steps (z. B. Audit `fail`), unabhängig vom Step-Status
+    failure_kind: FailureKind | None = None  # set only on fail/timeout/error
+    retry_after: str = ""  # ISO timestamp (UTC), only for transient
+    verdict: str = ""  # domain result of the step (e.g. audit `fail`), independent of the step status
 
 
-# Fachliches Ergebnis eines Steps (Verdikt), getrennt vom technischen Status: ein Step kann
-# erfolgreich laufen und ein `fail`-Verdikt veröffentlichen (z. B. relay-audit). Shell-Steps
-# melden es über eine eigene Ausgabezeile `::fabrik-verdict::<wort>`; die UI zeigt es als Badge.
+# Domain result of a step (verdict), separate from the technical status: a step can
+# run successfully and publish a `fail` verdict (e.g. relay-audit). Shell steps
+# report it via their own output line `::fabrik-verdict::<word>`; the UI shows it as a badge.
 VERDICT_MARKER = "::fabrik-verdict::"
 _VERDICT_RE = re.compile(r"[a-z][a-z_-]{0,19}")
 _VERDICT_LINE_RE = re.compile(r"^" + re.escape(VERDICT_MARKER) + r"(\S*)[ \t]*(?:\r?\n|\Z)", re.M)
 
 
 def verdict_line(verdict: str) -> str:
-    """Ausgabezeile, mit der ein Shell-Step sein Verdikt meldet (ValueError bei ungültigem Wort)."""
+    """Output line with which a shell step reports its verdict (ValueError on an invalid word)."""
     if not _VERDICT_RE.fullmatch(verdict):
-        raise ValueError(f"ungültiges Verdikt {verdict!r} (a-z, _, -; max. 20 Zeichen)")
+        raise ValueError(t("runmodel.invalid_verdict_a_z_max", verdict=verdict))
     return f"{VERDICT_MARKER}{verdict}"
 
 
 def split_verdict(text: str) -> tuple[str, str]:
-    """(Text ohne Verdikt-Zeilen, letztes gültiges Verdikt oder ``""``)."""
+    """(text without verdict lines, last valid verdict or ``""``)."""
     found = [v for v in _VERDICT_LINE_RE.findall(text) if _VERDICT_RE.fullmatch(v)]
     return _VERDICT_LINE_RE.sub("", text), (found[-1] if found else "")
 
 
 @dataclass(frozen=True, slots=True)
 class Approval:
-    """Freigabe-Anfrage eines pausierten (oder früher pausierten) Runs."""
+    """Approval request of a paused (or formerly paused) run."""
 
     status: ApprovalStatus
     reason: ApprovalReason
-    kind: str = ""  # Eskalationsart (ADR 0059), sonst leer
+    kind: str = ""  # escalation kind (ADR 0059), otherwise empty
+
     what: str = ""
     step: str = ""
     issue: str = ""
@@ -232,7 +235,7 @@ class Approval:
 
 @dataclass(frozen=True, slots=True)
 class Run:
-    """Ein Run. Zeitstempel sind ISO-Strings wie im Record (``""`` = nicht gesetzt)."""
+    """A run. Timestamps are ISO strings as in the record (``""`` = not set)."""
 
     id: str
     project: str
@@ -247,33 +250,34 @@ class Run:
     approval: Approval | None = None
     waiting_step: str = ""
     resumed: bool = False
-    approval_queued: str = ""  # Zeitstempel, ab wann die Freigabe auf einen Slot wartet
+    approval_queued: str = ""  # Timestamp since when the approval has been waiting for a slot
     started_by: str | None = None
     approved_by: str | None = None
     rejected_by: str | None = None
     error: str = ""
-    failure_kind: FailureKind | None = None  # nur bei fail/error gesetzt (ADR 0035)
-    retry_after: str = ""  # ISO-Zeitpunkt (UTC), nur bei transient
-    retry_of: str = ""  # Run-Id des vorherigen Versuchs (ADR 0036); "" = kein Retry
-    replay_of: str = ""  # Run-Id des Originals, wenn dies ein Replay ist (ADR 0061); "" = kein Replay
+    failure_kind: FailureKind | None = None  # set only on fail/error (ADR 0035)
+    retry_after: str = ""  # ISO timestamp (UTC), only for transient
+    retry_of: str = ""  # Run id of the previous attempt (ADR 0036); "" = no retry
+    replay_of: str = ""  # Run id of the original if this is a replay (ADR 0061); "" = no replay
+
     attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
     worktree_cleanup_error: str = ""
-    # Schreibgeschützt (MappingProxyType): der Run ist frozen, ``vars`` auch —
-    # ``run.vars["x"] = 1`` wirft TypeError. :func:`fabrik.runstore.parse_run` verpackt
-    # die geparsten Werte; der Default ist eine leere, schreibgeschützte Mapping.
+    # Read-only (MappingProxyType): the run is frozen, ``vars`` too —
+    # ``run.vars["x"] = 1`` raises TypeError. :func:`fabrik.runstore.parse_run` wraps
+    # the parsed values; the default is an empty, read-only mapping.
     vars: Mapping[str, str | int | float | bool] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def verdict(self) -> str:
-        """Fachliches Ergebnis des Runs: Verdikt des letzten Steps, der eins gemeldet hat."""
+        """Domain result of the run: verdict of the last step that reported one."""
         return next((s.verdict for s in reversed(self.steps) if s.verdict), "")
 
     @property
     def is_terminal(self) -> bool:
-        """True, wenn der Run nicht mehr weiterläuft."""
+        """True if the run no longer continues."""
         return self.status in TERMINAL_RUN_STATUSES
 
     @property
     def awaiting_tier_approval(self) -> bool:
-        """True, wenn der Run am synthetischen Tier-Gate hängt."""
+        """True if the run is stuck at the synthetic tier gate."""
         return self.status is RunStatus.NEEDS_APPROVAL and self.waiting_step == TIER_APPROVAL_STEP

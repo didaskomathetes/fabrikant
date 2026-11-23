@@ -1,21 +1,22 @@
-"""opencode-Backend: opencode serve (HTTP-API, 1.x und 2.x).
+"""opencode backend: opencode serve (HTTP API, 1.x and 2.x).
 
-SPIKE: docs/spike-opencode.md. Ein serve-Prozess bedient viele Projekte —
-das Workdir geht pro Request (1.x: `?directory=`) bzw. bei der
-Session-Erstellung (2.x: `location`). Polling statt SSE: tick-orientiert,
-idempotent, für die Conductor-Basis genug.
+SPIKE: docs/spike-opencode.md. One serve process serves many projects —
+the workdir goes per request (1.x: `?directory=`) or at
+session creation (2.x: `location`). Polling instead of SSE: tick-oriented,
+idempotent, enough for the conductor base.
 
-Versions-Erkennung (lazy, gecacht): `GET /api/info` → 2.x, sonst
-`GET /api/health` → 1.x. 2.x verlangt HTTP-Basic-Auth
-(`FABRIK_AGENT_PASSWORD`; der Server generiert ein Passwort, wenn
-`OPENCODE_SERVER_PASSWORD` nicht gesetzt ist). 2.x-Messages (flach:
-`type`, `content`, top-level `tokens/cost/…`) werden in die 1.x-Envelope
-(`{info, parts}`) normalisiert, damit `poll()` eine gemeinsame
-Statuslogik hat.
+Version detection (lazy, cached): `GET /api/info` → 2.x, otherwise
+`GET /api/health` → 1.x. 2.x requires HTTP basic auth
+(`FABRIK_AGENT_PASSWORD`; the server generates a password if
+`OPENCODE_SERVER_PASSWORD` is not set). 2.x messages (flat:
+`type`, `content`, top-level `tokens/cost/…`) are normalized into the 1.x envelope
+(`{info, parts}`) so `poll()` has common
+status logic.
 
-Mit `FABRIK_SANDBOX=1` wählt die Registry stattdessen den One-Shot-Adapter
-:class:`~fabrik.backends.opencode_cli.OpenCodeCliBackend` (eigene opencode-Instanz im
-Sandbox-Container, Config aus einer LLM-Verbindung) — kein geteilter `opencode serve` auf dem Host.
+With `FABRIK_SANDBOX=1` the registry picks the one-shot adapter
+:class:`~fabrik.backends.opencode_cli.OpenCodeCliBackend` instead (own opencode instance in the
+sandbox container, config from an LLM connection) — no shared `opencode serve` on the host.
+
 """
 
 from __future__ import annotations
@@ -31,19 +32,20 @@ import urllib.request
 
 from .. import httpsafe
 from ..failures import classify_exception
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 
 
 def _default_permissions() -> list[dict]:
-    """Default-Permission-Rules (1.x-Format: `permission`/`pattern`/`action`).
+    """Default permission rules (1.x format: `permission`/`pattern`/`action`).
 
-    Containment-Modell: `edit`-Patterns sind RELATIV zur Session-Workdir;
-    Pfade DRAUSSEN triggern `external_directory` (Default: ask → in headless
-    serve = deny). File-Tools sind damit auf die Workdir gefangen.
-    `bash "*` ist bewusst weit (Agenten brauchen Shell) — ECHTE Isolation
-    (non-root User, Container, VM) ist eine DEPLOYMENT-Voraussetzung,
-    keine Config-Option. Override: step.permissions.
+    Containment model: `edit` patterns are RELATIVE to the session workdir;
+    paths OUTSIDE trigger `external_directory` (default: ask → in headless
+    serve = deny). File tools are thereby confined to the workdir.
+    `bash "*` is deliberately wide (agents need a shell) — REAL isolation
+    (non-root user, container, VM) is a DEPLOYMENT prerequisite,
+    not a config option. Override: step.permissions.
     """
     return [
         {"permission": "edit", "pattern": "*", "action": "allow"},
@@ -54,7 +56,8 @@ def _default_permissions() -> list[dict]:
 def opencode_tokens(t: object) -> TokenCounts:
     """opencode-``tokens`` (``input``, ``output``, ``reasoning``, ``cache.read``/``cache.write``) → TokenCounts.
 
-    opencode zählt Cache-Tokens nicht in ``input`` — sie kommen dazu; Reasoning zählt zum Output."""
+    opencode does not count cache tokens in ``input`` — they are added; reasoning counts as output."""
+
     if not isinstance(t, dict):
         return TokenCounts()
     raw_cache = t.get("cache")
@@ -69,15 +72,15 @@ def opencode_tokens(t: object) -> TokenCounts:
 
 
 class _ServeApi:
-    """Transport + Shape-Normalisierung für opencode serve (1.x / 2.x).
+    """Transport + shape normalization for opencode serve (1.x / 2.x).
 
-    `fetch_messages` liefert IMMER die 1.x-Envelope `[{info, parts}]` —
-    2.x-Flach-Messages werden in `_normalize_v2` umgebogen, damit
-    `OpenCodeBackend.poll()` versionsoagnostisch bleibt.
+    `fetch_messages` ALWAYS returns the 1.x envelope `[{info, parts}]` —
+    2.x flat messages are converted in `_normalize_v2` so that
+    `OpenCodeBackend.poll()` stays version-agnostic.
 
-    Sicherheit: TLS-Verifikation bleibt immer aktiv (urllib-Default —
-    niemals deaktivieren). Credentials gehen nur im Authorization-Header
-    und werden nie geloggt.
+    Security: TLS verification always stays active (urllib default —
+    never disable). Credentials go only in the Authorization header
+    and are never logged.
     """
 
     def __init__(self, endpoint: str, version: str, password: str | None, username: str):
@@ -121,8 +124,8 @@ class _ServeApi:
     # -- session ---------------------------------------------------------
     def create_session(self, workdir: str, title: str, model: dict, permissions: list[dict]) -> str:
         if self.version == "2":
-            # 2.x: Workdir über `location` (an die Session gebunden), Rules
-            # heißen `action`/`resource`/`effect`, Response in `data`-Wrapper.
+            # 2.x: workdir via `location` (bound to the session), rules
+            # are called `action`/`resource`/`effect`, response in a `data` wrapper.
             payload = {
                 "title": title,
                 "model": model,
@@ -138,7 +141,7 @@ class _ServeApi:
             payload = {"title": title, "model": model, "permission": permissions}
             _, d = self._req("POST", "/session", payload, directory=workdir, timeout=30)
         if not d.get("id"):
-            raise RuntimeError(f"opencode: Session-Create ohne id: {str(d)[:200]}")
+            raise RuntimeError(_t("backends.opencode.opencode_session_create_without_id", v1=str(d)[:200]))
         return d["id"]
 
     def send_prompt(self, session_id: str, prompt: str, directory: str) -> None:
@@ -158,11 +161,11 @@ class _ServeApi:
             raise RuntimeError(f"opencode prompt: HTTP {s}")
 
     def fetch_messages(self, session_id: str, directory: str) -> list[dict]:
-        """→ 1.x-Envelope `[{info, parts}]`, IMMER älteste-zuerst.
+        """→ 1.x envelope `[{info, parts}]`, ALWAYS oldest-first.
 
-        2.x: paginiert + normalisiert; die API-Seiten sind neueste-zuerst
-        sortiert und werden umgekehrt, damit beide Versionen dieselbe
-        Reihenfolge liefern (`poll()` liest die letzte als `a[-1]`).
+        2.x: paginated + normalized; the API pages are sorted
+        newest-first and are reversed so both versions deliver the same
+        order (`poll()` reads the last one as `a[-1]`).
         """
         if self.version == "2":
             msgs: list[dict] = []
@@ -176,11 +179,11 @@ class _ServeApi:
                 cursor = (d.get("cursor") or {}).get("next")
                 if not cursor:
                     break
-            # 2.x liefert die Seiten NEUESTE-ZUERST (der Cursor geht in die
-            # Vergangenheit). Umkehren → älteste-zuerst wie bei 1.x; `poll()`
-            # erwartet die letzte Assistant-Message als `a[-1]` (ohne Umkehr
-            # würde die ERSTE Message als "letzte" gelesen → finish=tool-calls
-            # → ewig "running" → Step-Timeout, obwohl die Session fertig war).
+            # 2.x returns the pages NEWEST-FIRST (the cursor goes into the
+            # past). Reverse → oldest-first as with 1.x; `poll()`
+            # expects the last assistant message as `a[-1]` (without reversal
+            # the FIRST message would be read as "last" → finish=tool-calls
+            # → "running" forever → step timeout, although the session was done).
             msgs.reverse()
             return [m for m in map(self._normalize_v2, msgs) if m is not None]
         _, d = self._req("GET", f"/session/{session_id}/message", directory=directory, timeout=15)
@@ -194,11 +197,11 @@ class _ServeApi:
 
     @staticmethod
     def _normalize_v2(m: dict) -> dict | None:
-        """2.x-Flach-Message → 1.x-Envelope `{info, parts}` (nur Assistant).
+        """2.x flat message → 1.x envelope `{info, parts}` (assistant only).
 
-        Tool-Parts: 2.x hat `name` als Feld; 1.x-Code liest den Namen aus dem
-        JSON-`text`-Feld → wird synthetisiert. `state.status`
-        (`completed`/`error`/`running`) ist in beiden Versionen identisch.
+        Tool parts: 2.x has `name` as a field; 1.x code reads the name from the
+        JSON `text` field → it is synthesized. `state.status`
+        (`completed`/`error`/`running`) is identical in both versions.
         """
         if m.get("type") != "assistant":
             return None
@@ -229,13 +232,13 @@ class _ServeApi:
 
 
 class OpenCodeBackend:
-    """Agent-Backend: opencode serve (HTTP-API, 1.x und 2.x).
+    """Agent backend: opencode serve (HTTP API, 1.x and 2.x).
 
-    SPIKE: docs/spike-opencode.md. Ein serve-Prozess bedient viele Projekte —
-    das Workdir geht pro Request (1.x) bzw. bei der Session-Erstellung (2.x).
-    Polling statt SSE: tick-orientiert, idempotent, für die Conductor-Basis
-    genug. Die Server-Version wird lazy erkannt und gecacht; 2.x braucht
-    Basic-Auth (`FABRIK_AGENT_PASSWORD`).
+    SPIKE: docs/spike-opencode.md. One serve process serves many projects —
+    the workdir goes per request (1.x) or at session creation (2.x).
+    Polling instead of SSE: tick-oriented, idempotent, enough for the conductor
+    base. The server version is detected lazily and cached; 2.x needs
+    basic auth (`FABRIK_AGENT_PASSWORD`).
     """
 
     name = "opencode"
@@ -255,7 +258,7 @@ class OpenCodeBackend:
         self.username = username
         prov, _, mid = model.partition("/")
         self.model = {"providerID": prov, "id": mid} if prov and mid else {"providerID": "ollama", "id": model}
-        if variant:  # Modell-Variante aus der opencode-Config (z. B. Reasoning-Aufwand); sonst Server-Default
+        if variant:  # Model variant from the opencode config (e.g. reasoning effort); otherwise server default
             self.model["variant"] = variant
         self._api: _ServeApi | None = None
         self._probe_errors: list[Exception] = []
@@ -269,9 +272,9 @@ class OpenCodeBackend:
 
     # -- Versions-Erkennung ----------------------------------------------
     def _detect(self) -> _ServeApi | None:
-        """Erkennt die Server-Version (lazy, gecacht). None = nicht erreichbar.
+        """Detects the server version (lazy, cached). None = not reachable.
 
-        2.x: `GET /api/info` → `{"version": …}` (Auth nötig, falls Passwort).
+        2.x: `GET /api/info` → `{"version": …}` (auth needed if a password is set).
         1.x: `GET /api/health` → `{"healthy": true}`.
         """
         if self._api is not None:
@@ -296,18 +299,18 @@ class OpenCodeBackend:
         return api is not None and api.health()
 
     def diagnose(self) -> str | None:
-        """None = gesund; sonst menschenlesbare Diagnose für das Health-Gate.
+        """None = healthy; otherwise a human-readable diagnosis for the health gate.
 
-        Unterscheidet die zwei häufigsten Fälle (aus der Praxis):
-        - Server läuft nicht (Port nicht belegt) → Start-Hint inkl. Default-Port
-        - Server läuft, aber Auth schlägt fehl (401) → Passwort-Mismatch-Hint
+        Distinguishes the two most common cases (from practice):
+        - server not running (port not in use) → start hint incl. default port
+        - server running, but auth fails (401) → password-mismatch hint
         """
         if self._detect() is not None:
             return None
-        base = f"opencode serve nicht erreichbar: {self.endpoint}"
+        base = _t("backends.opencode.opencode_serve_not_reachable", v1=self.endpoint)
         if any(isinstance(e, urllib.error.HTTPError) and e.code == 401 for e in self._probe_errors):
-            return f"{base} — Server antwortet, aber Auth fehlgeschlagen (401): FABRIK_AGENT_PASSWORD prüfen"
-        return f"{base} — läuft `opencode serve`? (Default-Port 4096, konfiguriert: {self.endpoint})"
+            return _t("backends.opencode.server_answers_but_authentication_failed", base=base)
+        return _t("backends.opencode.is_opencode_serve_running_default", base=base, v2=self.endpoint)
 
     def unhealthy_kind(self) -> FailureKind:
         """Abgelehnte Auth (401/403) → `environment`; Server nicht erreichbar → `transient`."""
@@ -318,7 +321,7 @@ class OpenCodeBackend:
         api = self._detect()
         if api is None:
             hint = "" if self.password else " (2.x: FABRIK_AGENT_PASSWORD setzen?)"
-            raise RuntimeError(f"opencode serve nicht erreichbar: {self.endpoint}{hint}")
+            raise RuntimeError(_t("backends.opencode.opencode_serve_not_reachable_2", v1=self.endpoint, hint=hint))
         return api
 
     # -- Port-Interface ----------------------------------------------------
@@ -332,14 +335,14 @@ class OpenCodeBackend:
     def poll(self, session_id: str, directory: str) -> dict:
         """→ {status: running|done|failed, text, tokens, cost, tools}
 
-        Statuslogik (empirisch verifiziert, opencode 1.19; 2.x-Shape wird
-        vorab normalisiert):
-        - keine Assistant-Message / finish=None / finish="tool-calls" → running
-          (tool-calls = Tool-Phase läuft, nächste Message folgt)
-        - finish gesetzt (stop/length/…) ODER info.error → Message abgeschlossen:
-          Substanz (erledigtes Tool-Teil ODER echter Final-Text) → done,
-          sonst failed (z. B. LLM-500 → leere/falsche Message).
-        - Malformated Tool-Call als Text (3b-Modell-Artefakt) zählt nicht als Text.
+        Status logic (empirically verified, opencode 1.19; 2.x shape is
+        normalized beforehand):
+        - no assistant message / finish=None / finish="tool-calls" → running
+          (tool-calls = tool phase running, next message follows)
+        - finish set (stop/length/…) OR info.error → message completed:
+          substance (completed tool part OR real final text) → done,
+          otherwise failed (e.g. LLM 500 → empty/wrong message).
+        - A malformed tool call as text (3b model artifact) does not count as text.
         """
         msgs = self._require_api().fetch_messages(session_id, directory)
         a = [m for m in msgs if m.get("info", {}).get("role") == "assistant"]
@@ -363,9 +366,9 @@ class OpenCodeBackend:
             return {**base, "status": "failed", "text": str(info["error"])[:300]}
         fin = info.get("finish")
         if fin is None or fin == "tool-calls":
-            # finish=None OHNE Parts = Modell hat nie angefangen → Staleness-Check
-            # (tote Session, z. B. serve-Absturz). tool-calls = Tool-Phase läuft,
-            # darf lange dauern → kein Staleness-Check (Step-Timeout ist Backstop).
+            # finish=None WITHOUT parts = model never started → staleness check
+            # (dead session, e.g. serve crash). tool-calls = tool phase running,
+            # may take long → no staleness check (step timeout is the backstop).
             if fin is None and not last.get("parts"):
                 created = (info.get("time") or {}).get("created")
                 if created:
@@ -373,20 +376,20 @@ class OpenCodeBackend:
                     # CPU-Boxen: erstes Token kann >5 Min dauern (Prompt-Processing) —
                     # Threshold konfigurierbar (step.stale_after / FABRIK_AGENT_STALE_AFTER)
                     if age > self.stale_after:
-                        # `retryable`: hängendes Modell/Server ist transient —
-                        # eine frische Session heilt es (Agent-Step-Retry, ADR 0035).
+                        # `retryable`: a hanging model/server is transient —
+                        # a fresh session heals it (agent step retry, ADR 0035).
                         return {
                             **base,
                             "status": "failed",
                             "retryable": True,
-                            "text": f"Session inaktiv seit {int(age)}s (keine Aktivität)",
+                            "text": _t("backends.opencode.session_inactive_for_s_no", v1=int(age)),
                         }
             return {**base, "status": "running", "text": last_txt}
         # abgeschlossene Message: Substanz-Check
         t = last_txt.strip()
         if t:
-            # Tool-Call-Artefakt (auch malformiert, 3b-Modell): Text beginnt wie
-            # ein Tool-Call-JSON → keine Substanz
+            # Tool-call artifact (also malformed, 3b model): text starts like
+            # a tool-call JSON → no substance
             if t.startswith("{") and '"name"' in t[:80] and '"parameters"' in t[:160]:
                 t = ""
             else:
@@ -396,12 +399,12 @@ class OpenCodeBackend:
                         t = ""
                 except (json.JSONDecodeError, ValueError):
                     pass
-        # Substanz-Check (Tool-Status-basiert, an realen Sessions verifiziert):
-        # - completed-Tool-Part irgendwo → done (Action ausgeführt)
-        # - KEIN completed-Tool, aber Tool-Error + Final-Text → failed
-        #   (Modell "erzaehlt" eine fehlgeschlagene Aktion — nicht vertrauenswuerdig)
-        # - KEIN Tool, aber echter Final-Text → done
-        # - sonst → failed (leere/falsche Messages, z. B. LLM-500)
+        # Substance check (tool-status based, verified on real sessions):
+        # - completed tool part anywhere → done (action executed)
+        # - NO completed tool, but tool error + final text → failed
+        # (model "narrates" a failed action — not trustworthy)
+        # - NO tool, but real final text → done
+        # - otherwise → failed (empty/wrong messages, e.g. LLM 500)
         completed_tool = False
         err_tool = False
         for m2 in a:
@@ -426,14 +429,14 @@ class OpenCodeBackend:
         return {
             **base,
             "status": "failed",
-            "text": "Session ohne Substanz (leere/falsche Assistant-Messages, z. B. LLM-500)",
+            "text": _t("backends.opencode.session_without_substance_empty_wrong"),
         }
 
     def transcript(self, session_id: str, directory: str) -> list[dict]:
-        """Vollständiger Assistant-Dialog `[{info, parts}]` (älteste zuerst).
+        """Complete assistant dialog `[{info, parts}]` (oldest first).
 
-        Dient dem Run-Log: der Agent-Step emittet neue Messages live, damit
-        Prompt-Antworten + Tool-Calls in `runs/<projekt>/<id>.log` landen.
+        Serves the run log: the agent step emits new messages live, so
+        prompt answers + tool calls end up in `runs/<project>/<id>.log`.
         """
         return self._require_api().fetch_messages(session_id, directory)
 

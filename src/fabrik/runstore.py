@@ -1,43 +1,43 @@
-"""Run-Store (ADR 0034): Operationen mit Vorbedingung, JSON-Backend und aktives Backend (``STORE``).
+"""Run store (ADR 0034): operations with precondition, JSON backend and active backend (``STORE``).
 
-:class:`BaseRunStore` definiert die Operationen backend-neutral; :class:`RunStore` ist das
-JSON-Backend (`runs/<projekt>/<id>.json`), :class:`fabrik.runstore_sql.SqlRunStore` das relationale
-(Schritt 3). ``STORE`` delegiert zur Aufrufzeit an das per ``FABRIK_RUN_STORE`` gewählte Backend.
+:class:`BaseRunStore` defines the operations backend-neutrally; :class:`RunStore` is the
+JSON backend (`runs/<project>/<id>.json`), :class:`fabrik.runstore_sql.SqlRunStore` the relational one
+(step 3). ``STORE`` delegates at call time to the backend chosen via ``FABRIK_RUN_STORE``.
 
-Schritt 1 (Lesezugriff): Das Laden ist tolerant gegenüber Altbeständen, aber nie still: ein
-Record, der sich nicht ins Modell abbilden lässt, wird mit Grund gemeldet (:class:`LoadReport`).
+Step 1 (read access): loading is tolerant of legacy data but never silent: a
+record that cannot be mapped into the model is reported with a reason (:class:`LoadReport`).
 
-Schritt 2 (Schreibzugriff): Alle Run-Record-Write-Operationen laufen als Transaktion mit
-Vorbedingung über den Store (ADR 0034 Nr. 2): Projekt-Lock → On-Disk-Stand lesen → Vorbedingung
-prüfen (erlaubter Statusübergang laut ``RUN_TRANSITIONS``, optional erwarteter On-Disk-Status
-``expect`` als Compare-and-Set) → redigiert atomar schreiben (Temp-Datei + `Path.replace`).
-Gleicher Status ist nur für nicht-terminale Status ein erlaubter "Übergang" (Checkpoints,
-Approve-Updates); ein Terminal-Record wird nicht erneut überschrieben. Ein unerlaubter oder veralteter Übergang wirft
-:class:`PreconditionError` und lässt den Record unverändert. Außerhalb des Stores wird kein
-Run-JSON mehr direkt geschrieben.
+Step 2 (write access): all run-record write operations run as a transaction with
+precondition via the store (ADR 0034 no. 2): project lock → read on-disk state → check
+precondition (allowed status transition per ``RUN_TRANSITIONS``, optionally expected on-disk status
+``expect`` as compare-and-set) → write redacted atomically (temp file + `Path.replace`).
+The same status is an allowed "transition" only for non-terminal statuses (checkpoints,
+approve updates); a terminal record is not overwritten again. An illegal or stale transition raises
+:class:`PreconditionError` and leaves the record unchanged. Outside the store no
+run JSON is written directly any more.
 
-Defaults für fehlende oder falsch typisierte Felder:
+Defaults for missing or wrongly typed fields:
 
-- ``id`` und ``status`` (gültiger :class:`RunStatus`) sind Pflicht; ``project`` ist der Verzeichnisname
-  (Ablageort hat Vorrang vor dem Feld im Record).
-- Text-Felder (``loop``, ``trigger``, ``note``, ``spec_hash``, ``started``, ``finished``, ``error``,
+- ``id`` and ``status`` (valid :class:`RunStatus`) are mandatory; ``project`` is the directory name
+  (storage location takes precedence over the field in the record).
+- Text fields (``loop``, ``trigger``, ``note``, ``spec_hash``, ``started``, ``finished``, ``error``,
   ``waiting_step``, ``approval_queued``, ``retry_of``, ``worktree_cleanup_error``): ``""``;
-  Nicht-Strings → ``""``.
-- ``started_by``/``approved_by``/``rejected_by``: ``None`` (Records vor der Authentifizierung, ADR 0030).
-- ``resumed``: ``False``; ``vars``: ``{}``, nur skalare Werte (str/int/float/bool) bleiben;
-  schreibgeschützt (:class:`types.MappingProxyType`), da :class:`~fabrik.runmodel.Run` unveränderlich ist.
-- ``steps``: ``[]``; Nicht-Objekte in der Liste werden übersprungen, ein Step ohne gültigen Status ist
-  ein Ladefehler. ``name``/``type``/``summary``/``output``: ``""``; ``duration_s``: ``None``.
-- ``usage``: fehlende Zahlen ``0``, ``cost_usd`` ``None``. ``review``: ``round`` 1, ``pr`` ``None``.
-- ``approval``: ``reason`` fehlt/unbekannt → ``tier`` bei ``waiting_step == "tier-approval"``, sonst ``step``.
-  Der :class:`ApprovalStatus` ist im Record nicht gespeichert und wird abgeleitet: Run ``rejected`` →
-  ``rejected``; Run ``needs_approval`` → ``queued`` (``approval_queued`` gesetzt) bzw. ``pending``;
-  sonst ``approved``, wenn der Run fortgesetzt wurde (``resumed``/``approved_by``), andernfalls ``pending``.
-- ``failure_kind`` (ADR 0035): bei gescheiterten Runs (``fail``/``error``) bzw. Steps (``fail``/``timeout``/
-  ``error``) fehlend oder unbekannt → ``unknown`` (Altbestand, kein Backfill); sonst ``None``.
+  non-strings → ``""``.
+- ``started_by``/``approved_by``/``rejected_by``: ``None`` (records before authentication, ADR 0030).
+- ``resumed``: ``False``; ``vars``: ``{}``, only scalar values (str/int/float/bool) remain;
+  read-only (:class:`types.MappingProxyType`), because :class:`~fabrik.runmodel.Run` is immutable.
+- ``steps``: ``[]``; non-objects in the list are skipped, a step without a valid status is
+  a load error. ``name``/``type``/``summary``/``output``: ``""``; ``duration_s``: ``None``.
+- ``usage``: missing numbers ``0``, ``cost_usd`` ``None``. ``review``: ``round`` 1, ``pr`` ``None``.
+- ``approval``: ``reason`` missing/unknown → ``tier`` if ``waiting_step == "tier-approval"``, otherwise ``step``.
+  The :class:`ApprovalStatus` is not stored in the record and is derived: run ``rejected`` →
+  ``rejected``; run ``needs_approval`` → ``queued`` (``approval_queued`` set) or ``pending``;
+  otherwise ``approved`` if the run was resumed (``resumed``/``approved_by``), else ``pending``.
+- ``failure_kind`` (ADR 0035): for failed runs (``fail``/``error``) or steps (``fail``/``timeout``/
+  ``error``) missing or unknown → ``unknown`` (legacy data, no backfill); otherwise ``None``.
   ``retry_after``: ``""``.
-- ``attempt`` (ADR 0036): ``0``; nur nicht-negative Ganzzahlen bleiben, sonst ``0``.
-- ``steps_output`` und unbekannte Felder werden ignoriert.
+- ``attempt`` (ADR 0036): ``0``; only non-negative integers remain, otherwise ``0``.
+- ``steps_output`` and unknown fields are ignored.
 """
 
 from __future__ import annotations
@@ -56,6 +56,7 @@ from typing import Any, TypeVar
 
 from . import config, filelock
 from .failures import Failure, parse_kind
+from .i18n import t
 from .runmodel import (
     FAILED_RUN_STATUSES,
     FAILED_STEP_STATUSES,
@@ -80,28 +81,30 @@ from .secrets import _redact_record
 
 _E = TypeVar("_E", bound=Enum)
 
-# Lock-Datei je Projektverzeichnis (``<name>.lock``, kein ``*.json`` → nie als Record geladen).
+# Lock file per project directory (``<name>.lock``, no ``*.json`` → never loaded as a record).
 _PROJECT_LOCK = ".runs"
 
 
 class RecordError(ValueError):
-    """Ein Record lässt sich nicht ins Modell abbilden (Text = Grund)."""
+    """A record cannot be mapped into the model (text = reason)."""
 
 
 class RunStoreError(Exception):
-    """Fehler beim Schreiben eines Run-Records (defekter On-Disk-Stand, I/O)."""
+    """Error writing a run record (broken on-disk state, I/O)."""
 
 
 class PreconditionError(RunStoreError):
-    """Vorbedingung einer Write-Operation verletzt: der On-Disk-Status (bzw. -Zustand) des Runs
-    erlaubt den Übergang nicht. Der Record bleibt unverändert (ADR 0034 Nr. 2)."""
+    """Precondition of a write operation violated: the run's on-disk status (or state)
+    does not allow the transition. The record stays unchanged (ADR 0034 no. 2)."""
 
 
 def _require_status(raw: dict, run_id: str, status: RunStatus) -> None:
-    """On-Disk-Status muss ``status`` sein (sonst :class:`PreconditionError`)."""
+    """On-disk status must be ``status`` (otherwise :class:`PreconditionError`)."""
     actual = raw.get("status")
     if actual != status.value:
-        raise PreconditionError(f"Run {run_id}: On-Disk-Status {actual!r}, erwartet {status.value!r}")
+        raise PreconditionError(
+            t("runstore.run_on_disk_status_expected", run_id=run_id, actual=actual, v3=status.value)
+        )
 
 
 def valid_run_id(run_id: str) -> bool:
@@ -110,7 +113,7 @@ def valid_run_id(run_id: str) -> bool:
 
 
 def valid_project(project: str) -> bool:
-    """Projektnamen landen als Pfadkomponente unter RUNS_DIR → nur ein einzelnes Segment erlauben."""
+    """Project names end up as a path component under RUNS_DIR → allow only a single segment."""
     return bool(project) and project not in (".", "..") and "/" not in project and "\\" not in project
 
 
@@ -158,7 +161,7 @@ def _parse_usage(d: Any) -> Usage | None:
 
 
 def _pr_number(value: Any) -> int | None:
-    """PR-Nummer als int (Records speichern int oder numerischen String); sonst None."""
+    """PR number as int (records store int or numeric string); otherwise None."""
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return value if isinstance(value, int) and not isinstance(value, bool) else None
@@ -181,7 +184,7 @@ def _parse_review(d: Any) -> ReviewResult | None:
 
 
 def _failure_kind(d: Mapping[str, Any], failed: bool) -> FailureKind | None:
-    """``failure_kind`` nur für gescheiterte Runs/Steps; Altbestand ohne Feld → ``unknown``."""
+    """``failure_kind`` only for failed runs/steps; legacy data without the field → ``unknown``."""
     return parse_kind(d.get("failure_kind")) if failed else None
 
 
@@ -239,11 +242,11 @@ def _parse_approval(d: Any, run_status: RunStatus, rec: Mapping[str, Any]) -> Ap
 
 
 def attempt_of(record: Mapping[str, Any] | None) -> int:
-    """0-basierte Retry-Versuchszahl aus einem Run-Record (ADR 0036).
+    """0-based retry attempt count from a run record (ADR 0036).
 
-    Einzige Quelle für das ``attempt``-Feld: nur nicht-negative Ganzzahlen
-    bleiben; fehlend, defekt (String, Bool) oder negativ → ``0``. Wird von
-    :func:`parse_run` und :mod:`fabrik.retry_chains` geteilt."""
+    Single source for the ``attempt`` field: only non-negative integers
+    remain; missing, broken (string, bool) or negative → ``0``. Shared by
+    :func:`parse_run` and :mod:`fabrik.retry_chains`."""
     if not isinstance(record, Mapping):
         return 0
     attempt = record.get("attempt")
@@ -253,19 +256,19 @@ def attempt_of(record: Mapping[str, Any] | None) -> int:
 
 
 def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
-    """Run-Record (dict aus dem JSON) → :class:`Run`; :class:`RecordError` mit Grund, wenn unmöglich.
+    """Run record (dict from the JSON) → :class:`Run`; :class:`RecordError` with reason if impossible.
 
-    ``project``: Verzeichnisname, hat Vorrang vor dem Feld im Record. Defaults: siehe Moduldoku."""
+    ``project``: directory name, takes precedence over the field in the record. Defaults: see module doc."""
     run_id = rec.get("id")
     if not isinstance(run_id, str) or not run_id:
-        raise RecordError("id fehlt oder ist kein nicht-leerer String")
+        raise RecordError(t("runstore.id_missing_or_not_a"))
     proj = project or _text(rec.get("project"))
     if not proj:
-        raise RecordError("project fehlt")
+        raise RecordError(t("runstore.project_missing"))
     status = _enum(RunStatus, rec.get("status"), "Run")
     steps = tuple(_parse_step(s, i) for i, s in enumerate(_dicts(rec.get("steps")), 1))
     raw_vars = rec.get("vars")
-    # MappingProxyType: Run.vars bleibt schreibgeschützt (Run ist frozen, ADR 0034).
+    # MappingProxyType: Run.vars stays read-only (Run is frozen, ADR 0034).
     run_vars = MappingProxyType(
         {k: v for k, v in raw_vars.items() if isinstance(v, (str, int, float, bool))}
         if isinstance(raw_vars, dict)
@@ -310,7 +313,7 @@ class LoadFailure:
 
 @dataclass
 class LoadReport:
-    """Ergebnis eines Gesamtlaufs über alle Records: Anzahl geladen + Fehlschläge mit Grund."""
+    """Result of a full pass over all records: number loaded + failures with reason."""
 
     loaded: int = 0
     failures: list[LoadFailure] = field(default_factory=list)
@@ -322,14 +325,14 @@ class LoadReport:
 
 
 def _check_transition(raw: Mapping[str, Any], record: Mapping[str, Any], expect: RunStatus | None = None) -> None:
-    """Gespeicherter Status → Record-Status muss in ``RUN_TRANSITIONS`` liegen oder für einen
-    nicht-terminalen Status identisch sein (Checkpoint-/Approve-Updates schreiben denselben
-    Status). ``expect``: der gespeicherte Status muss genau dieser sein (Compare-and-Set auf den
-    Stand, den der Aufrufer gelesen hat — z. B. schließt ``needs_approval → running`` einen
-    zweiten Resume aus, ``queued → error`` überschreibt keinen inzwischen laufenden Run).
+    """Stored status → record status must be in ``RUN_TRANSITIONS`` or identical for a
+    non-terminal status (checkpoint/approve updates write the same
+    status). ``expect``: the stored status must be exactly this (compare-and-set on the
+    state the caller read — e.g. ``needs_approval → running`` rules out a
+    second resume, ``queued → error`` does not overwrite a run that has meanwhile started).
 
-    Unbekannter gespeicherter Status → :class:`RunStoreError` (defekter Record);
-    unerlaubter Übergang → :class:`PreconditionError`."""
+    Unknown stored status → :class:`RunStoreError` (broken record);
+    illegal transition → :class:`PreconditionError`."""
     cur, tgt = raw.get("status"), record.get("status")
     if not isinstance(cur, str) or not isinstance(tgt, str):
         raise RunStoreError(f"defekter Run-Record: unbekannter Status {cur!r}")
@@ -340,58 +343,60 @@ def _check_transition(raw: Mapping[str, Any], record: Mapping[str, Any], expect:
         raise RunStoreError(f"defekter Run-Record: unbekannter Status {cur!r}") from e
     run_id = record.get("id") or "?"
     if expect is not None and current is not expect:
-        raise PreconditionError(f"Run {run_id}: On-Disk-Status {current.value!r}, erwartet {expect.value!r}")
+        raise PreconditionError(
+            t("runstore.run_on_disk_status_expected_2", run_id=run_id, v2=current.value, v3=expect.value)
+        )
     same = target is current and current not in TERMINAL_RUN_STATUSES
     if not same and target not in RUN_TRANSITIONS[current]:
-        raise PreconditionError(f"Run {run_id}: unerlaubter Übergang {current.value!r} → {target.value!r}")
+        raise PreconditionError(t("runstore.run_illegal_transition", run_id=run_id, v2=current.value, v3=target.value))
 
 
 def _existing(raw: dict | None, run_id: str) -> dict:
     if raw is None:
-        raise PreconditionError(f"Run {run_id} existiert nicht")
+        raise PreconditionError(t("runstore.run_does_not_exist", run_id=run_id))
     return raw
 
 
-# Mutation eines Records innerhalb einer Store-Transaktion: gespeicherter Stand (None = fehlt) → neuer Stand.
+# Mutation of a record within a store transaction: stored state (None = missing) → new state.
 Mutation = Callable[[dict | None], dict]
 
 
 class BaseRunStore(ABC):
-    """Backend-neutrale Run-Store-Operationen (ADR 0034 Nr. 3).
+    """Backend-neutral run-store operations (ADR 0034 no. 3).
 
-    Jede Write-Operation ist eine :data:`Mutation`, die das Backend in :meth:`_modify` atomar
-    ausführt: gespeicherten Stand exklusiv lesen → Vorbedingung prüfen → redigiert schreiben. Ein
-    unerlaubter oder veralteter Übergang wirft :class:`PreconditionError` und lässt den Run
-    unverändert. Leseoperationen liefern rohe Records (``dict``, für Engine/API) oder das
-    typisierte Modell (:class:`~fabrik.runmodel.Run`)."""
+    Every write operation is a :data:`Mutation` that the backend executes atomically in :meth:`_modify`:
+    read stored state exclusively → check precondition → write redacted. An
+    illegal or stale transition raises :class:`PreconditionError` and leaves the run
+    unchanged. Read operations return raw records (``dict``, for engine/API) or the
+    typed model (:class:`~fabrik.runmodel.Run`)."""
 
     # ------------------------------------------------------------ Backend-Primitive
     @abstractmethod
     def _modify(self, project: str, run_id: str, mutate: Mutation) -> dict:
-        """``mutate`` exklusiv auf den gespeicherten Stand anwenden und das Ergebnis redigiert
-        speichern (in-place, siehe :func:`fabrik.secrets._redact_record`); liefert es zurück.
-        Ungültige Projekt-/Run-Ids → :class:`RunStoreError`."""
+        """Apply ``mutate`` exclusively to the stored state and store the result
+        redacted (in place, see :func:`fabrik.secrets._redact_record`); returns it.
+        Invalid project/run ids → :class:`RunStoreError`."""
 
     @abstractmethod
     def get_record(self, run_id: str, project: str | None = None) -> dict | None:
-        """Roher Record per Id (optional im Projekt); None, wenn unbekannt oder Id ungültig."""
+        """Raw record by id (optionally in the project); None if unknown or id invalid."""
 
     @abstractmethod
     def load_records(self, project: str | None = None, status: RunStatus | None = None) -> list[dict]:
-        """Rohe Records (ohne ``steps_output``, ``project`` = Ablageort) aller bzw. eines Projekts,
-        optional nur mit ``status``; unsortiert. Nicht lesbare Records werden übersprungen."""
+        """Raw records (without ``steps_output``, ``project`` = storage location) of all or one project,
+        optionally only with ``status``; unsorted. Unreadable records are skipped."""
 
     @abstractmethod
     def load_report(self, project: str | None = None) -> tuple[list[Run], LoadReport]:
-        """Alle Runs typisiert laden; nicht abbildbare landen mit Grund im Report."""
+        """Load all runs typed; those that cannot be mapped land in the report with reason."""
 
     # ------------------------------------------------------------ Lesen
     def load_all(self, project: str | None = None) -> list[Run]:
-        """Alle ladbaren Runs (unsortiert); nicht ladbare Records werden übersprungen (siehe :meth:`load_report`)."""
+        """All loadable runs (unsorted); unloadable records are skipped (see :meth:`load_report`)."""
         return self.load_report(project)[0]
 
     def get(self, run_id: str, project: str | None = None) -> Run | None:
-        """Run per Id (optional im Projekt); None, wenn unbekannt, ungültig oder nicht ladbar."""
+        """Run by id (optionally in the project); None if unknown, invalid or not loadable."""
         try:
             rec = self.get_record(run_id, project)
             return parse_run(rec, project or None) if rec is not None else None
@@ -399,7 +404,7 @@ class BaseRunStore(ABC):
             return None
 
     def loop_triggers(self, project: str, loop: str, statuses: tuple[str, ...] | None = None) -> set[str]:
-        """Trigger-Strings aller Runs von ``project``/``loop`` (optional nur mit einem der ``statuses``)."""
+        """Trigger strings of all runs of ``project``/``loop`` (optionally only with one of the ``statuses``)."""
         return {
             str(r.get("trigger", ""))
             for r in self.load_records(project)
@@ -407,11 +412,11 @@ class BaseRunStore(ABC):
         }
 
     def search(self, query: RunQuery) -> list[Run]:
-        """Treffer von ``query``, neueste zuerst (:func:`~fabrik.runquery.sort_key`), höchstens
-        ``query.limit + 1`` (der überzählige zeigt eine Folgeseite an).
+        """Hits of ``query``, newest first (:func:`~fabrik.runquery.sort_key`), at most
+        ``query.limit + 1`` (the surplus one indicates a next page).
 
-        Records mit unbekanntem Status sind nicht im Modell darstellbar und daher nicht
-        in den Treffern (nur über :meth:`load_report` sichtbar, ADR 0034)."""
+        Records with an unknown status cannot be represented in the model and are therefore not
+        in the hits (visible only via :meth:`load_report`, ADR 0034)."""
         hits = sorted(filter(query.matches, self.load_all(query.project)), key=sort_key, reverse=True)
         return hits[: query.limit + 1]
 
@@ -426,21 +431,23 @@ class BaseRunStore(ABC):
         allow_missing: bool = False,
         expect: RunStatus | None = None,
     ) -> dict:
-        """Record schreiben, wenn die Vorbedingung am gespeicherten Stand gilt.
+        """Write a record if the precondition holds on the stored state.
 
-        ``create=True``: der Run darf nicht existieren (Neuanlage). ``allow_missing=True``: er
-        darf fehlen (Neuanlage ohne Existenzprüfung, z. B. queued-Platzhalter, den `run_loop`
-        beim Start überschreibt). Sonst muss der gespeicherte Status laut ``RUN_TRANSITIONS``
-        zum Record-Status übergehen können (siehe :func:`_check_transition`, ``expect``:
-        erwarteter Status). Liefert den übergebenen Record; :class:`PreconditionError`, wenn verletzt."""
+        ``create=True``: the run must not exist (new creation). ``allow_missing=True``: it
+        may be missing (new creation without existence check, e.g. queued placeholder that `run_loop`
+        overwrites at start). Otherwise the stored status must be able to transition
+        to the record status per ``RUN_TRANSITIONS`` (see :func:`_check_transition`, ``expect``:
+        expected status). Returns the passed record; :class:`PreconditionError` if violated."""
 
         def mutate(raw: dict | None) -> dict:
             if create:
                 if raw is not None:
-                    raise PreconditionError(f"Run {run_id} existiert bereits (Status {raw.get('status')!r})")
+                    raise PreconditionError(
+                        t("runstore.run_already_exists_status", run_id=run_id, v2=raw.get("status"))
+                    )
             elif raw is None:
                 if not allow_missing:
-                    raise PreconditionError(f"Run {run_id} existiert nicht")
+                    raise PreconditionError(t("runstore.run_does_not_exist", run_id=run_id))
             else:
                 _check_transition(raw, record, expect)
             return record
@@ -448,7 +455,7 @@ class BaseRunStore(ABC):
         return self._modify(project, run_id, mutate)
 
     def create(self, project: str, run_id: str, record: dict) -> dict:
-        """Neuen Record anlegen; der Run darf nicht existieren (sonst :class:`PreconditionError`)."""
+        """Create a new record; the run must not exist (otherwise :class:`PreconditionError`)."""
         return self._write_with_precondition(project, run_id, record, create=True)
 
     def write(
@@ -460,32 +467,32 @@ class BaseRunStore(ABC):
         allow_missing: bool = False,
         expect: RunStatus | None = None,
     ) -> dict:
-        """Record schreiben (Engine-Checkpoints); der Übergang vom gespeicherten Status muss laut
-        ``RUN_TRANSITIONS`` erlaubt sein (oder für einen nicht-terminalen Status identisch sein).
+        """Write a record (engine checkpoints); the transition from the stored status must be allowed per
+        ``RUN_TRANSITIONS`` (or identical for a non-terminal status).
 
-        ``allow_missing=True``: der Run darf auch fehlen (Neuanlage, z. B. queued-Platzhalter,
-        den `run_loop` beim Start überschreibt). ``expect``: der gespeicherte Status muss genau
-        dieser sein (sonst :class:`PreconditionError`)."""
+        ``allow_missing=True``: the run may also be missing (new creation, e.g. queued placeholder
+        that `run_loop` overwrites at start). ``expect``: the stored status must be exactly
+        this (otherwise :class:`PreconditionError`)."""
         return self._write_with_precondition(project, run_id, record, allow_missing=allow_missing, expect=expect)
 
     def approve(self, project: str, run_id: str, record: dict, actor: str | None = None) -> dict:
-        """Freigabe-Audit: ``approved_by`` setzen (Status bleibt ``needs_approval``).
+        """Approval audit: set ``approved_by`` (status stays ``needs_approval``).
 
-        Nur von ``needs_approval``. ``approved_by`` ist reines Audit, keine Sperre: scheitert der
-        Resume danach (oder wird er verworfen), darf erneut freigegeben oder abgelehnt werden.
-        Exklusiv ist erst der Resume selbst (``needs_approval → running`` mit ``expect``, siehe
-        :meth:`write`) — ein gleichzeitiger Reject gewinnt oder verliert dort."""
+        Only from ``needs_approval``. ``approved_by`` is pure audit, no lock: if the
+        resume fails afterwards (or is discarded), it may be approved or rejected again.
+        Only the resume itself is exclusive (``needs_approval → running`` with ``expect``, see
+        :meth:`write`) — a concurrent reject wins or loses there."""
         if actor:
             record["approved_by"] = actor
         record["status"] = RunStatus.NEEDS_APPROVAL.value
         return self._write_with_precondition(project, run_id, record, expect=RunStatus.NEEDS_APPROVAL)
 
     def reject(self, project: str, run_id: str, record: dict, actor: str | None = None) -> dict:
-        """Ablehnung entscheiden: Status ``rejected`` + ``rejected_by`` setzen.
+        """Decide rejection: set status ``rejected`` + ``rejected_by``.
 
-        Nur von ``needs_approval`` — auch bei einer wartenden Freigabe (``approval_queued``):
-        der Worker prüft den Status nach dem Slot-Erwerb und setzt nicht mehr fort. Der
-        Queue-Marker wird entfernt."""
+        Only from ``needs_approval`` — also with a waiting approval (``approval_queued``):
+        the worker checks the status after acquiring the slot and no longer resumes. The
+        queue marker is removed."""
         if actor:
             record["rejected_by"] = actor
         record["status"] = RunStatus.REJECTED.value
@@ -493,9 +500,9 @@ class BaseRunStore(ABC):
         return self._write_with_precondition(project, run_id, record, expect=RunStatus.NEEDS_APPROVAL)
 
     def mark_approval_queued(self, project: str, run_id: str, record: dict, actor: str | None = None) -> dict:
-        """Freigabe eingereiht (kein Slot frei): ``approval_queued`` + ``approved_by`` setzen (ADR 0015).
+        """Approval queued (no slot free): set ``approval_queued`` + ``approved_by`` (ADR 0015).
 
-        Nur von ``needs_approval`` (sonst :class:`PreconditionError`)."""
+        Only from ``needs_approval`` (otherwise :class:`PreconditionError`)."""
         record["approval_queued"] = config.utcnow().isoformat()
         if actor:
             record["approved_by"] = actor
@@ -503,11 +510,11 @@ class BaseRunStore(ABC):
         return self._write_with_precondition(project, run_id, record, expect=RunStatus.NEEDS_APPROVAL)
 
     def revoke_approval(self, project: str, run_id: str) -> dict:
-        """Freigabe zurücknehmen, ohne dass ein Resume begonnen hat (Worker nicht gestartet bzw.
-        verworfen): ``approved_by`` leeren, ``approval_queued`` entfernen.
+        """Revoke approval without a resume having begun (worker not started or
+        discarded): clear ``approved_by``, remove ``approval_queued``.
 
-        Read-Modify-Write, nur von ``needs_approval`` — ein inzwischen fortgesetzter oder
-        abgelehnter Run bleibt unberührt (:class:`PreconditionError`)."""
+        Read-modify-write, only from ``needs_approval`` — a run that has meanwhile been resumed or
+        rejected stays untouched (:class:`PreconditionError`)."""
 
         def mutate(raw: dict | None) -> dict:
             raw = _existing(raw, run_id)
@@ -519,12 +526,12 @@ class BaseRunStore(ABC):
         return self._modify(project, run_id, mutate)
 
     def update_fields(self, project: str, run_id: str, fields: dict) -> dict:
-        """Bestehenden Record um ``fields`` ergänzen (Read-Modify-Write).
+        """Complement an existing record with ``fields`` (read-modify-write).
 
-        Der gespeicherte Stand wird neu gelesen und nur die übergebenen Felder gesetzt —
-        zwischenzeitliche Änderungen (z. B. ``approved_by``/``approval_queued`` durch einen
-        Approve) gehen nicht verloren. Der Status bleibt unverändert; ein fehlender Run
-        wirft :class:`PreconditionError`."""
+        The stored state is re-read and only the passed fields are set —
+        intermediate changes (e.g. ``approved_by``/``approval_queued`` by an
+        approve) are not lost. The status stays unchanged; a missing run
+        raises :class:`PreconditionError`."""
 
         def mutate(raw: dict | None) -> dict:
             raw = _existing(raw, run_id)
@@ -534,12 +541,12 @@ class BaseRunStore(ABC):
         return self._modify(project, run_id, mutate)
 
     def reap(self, project: str, run_id: str, *, error: str) -> dict:
-        """Running-Run von außen abbrechen (Reaper, Dead-Man's-Switch): Status ``error`` + ``interrupted``.
+        """Abort a running run from outside (reaper, dead-man's switch): status ``error`` + ``interrupted``.
 
-        Read-Modify-Write: nur die Fehler-Felder werden auf den aktuellen gespeicherten Stand
-        angewendet, ein zwischenzeitlicher Engine-Checkpoint geht nicht verloren. Nur von
-        ``running`` — ein Run, den die Engine bereits beendet hat, wird nicht überschrieben
-        (sonst :class:`PreconditionError`)."""
+        Read-modify-write: only the error fields are applied to the current stored state,
+        an intermediate engine checkpoint is not lost. Only from
+        ``running`` — a run the engine has already ended is not overwritten
+        (otherwise :class:`PreconditionError`)."""
 
         def mutate(raw: dict | None) -> dict:
             raw = _existing(raw, run_id)
@@ -554,26 +561,26 @@ class BaseRunStore(ABC):
 
 
 def _check_ids(project: str, run_id: str) -> None:
-    """Ungültige Projekt-/Run-Ids (Pfad-Traversal) → :class:`RunStoreError`."""
+    """Invalid project/run ids (path traversal) → :class:`RunStoreError`."""
     if not valid_project(project):
-        raise RunStoreError(f"ungültiger Projektname: {project!r}")
+        raise RunStoreError(t("runstore.invalid_project_name", project=project))
     if not valid_run_id(run_id):
-        raise RunStoreError(f"ungültige Run-Id: {run_id!r}")
+        raise RunStoreError(t("runstore.invalid_run_id", run_id=run_id))
 
 
-# Datei-Identität für den Parse-Cache: (mtime_ns, size, inode).
+# File identity for the parse cache: (mtime_ns, size, inode).
 FileStamp = tuple[int, int, int]
 
 
 class RunStore(BaseRunStore):
-    """JSON-Backend: Run-Records unter ``runs_dir`` (Default ``config.RUNS_DIR``, zur Aufrufzeit).
+    """JSON backend: run records under ``runs_dir`` (default ``config.RUNS_DIR``, at call time).
 
-    Writes laufen unter einem Projekt-Lock (Lock-Datei + Thread-Lock) und schreiben atomar
-    (Temp-Datei + `Path.replace`).
+    Writes run under a project lock (lock file + thread lock) and write atomically
+    (temp file + `Path.replace`).
 
-    Lesen cacht geparste Runs je Datei, gültig solange ``(mtime_ns, size, inode)`` gleich bleibt:
-    Suche/Listen scannen sonst bei jeder Anfrage alle Records neu (JSON + ``parse_run`` ≈ O(n)).
-    Atomare Writes erzeugen eine neue Inode, auch externe Änderungen fallen so auf."""
+    Reading caches parsed runs per file, valid as long as ``(mtime_ns, size, inode)`` stays the same:
+    search/lists would otherwise rescan all records on every request (JSON + ``parse_run`` ≈ O(n)).
+    Atomic writes create a new inode, so external changes are noticed too."""
 
     def __init__(self, runs_dir: Path | None = None):
         self._runs_dir = runs_dir
@@ -596,8 +603,8 @@ class RunStore(BaseRunStore):
                 yield from d.glob("*.json")
 
     def _read(self, f: Path) -> Run:
-        """Datei → Run (gecacht, siehe Klasse); :class:`RecordError` bei defektem JSON/Struktur.
-        Andere I/O-Fehler propagieren."""
+        """File → run (cached, see class); :class:`RecordError` on broken JSON/structure.
+        Other I/O errors propagate."""
         try:
             st = f.stat()
         except FileNotFoundError:
@@ -618,13 +625,13 @@ class RunStore(BaseRunStore):
         except FileNotFoundError:
             raise RecordError("Datei verschwunden") from None
         except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
-            raise RecordError(f"kein gültiges JSON: {e}") from e
+            raise RecordError(t("runstore.not_valid_json", e=e)) from e
         if not isinstance(data, dict):
-            raise RecordError(f"erwartet Object, ist {type(data).__name__}")
+            raise RecordError(t("runstore.expected_object_is", v1=type(data).__name__))
         return parse_run(data, f.parent.name)
 
     def load_report(self, project: str | None = None) -> tuple[list[Run], LoadReport]:
-        """Alle Records laden; nicht ladbare landen mit Grund im Report statt still verloren zu gehen."""
+        """Load all records; unloadable ones land in the report with reason instead of being silently lost."""
         runs: list[Run] = []
         report = LoadReport()
         seen: set[Path] = set()
@@ -639,7 +646,7 @@ class RunStore(BaseRunStore):
         return runs, report
 
     def _forget_unseen(self, scanned: set[Path], seen: set[Path]) -> None:
-        """Cache-Einträge gelöschter Records (Datei in einem gescannten Verzeichnis, aber nicht mehr da) entfernen."""
+        """Remove cache entries of deleted records (file in a scanned directory but no longer there)."""
         with self._parsed_lock:
             for f in [f for f in self._parsed if f.parent in scanned and f not in seen]:
                 del self._parsed[f]
@@ -663,22 +670,22 @@ class RunStore(BaseRunStore):
             except (
                 ValueError,
                 FileNotFoundError,
-            ) as e:  # defektes JSON / Race mit Löschen; andere I/O-Fehler propagieren
-                print(f"[fabrik] Run-Record {f.name} übersprungen: {e}")
+            ) as e:  # broken JSON / race with deletion; other I/O errors propagate
+                print(t("runstore.fabrik_run_record_skipped", v1=f.name, e=e))
                 continue
             if not isinstance(r, dict):
-                print(f"[fabrik] Run-Record {f.name} übersprungen: erwartet Object, ist {type(r).__name__}")
+                print(t("runstore.fabrik_run_record_skipped_expected", v1=f.name, v2=type(r).__name__))
                 continue
             if status is not None and r.get("status") != status.value:
                 continue
             r.pop("steps_output", None)
-            r["project"] = f.parent.name  # Ablageort hat Vorrang (wie parse_run)
+            r["project"] = f.parent.name  # Storage location takes precedence (like parse_run)
             out.append(r)
         return out
 
     def raw_records(self) -> Iterator[tuple[Path, dict | RunStoreError]]:
-        """Jede Record-Datei roh, sortiert (Quelle der Migration, #278): (Pfad, Record) bzw.
-        (Pfad, Fehler mit Grund) für defekte Dateien; zwischendurch gelöschte fallen weg."""
+        """Every record file raw, sorted (migration source, #278): (path, record) or
+        (path, error with reason) for broken files; ones deleted meanwhile drop out."""
         for f in sorted(self._files(None)):
             try:
                 raw = self._read_raw(f)
@@ -690,12 +697,12 @@ class RunStore(BaseRunStore):
 
     # ------------------------------------------------------------ Schreibzugriff
     def _path(self, project: str, run_id: str) -> Path:
-        """Pfad des Run-Records; ungültige Projekt-/Run-Ids werfen :class:`RunStoreError`."""
+        """Path of the run record; invalid project/run ids raise :class:`RunStoreError`."""
         _check_ids(project, run_id)
         return self.root / project / f"{run_id}.json"
 
     def _read_raw(self, path: Path) -> dict | None:
-        """Rohes On-Disk-Record (dict) oder None, wenn die Datei fehlt. Defektes JSON → :class:`RunStoreError`."""
+        """Raw on-disk record (dict) or None if the file is missing. Broken JSON → :class:`RunStoreError`."""
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -703,15 +710,15 @@ class RunStore(BaseRunStore):
         except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
             raise RunStoreError(f"defekter Run-Record {path.name}: {e}") from e
         if not isinstance(data, dict):
-            raise RunStoreError(f"defekter Run-Record {path.name}: erwartet Object, ist {type(data).__name__}")
+            raise RunStoreError(t("runstore.broken_run_record_expected_object", v1=path.name, v2=type(data).__name__))
         return data
 
     def _atomic_write(self, path: Path, record: dict) -> None:
-        """Record atomar schreiben (Temp-Datei + `Path.replace`); `OSError` propagiert.
+        """Write a record atomically (temp file + `Path.replace`); `OSError` propagates.
 
-        Die Redaction erfolgt **in-place**: der übergebene Record verliert seine Secrets, damit
-        kein In-Memory-Stand (z. B. `rn.record` der Engine) Token trägt, die nur die On-Disk-Kopie
-        maskiert hätte."""
+        Redaction happens **in place**: the passed record loses its secrets, so that
+        no in-memory state (e.g. the engine's `rn.record`) carries tokens that only the on-disk copy
+        would have masked."""
         path.parent.mkdir(parents=True, exist_ok=True)
         _redact_record(record)
         tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
@@ -719,11 +726,11 @@ class RunStore(BaseRunStore):
         tmp.replace(path)
 
     def _lock(self, project: str) -> contextlib.AbstractContextManager[None]:
-        """Exklusiver Lock für alle Records eines Projekts (``runs/<projekt>/.runs.lock``).
+        """Exclusive lock for all records of a project (``runs/<project>/.runs.lock``).
 
-        Ein Lock pro Projekt statt pro Run: die Lock-Datei und der Thread-Lock in
-        :mod:`fabrik.filelock` existieren nur einmal je Projekt (nicht je Run-Id, die nie
-        aufgeräumt würden). Die geschützten Abschnitte sind kurz (lesen + atomar schreiben)."""
+        One lock per project instead of per run: the lock file and the thread lock in
+        :mod:`fabrik.filelock` exist only once per project (not per run id, which would never
+        be cleaned up). The protected sections are short (read + atomic write)."""
         return filelock.locked(self.root / project / _PROJECT_LOCK)
 
     def _modify(self, project: str, run_id: str, mutate: Mutation) -> dict:
@@ -735,15 +742,15 @@ class RunStore(BaseRunStore):
 
 
 class ActiveRunStore:
-    """Delegiert jeden Zugriff an das konfigurierte Backend (``FABRIK_RUN_STORE``, zur Aufrufzeit).
+    """Delegates every access to the configured backend (``FABRIK_RUN_STORE``, at call time).
 
-    Module binden ``STORE`` beim Import; das Backend (JSON oder SQL, :func:`fabrik.config.run_store_backend`)
-    wird erst beim Attributzugriff aufgelöst — Tests und das Umschalten (#278) brauchen keinen Re-Import."""
+    Modules bind ``STORE`` at import; the backend (JSON or SQL, :func:`fabrik.config.run_store_backend`)
+    is only resolved on attribute access — tests and switching (#278) need no re-import."""
 
     def backend(self) -> BaseRunStore:
-        """Aktives Backend; der SQL-Store wird je DB-URL einmal angelegt (und migriert)."""
+        """Active backend; the SQL store is created (and migrated) once per DB URL."""
         if config.run_store_backend() == config.RUN_STORE_SQL:
-            from .runstore_sql import store_for_url  # lokal: SQLAlchemy nur laden, wenn genutzt
+            from .runstore_sql import store_for_url  # local: load SQLAlchemy only when used
 
             return store_for_url(config.db_url())
         return _JSON_STORE
@@ -754,5 +761,5 @@ class ActiveRunStore:
 
 _JSON_STORE = RunStore()
 
-# Gemeinsame Store-Instanz: Runs werden nur über den Store gelesen und geschrieben (ADR 0034).
+# Shared store instance: runs are only read and written via the store (ADR 0034).
 STORE: Any = ActiveRunStore()

@@ -1,30 +1,30 @@
-"""LLM-Provider-Registry: mehrere OpenAI-kompatible Endpunkte, umschaltbar.
+"""LLM provider registry: several OpenAI-compatible endpoints, switchable.
 
-Provider werden per Env konfiguriert (fabrik.env):
+Providers are configured via env (fabrik.env):
 
-  - Legacy (ein Endpunkt, wird Provider ``default``):
+  - Legacy (one endpoint, becomes provider ``default``):
         FABRIK_LLM_URL=http://127.0.0.1:11434/v1/chat/completions
         FABRIK_LLM_MODEL=llama3.2:3b
         # FABRIK_LLM_KEY=
-  - Named (beliebig viele, z. B. Ollama + lokale llama.cpp):
+  - Named (any number, e.g. Ollama + local llama.cpp):
         FABRIK_LLM_PROVIDERS=ollama,llama-cpp
         FABRIK_LLM_OLLAMA_URL=http://127.0.0.1:11434/v1/chat/completions
         FABRIK_LLM_OLLAMA_MODEL=llama3.2:3b
         FABRIK_LLM_LLAMA_CPP_URL=http://127.0.0.1:8080/v1/chat/completions
         FABRIK_LLM_LLAMA_CPP_MODEL=Qwen3.8-27B-GGUF
-  - CLI statt HTTP (``_CLI`` statt ``_URL``; Name muss in FABRIK_LLM_PROVIDERS
-    stehen; Auth = CLI-Login, s. ``llm_cli``):
+  - CLI instead of HTTP (``_CLI`` instead of ``_URL``; the name must be in
+    FABRIK_LLM_PROVIDERS; auth = CLI login, see ``llm_cli``):
         FABRIK_LLM_PROVIDERS=claude
         FABRIK_LLM_CLAUDE_CLI=claude
         FABRIK_LLM_CLAUDE_MODEL=claude-sonnet-5-5
 
-Der aktive Provider ist zur Laufzeit umschaltbar (UI: ``POST /api/llm``) und
-wird in ``state/active_llm`` persistiert (überlebt Neustarts). Ohne explizite
-Wahl gilt der Default (erster Named-Provider, sonst ``default``).
+The active provider is switchable at runtime (UI: ``POST /api/llm``) and
+is persisted in ``state/active_llm`` (survives restarts). Without an explicit
+choice the default applies (first named provider, otherwise ``default``).
 
-Ein Step kann seinen Provider per ``provider: <name>`` pinnen und das Modell
-per ``model: <name>`` überschreiben (``steps/llm.py``). ``complete()`` ist der
-gemeinsame Call für Chat und llm-Step (HTTP oder CLI).
+A step can pin its provider via ``provider: <name>`` and override the model
+via ``model: <name>`` (``steps/llm.py``). ``complete()`` is the
+shared call for chat and llm step (HTTP or CLI).
 """
 
 from __future__ import annotations
@@ -39,12 +39,13 @@ from collections.abc import Mapping
 from typing import Any
 
 from . import config, connections, httpsafe, llm_cli
+from .i18n import t
 from .tokens import TokenCounts
 
 log = logging.getLogger("fabrik.llm")
 _ACTIVE_FILE = config.STATE_DIR / "active_llm"
 _guard = threading.Lock()
-_active_cache: str | None = None  # None = noch nicht aufgelöst
+_active_cache: str | None = None  # None = not yet resolved
 
 
 def _env(name: str) -> str:
@@ -59,10 +60,10 @@ def _named_providers() -> list[str]:
 
 
 def _provider_cfg(name: str) -> dict | None:
-    """Config eines Named-Providers aus FABRIK_LLM_<NAME>_{URL,MODEL,KEY}.
+    """Config of a named provider from FABRIK_LLM_<NAME>_{URL,MODEL,KEY}.
 
-    Der Name wird für den Env-Präfix normalisiert (``llama-cpp`` → ``LLAMA_CPP``),
-    da Env-Variablen keine Bindestriche als Shell-Namen tragen."""
+    The name is normalized for the env prefix (``llama-cpp`` → ``LLAMA_CPP``),
+    since env variables cannot carry hyphens as shell names."""
     prefix = "FABRIK_LLM_" + re.sub(r"[^A-Z0-9]", "_", name.upper()) + "_"
     url = _env(prefix + "URL")
     cli = _env(prefix + "CLI")
@@ -84,7 +85,7 @@ def _legacy_provider() -> dict | None:
 
 
 def env_providers() -> list[dict]:
-    """Env-konfigurierte Provider (Named zuerst, dann Legacy 'default'); schreibgeschützt."""
+    """Env-configured providers (named first, then legacy 'default'); read-only."""
     out: list[dict] = []
     seen: set[str] = set()
     for name in _named_providers():
@@ -104,8 +105,8 @@ def list_providers() -> list[dict]:
     try:
         for c in connections.db_connections(connections.ConnectionKind.LLM):
             merged[c.name] = c.as_llm_provider()
-    except Exception:  # DB nicht verfügbar → Env-Provider bleiben nutzbar
-        log.warning("UI-Connections nicht lesbar — nur Env-Provider", exc_info=True)
+    except Exception:  # DB not available → env providers remain usable
+        log.warning(t("llm.ui_connections_unreadable_env_providers"), exc_info=True)
     return list(merged.values())
 
 
@@ -117,7 +118,7 @@ def get_provider(name: str) -> dict | None:
 
 
 def default_name() -> str | None:
-    """Fallback-Aktiver: als Default markierte UI-Verbindung, sonst erster Provider, sonst None."""
+    """Fallback active: UI connection marked as default, otherwise first provider, otherwise None."""
     providers = list_providers()
     try:
         flagged = connections.default_connection(connections.ConnectionKind.LLM)
@@ -155,8 +156,8 @@ def set_active(name: str) -> str:
     global _active_cache
     with _guard:
         if not get_provider(name):
-            known = ", ".join(p["name"] for p in list_providers()) or "(keine)"
-            raise ValueError(f"LLM-Provider '{name}' unbekannt (verfügbar: {known})")
+            known = ", ".join(p["name"] for p in list_providers()) or t("llm.none")
+            raise ValueError(t("llm.llm_provider_unknown_available", name=name, known=known))
         _ACTIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _ACTIVE_FILE.write_text(name + "\n")
         _active_cache = name
@@ -164,13 +165,13 @@ def set_active(name: str) -> str:
 
 
 def active_provider() -> dict | None:
-    """Config des aktiven Providers (None = kein LLM konfiguriert)."""
+    """Config of the active provider (None = no LLM configured)."""
     name = active_name()
     return get_provider(name) if name else None
 
 
 def reset_cache() -> None:
-    """In-Memory-Cache leeren (Tests / nach Env-Änderung)."""
+    """Clear the in-memory cache (tests / after env change)."""
     global _active_cache
     with _guard:
         _active_cache = None
@@ -187,12 +188,12 @@ def complete(
     timeout: int = 180,
     cancel_event: threading.Event | None = None,
 ) -> dict:
-    """Ein Chat-Completion-Call gegen ``prov`` (HTTP oder CLI).
+    """One chat-completion call against ``prov`` (HTTP or CLI).
 
     → ``{"text": str | None, "finish_reason": str, "usage": {prompt_tokens,
-    completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens}}``. ``text`` None/leer = leere Antwort
-    (Aufrufer entscheidet). Transport-Fehler werfen. CLI-Provider ignorieren
-    ``temperature``/``max_tokens``; ``cancel_event`` killt dort die CLI.
+    completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens}}``. ``text`` None/empty = empty answer
+    (caller decides). Transport errors raise. CLI providers ignore
+    ``temperature``/``max_tokens``; ``cancel_event`` kills the CLI there.
     """
     model = model or prov["model"]
     if prov.get("cli"):
@@ -219,11 +220,12 @@ def complete(
 
 
 def _usage(u: object) -> dict[str, int]:
-    """OpenAI-Usage-Block → Step-Usage-Token-Felder; malformiert → Nullen (Drittanbieter-APIs
-    dürfen einen erfolgreichen Call nicht in einen Failure drehen).
+    """OpenAI usage block → step usage token fields; malformed → zeros (third-party APIs
+    must not turn a successful call into a failure).
 
-    Gecachte Prompt-Tokens stehen in ``prompt_tokens_details.cached_tokens`` (in ``prompt_tokens``
-    enthalten); Cache-Writes meldet die Chat-Completions-API nicht."""
+    Cached prompt tokens are in ``prompt_tokens_details.cached_tokens`` (included in
+    ``prompt_tokens``); the Chat Completions API does not report cache writes."""
+
     if not isinstance(u, Mapping):
         return TokenCounts().usage_fields()
     details = u.get("prompt_tokens_details")
@@ -231,16 +233,17 @@ def _usage(u: object) -> dict[str, int]:
     fields = TokenCounts(
         _token_count(u.get("prompt_tokens")), _token_count(u.get("completion_tokens")), cached
     ).usage_fields()
-    # Ein gemeldetes total_tokens hat Vorrang (manche Anbieter zählen z. B. Reasoning extra).
+    # A reported total_tokens takes precedence (some providers count e.g. reasoning separately).
+
     fields["total_tokens"] = _token_count(u.get("total_tokens"))
     return fields
 
 
 def _token_count(v: Any) -> int:
-    """Ein Usage-Feld → int; malformiert (``"n/a"``, ``inf``, ``nan``, Liste …) → 0.
+    """One usage field → int; malformed (``"n/a"``, ``inf``, ``nan``, list …) → 0.
 
-    Pro Feld, damit ein kaputtes Feld die gültigen nicht mit nullt. Über
-    ``float``, damit ``5.5`` und ``"5.5"`` gleich (abgeschnitten → 5) zählen."""
+    Per field, so a broken field does not zero the valid ones. Via
+    ``float`` so ``5.5`` and ``"5.5"`` count the same (truncated → 5)."""
     try:
         return int(float(v or 0))
     except (TypeError, ValueError, OverflowError):

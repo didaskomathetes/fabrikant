@@ -1,13 +1,13 @@
-"""CLI-LLM-Provider: Chat-Completion über `claude -p` / `copilot` statt HTTP.
+"""CLI LLM provider: chat completion via `claude -p` / `copilot` instead of HTTP.
 
-Ein Provider mit ``FABRIK_LLM_<NAME>_CLI=claude|copilot`` (statt ``_URL``)
-ruft die lokale CLI auf — Auth kommt aus der CLI-Anmeldung, kein API-Key.
+A provider with ``FABRIK_LLM_<NAME>_CLI=claude|copilot`` (instead of ``_URL``)
+calls the local CLI — auth comes from the CLI login, no API key.
 
-Wiederverwendung: die One-Shot-Agent-Adapter (`backends/`) liefern Prozess-
-Mechanik (Popen, Pipe-Drain, Cancel) und Output-Parsing. Die Chat-Varianten
-hier überschreiben nur das argv: **keine Tools** (reine Text-Antwort, kein
-Shell-/Datei-Zugriff aus dem Chat), keine Repo-Instruktionen, neutrale
-Workdir. `temperature`/`max_tokens` kennen die CLIs nicht — ignoriert.
+Reuse: the one-shot agent adapters (`backends/`) provide the process
+mechanics (Popen, pipe drain, cancel) and output parsing. The chat variants
+here only override the argv: **no tools** (pure text answer, no
+shell/file access from chat), no repo instructions, neutral
+workdir. `temperature`/`max_tokens` are unknown to the CLIs — ignored.
 """
 
 from __future__ import annotations
@@ -22,19 +22,20 @@ from .backends._oneshot import OneShotCliBackend
 from .backends.claude_code import ClaudeCodeBackend
 from .backends.copilot import CopilotBackend
 from .failures import StepFailure, classify_agent_output
+from .i18n import t
 from .runmodel import FailureKind
 
 _POLL_INTERVAL_S = 0.2
-# Neutrale Workdir: die CLIs laden sonst CLAUDE.md/AGENTS.md des Checkouts.
+# Neutral workdir: the CLIs would otherwise load the checkout's CLAUDE.md/AGENTS.md.
 _WORKDIR = config.STATE_DIR / "llm-cli"
 
 
 class LlmCliError(StepFailure, RuntimeError):
-    """CLI-Call fehlgeschlagen, abgebrochen oder Timeout; trägt die Fehlerklasse (ADR 0035)."""
+    """CLI call failed, aborted or timed out; carries the failure class (ADR 0035)."""
 
 
 class _ClaudeChat(ClaudeCodeBackend):
-    """`claude -p` ohne Tools; System-Prompt per Datei (kein ARG_MAX)."""
+    """`claude -p` without tools; system prompt via file (no ARG_MAX)."""
 
     def __init__(self, model: str, system_file: str):
         super().__init__(model=model)
@@ -70,7 +71,7 @@ CLIS = ("claude", "copilot")
 
 
 def _run(backend: OneShotCliBackend, prompt: str, timeout: int, cancel_event: threading.Event | None) -> dict:
-    """Prompt an den One-Shot-Adapter, bis Ende pollen; Cancel/Timeout killt die CLI."""
+    """Prompt to the one-shot adapter, poll until the end; cancel/timeout kills the CLI."""
     _WORKDIR.mkdir(parents=True, exist_ok=True)
     workdir = str(_WORKDIR)
     sid = backend.create_task(workdir, "chat")
@@ -82,7 +83,7 @@ def _run(backend: OneShotCliBackend, prompt: str, timeout: int, cancel_event: th
             return res
         if cancel_event is not None and cancel_event.is_set():
             backend.cancel(sid, workdir)
-            raise LlmCliError("abgebrochen")
+            raise LlmCliError(t("llm_cli.cancelled"))
         if time.monotonic() > deadline:
             backend.cancel(sid, workdir)
             raise LlmCliError(f"Timeout nach {timeout}s")
