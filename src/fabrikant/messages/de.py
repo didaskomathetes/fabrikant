@@ -88,7 +88,7 @@ MESSAGES: dict[str, str] = {
     "cli.help.template_force": "Bestehende Spec-Datei überschreiben",
     "templates.project_name_invalid": "Projektname muss [A-Za-z0-9_-]+ sein (ist: {name})",
     "templates.file_exists_use_force": "{path} existiert bereits — zum Überschreiben --force nutzen",
-    "templates.created": "✔ {path} — TODOs ausfüllen, dann mit `fabrikant validate` prüfen (Projekt: {project})",
+    "templates.created": "✔ {path} — TODOs ausfüllen, dann mit `fabrikant validate` prüfen (Projekt: {project}). Bis dahin wird es als fehlerhaftes Projekt gelistet.",
     "cli.help.run": "Loop ausführen",
     "cli.help.run_var": "Initiale Variable (mehrfach erlaubt)",
     "cli.help.runs": "Run-Historie (show/export: Einzelrun + Session-Log)",

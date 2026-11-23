@@ -27,9 +27,9 @@ then `fabrikant validate`.
 |---|---|---|---|
 | `develop` | issue → PR → cross-model review → merge (dual identity, ADR 0010) | `repo`, `prompt_file`, `lint_cmd`, `test_cmd`, `builder_model`, `reviewer_model` | yes (after `human_gate` for critical changes) |
 | `review-pr` | cross-model review of labeled PRs (ADR 0003) | `repo`, `prompt_file`, `reviewer_model` | n/a (no merge step) |
-| `docs` | documentation issues → PR | `repo`, `prompt_file`, `builder_model` | **no** (`approval: true`) |
+| `docs` | documentation issues → PR | `repo`, `prompt_file`, `builder_model` | **no** (no merge step; PR creation needs approval) |
 | `hotfix` | fast fix onto a release branch | `repo`, `prompt_file`, `lint_cmd`, `test_cmd`, `builder_model`, `reviewer_model`, `base` | yes (after `human_gate`, always) |
-| `dogfood` | minimal self-hosting loop (ADR 0001 on-ramp) | `repo`, `prompt_file`, `test_cmd`, `builder_model` | **no** (`approval: true`) |
+| `dogfood` | minimal self-hosting loop (ADR 0001 on-ramp) | `repo`, `prompt_file`, `test_cmd`, `builder_model` | **no** (no merge step; PR creation needs approval) |
 | `escalation` | `needs human` items → waiting gate run (ADR 0059) | `repo` | n/a |
 
 Every template is covered by `tests/test_templates.py`, which expands it with

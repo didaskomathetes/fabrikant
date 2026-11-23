@@ -61,4 +61,4 @@ loop:
 
         PR from fabrikant loop `dogfood` (issue #{issue_number}).
         Tests: `{test_cmd}` green.
-      approval: true  # dogfood PRs are merged by a human, never automatically
+      approval: true  # a human approves before the PR is opened; the loop has no merge step (a human merges)

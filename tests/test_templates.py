@@ -163,3 +163,33 @@ def test_cli_template_create_error_exit(capsys, tmp_path):
     with pytest.raises(SystemExit) as e:
         cli.cmd_template(args)
     assert e.value.code == 1
+
+
+def test_scaffold_without_required_params_writes_empty_with(tmp_path, monkeypatch):
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    (user_dir / "noargs.loop.yaml").write_text(
+        "params:\n  poll: 60\nloop:\n  description: d\n  triggers: [{type: manual}]\n"
+        "  steps: [{name: r, type: report, text: x}]\n"
+    )
+    monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_dir)
+    path = templates.scaffold_spec("noargs", "demo", tmp_path / "out")
+    assert yaml.safe_load(path.read_text())["loops"]["noargs"] == {"use": "noargs", "with": {}}
+
+
+def test_broken_template_is_listed_with_error_and_does_not_hide_others(tmp_path, monkeypatch, capsys):
+    import fabrikant.cli as cli
+
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    (user_dir / "bad.loop.yaml").write_text("loop: [not, a, mapping\n")  # YAML syntax error
+    (user_dir / "worse.loop.yaml").write_text("just: a string\n")  # no `loop:` mapping
+    monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_dir)
+    by_name = {t["name"]: t for t in templates.list_templates()}
+    assert "error" in by_name["bad"] and "error" in by_name["worse"]
+    assert "error" not in by_name["develop"]
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_template(type("A", (), {"template_cmd": "list"})())
+    assert e.value.code == 1
+    out = capsys.readouterr().out
+    assert "✖ bad" in out and "● develop" in out

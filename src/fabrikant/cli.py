@@ -102,11 +102,18 @@ def cmd_project(args):
 def cmd_template(args):
     """template list / template create — template library (ADR 0067)."""
     if args.template_cmd == "list":
+        broken = False
         for tpl in templates.list_templates():
+            if "error" in tpl:
+                broken = True
+                print(f"✖ {tpl['name']}  [{tpl['source']}]  {tpl['error']}")
+                continue
             print(f"● {tpl['name']}  [{tpl['source']}]  {tpl['description']}")
             print(f"    required: {', '.join(tpl['required']) or '—'}")
             if tpl["defaults"]:
                 print(f"    defaults: {', '.join(tpl['defaults'])}")
+        if broken:
+            sys.exit(1)
         return
     # create
     project = args.project or args.name

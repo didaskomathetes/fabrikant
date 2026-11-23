@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from . import config
 from .i18n import t
 from .spec_expand import _NAME_RE, _load_template
@@ -33,19 +35,24 @@ def template_files() -> dict[str, Path]:
 def list_templates() -> list[dict]:
     """Every template with description and parameter summary (for `fabrikant template list`).
 
-    A structurally broken template raises here — `fabrikant template list` then reports
-    the error instead of silently hiding the template.
+    A structurally broken template is not hidden and does not hide the others: it is listed
+    with an ``error`` message (and no parameter summary).
     """
     out = []
     for name, path in template_files().items():
-        data = _load_template(name, None)
+        source = "user" if path.parent == config.USER_TEMPLATES_DIR else "bundled"
+        try:
+            data = _load_template(name, None)
+        except (ValueError, OSError, yaml.YAMLError) as e:
+            out.append({"name": name, "path": path, "source": source, "error": str(e)})
+            continue
         loop = data["loop"]
         params = data.get("params") or {}
         out.append(
             {
                 "name": name,
                 "path": path,
-                "source": "user" if path.parent == config.USER_TEMPLATES_DIR else "bundled",
+                "source": source,
                 "description": loop.get("description", ""),
                 "required": sorted(k for k, v in params.items() if v is None),
                 "defaults": sorted(k for k, v in params.items() if v is not None),

@@ -1,5 +1,5 @@
 # Loop template `docs` (ADR 0067): issue with a docs label → branch → agent writes/updates
-# documentation → optional verify → PR (manual merge — docs PRs never auto-merge).
+# documentation → optional verify → PR (no merge step — a human merges).
 # Usage (ADR 0047):  docs: {use: docs, with: {repo: ..., prompt_file: ...}}
 # `params`: defaults; `null` = required (via `with:` or spec `vars:`). Unknown `{name}`
 # placeholders stay runtime variables of the engine.
@@ -59,4 +59,4 @@ loop:
         Closes #{issue_number}
 
         Docs PR from fabrikant loop `docs` (issue #{issue_number}).
-      approval: true  # docs PRs are merged by a human, never automatically
+      approval: true  # a human approves before the PR is opened; the loop has no merge step (a human merges)

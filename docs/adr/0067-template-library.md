@@ -34,7 +34,8 @@ Five bundled templates ship with this ADR: `develop`, `review-pr`, `docs`,
 `hotfix`, `dogfood` (plus `escalation`, shipped earlier). Design constraints for
 the new ones:
 
-- **No auto-merge for docs/dogfood** — `approval: true` on the PR step. Only
+- **No auto-merge for docs/dogfood** — they have no merge step, and `approval: true` on the PR
+  step makes a human approve before the PR is opened. Only
   `develop`/`hotfix` merge automatically, and `hotfix` always passes a
   `human_gate`.
 - **`hotfix` cuts ahead of dependency gates** (`skip_blocked: false`, ADR 0031
