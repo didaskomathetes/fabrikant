@@ -166,6 +166,9 @@ machine-readable `structuredContent` (the raw object), so agents can parse eithe
 - **Expose MCP over the existing HTTP server (a `/mcp` route):** couples the agent
   transport to the web server's lifecycle and auth; stdio is the MCP-native,
   process-local fit for a local factory. Rejected.
+- **A direct spec-write tool (propose and apply in one call, behind a second opt-in):** dropped on
+  2026-11-23. Propose-and-approve gives coding agents what they need to change specs with the human
+  gate intact; a no-gate write path is the one place a prompt-injected agent could rewrite what runs.
 - **A read-only MCP server (no `start_run`/`approve_run`, no spec writes):** safer, but defeats the
   point — an agent that can only watch the factory is not an operator. Write tools are
   included and audited like the UI's; read-only is available as a flag, and the
