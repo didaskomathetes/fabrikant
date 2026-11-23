@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -14,6 +15,9 @@ from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _r
 from .engine import reject_run, run_loop
 from .failures import parse_kind
 from .golden import GoldenError, capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
+from .mcp_server import ALLOW_APPROVALS_ENV as MCP_ALLOW_APPROVALS_ENV
+from .mcp_server import READ_ONLY_ENV as MCP_READ_ONLY_ENV
+from .mcp_server import serve_stdio
 from .replay import ReplayError, diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES, RunStatus
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
@@ -300,6 +304,16 @@ def cmd_serve(args):
         sys.exit(1)
 
 
+def cmd_mcp(args):
+    # fabrik as an MCP stdio server (Roadmap #132): runs, specs, approvals for
+    # any MCP-capable agent. Long-lived process — the client keeps the pipe open.
+    if args.read_only:
+        os.environ[MCP_READ_ONLY_ENV] = "1"
+    if args.allow_approvals:
+        os.environ[MCP_ALLOW_APPROVALS_ENV] = "1"
+    serve_stdio()
+
+
 def _resume_sync(project: str, run_id: str, approve: bool) -> str:
     """Synchrones Resume für die CLI (Daemon-Threads würden mit dem Prozess sterben)."""
     run = get_run(run_id, project)
@@ -535,6 +549,18 @@ def main(argv=None):
         "--host", default=None, help="Bind-Adresse (Default 127.0.0.1 / FABRIK_HOST; sonst FABRIK_AUTH=local)"
     )
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser(
+        "mcp",
+        help="MCP-Server (stdio): Runs, Specs, Approvals für MCP-fähige Agenten (Roadmap #132)",
+    )
+    p.add_argument("--read-only", action="store_true", help="start_run/approve_run/reject_run ausblenden und sperren")
+    p.add_argument(
+        "--allow-approvals",
+        action="store_true",
+        help="approve_run/reject_run anbieten (Opt-in: ein Agent kann sonst die menschliche Freigabe umgehen)",
+    )
+    p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("approve", help="needs_approval-Run freigeben (setzt fort)")
     p.add_argument("run_id")
