@@ -1,0 +1,99 @@
+# Loop template `hotfix` (ADR 0067): issue with a hotfix label → fast fix branch →
+# lint/test → PR on a release branch → one review round → human gate → merge.
+# Unlike `develop`: single review round, tight timeouts, `skip_blocked: false`
+# (a hotfix cuts ahead of dependency gates), and the base is a release branch.
+# Usage (ADR 0047):  hotfix: {use: hotfix, with: {repo: ..., prompt_file: ..., base: release/1.0, ...}}
+# `params`: defaults; `null` = required (via `with:` or spec `vars:`).
+params:
+  repo: null  # owner/name — issue, PR, review, merge
+  prompt_file: null  # fix prompt (relative to the spec, fallback FABRIKANT_HOME)
+  lint_cmd: null
+  test_cmd: null
+  builder_model: null  # model choice is configuration (ADR 0022)
+  builder_variant: ""  # opencode: reasoning effort; empty = model default
+  builder_backend: claude_code
+  reviewer_model: null  # cross-model reviewer ≠ builder (ADR 0001)
+  reviewer_backend: copilot
+  gate_provider: copilot  # pinned: a UI toggle must not switch the merge gate
+  base: null  # release branch — hotfixes rarely target main
+  branch_prefix: fabrikant/hotfix
+  issue_label: hotfix  # issues this loop picks up
+  pr_label: fabrikant-hotfix
+  adr_paths: [docs/adr]  # repo-relative (monorepo: subdirectory prefix)
+  commit_add: [":/"]  # repo root — workdir may be a subpath
+  review_rounds: 1
+  fix_timeout: 900
+  builder_timeout: 1800
+  poll: 30
+loop:
+  description: "Hotfix: issue with label {issue_label} → fix branch → lint/test → PR on {base} → 1 review round → human gate → merge"
+  tier: 2
+  triggers:
+    - type: on_issue
+      repo: "{repo}"
+      labels: ["{issue_label}"]
+      poll: "{poll}"
+      reconcile: true
+      max_per_poll: 1
+      skip_blocked: false  # hotfixes cut ahead of dependency gates (ADR 0031 opt-out)
+  steps:
+    - name: prepare
+      type: git
+      branch: "{branch_prefix}/{issue_number}"
+    - name: fix
+      type: agent
+      backend: "{builder_backend}"
+      model: "{builder_model}"
+      variant: "{builder_variant}"
+      prompt_file: "{prompt_file}"
+      timeout: "{builder_timeout}"
+    - name: lint
+      type: shell
+      cmd: "{lint_cmd}"
+      timeout: 300
+      failure_kind: outcome
+    - name: test
+      type: shell
+      cmd: "{test_cmd}"
+      timeout: 900
+      failure_kind: outcome
+    - name: ship
+      type: git
+      commit:
+        add: "{commit_add}"
+        message: "hotfix: {issue_title} (Issue #{issue_number}, auto)"
+      push: true
+    - name: pr
+      type: pr
+      repo: "{repo}"
+      base: "{base}"
+      head: "{branch_prefix}/{issue_number}"
+      labels: ["{pr_label}"]
+      title: "hotfix: {issue_title} (auto)"
+      body: |
+        Closes #{issue_number}
+
+        Hotfix PR from fabrikant loop `hotfix` (issue #{issue_number}).
+
+        - Fix + tests: `{test_cmd}` green
+        - Lint: `{lint_cmd}` green
+    - name: review
+      type: pr_review
+      repo: "{repo}"
+      backend: "{reviewer_backend}"
+      model: "{reviewer_model}"
+      max_rounds: "{review_rounds}"
+      fix_timeout: "{fix_timeout}"
+      # Fix rounds commit after lint/test of `ship` — same checks before every fix push.
+      fix_checks: ["{lint_cmd}", "{test_cmd}"]
+    - name: gate
+      type: human_gate
+      repo: "{repo}"
+      provider: "{gate_provider}"
+      adr_paths: "{adr_paths}"
+    - name: merge
+      type: pr_merge
+      repo: "{repo}"
+      method: squash
+      # PR fell behind the base during review/gate → catch up before merge; conflict = red run.
+      update_branch: true

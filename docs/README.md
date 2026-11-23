@@ -13,6 +13,7 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [architecture.md](architecture.md) | Overview: principles, building blocks, where each topic is documented. |
 | [configuration.md](configuration.md) | Env variables, spec sources, `vars`, loop templates, GitHub identity/signed commits, deployment profile. |
 | [spec-reference.md](spec-reference.md) | Generated field reference of the spec (from the JSON schema). |
+| [templates.md](templates.md) | Template library — bundled loop templates, `use:`/`with:`, adding a template (ADR 0067). |
 | [steps.md](steps.md) | All step types, `issue`/`review` details, `extra_context`, gates, approval, tiers, substitution. |
 | [triggers.md](triggers.md) | Triggers, pause/disable, incident round trip, alerts (`notify`). |
 | [runs.md](runs.md) | Run lifecycle, failure classes, verdict, retry, run store, session log. |
