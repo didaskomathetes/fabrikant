@@ -13,7 +13,16 @@ from . import auth, config, pause, profiles, retry_chains, scaffold, spec_propos
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
-from .golden import GoldenError, capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
+from .golden import (
+    GoldenError,
+    capture_golden,
+    eval_report,
+    get_golden,
+    golden_for_run,
+    load_goldens,
+    run_eval,
+    save_golden,
+)
 from .i18n import t
 from .replay import ReplayError, diff_runs, replay_run
 from .runmodel import FAILED_RUN_STATUSES, RunStatus
@@ -267,15 +276,34 @@ def _confirm_eval(args) -> bool:
 def cmd_eval(args):
     """Eval (roadmap #130): compare a loop re-run against its golden baseline.
 
+    Two forms: ``fabrikant eval <project> <loop> [--name NAME]`` or
+    ``fabrikant eval --golden <run-id>`` (resolves project/loop/name from the run
+    store's golden mark, ADR 0068).
+
     Exit codes: ``EXIT_OK`` no regression, ``EXIT_REGRESSION`` real diffs against the golden,
     ``EXIT_ERROR`` infrastructure/usage problem or inconclusive run (e.g. waiting for approval)."""
+    golden_run = getattr(args, "golden_run", None)
     try:
-        g = get_golden(args.project, args.name or args.loop)
-        loop = g["loop"]
+        if golden_run:
+            resolved = golden_for_run(golden_run)
+            if resolved is None:
+                print(f"Error: run {golden_run!r} is unknown or not marked as a golden")
+                sys.exit(EXIT_ERROR)
+            project, name = resolved
+            g = get_golden(project, name)
+            loop = g["loop"]
+        else:
+            if not (args.project and args.loop):
+                print("Error: provide `project loop` or `--golden RUN_ID`")
+                sys.exit(EXIT_ERROR)
+            project, loop = args.project, args.loop
+            name = args.name or loop
+            g = get_golden(project, name)
+            loop = g["loop"]
     except (GoldenError, KeyError) as e:
         print(f"Error: {e}")
         sys.exit(EXIT_ERROR)
-    blocked = pause.manual_block_reason(args.project, loop)
+    blocked = pause.manual_block_reason(project, loop)
     if blocked:
         print(f"Error: {blocked}")
         sys.exit(EXIT_ERROR)
@@ -283,14 +311,12 @@ def cmd_eval(args):
     if not _confirm_eval(args):
         print("Aborted.")
         sys.exit(EXIT_ERROR)
-    claim = claim_run(args.project, loop, None)
+    claim = claim_run(project, loop, None)
     if claim is None:
-        print(f"⚠ {args.project}: parallel run limit reached or {loop} is already running.")
+        print(f"⚠ {project}: parallel run limit reached or {loop} is already running.")
         sys.exit(EXIT_ERROR)
     try:
-        golden, baseline, record, diffs = run_eval(
-            args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope
-        )
+        golden, baseline, record, diffs = run_eval(project, loop, name, actor=_cli_actor(), held_scope=claim.scope)
     except (GoldenError, ReplayError) as e:
         print(f"Error: {e}")
         sys.exit(EXIT_ERROR)
@@ -300,7 +326,7 @@ def cmd_eval(args):
         sys.exit(EXIT_ERROR)
     finally:
         claim.release()
-    print(f"eval  {record['project']}/{record['loop']}  ({record['id']})  [golden {args.name or loop}]")
+    print(f"eval  {record['project']}/{record['loop']}  ({record['id']})  [golden {name}]")
     _print_steps(record)
     print()
     print(eval_report(golden, baseline, record, diffs))
@@ -663,9 +689,16 @@ def main(argv=None):
     p.set_defaults(func=cmd_golden)
 
     p = sub.add_parser("eval", help="Loop mit Golden-Baseline vergleichen (Roadmap #130)", epilog=EXIT_CODES_HELP)
-    p.add_argument("project")
-    p.add_argument("loop")
+    p.add_argument("project", nargs="?", default=None, help="Projekt (mit --golden weglassen)")
+    p.add_argument("loop", nargs="?", default=None, help="Loop (mit --golden weglassen)")
     p.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
+    p.add_argument(
+        "--golden",
+        dest="golden_run",
+        default=None,
+        metavar="RUN_ID",
+        help="Golden aus der Run-Store-Markierung dieses Runs auflösen (ADR 0068)",
+    )
     p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
     p.set_defaults(func=cmd_eval)
 

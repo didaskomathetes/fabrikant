@@ -518,3 +518,71 @@ def test_cmd_eval_no_tty_without_yes_aborts(projects_dir, capsys, monkeypatch):
     assert e.value.code == cli.EXIT_ERROR
     assert "--yes" in capsys.readouterr().out
     assert calls == []
+
+
+# ------------------------------------------------------------------ run-store mark (ADR 0068)
+def test_save_golden_marks_baseline_run_in_store(projects_dir, runs_dir):
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", steps=_STEPS)
+    g = golden.capture_golden("p", "l", "orig-1")
+    golden.save_golden("p", "mygolden", g)
+    rec = json.loads((runs_dir / "p" / "orig-1.json").read_text(encoding="utf-8"))
+    assert rec["golden"] == "mygolden"
+
+
+def test_golden_for_run_resolves_mark(projects_dir, runs_dir):
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="l")
+    assert golden.golden_for_run("orig-1") == ("p", "l")
+
+
+def test_golden_for_run_unmarked_returns_none(runs_dir):
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l")
+    assert golden.golden_for_run("orig-1") is None
+
+
+def test_golden_for_run_unknown_returns_none(runs_dir):
+    assert golden.golden_for_run("nope") is None
+
+
+def test_mark_baseline_best_effort_missing_run(projects_dir, runs_dir):
+    # No run written: the mark is skipped, not an error (CI: empty runs dir).
+    assert golden.mark_baseline("p", "gone", "l") is False
+
+
+# ------------------------------------------------------------------ eval --golden <run-id>
+def test_cmd_eval_golden_run_id(projects_dir, runs_dir, capsys, monkeypatch):
+    _write_golden(
+        projects_dir, "p", "l", {"loop": "l", "baseline_run": "orig-1", "expect": {"status": "pass", "steps": []}}
+    )
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="l")
+    _stub_eval(monkeypatch, [])
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(
+            type("A", (), {"project": None, "loop": None, "name": None, "golden_run": "orig-1", "yes": True})()
+        )
+    assert e.value.code == 0
+    assert "no regression" in capsys.readouterr().out
+
+
+def test_cmd_eval_golden_run_not_marked(projects_dir, runs_dir, capsys):
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l")  # no golden mark
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(
+            type("A", (), {"project": None, "loop": None, "name": None, "golden_run": "orig-1", "yes": True})()
+        )
+    assert e.value.code == cli.EXIT_ERROR
+    assert "not marked as a golden" in capsys.readouterr().out
+
+
+def test_cmd_eval_golden_run_unknown(projects_dir, runs_dir, capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(type("A", (), {"project": None, "loop": None, "name": None, "golden_run": "nope", "yes": True})())
+    assert e.value.code == cli.EXIT_ERROR
+    assert "unknown" in capsys.readouterr().out
+
+
+def test_cmd_eval_missing_project_loop_and_golden(projects_dir, capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(type("A", (), {"project": None, "loop": None, "name": None, "golden_run": None, "yes": True})())
+    assert e.value.code == cli.EXIT_ERROR
+    assert "--golden" in capsys.readouterr().out

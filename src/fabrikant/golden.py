@@ -224,7 +224,42 @@ def save_golden(project: str, name: str, golden: dict) -> Path:
             with contextlib.suppress(OSError):
                 os.unlink(fd.name)
             raise
+    mark_baseline(project, golden.get("baseline_run", ""), name)
     return p
+
+
+def mark_baseline(project: str, run_id: str, name: str) -> bool:
+    """Mark the baseline run in the run store as the golden ``name`` (ADR 0068).
+
+    Best-effort: the committed sidecar file is the source of truth, so a missing
+    run (e.g. CI, where the runs dir is empty) or a store error only skips the
+    mark and never breaks the capture. Returns ``True`` if the mark was written."""
+    if not run_id:
+        return False
+    try:
+        from .runstore import STORE  # local: keep golden importable without the store
+
+        STORE.update_fields(project, run_id, {"golden": name})
+        return True
+    except Exception:  # noqa: BLE001 - best-effort by design, see docstring
+        return False
+
+
+def golden_for_run(run_id: str) -> tuple[str, str] | None:
+    """Resolve a run's golden mark: ``(project, golden_name)`` or ``None``.
+
+    For ``fabrikant eval --golden <run-id>``: reads the run record (any project) and
+    returns the project plus the golden name it is the baseline of. ``None`` if
+    the run is unknown or not marked as a golden."""
+    from .runstore import STORE  # local: keep golden importable without the store
+
+    record = STORE.get_record(run_id, None)
+    if record is None:
+        return None
+    name = record.get("golden", "")
+    if not name:
+        return None
+    return record.get("project", ""), name
 
 
 def compare_golden(golden: dict, record: dict) -> list[str]:

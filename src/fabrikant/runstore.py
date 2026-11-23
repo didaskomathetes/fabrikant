@@ -297,6 +297,7 @@ def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
         retry_after=_text(rec.get("retry_after")),
         retry_of=_text(rec.get("retry_of")),
         replay_of=_text(rec.get("replay_of")),
+        golden=_text(rec.get("golden")),
         attempt=attempt_of(rec),
         worktree_cleanup_error=_text(rec.get("worktree_cleanup_error")),
         vars=run_vars,
