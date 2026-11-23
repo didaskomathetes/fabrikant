@@ -76,3 +76,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrik replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
 | [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
 | [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
+| [0064](0064-mcp-server-stdio.md) | MCP-Server — fabrik als stdio-Endpoint für MCP-fähige Agenten (Runs, Specs, Approvals) | Accepted (2026-11-21) |

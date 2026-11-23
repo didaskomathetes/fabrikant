@@ -7,7 +7,7 @@ draft's principles, its P0→P3 structure and its KPI definitions, reconciled
 with what is actually shipped (ADRs + code) and what is in flight (PRs,
 issues).
 
-Statuses as of 2026-11-21.
+Statuses as of 2026-11-23.
 
 **Status legend**
 
@@ -45,9 +45,10 @@ Statuses as of 2026-11-21.
 - **Judge veto rate / course-correction rate**
 - **Scale KPIs (P2):** queue depth, 429 rate, reaped jobs, budget hits
 
-Today fabrik ships only a small Prometheus counter + `GET /api/metrics`;
-none of the KPIs above are computed yet. That is first win 1
-(issues #126, #127).
+Cost per change, cycle time, defect escape and judge veto are computed
+from the run store since first win 1 (issues #126, #127; shipped). The
+replayability rate rests on replay (ADR 0061); the scale KPIs are still
+open (P2).
 
 ## Phase 0 — General purpose in the existing engine
 
@@ -105,17 +106,23 @@ its mechanics one by one, mostly on the homelab profile.
 | Budget service (cost caps, circuit breaker) | open | issue #108 |
 | Admission control (per-repo/provider caps, 429-aware retry) | open | issue #107 |
 | Idempotency (`safe_to_rerun`, idempotency keys) | open | issue #106 |
-| Sandbox per run (Docker) — the draft's "real jump" | in-flight | ADR 0054 (in revision), issue #9, PR #125 (`opencode` one-shot in its own container); follow-ups #6, #7, #3, #2, #4, #5, #8 |
-| `on_webhook` with auth | shipped early | ADR 0027; replay protection open (issue #60) |
+| Sandbox per run (Docker) — the draft's "real jump" | partial | ADR 0054 (in revision), issue #9; `opencode` one-shot in its own container shipped (PR #125); follow-ups #6, #7, #3, #2, #4, #5, #8 |
+| `on_webhook` with auth | shipped early | ADR 0027; replay protection shipped (ADR 0058, PR #144, issue #60) |
 | `on_slack` trigger (beyond draft) | shipped | ADR 0040 |
 | `on_datadog` trigger (beyond draft) | open | issue #98 |
-| Approval service: async with SLA + escalation | partial: queued approvals shipped; needs-human escalation in-flight; full service open | ADR 0015; ADR 0057 (PR #122, PR #124); issue #104 (interface: #67) |
+| Approval service: async with SLA + escalation | partial: queued approvals and needs-human escalation shipped; full service open | ADR 0015; ADR 0059 (PR #122, PR #124); issue #104 (interface: #67) |
 | Auth + roles, audit who started/approved what | shipped | ADR 0030; OIDC: ADR 0046 |
 | Relay tasks — long-running work as a chain of short audited sessions | shipped (beyond draft) | ADR 0037, [relay.md](relay.md) |
 | Alert dedup by fingerprint, `log_tail` redaction | shipped | ADR 0025, ADR 0026 |
-| Egress default-deny: agent internet access only via allowlist proxy | shipped | ADR 0051 (ADR status stale); per-loop network profiles open (issue #119) |
+| Egress default-deny: agent internet access only via allowlist proxy | shipped | ADR 0051; per-loop network profiles open (issue #119, folded into ADR 0060 access profiles: #138) |
 | Deployment profiles (`homelab` \| `cloud`) with adapter registry | shipped | ADR 0056 |
 | Named connections (LLM providers, agent backends in the UI) | shipped | ADR 0052 |
+| Run launcher port/adapter (execution substrate, `FABRIK_LAUNCHER`) (beyond draft) | shipped | ADR 0057, PR #147 |
+| Hosting provider port/adapter (GitHub, GitLab) + extensible registry (beyond draft) | shipped; GitLab write-flow verification open | ADR 0062, ADR 0063, PR #172; issue #171 |
+| Research fetcher + access profiles per loop/run, one-time grants (beyond draft) | in-flight | ADR 0060; stages 1–2: PR #181 (issue #180), amendment draft PR #184; stages 3–5 open: #138, #139, #140 (also #119) |
+| Threat model (beyond draft) | in-flight | PR #182 (draft threat model) |
+| Usage: cached-token split + billing mode (beyond draft) | shipped | PR #167 |
+| CI quality gates: coverage gate, Biome JS lint, `pip-audit` (beyond draft) | shipped | PR #175 |
 
 ## Phase 3 — Cloud deployment + governance
 
@@ -131,7 +138,7 @@ its mechanics one by one, mostly on the homelab profile.
 
 ## First wins (strategy 2026-11-17)
 
-The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-21.
+The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-23.
 
 **1. Observability & KPIs** — shipped
 
@@ -150,7 +157,8 @@ The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-21.
 - JSON schema for `*.fabrik.yaml`, single source of truth for validation
   and docs — issue #131 (shipped, #169)
 - fabrik as an MCP server (runs, specs, approvals reachable from any
-  MCP-capable agent) — issue #132 (in PR #178, ADR 0064; gap: `validate-spec` tool)
+  MCP-capable agent) — issue #132 (shipped, #178, ADR 0064, incl. the
+  `validate_spec` tool; ADR 0064 amendment in draft PR #183)
 - Grow the template library (≥5 documented, versioned templates) — issue #133 (not started)
 
 ## Known contradictions & stale ADRs
@@ -158,7 +166,8 @@ The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-21.
 Tracked for follow-up; **not** fixed by this branch. ADR content is only
 changed with explicit approval (see `adr/README.md`).
 
-**Shipped features whose ADR was never accepted** (index status out of date):
+**Shipped features whose ADR was never accepted** (index status out of date;
+ADR 0049 and ADR 0051 have since been accepted and dropped from this list):
 
 | ADR | Feature | Evidence in code |
 |---|---|---|
@@ -166,9 +175,7 @@ changed with explicit approval (see `adr/README.md`).
 | 0038 | Live log (SSE) + transcript in run modal | `server.py` (`text/event-stream`) |
 | 0039 | Convergent PR review rounds | `steps/pr_review.py` |
 | 0043 | Reconcile dedup (queued triggers, paused runs) | `engine.py` (`_safe_run`), `runs.py` |
-| 0049 | UI i18n (message catalogs de/en) | `web/i18n/` |
 | 0050 | Agent env allowlist | `agentenv.py` |
-| 0051 | Egress default-deny proxy | `egress.py` |
 
 **Cross-reference & consistency issues:**
 
@@ -186,7 +193,9 @@ changed with explicit approval (see `adr/README.md`).
   the shipped interface is implicit and different — see
   [backends.md](backends.md).
 - Issue #134 tracks the language migration (docs/ADRs/issues → English);
-  until then this roadmap and any new content stay in English.
+  in flight: PRs #162, #163 (ADRs), #164 (backend message catalogs), #165
+  (source comments/docstrings). Until it is done, this roadmap and any new
+  content stay in English.
 
 ## Backlog highlights
 
@@ -194,13 +203,15 @@ Open issues beyond the phase tables and first wins (all in the issue
 tracker):
 
 - **Sandbox hardening:** fail-closed without Docker (#6), sandbox by
-  default (#7), token/cost usage across all backends (#1)
+  default (#7); token/cost usage across all backends (#1) shipped (#142)
 - **Spec & tooling:** provider abstraction / IssueTracker + CodeHost ports
-  (#86), Jira adapter (#85), deterministic loops with native
+  (#86; the CodeHost side shipped as the hosting provider port, #172), Jira adapter (#85), deterministic loops with native
   issue/sonarqube steps (#84), settings & connections UI (#81)
 - **UI:** graph view for loops (#73), visual loop editor (#72),
   chat sessions (#77), project export/import (#71)
 - **Language:** output language per project (#25), UI i18n follow-ups
-  (#24, #74), English README (#23), full migration (#134)
+  (#24, #74), English README (#23), full migration (#134, PRs #162–#165)
+- **Self-optimization:** falsifiable improvement proposals — design
+  proposal PR #174, issue #176
 - **Refactors:** typed `AgentPollResult` (#19), typed run model
   continuation (#18), server dispatch table (#54)
