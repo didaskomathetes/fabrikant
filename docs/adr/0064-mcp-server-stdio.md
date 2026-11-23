@@ -136,7 +136,7 @@ indistinguishable from UI approvals in the run record (except `actor=mcp`).
   in-flight run workers are drained for up to 10 minutes.
 - **Inputs and outputs:** `limit`/`lines` are validated, `get_run_log` returns a bounded
   tail (flagged `truncated`), secret-looking keys (token, password, api key, ...) are redacted
-  and the spec `_path` is dropped in `get_spec`/`get_raw_spec`. Approve/reject failures are
+  and the spec `_path` is dropped in `get_spec`. Approve/reject failures are
   tool errors, not success-shaped results.
 
 ### Tool results
