@@ -1,35 +1,35 @@
-"""Step: shell (sh -c, cwd, env, timeout, Variable-Substitution, Secret-Redaction).
+"""Step: shell (sh -c, cwd, env, timeout, variable substitution, secret redaction).
 
-Untrusted Werte (z. B. LLM-Output, Issue-Titel/-Body) NIE inline in `cmd`
-substituieren — Quotes/Backticks/Newlines im Wert brechen die Shell-Semantik
-(stilles No-op via `if`-Guard, Command-Substitution). Stattdessen über `env:`
-als Umgebungsvariable übergeben und im Befehl als "$VAR" referenzieren:
+NEVER substitute untrusted values (e.g. LLM output, issue title/body) inline into `cmd`
+— quotes/backticks/newlines in the value break the shell semantics
+(silent no-op via `if` guard, command substitution). Pass them instead via `env:`
+as an environment variable and reference them in the command as "$VAR":
 
     env:
       criteria: "{acceptance_criteria}"
     cmd: 'if [ -n "$criteria" ]; then …; fi'
 
-Das Mischmuster (Inline-Placehalter in cmd, die mit `env:`-Keys desselben
-Steps kollidieren) wird fail-fast abgelehnt (ok: False) — eine Warnung allein
-wäre ignorierbar, die Substitution würde trotzdem laufen.
+The mixed pattern (inline placeholders in cmd that collide with `env:` keys of the same
+step) is rejected fail-fast (ok: False) — a warning alone
+would be ignorable, the substitution would run anyway.
 
-Trust-Policy: vertrauenswürdige Werte (issue_number, run_id, Config-Flags)
-dürfen inline in `cmd` stehen — auch wenn derselbe Step `env:` für untrusted
-Werte setzt, solange die Placehalter nicht mit `env:`-Keys kollidieren
-(Guard). Alles aus LLM-/Issue-Kontext gehört in `env:` (ADR 0008).
+Trust policy: trusted values (issue_number, run_id, config flags)
+may stand inline in `cmd` — even if the same step sets `env:` for untrusted
+values, as long as the placeholders do not collide with `env:` keys
+(guard). Everything from LLM/issue context belongs in `env:` (ADR 0008).
 
-Timeout: `timeout` (Default 600 s). Der Befehl läuft in eigener Prozessgruppe
-(`procs.run_group`): bei Ablauf stirbt der ganze Prozessbaum, nicht nur `sh`; danach
-propagiert `subprocess.TimeoutExpired` (wird von der Engine gefangen).
+Timeout: `timeout` (default 600 s). The command runs in its own process group
+(`procs.run_group`): on expiry the whole process tree dies, not just `sh`; afterwards
+`subprocess.TimeoutExpired` propagates (is caught by the engine).
 
-Verdikt: eine Ausgabezeile `::fabrik-verdict::<wort>` (`runmodel.verdict_line`) meldet das fachliche
-Ergebnis des Steps (z. B. `fail` eines Audits, der Step selbst bleibt grün). Sie wird aus Output und
-Summary entfernt und landet als `verdict` im Step-Record; die UI zeigt es als Badge.
+Verdict: an output line `::fabrik-verdict::<word>` (`runmodel.verdict_line`) reports the domain
+result of the step (e.g. `fail` of an audit, the step itself stays green). It is removed from output and
+summary and lands as `verdict` in the step record; the UI shows it as a badge.
 
-Fehlerklasse (ADR 0035): Exit 126/127 → `environment`. Skripte können ihre Klasse
-selbst melden (sysexits.h): Exit 75 (EX_TEMPFAIL) → `transient`, 78 (EX_CONFIG) →
-`environment`. Andere Exit-Codes kann die Shell nicht deuten; die Spec benennt die
-Klasse dafür über `failure_kind` (z. B. `outcome` für einen Test-Step), sonst `unknown`.
+Failure class (ADR 0035): exit 126/127 → `environment`. Scripts can report their class
+themselves (sysexits.h): exit 75 (EX_TEMPFAIL) → `transient`, 78 (EX_CONFIG) →
+`environment`. Other exit codes cannot be interpreted by the shell; the spec names the
+class for them via `failure_kind` (e.g. `outcome` for a test step), otherwise `unknown`.
 """
 
 from __future__ import annotations
@@ -54,20 +54,20 @@ def run_shell(cmd: str, workdir: str, env: dict, timeout: int) -> subprocess.Com
 def _step_shell(ctx: dict, step: dict, emit) -> dict:
     raw_cmd = step["cmd"]
     env_step = step.get("env") or {}
-    # Guard (Issue #62): Fail-fast nur bei echter Gefährdung — ein
-    # Inline-Placehalter in cmd, der mit einem env:-Key desselben Steps
-    # kollidiert. Das ist das Mischmuster, das zu Shell-Injection/No-ops
-    # führte: der Platzhalter wird aus dem (potenziell untrusted) Kontext
-    # substituiert, während der env:-Wert ignoriert wird. Fail-fast statt nur
-    # WARN: eine Warnung kann übersehen werden, ein fehlgeschlagener Step
-    # nicht. Vertrauenswürdige Placehalter ({issue_number}, {run_id}, …) ohne
-    # Kollision mit env:-Keys bleiben erlaubt (Trust-Policy, ADR 0008).
-    # _PLACEHOLDER_RE ist die geteilte Syntax aus context.py (== _substitute):
-    # nur echte Identifikatoren ({name}) triggern, Literal-Braces ({123}, JSON)
-    # nicht — kein False-Positive, und kein Platzhalter wird verpasst.
+    # Guard (issue #62): fail fast only on real danger — an
+    # inline placeholder in cmd that collides with an env: key of the same step.
+    # This is the mixed pattern that led to shell injection/no-ops:
+    # the placeholder is substituted from the (potentially untrusted) context
+    # while the env: value is ignored. Fail fast instead of just a
+    # WARN: a warning can be overlooked, a failed step cannot.
+    # Trusted placeholders ({issue_number}, {run_id}, …) without
+    # collision with env: keys stay allowed (trust policy, ADR 0008).
+    # _PLACEHOLDER_RE is the shared syntax from context.py (== _substitute):
+    # only real identifiers ({name}) trigger, literal braces ({123}, JSON)
+    # do not — no false positive, and no placeholder is missed.
     if env_step:
-        # Defensive str()-Cast: env-Keys können aus externen YAML-Parsern
-        # nicht-str sein; der Kollisions-Check braucht konsistente Typen.
+        # Defensive str() cast: env keys can be non-str from external YAML parsers;
+        # the collision check needs consistent types.
         clash = set(_PLACEHOLDER_RE.findall(raw_cmd)) & {str(k) for k in env_step}
         if clash:
             msg = t(
@@ -80,15 +80,14 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     workdir = step_workdir(ctx, step)
     env = {**process_env(), **{k: _substitute(str(v), ctx) for k, v in env_step.items()}}
     timeout = int(step.get("timeout", 600))
-    # Template (mit {placeholders}) loggen, NICHT den substituierten Befehl:
-    # substituierte Werte können Secrets/untrusted Text enthalten.
+    # Log the template (with {placeholders}), NOT the substituted command:
+    # substituted values can contain secrets/untrusted text.
     emit(f"  $ {raw_cmd}  (cwd={workdir}, timeout={timeout}s)")
     p = run_group(["sh", "-c", cmd], cwd=workdir, env=env, timeout=timeout)
-    # Secret-Redaction (Defense-in-Depth): stdout/stderr können Secrets
-    # enthalten (z. B. wenn der Befehl einen env-Wert echo-t). Der Step
-    # maskiert output/summary selbst; die Engine maskiert zusätzlich beim
-    # Record-Write (secrets._redact_record).
-    # Verdikt-Zeile (`::fabrik-verdict::<wort>`) ist Metadatum, kein Output: raus aus Output/Summary.
+    # Secret redaction (defense in depth): stdout/stderr can contain secrets
+    # (e.g. if the command echoes an env value). The step masks output/summary itself;
+    # the engine additionally masks at record write (secrets._redact_record).
+    # Verdict line (`::fabrik-verdict::<word>`) is metadata, not output: out of output/summary.
     stdout, verdict = split_verdict(p.stdout or "")
     out = _redact(stdout + ("\n[stderr]\n" + p.stderr if p.stderr else ""))
     tail = _redact("\n".join((stdout or p.stderr or "").strip().splitlines()[-8:]))
@@ -104,8 +103,8 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
 
 
 def _exit_kind(code: int, step: dict) -> FailureKind:
-    """Klasse eines Exit-Codes ≠ 0: festgelegte Codes (126/127/75/78) zuerst, sonst `step.failure_kind`
-    (Default unknown). Tod durch Signal bleibt unknown: ein OOM-Kill ist kein rotes Testergebnis."""
+    """Class of an exit code ≠ 0: fixed codes (126/127/75/78) first, otherwise `step.failure_kind`
+    (default unknown). Death by signal stays unknown: an OOM kill is not a red test result."""
     if is_signal_exit(code):
         return FailureKind.UNKNOWN
     kind = classify_exit_code(code)

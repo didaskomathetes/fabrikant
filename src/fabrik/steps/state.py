@@ -1,14 +1,14 @@
-"""Step: state — deterministischer, persistenter State über Runs hinweg.
+"""Step: state — deterministic, persistent state across runs.
 
-ADR 0001 §4: Cron-Loops (review-pr, pr-reply) halten "bereits verarbeitet"
-in JSON-Dateien unter `state/`. Der Agent soll diese NICHT selbst anfassen —
-der `state`-Step macht get/set/add atomar und emitet `state_value` als Variable.
+ADR 0001 §4: cron loops (review-pr, pr-reply) keep "already processed"
+in JSON files under `state/`. The agent should NOT touch these itself —
+the `state` step does get/set/add atomically and emits `state_value` as a variable.
 
-Aktionen:
-- `get`: liest `key`, emitet `state_value` (leer wenn nicht vorhanden).
-- `set`: `value` (Substitution erlaubt) ersetzt `key`.
-- `add`: numerisch addiert zu `key` (Default 0); nicht-numerische `value`
-  werden an eine Liste appendet. Für Round-Caps / Zähler.
+Actions:
+- `get`: reads `key`, emits `state_value` (empty if not present).
+- `set`: `value` (substitution allowed) replaces `key`.
+- `add`: numerically adds to `key` (default 0); non-numeric `value`
+  is appended to a list. For round caps / counters.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _load(p: Path) -> dict:
 
 
 def _atomic_write(p: Path, data: dict) -> None:
-    """tmp-Write + os.replace: ein abgebrochener Run hinterlässt kein Halbwerk."""
+    """tmp write + os.replace: an aborted run leaves nothing half-done."""
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".state-", suffix=".tmp")
     try:
@@ -62,7 +62,7 @@ def _to_ctx_val(v: object) -> str | int | float | bool:
 
 
 def _num(x: object) -> float:
-    """Best-effort: Zahl (auch als String, z. B. von `set`) → float; sonst 0."""
+    """Best effort: number (also as a string, e.g. from `set`) → float; otherwise 0."""
     if isinstance(x, bool):
         return 0.0
     if isinstance(x, (int, float)):
@@ -96,7 +96,7 @@ def _step_state(ctx: dict, step: dict, emit) -> dict:
             "summary": t("steps.state.blocked_state_path_is_outside", p=p, root_res=root_res),
         }
 
-    # Read-Modify-Write unter Datei-Lock: parallele Runs (ADR 0028) verlieren keine Updates.
+    # Read-modify-write under file lock: parallel runs (ADR 0028) lose no updates.
     with locked(p):
         return _apply(ctx, step, emit, p, action, key)
 

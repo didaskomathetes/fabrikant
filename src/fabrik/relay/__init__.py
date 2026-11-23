@@ -1,7 +1,7 @@
-"""Relay-Tasks (ADR 0037): langlaufende Aufgaben als Kette kurzer Agent-Sessions.
+"""Relay tasks (ADR 0037): long-running tasks as a chain of short agent sessions.
 
-Ein GitHub-Issue (Label `fabrik-relay`) ist der Auftrag, eine Handoff-Datei auf dem Branch
-`fabrik/relay/<N>` das Gedächtnis zwischen den Sessions. Projekte schalten das Feature mit einem
-`relay:`-Block in der Spec frei (`config.expand_loops`); Logik in `model`, I/O in `github`,
-`workspace` und `commands`.
+A GitHub issue (label `fabrik-relay`) is the assignment, a handoff file on the branch
+`fabrik/relay/<N>` the memory between the sessions. Projects enable the feature with a
+`relay:` block in the spec (`config.expand_loops`); logic in `model`, I/O in `github`,
+`workspace` and `commands`.
 """

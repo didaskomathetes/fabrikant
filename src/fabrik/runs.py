@@ -1,7 +1,7 @@
-"""Run-Records: Run-Slots (max_parallel, Dedup, Vorrang), Verzeichnisse, List/Get.
+"""Run records: run slots (max_parallel, dedup, priority), directories, list/get.
 
-Gelesen wird ausschließlich über den Run-Store (:data:`fabrik.runstore.STORE`, ADR 0034) — JSON- oder
-SQL-Backend. Run-Logs (``runs/<projekt>/<id>.log``) bleiben Dateien."""
+Reading goes exclusively through the run store (:data:`fabrik.runstore.STORE`, ADR 0034) — JSON or
+SQL backend. Run logs (``runs/<project>/<id>.log``) remain files."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .i18n import t
 from .runmodel import Run, RunStatus, StepStatus
 from .runstore import STORE, RecordError, RunStoreError, parse_run, valid_project, valid_run_id
 
-LOCK_KEY_SEP = "::"  # trennt Projekt und Loop im Scope-Schlüssel; in Namen verboten (specs._validate_spec)
+LOCK_KEY_SEP = "::"  # separates project and loop in the scope key; forbidden in names (specs._validate_spec)
 
 # Status-Marke je Step-Status (CLI `runs show`, `fabrik run`).
 STEP_MARKS = {"pass": "✔", "fail": "✖", "timeout": "⏱", "error": "✖", "waiting": "⏸", StepStatus.SKIPPED.value: "–"}
@@ -27,21 +27,21 @@ def uses_worktree(loop: dict) -> bool:
 
 
 def loop_lock_key(project: str, loop_name: str, loop: dict | None) -> str:
-    """Scope-Schlüssel eines Loops aus dessen Spec-Definition (ADR 0028/0020).
+    """Scope key of a loop from its spec definition (ADR 0028/0020).
 
-    Worktree-Loops teilen die Slots des Projekts (Schlüssel = Projektname,
-    begrenzt durch ``max_parallel``). Loops mit ``worktree: false`` belegen
-    keinen Slot: eigener Schlüssel pro Loop, sie laufen parallel zu allen
-    anderen Loops. Unbekannter Loop (``None``) → Projekt-Scope (sicherer Default)."""
+    Worktree loops share the project's slots (key = project name,
+    limited by ``max_parallel``). Loops with ``worktree: false`` occupy
+    no slot: own key per loop, they run in parallel to all
+    other loops. Unknown loop (``None``) → project scope (safe default)."""
     if isinstance(loop, dict) and not uses_worktree(loop):
         return f"{project}{LOCK_KEY_SEP}{loop_name}"
     return project
 
 
 def lock_key(project: str, loop_name: str) -> str:
-    """Scope-Schlüssel für ``project``/``loop_name`` nach aktuellem Spec-Stand.
+    """Scope key for ``project``/``loop_name`` per the current spec state.
 
-    Unbekanntes Projekt/Loop oder defekte Spec → Projekt-Scope."""
+    Unknown project/loop or broken spec → project scope."""
     from .specs import load_projects  # lokal: specs → branches → … (Import-Zyklus vermeiden)
 
     spec = load_projects().get(project) or {}
@@ -58,7 +58,7 @@ class RunClaim:
 
     @property
     def uses_slot(self) -> bool:
-        """True, wenn der Claim einen ``max_parallel``-Slot belegt (Worktree-Loop)."""
+        """True if the claim occupies a ``max_parallel`` slot (worktree loop)."""
         return self.scope == self._project
 
     def release(self) -> None:
@@ -75,17 +75,17 @@ class RunClaim:
 _slots_cond = threading.Condition()
 _slots_used: dict[str, int] = {}
 _active_keys: set[tuple[str, str, str]] = set()
-# Vorrang-Warter pro Scope (freigegebene Resumes, eingereihte manuelle Runs): neue
-# Trigger-Runs weichen ihnen aus, sonst verhungern sie (ADR 0015).
+# Priority waiters per scope (approved resumes, queued manual runs): new
+# trigger runs yield to them, otherwise they starve (ADR 0015).
 _priority_waiters: dict[str, int] = {}
 
 
 def max_parallel_for(project: str, spec: dict | None = None) -> int:
-    """Erlaubte parallele Worktree-Runs eines Projekts.
+    """Allowed parallel worktree runs of a project.
 
-    Aus `max_parallel` der Spec (Default `config.DEFAULT_MAX_PARALLEL`). Specs
-    ohne `repo:` arbeiten ohne Isolation direkt im `root` → fest 1 (ADR 0028).
-    `spec` bereits geladen → kein erneutes `load_projects()`."""
+    From `max_parallel` of the spec (default `config.DEFAULT_MAX_PARALLEL`). Specs
+    without `repo:` work without isolation directly in `root` → fixed 1 (ADR 0028).
+    `spec` already loaded → no repeated `load_projects()`."""
     from .specs import load_projects
 
     try:
@@ -100,7 +100,7 @@ def max_parallel_for(project: str, spec: dict | None = None) -> int:
 
 
 def dedupe_key(variables: dict | None) -> str:
-    """Issue-/PR-Bezug eines Runs ("" = Loop ohne Bezug, z. B. Cron)."""
+    """Issue/PR reference of a run ("" = loop without reference, e.g. cron)."""
     for k in config.DEDUPE_VARS:
         if variables and variables.get(k) not in (None, ""):
             return f"{k}={variables[k]}"
@@ -108,7 +108,7 @@ def dedupe_key(variables: dict | None) -> str:
 
 
 def mark_priority_waiter(scope: str, delta: int) -> None:
-    """Vorrang-Warter eines Scopes (:func:`lock_key`) zählen (+1 beim Einreihen, -1 bei Abbruch)."""
+    """Count priority waiters of a scope (:func:`lock_key`) (+1 when queueing, -1 on abort)."""
     with _slots_cond:
         n = _priority_waiters.get(scope, 0) + delta
         if n > 0:
@@ -119,10 +119,10 @@ def mark_priority_waiter(scope: str, delta: int) -> None:
 
 
 def paused_dedupe_keys(project: str, loop: str, exclude_run_id: str | None = None) -> set[str]:
-    """Issue-/PR-Bezüge (:func:`dedupe_key`) pausierter `needs_approval`-Runs von Loop `loop`.
+    """Issue/PR references (:func:`dedupe_key`) of paused `needs_approval` runs of loop `loop`.
 
-    `exclude_run_id` lässt den Run selbst aus, der gerade fortgesetzt wird —
-    sein eigener Record würde sonst das Resume blockieren."""
+    `exclude_run_id` leaves out the run that is being resumed itself —
+    its own record would otherwise block the resume."""
     keys: set[str] = set()
     for r in STORE.load_records(project, RunStatus.NEEDS_APPROVAL):
         if r.get("id") == exclude_run_id or r.get("loop") != loop:
@@ -143,26 +143,26 @@ def claim_run(
     registered: bool = False,
     exclude_run_id: str | None = None,
 ) -> RunClaim | None:
-    """Reserviert einen Run (ADR 0028): Dedup + Slot (max_parallel) für Worktree-Loops.
+    """Reserves a run (ADR 0028): dedup + slot (max_parallel) for worktree loops.
 
-    None, wenn für Loop + Issue/PR bereits ein Run aktiv oder pausiert
-    (`needs_approval`) ist (Dedup), das Limit
-    erreicht ist oder ein Vorrang-Warter im selben Scope wartet (ADR 0015) und
-    `blocking=False`. `blocking=True` ist ein Vorrang-Claim: er wartet auf einen
-    freien Slot **und** auf das Ende eines aktiven Runs desselben Loops +
-    Issue/PR (Resume nach Approval, eingereihter manueller Run), und neue
-    nicht-blockierende Claims weichen ihm solange aus. ``registered=True``: der
-    Aufrufer hat sich schon synchron per :func:`mark_priority_waiter` eingetragen
-    (vor dem Thread-Start, damit Trigger-Runs sofort ausweichen); der Eintrag
-    wird hier wieder abgebaut. `exclude_run_id` (Resume): der fortgesetzte Run
-    selbst blockiert seinen eigenen Claim nicht."""
+    None if for loop + issue/PR a run is already active or paused
+    (`needs_approval`) (dedup), the limit
+    is reached or a priority waiter in the same scope is waiting (ADR 0015) and
+    `blocking=False`. `blocking=True` is a priority claim: it waits for a
+    free slot **and** for the end of an active run of the same loop +
+    issue/PR (resume after approval, queued manual run), and new
+    non-blocking claims yield to it meanwhile. ``registered=True``: the
+    caller has already registered synchronously via :func:`mark_priority_waiter`
+    (before the thread start, so trigger runs yield immediately); the entry
+    is removed again here. `exclude_run_id` (resume): the resumed run
+    itself does not block its own claim."""
     scope = lock_key(project, loop)
     needs_slot = scope == project
     limit = max_parallel_for(project) if needs_slot else 0
     key = (project, loop, dedupe_key(variables))
-    # Pausierte Runs geben ihren Claim frei, belegen den Bezug aber weiter; der
-    # Resume (blocking bzw. exclude_run_id) ist ausgenommen. Datei-I/O bewusst
-    # außerhalb des Locks.
+    # Paused runs release their claim but keep occupying the reference; the
+    # resume (blocking or exclude_run_id) is exempt. File I/O deliberately
+    # outside the lock.
     if not blocking and key[2] and key[2] in paused_dedupe_keys(project, loop, exclude_run_id):
         return None
     with _slots_cond:
@@ -190,17 +190,17 @@ def claim_run(
 
 
 def has_priority_waiter(scope: str) -> bool:
-    """True, wenn im Scope (:func:`lock_key`) ein Vorrang-Claim wartet."""
+    """True if a priority claim is waiting in the scope (:func:`lock_key`)."""
     with _slots_cond:
         return bool(_priority_waiters.get(scope))
 
 
 def slot_snapshot() -> dict:
-    """Slots & Wartende je Scope (Schedule-View): used/limit-Kontext ohne Spec-Zugriff.
+    """Slots & waiters per scope (schedule view): used/limit context without spec access.
 
-    `slots_used`/`priority_waiters` pro Scope, `active` = aktive (project, loop,
-    dedupe)-Keys — die UI kann daraus ableiten, auf was ein wartender Run
-    konkret wartet (Slot frei? gleicher Loop+Issue aktiv?)."""
+    `slots_used`/`priority_waiters` per scope, `active` = active (project, loop,
+    dedupe) keys — the UI can derive from them what a waiting run is
+    concretely waiting for (slot free? same loop+issue active?)."""
     with _slots_cond:
         return {
             "slots_used": dict(_slots_used),
@@ -216,31 +216,31 @@ def runs_dir_for(project: str) -> Path:
 
 
 def load_runs(project: str | None = None) -> list[Run]:
-    """Typisierte Runs aller bzw. eines Projekts (unsortiert); nicht ladbare Records werden übersprungen.
+    """Typed runs of all or one project (unsorted); unloadable records are skipped.
 
-    Lesepfad des :class:`~fabrik.runstore.RunStore`; ``project`` ist der Verzeichnisname. Nicht ladbare
-    Records (mit Grund) liefert ``STORE.load_report()``."""
+    Read path of the :class:`~fabrik.runstore.RunStore`; ``project`` is the directory name. Unloadable
+    records (with reason) are provided by ``STORE.load_report()``."""
     return STORE.load_all(project)
 
 
 def find_run(run_id: str, project: str | None = None) -> Run | None:
-    """Typisierter Run per Id (optional im Projekt); None, wenn unbekannt oder nicht ladbar."""
+    """Typed run by id (optionally in the project); None if unknown or unloadable."""
     return STORE.get(run_id, project)
 
 
 def pending_approval_runs(project: str | None = None) -> list[Run]:
-    """Runs im Status ``needs_approval`` (Freigabe offen oder eingereiht), neueste zuerst.
+    """Runs in status ``needs_approval`` (approval open or queued), newest first.
 
-    Typisiertes Pendant zu :func:`pending_approvals` (``list[dict]``). Die dict-basierte
-    Funktion wird in Schritt 2 (ADR 0034, #276) durch diese ersetzt und entfernt —
-    Caller sollen :func:`pending_approval_runs` verwenden."""
+    Typed counterpart to :func:`pending_approvals` (``list[dict]``). The dict-based
+    function is replaced by this one in step 2 (ADR 0034, #276) and removed —
+    callers should use :func:`pending_approval_runs`."""
     out = [r for r in load_runs(project) if r.status is RunStatus.NEEDS_APPROVAL]
     out.sort(key=lambda r: r.started, reverse=True)
     return out
 
 
 class LastRun(TypedDict):
-    """JSON-Projektion des jüngsten Runs eines Loops (``failure_kind`` ``""`` = keiner)."""
+    """JSON projection of the most recent run of a loop (``failure_kind`` ``""`` = none)."""
 
     status: str
     finished: str
@@ -249,12 +249,12 @@ class LastRun(TypedDict):
 
 
 def last_run_per_loop(runs: Iterable[Run]) -> dict[str, LastRun]:
-    """Jüngster Run (nach ``started``) je Loop als {loop: LastRun}.
+    """Most recent run (by ``started``) per loop as {loop: LastRun}.
 
-    Erwartet *alle* Runs eines Projekts (:func:`load_runs` bzw. :func:`parse_runs`),
-    nicht nur die N neuesten — sonst erscheinen selten laufende Loops in der UI
-    als "nie gelaufen". Runs ohne Loop werden übersprungen; nicht ladbare Records
-    (fehlende ``id``, unbekannter Status) wurden beim Parsen bereits verworfen."""
+    Expects *all* runs of a project (:func:`load_runs` or :func:`parse_runs`),
+    not just the N newest — otherwise rarely running loops appear in the UI
+    as "never ran". Runs without loop are skipped; unloadable records
+    (missing ``id``, unknown status) were already discarded during parsing."""
     newest: dict[str, Run] = {}
     for r in runs:
         cur = newest.get(r.loop)
@@ -272,29 +272,29 @@ def last_run_per_loop(runs: Iterable[Run]) -> dict[str, LastRun]:
 
 
 def _started_key(r: dict) -> str:
-    """Sortierschlüssel: `started` als String (beschädigte Nicht-Strings sortieren als leer)."""
+    """Sort key: `started` as string (damaged non-strings sort as empty)."""
     started = r.get("started")
     return started if isinstance(started, str) else ""
 
 
 def list_runs(project: str | None = None, limit: int | None = 50) -> list[dict]:
-    """Run-Records (ohne steps_output), neueste zuerst; limit=None = alle."""
-    # Alle Runs sammeln, dann global nach Startzeit sortieren und erst dann
-    # truncieren. (Früher: early-return pro Projekt-Verzeichnis → bei mehreren
-    # Projekten landeten die "neuesten" des ersten Verzeichnisses vorne, egal
-    # wie alt sie waren.)
+    """Run records (without steps_output), newest first; limit=None = all."""
+    # Collect all runs, then sort globally by start time and only then
+    # truncate. (Formerly: early return per project directory → with several
+    # projects the "newest" of the first directory came first, no matter
+    # how old they were.)
     out = STORE.load_records(project)
     out.sort(key=_started_key, reverse=True)
     return out[:limit]
 
 
 def load_records(project: str | None = None) -> list[dict]:
-    """Rohe Run-Records (ohne steps_output) aller bzw. eines Projekts, unsortiert."""
+    """Raw run records (without steps_output) of all or one project, unsorted."""
     return STORE.load_records(project)
 
 
 def parse_runs(records: Iterable[dict], project: str) -> list[Run]:
-    """Rohe Records von `project` → typisierte Runs; nicht ladbare werden übersprungen (wie :func:`load_runs`)."""
+    """Raw records of `project` → typed runs; unloadable ones are skipped (like :func:`load_runs`)."""
     out = []
     for rec in records:
         try:
@@ -305,56 +305,56 @@ def parse_runs(records: Iterable[dict], project: str) -> list[Run]:
 
 
 def select_pending_approvals(records: Iterable[dict]) -> list[dict]:
-    """Records im Status `needs_approval` mit gültiger `id` aus `records`, neueste zuerst."""
+    """Records in status `needs_approval` with valid `id` from `records`, newest first."""
     out = [r for r in records if r.get("status") == "needs_approval" and isinstance(r.get("id"), str) and r["id"]]
     out.sort(key=_started_key, reverse=True)
     return out
 
 
 def pending_approvals(project: str | None = None) -> list[dict]:
-    """Offene Freigabe-Anfragen: Runs im Status `needs_approval`, neueste zuerst.
+    """Open approval requests: runs in status `needs_approval`, newest first.
 
     .. note::
-        Typisiertes Pendant: :func:`pending_approval_runs` (``list[Run]``). Diese
-        dict-basierte Funktion wird in Schritt 2 (ADR 0034, #276) entfernt —
-        neue Caller sollen :func:`pending_approval_runs` verwenden.
+        Typed counterpart: :func:`pending_approval_runs` (``list[Run]``). This
+        dict-based function is removed in step 2 (ADR 0034, #276) —
+        new callers should use :func:`pending_approval_runs`.
 
-    `steps_output` wird entfernt wie bei :func:`list_runs`. project=None →
-    alle Projekte. Die UI zeigt daraus die Anzahl pro Projekt und die
-    aufklappbare Liste (Klick öffnet das Run-Log-Modal mit dem
-    Approval-Kontext). Records ohne gültige (nicht-leere String-)`id` werden
-    übersprungen, damit ein beschädigtes Record `/api/projects` nicht kippt.
-    Wer die Records ohnehin geladen hat, nimmt :func:`select_pending_approvals`."""
+    `steps_output` is removed as in :func:`list_runs`. project=None →
+    all projects. The UI shows from it the count per project and the
+    expandable list (click opens the run-log modal with the
+    approval context). Records without a valid (non-empty string) `id` are
+    skipped so a damaged record does not topple `/api/projects`.
+    Whoever has the records loaded anyway uses :func:`select_pending_approvals`."""
     return select_pending_approvals(load_records(project))
 
 
 def loop_run_triggers(project: str, loop: str, statuses: tuple[str, ...] | None = None) -> set[str]:
-    """Trigger-Strings (z. B. "on_issue:#12") aller Runs von `project`/`loop`.
+    """Trigger strings (e.g. "on_issue:#12") of all runs of `project`/`loop`.
 
-    Persistente Quelle für Reconcile-Trigger (überlebt Restarts). `statuses`
-    filtert optional nach Run-Status; ohne Filter zählt jeder Run. Nicht
-    lesbare Records überspringt der Store; unerwartete Fehler (z. B.
-    PermissionError, DB-Fehler) werden NICHT geschluckt, sondern an den
-    aufrufenden Fehlerpfad propagiert (on_issue-Poll bzw. Scheduler-Loop) —
-    ein unvollständiges Set würde die Reconcile-Idempotenz brechen (Doppel-Run)."""
+    Persistent source for reconcile triggers (survives restarts). `statuses`
+    optionally filters by run status; without a filter every run counts. Unreadable
+    records are skipped by the store; unexpected errors (e.g.
+    PermissionError, DB error) are NOT swallowed but propagated to the
+    calling error path (on_issue poll or scheduler loop) —
+    an incomplete set would break the reconcile idempotence (double run)."""
     if not valid_project(project):
         return set()
     return STORE.loop_triggers(project, loop, statuses)
 
 
 def reap_orphaned_runs() -> list[str]:
-    """Server-Start: verwaiste 'running'-Records → error (kein Alert, nur Log).
+    """Server start: orphaned 'running' records → error (no alert, log only).
 
-    Single-Node: Runs leben nur im Server-Prozess, ein 'running'-Record vor dem
-    Start ist daher tot. `needs_approval` bleibt (pausiert, fortsetzbar).
-    Jeder bereinigte Run aktualisiert seine Retry-Kette (ADR 0036: der
-    Neustart verbraucht den Versuch, der nächste wird nach Backoff geplant).
-    Gibt die bereinigten Run-Ids zurück."""
+    Single node: runs live only in the server process, so a 'running' record before
+    the start is dead. `needs_approval` stays (paused, resumable).
+    Every cleaned-up run updates its retry chain (ADR 0036: the
+    restart consumes the attempt, the next one is planned after backoff).
+    Returns the cleaned-up run ids."""
     from . import retry_chains  # lokal: retry_chains importiert get_run aus diesem Modul
     from .specs import load_projects
 
     reaped: list[str] = []
-    projects: dict[str, dict] | None = None  # einmal laden, erst wenn ein Run bereinigt wird
+    projects: dict[str, dict] | None = None  # load once, only when a run is cleaned up
     try:
         running = STORE.load_records(status=RunStatus.RUNNING)
     except (OSError, RunStoreError) as e:
@@ -362,8 +362,8 @@ def reap_orphaned_runs() -> list[str]:
         running = []
     for r in running:
         project, run_id = r["project"], r.get("id", "")
-        # Über den Store: Vorbedingung `running` — ein Run, der inzwischen einen
-        # anderen Status hat, wird nicht überschrieben (PreconditionError → überspringen).
+        # Via the store: precondition `running` — a run that has meanwhile a
+        # different status is not overwritten (PreconditionError → skip).
         try:
             r = STORE.reap(project, run_id, error=t("runs.restart_error"))
         except (RunStoreError, OSError):
@@ -375,8 +375,8 @@ def reap_orphaned_runs() -> list[str]:
         metrics.FABRIK_REAPED_RUNS_TOTAL.inc(reason="restart")
         reaped.append(run_id)
         print(f"[fabrik] verwaister Run {run_id} → error (Restart)")
-    # Übrige Claims von Runs, die nicht mehr laufen, freigeben (ADR 0036,
-    # Entscheidung 3) — sonst würde die Kette für immer claimed bleiben.
+    # Release remaining claims of runs that are no longer running (ADR 0036,
+    # decision 3) — otherwise the chain would stay claimed forever.
     retry_chains.release_stale_claims()
     return reaped
 
@@ -386,9 +386,9 @@ _valid_project = valid_project
 
 
 def get_run(run_id: str, project: str | None = None) -> dict | None:
-    """Roher Run-Record per Id; zuerst im Projekt, sonst über alle Projekte (Fallback).
+    """Raw run record by id; first in the project, otherwise across all projects (fallback).
 
-    None, wenn Id/Projekt ungültig, der Run unbekannt oder sein Record defekt ist (wird geloggt)."""
+    None if id/project is invalid, the run is unknown or its record is broken (is logged)."""
     if not _valid_run_id(run_id) or (project and not _valid_project(project)):
         return None
     try:
@@ -400,10 +400,10 @@ def get_run(run_id: str, project: str | None = None) -> dict | None:
 
 
 def export_run(run_id: str, project: str | None = None) -> dict | None:
-    """Run-Record + Session-Log als JSON-fähiges Dict (``fabrik runs export``).
+    """Run record + session log as a JSON-capable dict (``fabrik runs export``).
 
-    ``session_log`` enthält ``events``/``checkpoints``/``artifacts`` (beide Backends).
-    None, wenn der Run unbekannt ist (wie :func:`get_run`)."""
+    ``session_log`` contains ``events``/``checkpoints``/``artifacts`` (both backends).
+    None if the run is unknown (like :func:`get_run`)."""
     rec = get_run(run_id, project)
     if rec is None:
         return None
@@ -411,8 +411,8 @@ def export_run(run_id: str, project: str | None = None) -> dict | None:
 
 
 def show_run(run_id: str, project: str | None = None) -> str | None:
-    """Menschlich lesbarer Einzelrun (``fabrik runs show``): Felder, Steps mit Status-Marke,
-    Session-Log-Zählungen. None, wenn der Run unbekannt ist (wie :func:`get_run`)."""
+    """Human-readable single run (``fabrik runs show``): fields, steps with status mark,
+    session-log counts. None if the run is unknown (like :func:`get_run`)."""
     rec = get_run(run_id, project)
     if rec is None:
         return None
@@ -434,7 +434,7 @@ def show_run(run_id: str, project: str | None = None) -> str | None:
 
 
 def get_run_log_path(run_id: str, project: str | None = None) -> Path | None:
-    """Pfad der Log-Datei (`runs/<projekt>/<id>.log`); None bei ungültiger Id/Projekt oder fehlender Datei."""
+    """Path of the log file (`runs/<project>/<id>.log`); None on invalid id/project or missing file."""
     if not _valid_run_id(run_id):
         return None
     if project:
@@ -451,9 +451,9 @@ def get_run_log_path(run_id: str, project: str | None = None) -> Path | None:
 
 
 def get_run_log(run_id: str, project: str | None = None) -> str | None:
-    """Rohes Run-Log (`runs/<projekt>/<id>.log`) als Text.
+    """Raw run log (`runs/<project>/<id>.log`) as text.
 
-    None, wenn die Id ungültig ist oder keine Log-Datei existiert (z. B.
-    Runs, die vor dem Log-Feature gelaufen sind)."""
+    None if the id is invalid or no log file exists (e.g.
+    runs that ran before the log feature)."""
     f = get_run_log_path(run_id, project)
     return f.read_text(encoding="utf-8") if f else None

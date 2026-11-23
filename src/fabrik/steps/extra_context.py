@@ -1,31 +1,31 @@
-"""Zusätzlicher Prompt-Kontext für LLM-Knoten (`extra_context`).
+"""Additional prompt context for LLM nodes (`extra_context`).
 
-Gilt für alle Step-Typen in `LLM_STEP_TYPES`, auch als Check in einem `verify`-Step.
-Die Projekt-Ebene gilt für jeden dieser Steps, die Step-Ebene ergänzt sie (gleicher
-`name` → Step gewinnt), `extra_context: false` am Step schaltet den Kontext dort ab:
+Applies to all step types in `LLM_STEP_TYPES`, also as a check in a `verify` step.
+The project level applies to each of these steps, the step level adds to it (same
+`name` → step wins), `extra_context: false` on the step turns the context off there:
 
     extra_context:
       - {name: agents_md, file: AGENTS.md, trusted: true}
       - {name: quality, cmd: "bash scripts/sonar-scan.sh --pr {pr_number}", trusted: true}
       - {name: issue, value: "{issue_body}"}
 
-Genau eine Quelle pro Eintrag:
-- `file`: relativ zur Step-Workdir (`workdir:` am Step, sonst die des Runs), darf
-  sie nicht verlassen.
-- `cmd`: `sh -c` in der Step-Workdir, nur stdout zählt; Platzhalter nur für
-  vertrauenswürdige Werte (wie im shell-Step, ADR 0008). Env wie im shell-Step
-  (`process_env()`, ADR 0010): Builder-Identität, kein geerbter Reviewer-Token.
-- `value`: Template mit `{variablen}`.
+Exactly one source per entry:
+- `file`: relative to the step workdir (`workdir:` on the step, otherwise the run's), must
+  not leave it.
+- `cmd`: `sh -c` in the step workdir, only stdout counts; placeholders only for
+  trusted values (like in the shell step, ADR 0008). Env like in the shell step
+  (`process_env()`, ADR 0010): builder identity, no inherited reviewer token.
+- `value`: template with `{variables}`.
 
-Default ist untrusted: der Inhalt wird als Daten markiert (Prompt-Injection-Schutz,
-Leitprinzip 7). `trusted: true` nur für repo-eigene Dateien und Tool-Ausgaben.
-Aufgelöst wird bei jedem Prompt-Aufbau, `cmd`-Quellen liefern also z. B. pro
-Review-Runde frische Werte. Eine nicht ladbare Quelle bricht den Step nicht ab:
-der Block nennt den Grund, das Log warnt.
+Default is untrusted: the content is marked as data (prompt-injection protection,
+guiding principle 7). `trusted: true` only for repo-own files and tool outputs.
+Resolution happens on every prompt build, so `cmd` sources deliver fresh values e.g. per
+review round. A source that cannot be loaded does not abort the step:
+the block names the reason, the log warns.
 
-Budget: jede Quelle wird auf `max_chars` gekürzt (Default `EXTRA_CONTEXT_MAX_CHARS`),
-alle Quellen eines Prompts zusammen auf `EXTRA_CONTEXT_TOTAL_MAX_CHARS` (in Spec-
-Reihenfolge; was nicht mehr passt, wird gekürzt bzw. ausgelassen, das Log warnt).
+Budget: every source is truncated to `max_chars` (default `EXTRA_CONTEXT_MAX_CHARS`),
+all sources of a prompt together to `EXTRA_CONTEXT_TOTAL_MAX_CHARS` (in spec
+order; what no longer fits is truncated or omitted, the log warns).
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ from .shell import run_shell
 LLM_STEP_TYPES = frozenset({"llm", "agent", "review", "pr_review", "human_gate"})
 SOURCE_KINDS = ("file", "cmd", "value")
 DEFAULT_CMD_TIMEOUT_S = 300
-# Zeichen je Quelle bzw. für alle Quellen eines Prompts: lokale Modelle (llama.cpp,
-# 131k Token geteilt zwischen Slots) laufen sonst bei großen cmd-Ausgaben über.
+# Characters per source or for all sources of a prompt: local models (llama.cpp,
+# 131k tokens shared between slots) would otherwise overflow on large cmd outputs.
 EXTRA_CONTEXT_MAX_CHARS = 50_000
 EXTRA_CONTEXT_TOTAL_MAX_CHARS = 120_000
 KEY = "extra_context"
@@ -53,10 +53,10 @@ VERIFY_STEP_TYPE = "verify"
 
 @dataclass(frozen=True)
 class ContextSource:
-    """Eine Kontextquelle aus der Spec (siehe Modul-Doku)."""
+    """A context source from the spec (see module doc)."""
 
     name: str
-    kind: str  # einer von SOURCE_KINDS
+    kind: str  # one of SOURCE_KINDS
     source: str  # Pfad, Befehl oder Template
     trusted: bool = False
     timeout: int = DEFAULT_CMD_TIMEOUT_S
@@ -64,7 +64,7 @@ class ContextSource:
 
     @classmethod
     def parse(cls, raw: object) -> ContextSource:
-        """Spec-Eintrag → ContextSource; ValueError mit lesbarem Grund bei ungültigem Eintrag."""
+        """Spec entry → ContextSource; ValueError with a readable reason on an invalid entry."""
         if not isinstance(raw, dict):
             raise ValueError(_t("steps.extra_context.entry_must_be_a_mapping"))
         name = raw.get("name")
@@ -90,7 +90,7 @@ class ContextSource:
         )
 
     def load(self, ctx: dict, workdir: Path) -> str:
-        """Inhalt der Quelle (`file`/`cmd` relativ zu ``workdir``); OSError/ValueError/SubprocessError bei Fehlern."""
+        """Content of the source (`file`/`cmd` relative to ``workdir``); OSError/ValueError/SubprocessError on errors."""
         if self.kind == "value":
             return _substitute(self.source, ctx)
         if self.kind == "file":
@@ -120,9 +120,9 @@ def _positive_int(raw: dict, key: str, default: int, name: str) -> int:
 
 
 def validate(raw: object, where: str, step_type: str | None = None, *, allow_false: bool = True) -> list[str]:
-    """Spec-Fehler eines `extra_context`-Werts: Liste von Einträgen, am Step auch `false`.
+    """Spec errors of an `extra_context` value: list of entries, on the step also `false`.
 
-    `step_type` gesetzt (Step-Ebene) → nur für `LLM_STEP_TYPES` zulässig."""
+    `step_type` set (step level) → allowed only for `LLM_STEP_TYPES`."""
     if step_type is not None and step_type not in LLM_STEP_TYPES:
         return [_t("steps.extra_context.extra_context_only_applies_to", where=where, v2=sorted(LLM_STEP_TYPES))]
     if raw is False and allow_false:
@@ -142,9 +142,9 @@ def validate(raw: object, where: str, step_type: str | None = None, *, allow_fal
 
 
 def effective_step(spec: dict, step: dict) -> dict:
-    """Step mit zusammengeführtem `extra_context` (Projekt + Step); bei `verify` für jeden Check.
+    """Step with merged `extra_context` (project + step); for `verify` for every check.
 
-    Andere Steps bleiben unverändert."""
+    Other steps stay unchanged."""
     if step.get("type") == VERIFY_STEP_TYPE and isinstance(step.get("checks"), list):
         checks = [effective_step(spec, c) if isinstance(c, dict) else c for c in step["checks"]]
         return {**step, "checks": checks}
@@ -159,7 +159,7 @@ def effective_step(spec: dict, step: dict) -> dict:
 
 
 def _fit(src: ContextSource, text: str, budget: int, emit) -> str:
-    """Kürzt ``text`` auf ``max_chars`` der Quelle und das verbleibende Gesamtbudget (mit Log-Warnung)."""
+    """Truncates ``text`` to the source's ``max_chars`` and the remaining total budget (with log warning)."""
     if budget <= 0:
         emit(
             _t("steps.extra_context.extra_context_omitted_total_budget", v1=src.name, v2=EXTRA_CONTEXT_TOTAL_MAX_CHARS)
@@ -172,7 +172,7 @@ def _fit(src: ContextSource, text: str, budget: int, emit) -> str:
 
 
 def render_extra_context(ctx: dict, step: dict, emit) -> str:
-    """Prompt-Anhang aus `step['extra_context']`: trusted als Kontext, sonst als untrusted Daten."""
+    """Prompt appendix from `step['extra_context']`: trusted as context, otherwise as untrusted data."""
     trusted: list[tuple[str, str]] = []
     untrusted: list[tuple[str, str]] = []
     workdir = Path(step_workdir(ctx, step))

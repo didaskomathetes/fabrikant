@@ -1,17 +1,17 @@
-"""Relationales Schema des SQL-Run-Stores (ADR 0034 Nr. 4) — SQLAlchemy Core, kein ORM.
+"""Relational schema of the SQL run store (ADR 0034 no. 4) — SQLAlchemy Core, no ORM.
 
-Strikt relational, keine JSON-Spalten im Kern: Runs, Steps, Usage, Review-Ergebnisse (+ Findings),
-Verify-Checks, Approvals (+ Rechte), Run-Variablen (Key/Value mit Typ) und das Session-Log
-(Events, Artefakte, Checkpoints; ADR 0002). Status-Spalten sind per ``CHECK`` auf die Enum-Werte
-aus :mod:`fabrik.runmodel` beschränkt, Kind-Tabellen hängen per Fremdschlüssel (``ON DELETE
-CASCADE``) am Run.
+Strictly relational, no JSON columns in the core: runs, steps, usage, review results (+ findings),
+verify checks, approvals (+ permissions), run variables (key/value with type) and the session log
+(events, artifacts, checkpoints; ADR 0002). Status columns are restricted via ``CHECK`` to the enum values
+from :mod:`fabrik.runmodel`, child tables hang off the run via foreign key (``ON DELETE
+CASCADE``).
 
-Einzige opake Spalte: ``run_events.data`` — die fremde Payload eines Session-Log-Events (z. B.
-Tool-Calls der Agent-Backends) als redigierter JSON-Text, vom Store nie interpretiert.
+The only opaque column: ``run_events.data`` — the foreign payload of a session-log event (e.g.
+tool calls of the agent backends) as redacted JSON text, never interpreted by the store.
 
-Dieses Modul ist die Soll-Definition für ``alembic`` (``target_metadata``). Jede Änderung braucht
-eine neue Revision unter ``fabrik/migrations/versions``; ein Test vergleicht ``upgrade head`` mit
-diesen Tabellen.
+This module is the target definition for ``alembic`` (``target_metadata``). Every change needs
+a new revision under ``fabrik/migrations/versions``; a test compares ``upgrade head`` with
+these tables.
 """
 
 from __future__ import annotations
@@ -47,15 +47,15 @@ metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 class VarScope(StrEnum):
-    """Herkunft einer Run-Variable: ``vars`` (Resume-Kontext) oder ``queued_vars`` (Trigger-Variablen
-    eines eingereihten Runs)."""
+    """Origin of a run variable: ``vars`` (resume context) or ``queued_vars`` (trigger variables
+    of a queued run)."""
 
     VARS = "vars"
     QUEUED_VARS = "queued_vars"
 
 
 class VarType(StrEnum):
-    """Python-Typ eines Variablenwerts (der Wert selbst steht als Text in ``run_vars.value``)."""
+    """Python type of a variable value (the value itself is stored as text in ``run_vars.value``)."""
 
     STR = "str"
     INT = "int"
@@ -64,7 +64,7 @@ class VarType(StrEnum):
 
 
 def in_enum(column: str, enum_cls: type[StrEnum]) -> str:
-    """SQL-Ausdruck ``column IN ('a', 'b', …)`` über alle Werte von ``enum_cls`` (für ``CHECK``)."""
+    """SQL expression ``column IN ('a', 'b', …)`` over all values of ``enum_cls`` (for ``CHECK``)."""
     values = ", ".join(f"'{e.value}'" for e in enum_cls)
     return f"{column} IN ({values})"
 
@@ -89,7 +89,7 @@ runs = Table(
     Column("loop", Text, nullable=False),
     Column("status", Text, nullable=False),
     Column("started", Text, nullable=False, server_default=""),
-    # Normalisierte UTC-Zeit von ``started`` (fester Breite) für Datumsfilter; NULL = unparsebar.
+    # Normalized UTC time of ``started`` (fixed width) for date filters; NULL = unparseable.
     Column("started_utc", Text),
     Column("finished", Text),
     Column("trigger", Text),
@@ -115,7 +115,7 @@ runs = Table(
     CheckConstraint("project <> ''", name="project_not_empty"),
     CheckConstraint(in_enum("status", RunStatus), name="status"),
     CheckConstraint(_nullable_in_enum("failure_kind", FailureKind), name="failure_kind"),
-    # ADR 0035: nur gescheiterte Runs tragen eine Fehlerklasse.
+    # ADR 0035: only failed runs carry a failure class.
     CheckConstraint(f"failure_kind IS NULL OR {_FAILED_RUN}", name="failure_kind_only_failed"),
     CheckConstraint("attempt IS NULL OR attempt >= 0", name="attempt_non_negative"),
 )
@@ -287,7 +287,7 @@ run_checkpoints = Table(
     Column("data", Text, nullable=False, server_default="{}"),
 )
 
-# Kind-Tabellen eines Run-Records (ohne Session-Log), in Einfüge-Reihenfolge (Fremdschlüssel).
+# Child tables of a run record (without session log), in insertion order (foreign keys).
 RECORD_CHILD_TABLES = (
     steps,
     step_usage,
@@ -299,8 +299,8 @@ RECORD_CHILD_TABLES = (
     run_vars,
 )
 
-# Benannte Verbindungen (ADR 0052): LLM-Provider und Agent-Backends, in der UI verwaltet.
-# ``secret`` ist Fernet-verschlüsselt (API-Key bzw. Server-Passwort), nie Klartext.
+# Named connections (ADR 0052): LLM providers and agent backends, managed in the UI.
+# ``secret`` is Fernet-encrypted (API key or server password), never plaintext.
 connections = Table(
     "connections",
     metadata,

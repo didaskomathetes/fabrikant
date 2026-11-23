@@ -51,8 +51,8 @@ def cmd_list(_args):
 
 
 def cmd_validate(args):
-    """Specs prüfen; Exit 1 bei Fehlern. ``specs``: nur diese Dateien statt aller Quellen,
-    ``--offline``: ohne host-abhängige Prüfungen (Projekt-``root`` muss nicht existieren — CI)."""
+    """Validate specs; exit 1 on errors. ``specs``: only these files instead of all sources,
+    ``--offline``: without host-dependent checks (project ``root`` need not exist — CI)."""
     files = [Path(f) for f in args.specs] or None
     projects, conflicts = collect_projects(files, check_root=not args.offline)
     ok = not conflicts
@@ -70,12 +70,12 @@ def cmd_validate(args):
 
 
 def _warn_connection_refs(name: str, spec: dict) -> None:
-    """Unbekannte ``connection:``-Namen als Warnung (Verbindungen sind Host-Zustand, ADR 0052)."""
+    """Unknown ``connection:`` names as a warning (connections are host state, ADR 0052)."""
     from . import connections
 
     try:
         problems = connections.unknown_references(spec)
-    except Exception as e:  # DB nicht erreichbar o. Ä.: validate soll daran nicht scheitern
+    except Exception as e:  # DB not reachable or similar: validate should not fail because of that
         print(t("cli.connections_unchecked", name=name, error=e))
         return
     for msg in problems:
@@ -136,7 +136,7 @@ def cmd_run(args):
 
 
 def _print_steps(rec: dict) -> None:
-    """Step-Liste eines Run-Records mit Status-Marke ausgeben."""
+    """Print the step list of a run record with status mark."""
     for s in rec["steps"]:
         print(f"  {STEP_MARKS.get(s['status'], '?')} {s['name']} [{s['type']}] {s.get('summary', '')}")
 
@@ -316,7 +316,7 @@ def cmd_mcp(args):
 
 
 def _resume_sync(project: str, run_id: str, approve: bool) -> str:
-    """Synchrones Resume für die CLI (Daemon-Threads würden mit dem Prozess sterben)."""
+    """Synchronous resume for the CLI (daemon threads would die with the process)."""
     run = get_run(run_id, project)
     if not run:
         return t("chat.run_not_found", run_id=run_id)
@@ -324,8 +324,8 @@ def _resume_sync(project: str, run_id: str, approve: bool) -> str:
         return t("chat.not_needs_approval", run_id=run["id"], status=run["status"])
     detail = _approval_detail(run.get("approval") or {})
     if not approve:
-        # Atomare Ablehnung (schließt einen gleichzeitigen Resume aus, ADR 0034) inkl. Cleanup
-        # und Retry-Ketten-Buchung.
+        # Atomic rejection (rules out a concurrent resume, ADR 0034) incl. cleanup
+        # and retry-chain booking.
         try:
             run = reject_run(project, run, _cli_actor(), lambda msg: _append_run_log(project, run_id, msg))
         except PreconditionError as e:
@@ -343,8 +343,8 @@ def _resume_sync(project: str, run_id: str, approve: bool) -> str:
         _print_steps(rec)
         return f"■ {rec['status'].upper()} — {run['loop']}"
     except Exception as e:
-        # Resume hat nicht begonnen (z. B. Spec defekt) → Freigabe zurücknehmen, damit der Run
-        # erneut freigegeben oder abgelehnt werden kann.
+        # Resume did not start (e.g. spec broken) → revoke the approval so the run can
+        # be approved or rejected again.
         _revoke_approval(project, run_id)
         return t("cli.resume_failed", error=e)
     finally:
@@ -380,7 +380,7 @@ def cmd_state(args):
 
 
 def _read_password(args) -> str:
-    """Passwort aus stdin (``--password-stdin``) oder interaktiv (zweimal) lesen."""
+    """Read the password from stdin (``--password-stdin``) or interactively (twice)."""
     if args.password_stdin:
         return sys.stdin.readline().rstrip("\r\n")
     pw = getpass.getpass(t("cli.password_prompt"))
@@ -407,7 +407,7 @@ def cmd_user(args):
 
 
 def cmd_chat(args):
-    # Lokaler CLI-Aufrufer ist vertrauenswürdig (Shell-Zugriff) → Audit als cli:<os-user> (ADR 0030).
+    # The local CLI caller is trusted (shell access) → audit as cli:<os-user> (ADR 0030).
     print(_chat(" ".join(args.message), who=auth.Principal(_cli_actor(), auth.ADMIN)))
 
 
@@ -416,12 +416,12 @@ def cmd_alert(args):
 
 
 def cmd_agent_env(_args):
-    """Gescrubte Agent-Env als `KEY=VALUE`-Zeilen (ADR 0050) — für systemd-EnvironmentFile
-    oder Docker `--env-file` des (geteilten) `opencode serve`-Prozesses."""
+    """Scrubbed agent env as `KEY=VALUE` lines (ADR 0050) — for a systemd EnvironmentFile
+    or Docker `--env-file` of the (shared) `opencode serve` process."""
     from .agentenv import build_agent_env
 
     for k, v in sorted(build_agent_env().items()):
-        if "\n" in v or "\r" in v:  # würde im EnvironmentFile/--env-file eine Zeile abreißen
+        if "\n" in v or "\r" in v:  # would tear off a line in the EnvironmentFile/--env-file
             print(t("cli.agent_env_skipped", key=k), file=sys.stderr)
             continue
         print(f"{k}={v}")
@@ -531,9 +531,9 @@ def cmd_migrate_runs(args):
 
 
 def cmd_retry_backfill(_args):
-    """Einmaliger Bestandsabgleich (ADR 0036, #290): Ketten für Trigger, deren
-    komplette Runs gescheitert sind — interrupted/transient → pending, der Rest
-    exhausted (UI „Abgelegt“). Idempotent: vorhandene Ketten bleiben unberührt."""
+    """One-off backfill (ADR 0036, #290): chains for triggers whose
+    runs have all failed — interrupted/transient → pending, the rest
+    exhausted (UI "Filed away"). Idempotent: existing chains stay untouched."""
     s = retry_chains.backfill_chains()
     print(t("cli.backfill_done", pending=s.pending, exhausted=s.exhausted, skipped=s.skipped))
 
@@ -699,7 +699,7 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     try:
-        # Composition Root: Profil und Adapter einmal beim Start auflösen (ADR 0056)
+        # Composition root: resolve profile and adapters once at startup (ADR 0056)
         args.adapters = profiles.compose(profiles.resolve_profile(args.profile))
     except (profiles.ProfileError, NotImplementedError) as e:
         sys.exit(t("cli.error", error=e))

@@ -1,4 +1,4 @@
-"""Eingabe-Validierung für Werte, die an Git und die GitHub-API gehen."""
+"""Input validation for values that go to git and the GitHub API."""
 
 from __future__ import annotations
 
@@ -6,19 +6,19 @@ import re
 
 from .i18n import t
 
-# Git erlaubt mehr, aber Branch-Namen kommen teils aus LLM-/User-Eingaben:
-# bewusst enge Allowlist statt Blocklist für Shell-/Ref-Metazeichen.
+# Git allows more, but branch names partly come from LLM/user input:
+# deliberately a narrow allowlist instead of a blocklist for shell/ref metacharacters.
 MAX_BRANCH_NAME_LEN = 200
 _BRANCH_RE = re.compile(r"[A-Za-z0-9._/-]+")
 
 
 def validate_branch_name(branch: str) -> str:
-    """Branch-/Head-Name prüfen und unverändert zurückgeben; sonst `ValueError`.
+    """Check a branch/head name and return it unchanged; otherwise `ValueError`.
 
-    Abgelehnt: leer, zu lang (`MAX_BRANCH_NAME_LEN`), Zeichen außerhalb von
-    `[A-Za-z0-9._/-]` (Leerzeichen, Zeilenumbrüche, Shell-Metazeichen),
-    führendes `-` (Option-Injection), `..`, `//`, `/`-/`.`-Rand-Segmente
-    und `.lock`-Suffix (ungültige Git-Refs).
+    Rejected: empty, too long (`MAX_BRANCH_NAME_LEN`), characters outside
+    `[A-Za-z0-9._/-]` (spaces, newlines, shell metacharacters),
+    leading `-` (option injection), `..`, `//`, `/`/`.` edge segments
+    and `.lock` suffix (invalid git refs).
     """
     if not isinstance(branch, str) or not branch:
         raise ValueError(t("validation.branch_name_is_empty"))

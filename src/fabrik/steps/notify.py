@@ -21,28 +21,28 @@ log = logging.getLogger("fabrik.notify")
 
 # Alert-Dedup: Fingerprint-Marker im Issue-Body (HTML-Kommentar, unsichtbar).
 _ALERT_MARKER = "<!-- fabrik-alert:fp={fp} -->"
-# Lauf-spezifische Tokens, die den Fingerprint nicht beeinflussen dürfen —
-# normalisiert werden: UUIDs (8-4-4-4-12) und Run-/Session-IDs/Hashes
-# (Hex-Tokens ≥ 8 Zeichen mit mindestens einem Hex-Buchstaben a-f, auch
-# eingebettet, z. B. `copilot-8a1f1b454c95`). Dezimale Zahlen — auch lange
-# (Timestamps, Epoch-ms) — bleiben erhalten, damit sich Fehlerbilder nicht
-# wild zusammenziehen. (Trade-off: eine rein dezimale 12-Char-Session-ID
-# [(10/16)^12 ≈ 0,04 %] würde nicht normalisiert → Duplikat-Issue.)
+# Run-specific tokens that must not influence the fingerprint —
+# normalized are: UUIDs (8-4-4-4-12) and run/session IDs/hashes
+# (hex tokens ≥ 8 characters with at least one hex letter a-f, also
+# embedded, e.g. `copilot-8a1f1b454c95`). Decimal numbers — even long
+# ones (timestamps, epoch ms) — are kept so failure patterns do not
+# merge wildly. (Trade-off: a purely decimal 12-char session ID
+# [(10/16)^12 ≈ 0.04 %] would not be normalized → duplicate issue.)
 _VOLATILE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # UUID (8-4-4-4-12)
-    r"|(?=[0-9a-f]*[a-f])[0-9a-f]{8,}",  # Hex-Token (mind. ein a-f, sonst Dezimalzahl)
+    r"|(?=[0-9a-f]*[a-f])[0-9a-f]{8,}",  # Hex token (at least one a-f, otherwise decimal number)
     re.IGNORECASE,
 )
-# Ersatz-Token für normalisierte IDs im Fingerprint (eindeutiger als "#",
-# damit die Normalisierung im Code/Doku eindeutig nachvollziehbar ist).
+# Replacement token for normalized IDs in the fingerprint (more distinctive than "#",
+# so the normalization can be traced unambiguously in code/docs).
 _VOLATILE_REPLACEMENT = "<id>"
-# Fehler, die der Hosting-Provider im Alert-Flow werfen kann und die wir
-# gezielt fangen (Fail-safe: ein Alert-Fehler darf den Run nicht killen):
-# HTTP 4xx/5xx, Netzwerk-Flakes, Timeouts, kaputte JSON-Antworten,
-# HostingError (Token nicht verfügbar, ADR 0062) sowie RuntimeError aus
-# _gh_token (GitHub, Token nicht verfügbar). Programmierfehler
-# (TypeError, AttributeError, …) fallen NICHT hier rein — sie propagieren
-# nach oben und werden dort mit Stacktrace geloggt (kein stilles Verschlucken).
+# Errors the hosting provider can raise in the alert flow and that we
+# catch deliberately (fail-safe: an alert error must not kill the run):
+# HTTP 4xx/5xx, network flakes, timeouts, broken JSON answers,
+# HostingError (token not available, ADR 0062) as well as RuntimeError from
+# _gh_token (GitHub, token not available). Programming errors
+# (TypeError, AttributeError, …) do NOT fall in here — they propagate
+# upward and are logged there with a stack trace (no silent swallowing).
 _GH_API_ERRORS = (
     urllib.error.HTTPError,
     urllib.error.URLError,
@@ -54,32 +54,32 @@ _GH_API_ERRORS = (
 )
 
 
-# Kette wiederholt noch (pending) oder ist bereits beendet (dismissed,
-# resolved): kein run_failed-Alert — der Fehlschlag ist nicht endgültig bzw.
-# die Kette wurde gelöst (z. B. ein pass desselben Schlüssels).
+# Chain is still retrying (pending) or has already ended (dismissed,
+# resolved): no run_failed alert — the failure is not final or
+# the chain was resolved (e.g. a pass of the same key).
 _SILENT_RETRY_STATES = frozenset({"pending", "dismissed", "resolved"})
 
 
 def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[str]:
-    """Feuert Alerts laut Spec-Konfiguration. Liefert Liste der gesendeten Kanäle.
+    """Fires alerts per spec configuration. Returns the list of sent channels.
 
-    ``retry_state`` (ADR 0036, Entscheidung 6): Zustand der Retry-Kette nach dem
-    Run. ``"pending"`` → ``run_failed`` wird unterdrückt (die Kette wiederholt
-    noch); ``"dismissed"``/``"resolved"`` (Versuch einer verworfenen bzw.
-    gelösten Kette) → kein Alert; ``"exhausted"`` → stattdessen genau ein
-    ``run_exhausted``-Event (Dedup über den Fingerprint, ADR 0025).
-    ``None`` = keine Kette (klassisches ``run_failed``). ``run_exhausted`` ist ein Spezialfall von ``run_failed``:
-    wer nur ``run_failed`` abonniert, bekommt es ebenfalls — sonst ginge mit
-    Retry der Alert für den endgültigen Fehlschlag verloren.
+    ``retry_state`` (ADR 0036, decision 6): state of the retry chain after the
+    run. ``"pending"`` → ``run_failed`` is suppressed (the chain is still
+    retrying); ``"dismissed"``/``"resolved"`` (attempt of a discarded or
+    resolved chain) → no alert; ``"exhausted"`` → instead exactly one
+    ``run_exhausted`` event (dedup via the fingerprint, ADR 0025).
+    ``None`` = no chain (classic ``run_failed``). ``run_exhausted`` is a special case of ``run_failed``:
+    whoever subscribes only to ``run_failed`` receives it as well — otherwise with
+    retry the alert for the final failure would be lost.
 
-    Spec-Format:
+    Spec format:
       notify:
-        slack: https://hooks.slack.com/...        # oder {url: ...}
-        webhooks:                                  # generisch (Datadog, CloudWatch, …)
+        slack: https://hooks.slack.com/...        # or {url: ...}
+        webhooks:                                  # generic (Datadog, CloudWatch, …)
           - {name: datadog, url: https://http-intake.logs.datadoghq.com/v1/input?api_key=…}
-        github_issue: true                         # bei run_failed/run_exhausted Issue öffnen
+        github_issue: true                         # open an issue on run_failed/run_exhausted
         issue_labels: [fabrik]
-      notify_events: [run_failed, run_exhausted]   # default; auch [run_failed, run_passed]
+      notify_events: [run_failed, run_exhausted]   # default; also [run_failed, run_passed]
     """
     cfg = spec.get("notify") or {}
     if not cfg:
@@ -88,7 +88,7 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
     status = record["status"]
     if status in FAILED_RUN_STATUSES:
         if retry_state in _SILENT_RETRY_STATES:
-            return []  # Kette wiederholt noch bzw. wurde verworfen (ADR 0036, Entscheidung 6)
+            return []  # Chain is still retrying or was discarded (ADR 0036, decision 6)
         ev = "run_exhausted" if retry_state == "exhausted" else "run_failed"
     elif status == "pass":
         ev = "run_passed"
@@ -96,8 +96,8 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
         ev = None
     if not ev or not (ev in events or (ev == "run_exhausted" and "run_failed" in events)):
         return []
-    # log_tail: bekannte Secrets maskiert bereits emit() beim Log-Write; zusätzlich
-    # pattern-basierte Redaction (ADR 0026) — einziger Aufrufpunkt für alle Kanäle.
+    # log_tail: known secrets are already masked by emit() at log write; additionally
+    # pattern-based redaction (ADR 0026) — single call point for all channels.
     tail = ""
     logf = config.RUNS_DIR / record["project"] / f"{record['id']}.log"
     if logf.is_file():
@@ -133,30 +133,30 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
                 labels = [str(x) for x in (cfg.get("issue_labels") or ["fabrik"])]
                 sent.append(_alert_issue(get_provider(str(gh), spec=spec), str(gh), labels, record, tail))
             except _GH_API_ERRORS as e:
-                # Fail-safe-Grenze: nur API-/Token-/Netzwerkfehler (der
-                # _GH_API_ERRORS-Vertrag) werden in einen Kanal-Eintrag
-                # übersetzt — ein Alert-Fehler darf den Run nicht killen.
-                # Programmierfehler (KeyError, TypeError, AttributeError, …)
-                # fallen NICHT hier rein: sie propagieren und werden mit
-                # Stacktrace sichtbar, statt als scheinbar normaler
-                # Kanalstatus verschluckt zu werden.
+                # Fail-safe boundary: only API/token/network errors (the
+                # _GH_API_ERRORS contract) are translated into a channel entry
+                # — an alert error must not kill the run.
+                # Programming errors (KeyError, TypeError, AttributeError, …)
+                # do NOT fall in here: they propagate and become visible with a
+                # stack trace, instead of being swallowed as an apparently normal
+                # channel status.
                 log.exception("Alert-Issue fehlgeschlagen (Run %s)", record["id"])
                 sent.append(f"issue:error({e})")
     return sent
 
 
-# Umgebungsfehler löst nur ein Mensch — im Alert sofort erkennbar machen (ADR 0035 Nr. 5).
+# An environment error is solved only by a human — make it immediately recognizable in the alert (ADR 0035 no. 5).
 
 
 def _kind_label(kind: FailureKind) -> str:
-    """Fehlerklasse für den Alert-Text; ``environment`` hervorgehoben. Der Issue-Titel
-    nutzt den kurzen ``kind.value`` (dort wäre der lange Label zu plump)."""
+    """Failure class for the alert text; ``environment`` highlighted. The issue title
+    uses the short ``kind.value`` (the long label would be too clumsy there)."""
     return _t("notify.needs_human") if kind is FailureKind.ENVIRONMENT else kind.value
 
 
 def _failure_reason(record: dict) -> tuple[str, str]:
-    """→ (Step-Name, Fehlertext) des ersten fehlgeschlagenen Steps; ohne
-    fehlgeschlagenen Step (z. B. Stale-Run) der Run-Fehler bzw. -Status."""
+    """→ (step name, error text) of the first failed step; without a
+    failed step (e.g. stale run) the run error or status."""
     for st in record.get("steps") or []:
         if st.get("status") in FAILED_STEP_STATUSES:
             return str(st.get("name", "?")), str(st.get("summary", ""))
@@ -164,12 +164,12 @@ def _failure_reason(record: dict) -> tuple[str, str]:
 
 
 def _alert_fingerprint(record: dict) -> str:
-    """Stabiler Fingerprint eines Fehlerbilds: Projekt/Loop + fehlgeschlagener
-    Step + normalisierter Fehlertext. Normalisiert werden nur lauf-spezifische
-    IDs (UUIDs, Hex-Tokens ≥ 8 Zeichen mit mindestens einem Hex-Buchstaben);
-    dezimale Zahlen (Fehleranzahl, Ports, Timestamps) bleiben erhalten, damit
-    sich Fehlerbilder nicht zusammenziehen. Gleicher Fehler in verschiedenen
-    Runs → gleicher Fingerprint."""
+    """Stable fingerprint of a failure pattern: project/loop + failed
+    step + normalized error text. Only run-specific
+    IDs are normalized (UUIDs, hex tokens ≥ 8 characters with at least one hex letter);
+    decimal numbers (error counts, ports, timestamps) are kept so
+    failure patterns do not merge. Same error in different
+    runs → same fingerprint."""
     step, reason = _failure_reason(record)
     norm = _VOLATILE.sub(_VOLATILE_REPLACEMENT, reason)[: config.ALERT_REASON_CAP]
     key = f"{record['project']}/{record['loop']}/{step}/{norm}"
@@ -177,25 +177,25 @@ def _alert_fingerprint(record: dict) -> str:
 
 
 def _find_open_alert(provider: Provider, gh: str, labels: list[str], marker: str) -> int | None:
-    """Nummer des offenen Alert-Issues mit `marker` im Body (oder None).
+    """Number of the open alert issue with `marker` in the body (or None).
 
-    Paginiert über ALLE offenen Alert-Issues (bis eine Seite unvollständig
-    ist), damit auch bei mehr offenen Issues als `ALERT_OPEN_ISSUES_PAGE`
-    kein relevantes Issue übersehen wird. Nach `ALERT_LOOKUP_MAX_PAGES`
-    Seiten wird abgebrochen (Rate-Limit-Schutz; dann mögliches Duplikat).
-    Die Seitengröße wird auf `GH_MAX_PER_PAGE` gekappt — GitHub liefert nie
-    mehr, und eine größere Soll-Größe würde jede Seite als „letzte" werten.
+    Paginates over ALL open alert issues (until a page is incomplete),
+    so even with more open issues than `ALERT_OPEN_ISSUES_PAGE`
+    no relevant issue is overlooked. After `ALERT_LOOKUP_MAX_PAGES`
+    pages it aborts (rate-limit protection; then a possible duplicate).
+    The page size is capped at `GH_MAX_PER_PAGE` — GitHub never returns
+    more, and a larger target size would treat every page as "last".
 
-    Labels sind UND-verknüpft: nach einer Änderung von `issue_labels` matchen
-    alte Issues nicht mehr. Der Provider normalisiert die Antwort (nicht-Liste
-    → leere Liste, kaputte Elemente werden übersprungen, ADR 0062).
+    Labels are AND-combined: after a change of `issue_labels` old issues no
+    longer match. The provider normalizes the response (non-list → empty list,
+    broken elements are skipped, ADR 0062).
     """
     per_page = min(config.ALERT_OPEN_ISSUES_PAGE, config.GH_MAX_PER_PAGE)
     page = 1
     while True:
         issues = provider.list_issues(gh, state="open", labels=labels, page=page, per_page=per_page)
         for it in issues:
-            if it.is_pr:  # GitHub-Liste enthält auch PRs → ausschließen
+            if it.is_pr:  # GitHub list also contains PRs → exclude
                 continue
             if marker in it.body:
                 return it.number
@@ -212,19 +212,19 @@ def _find_open_alert(provider: Provider, gh: str, labels: list[str], marker: str
 
 
 def _sanitize_title(text: str, cap: int = 80) -> str:
-    """Title-sicher: Whitespace kollabieren, Markdown-/Klammer-Zeichen ersetzen,
-    truncate (Issue-Titles dürfen keine Newlines/Markdown enthalten)."""
+    """Title-safe: collapse whitespace, replace markdown/bracket characters,
+    truncate (issue titles must not contain newlines/markdown)."""
     t = re.sub(r"\s+", " ", text).strip()
     t = t.replace("`", "'").replace("[", "(").replace("]", ")")
     return t[:cap].rstrip()
 
 
 def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, tail: str) -> str:
-    """Alert-Issue mit Dedup: Ist für denselben Fingerprint bereits ein Issue
-    offen, wird der Run dort kommentiert statt ein neues Issue anzulegen
-    (sonst: ein Issue pro fehlgeschlagenem Cron-Run). Geschlossene Issues
-    zählen nicht — tritt der Fehler nach dem Schließen erneut auf, gibt es ein
-    neues Issue. → Kanal-Eintrag `issue#N` bzw. `issue#N(+)` (kommentiert)."""
+    """Alert issue with dedup: if an issue is already open for the same fingerprint,
+    the run is commented there instead of creating a new issue
+    (otherwise: one issue per failed cron run). Closed issues
+    do not count — if the error occurs again after closing, there is a
+    new issue. → channel entry `issue#N` or `issue#N(+)` (commented)."""
     step, reason = _failure_reason(record)
     marker = _ALERT_MARKER.format(fp=_alert_fingerprint(record))
     kind = parse_kind(record.get("failure_kind"))
@@ -235,9 +235,9 @@ def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, t
     try:
         existing = _find_open_alert(provider, gh, labels, marker)
     except _GH_API_ERRORS:
-        # Fail-safe: Lookup kaputt (API-Fehler) → lieber Duplikat als
-        # verlorener Alert (Stacktrace wird geloggt, Exception nicht
-        # verschluckt).
+        # Fail-safe: lookup broken (API error) → better a duplicate than a
+        # lost alert (stack trace is logged, exception not
+        # swallowed).
         log.exception(_t("steps.notify.alert_lookup_failed_repo_s"), gh)
         existing = None
     if existing is not None:
@@ -260,14 +260,14 @@ def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, t
     except _GH_API_ERRORS as e:
         log.exception("Alert-Issue-Anlage fehlgeschlagen (Repo %s, Run %s)", gh, record["id"])
         return f"issue:error({e})"
-    if not issue.number:  # API-Antwort ohne Issue-Nummer (Shape-Change, Fehler-Body)
+    if not issue.number:  # API response without issue number (shape change, error body)
         return _t("steps.notify.issue_error_no_issue_number")
 
     return f"issue#{issue.number}"
 
 
 def _step_notify(ctx: dict, step: dict, emit) -> dict:
-    """Benachrichtigung als Step (slack/webhook). Ohne Ziel → nur Log (ok)."""
+    """Notification as a step (slack/webhook). Without a target → log only (ok)."""
     msg = _substitute(step.get("message", "fabrik: {project}/{loop} → {run_id}"), ctx)
     slack = step.get("slack")
     webhooks = step.get("webhooks") or []

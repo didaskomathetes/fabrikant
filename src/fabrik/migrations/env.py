@@ -1,8 +1,8 @@
-"""Alembic-Umgebung des Run-Stores (ADR 0034).
+"""Alembic environment of the run store (ADR 0034).
 
-Läuft programmatisch über :func:`fabrik.runstore_sql.migrate`: die Verbindung kommt aus
-``config.attributes["connection"]`` (eine Transaktion, kein ``alembic.ini``). Ohne Verbindung
-wird ``FABRIK_DB_URL`` bzw. die Default-URL genutzt (``alembic`` per CLI, z. B. für Revisionen).
+Runs programmatically via :func:`fabrik.runstore_sql.migrate`: the connection comes from
+``config.attributes["connection"]`` (one transaction, no ``alembic.ini``). Without a connection
+``FABRIK_DB_URL`` or the default URL is used (``alembic`` via CLI, e.g. for revisions).
 """
 
 from alembic import context

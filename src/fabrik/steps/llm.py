@@ -14,8 +14,8 @@ from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 from .extra_context import render_extra_context
 
-# finish_reason=length → ein Retry mit max_tokens × Faktor. Reasoning-Modelle
-# (Qwen3, …) verbrauchen das Budget fürs Denken und liefern sonst leeren Content.
+# finish_reason=length → one retry with max_tokens × factor. Reasoning models
+# (Qwen3, …) use the budget for thinking and otherwise return empty content.
 _TRUNCATION_RETRY_FACTOR = 4
 _DEFAULT_MAX_TOKENS = 2000
 
@@ -30,15 +30,15 @@ _SCHEMA_TYPES: dict[str, type | tuple[type, ...]] = {
 
 
 def _validate_schema(parsed: dict, schema: dict) -> list[str]:
-    """Subset-Validierung: required-Keys + Typ-Checks + optionale Enum-Whitelist
-    (keine jsonschema-Dependency).
+    """Subset validation: required keys + type checks + optional enum whitelist
+    (no jsonschema dependency).
 
-    Schema-Wert: Typ-String ("string", "integer", …) ODER Dict
-    {"type": "string", "enum": ["a", "b"], "default": "a"} — enum schränkt den
-    Wert auf eine Whitelist ein (z. B. Label, das später in Shell-Kommandos
-    landet). ``default`` macht den Key optional: fehlt er, wird ``parsed`` mit
-    dem Default ergänzt (in-place) und dieser wie ein LLM-Wert geprüft. LLMs
-    lassen leere Felder gern weg, auch wenn der Prompt sie verlangt.
+    Schema value: type string ("string", "integer", …) OR dict
+    {"type": "string", "enum": ["a", "b"], "default": "a"} — enum restricts the
+    value to a whitelist (e.g. a label that later ends up in shell commands).
+    ``default`` makes the key optional: if missing, ``parsed`` is complemented with
+    the default (in place) and it is checked like an LLM value. LLMs
+    like to omit empty fields, even if the prompt demands them.
     """
     errs = []
     for key, spec in schema.items():
@@ -63,11 +63,11 @@ def _validate_schema(parsed: dict, schema: dict) -> list[str]:
 
 
 def _extract_json_object(text: str) -> dict | None:
-    """Liefert das JSON-Object aus einer LLM-Antwort, trotz Prosa drumherum.
+    """Returns the JSON object from an LLM answer, despite prose around it.
 
-    Enthält die Antwort mehrere Top-Level-Objects (Modell korrigiert sich:
-    ``{…} Moment, … korrigiert: {…}``), gewinnt das letzte. Ein gieriger Regex von der
-    ersten ``{`` bis zur letzten ``}`` würde beide samt Prosa greifen und scheitern.
+    If the answer contains several top-level objects (the model corrects itself:
+    ``{…} Moment, … corrected: {…}``), the last one wins. A greedy regex from the
+    first ``{`` to the last ``}`` would grab both including prose and fail.
     """
     try:
         whole = json.loads(text)
@@ -95,10 +95,10 @@ class _ProviderError(Exception):
 
 
 def _resolve_provider(step: dict) -> dict:
-    """Provider für den Step: ``provider: <name>`` pinnt, sonst der aktive.
+    """Provider for the step: ``provider: <name>`` pins, otherwise the active one.
 
     Raises:
-        _ProviderError: gepinnter Provider unbekannt bzw. keiner konfiguriert.
+        _ProviderError: pinned provider unknown or none configured.
     """
     prov_name = step.get("provider")
     if prov_name:
@@ -114,8 +114,8 @@ def _resolve_provider(step: dict) -> dict:
 
 
 def _build_prompt(step: dict, ctx: dict) -> str:
-    """Prompt mit ctx-Substitution; ``untrusted``-Variablen werden als markierte
-    Datenblöcke angehängt (Prompt-Injection-Schutz, Leitprinzip 7)."""
+    """Prompt with ctx substitution; ``untrusted`` variables are appended as marked
+    data blocks (prompt-injection protection, guiding principle 7)."""
     prompt = _substitute(step.get("prompt", ""), ctx)
     untrusted = step.get("untrusted") or []
     prompt += untrusted_blocks([(v, str(ctx.get(v, ""))) for v in untrusted])
@@ -123,8 +123,8 @@ def _build_prompt(step: dict, ctx: dict) -> str:
 
 
 def _complete(prov: dict, step: dict, prompt: str, model: str, emit) -> dict:
-    """LLM-Call; bei ``finish_reason=length`` ein Retry mit vervielfachtem
-    ``max_tokens`` (Usage beider Calls summiert). Exceptions propagieren."""
+    """LLM call; on ``finish_reason=length`` one retry with multiplied
+    ``max_tokens`` (usage of both calls summed). Exceptions propagate."""
     max_tokens = int(step.get("max_tokens", _DEFAULT_MAX_TOKENS))
 
     def _call(budget: int) -> dict:
@@ -149,9 +149,9 @@ def _complete(prov: dict, step: dict, prompt: str, model: str, emit) -> dict:
 
 
 def _extract_json(text: str) -> tuple[str, dict | None]:
-    """Entfernt einen ```json-Fence (falls vorhanden) und extrahiert das Object.
+    """Removes a ```json fence (if present) and extracts the object.
 
-    Liefert ``(bereinigter Text, Object oder None)``."""
+    Returns ``(cleaned text, object or None)``."""
     m = re.search(r"```(?:json)?\n(.*?)```", text, re.S)
     if m:
         text = m.group(1).strip()
@@ -159,11 +159,11 @@ def _extract_json(text: str) -> tuple[str, dict | None]:
 
 
 def _inject_schema_keys(parsed: dict, schema: dict, ctx: dict, emit) -> list[str]:
-    """Übernimmt LLM-Werte in den ctx — NUR Schema-Keys, und nur wenn sie noch
-    nicht existieren. Sonst kann Untrusted-Input via LLM-Ausgabe vertrauenswürdige
-    Keys wie workdir/root überschreiben → Execution-Path (Leitprinzip 2).
+    """Takes LLM values into the ctx — ONLY schema keys, and only if they do not
+    exist yet. Otherwise untrusted input via LLM output could overwrite trusted
+    keys like workdir/root → execution path (guiding principle 2).
 
-    Liefert ``key=wert``-Kurzformen der übernommenen Keys."""
+    Returns ``key=value`` short forms of the taken-over keys."""
     injected = []
     for k, v in parsed.items():
         if k not in schema:
@@ -178,15 +178,15 @@ def _inject_schema_keys(parsed: dict, schema: dict, ctx: dict, emit) -> list[str
 
 
 def _step_llm(ctx: dict, step: dict, emit) -> dict:
-    """Strukturierter LLM-Call: Prompt + Output-Schema → JSON → Variable-Store.
+    """Structured LLM call: prompt + output schema → JSON → variable store.
 
-    untrusted: [vars] — externe Inhalte werden als Daten markiert
-    (Prompt-Injection-Schutz, Leitprinzip 7).
+    untrusted: [vars] — external content is marked as data
+    (prompt-injection protection, guiding principle 7).
 
-    Provider-Auswahl: ``provider: <name>`` pinnt einen konfigurierten Provider,
-    sonst gilt der aktive (UI-umschaltbar). ``model: <name>`` überschreibt das
-    Provider-Modell. Abgeschnittene Antwort (finish_reason=length) → ein Retry
-    mit vervielfachtem ``max_tokens``."""
+    Provider selection: ``provider: <name>`` pins a configured provider,
+    otherwise the active one applies (switchable in the UI). ``model: <name>`` overrides the
+    provider model. Truncated answer (finish_reason=length) → one retry
+    with multiplied ``max_tokens``."""
     try:
         prov = _resolve_provider(step)
     except _ProviderError as e:

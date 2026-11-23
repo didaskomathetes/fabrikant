@@ -29,22 +29,22 @@ from .filelock import locked
 from .i18n import t
 from .secrets import _redact
 
-# Dual-Identity (ADR 0010): "dev" = Builder-App (erstellt/mergt PRs),
-# "reviewer" = Reviewer-App (approvet PRs). GitHub verbietet Self-Approval —
-# daher müssen die Rollen immer verschiedene Identitäten sein.
+# Dual identity (ADR 0010): "dev" = builder app (creates/merges PRs),
+# "reviewer" = reviewer app (approves PRs). GitHub forbids self-approval —
+# so the roles must always be different identities.
 DEFAULT_ENV_FILE = "/root/.hermes/.env"
 GH_TOKEN_ENV = {"dev": "GITHUB_TOKEN", "reviewer": "GITHUB_REVIEWER_TOKEN"}
 GITHUB_API = "https://api.github.com"
 GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` bevorzugt GH_TOKEN vor GITHUB_TOKEN  # nosec B105
 ENV_FILE_VAR = "FABRIK_ENV_FILE"
-# Projekt-Token-Datei für Subprozesse: markiert FABRIK_ENV_FILE als Projekt-Override, damit
-# fabrik-Code im Subprozess (`fabrik.push`, Relay-CLI) geerbte globale Token-Env-Werte ignoriert.
+# Project token file for subprocesses: marks FABRIK_ENV_FILE as a project override so that
+# fabrik code in the subprocess (`fabrik.push`, relay CLI) ignores inherited global token env values.
 PROJECT_ENV_FILE_VAR = "FABRIK_PROJECT_ENV_FILE"
 COMMIT_VIA_VAR = "FABRIK_COMMIT_VIA"
-# GitHub-spezifische Spec-Felder (Projekt-Ebene): Token-Datei nur für dieses Projekt (andere
-# Installation/Org, PAT als Reviewer) und Commit-Weg (`api` = von GitHub signierte Commits, siehe
-# `apicommit`). Implementierungsdetail des GitHub-Anschlusses: gehört mit den Provider-Ports
-# (PR #437) in die Config des GitHub-Adapters.
+# GitHub-specific spec fields (project level): token file only for this project (other
+# installation/org, PAT as reviewer) and commit path (`api` = commits signed by GitHub, see
+# `apicommit`). Implementation detail of the GitHub integration: belongs with the provider ports
+# (PR #437) in the GitHub adapter's config.
 SPEC_ENV_FILE_KEY = "github_env_file"
 SPEC_COMMIT_VIA_KEY = "commit_via"
 COMMIT_VIA_GIT = "git"
@@ -54,7 +54,7 @@ COMMIT_VIA_MODES = (COMMIT_VIA_GIT, COMMIT_VIA_API)
 
 @dataclass(frozen=True)
 class ProjectGitHub:
-    """GitHub-spezifische Einstellungen eines Projekts, die für alle Steps eines Runs gelten."""
+    """GitHub-specific settings of a project that apply to all steps of a run."""
 
     env_file: Path | None = None
     commit_via: str | None = None
@@ -68,13 +68,13 @@ class ProjectGitHub:
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> ProjectGitHub:
-        """Gegenstück zu :meth:`env`: Einstellungen, die ein Run an seinen Subprozess vererbt hat."""
+        """Counterpart to :meth:`env`: settings a run has handed down to its subprocess."""
         environ = os.environ if environ is None else environ
         raw = environ.get(PROJECT_ENV_FILE_VAR, "").strip()
         return cls(env_file=Path(raw) if raw else None, commit_via=environ.get(COMMIT_VIA_VAR, "").strip() or None)
 
     def env(self) -> dict[str, str]:
-        """Env-Zusatz für Subprozesse (Shell-Steps, Agent, Relay-CLI)."""
+        """Env addition for subprocesses (shell steps, agent, relay CLI)."""
         env = {ENV_FILE_VAR: str(self.env_file), PROJECT_ENV_FILE_VAR: str(self.env_file)} if self.env_file else {}
         if self.commit_via:
             env[COMMIT_VIA_VAR] = self.commit_via
@@ -85,16 +85,16 @@ _project: ContextVar[ProjectGitHub | None] = ContextVar("fabrik_project_github",
 
 
 def _current() -> ProjectGitHub:
-    """Aktiver Kontext (`project_github`), sonst das vom Run geerbte Env (Subprozess)."""
+    """Active context (`project_github`), otherwise the env inherited from the run (subprocess)."""
     return _project.get() or ProjectGitHub.from_env()
 
 
 @contextmanager
 def project_github(spec: dict | None) -> Iterator[None]:
-    """GitHub-Einstellungen der Spec (`github_env_file`, `commit_via`) im Block aktivieren.
+    """Activate the spec's GitHub settings (`github_env_file`, `commit_via`) within the block.
 
-    Gilt pro Thread/Kontext: Runs, Trigger-Polls und daraus gestartete Subprozesse
-    (`subprocess_env`) eines Projekts sehen nur dessen Identitäten und Commit-Weg."""
+    Applies per thread/context: runs, trigger polls and subprocesses started from them
+    (`subprocess_env`) of a project see only its identities and commit path."""
     token = _project.set(ProjectGitHub.from_spec(spec))
     try:
         yield
@@ -113,7 +113,7 @@ def commit_via() -> str:
 
 
 def subprocess_env() -> dict[str, str]:
-    """Env-Zusatz für Subprozesse, damit sie dieselbe Token-Datei und denselben Commit-Weg nutzen."""
+    """Env addition for subprocesses so they use the same token file and the same commit path."""
     return _current().env()
 
 
@@ -123,10 +123,10 @@ def cleared_tokens() -> dict[str, str]:
 
 
 def token_overrides() -> dict[str, str]:
-    """Token-Variablen, die ein Subprozess mit Projekt-Token-Datei bekommt (leerer Wert: entfernen/leeren).
+    """Token variables a subprocess with a project token file gets (empty value: remove/clear).
 
-    Ohne `github_env_file` leer. Sonst: GH_TOKEN/GITHUB_TOKEN = Builder-Token des Projekts, der Rest
-    (GITHUB_REVIEWER_TOKEN) leer — geerbte globale Werte gehören zu einer anderen Identität."""
+    Empty without `github_env_file`. Otherwise: GH_TOKEN/GITHUB_TOKEN = the project's builder token, the rest
+    (GITHUB_REVIEWER_TOKEN) empty — inherited global values belong to a different identity."""
     if not _current().env_file:
         return {}
     overrides = cleared_tokens()
@@ -139,11 +139,11 @@ def token_overrides() -> dict[str, str]:
 
 
 def process_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Vollständige Env für einen Subprozess eines Runs: `base` (Default `os.environ`) + Projekt.
+    """Complete env for a run's subprocess: `base` (default `os.environ`) + project.
 
-    Mit Projekt-Token-Datei werden geerbte Token-Variablen ersetzt: GH_TOKEN/GITHUB_TOKEN durch
-    das Builder-Token des Projekts (für `gh` und Skripte), GITHUB_REVIEWER_TOKEN entfällt
-    (fabrik liest es dann aus der Datei) — globale Werte gehören zu einer anderen Identität."""
+    With a project token file, inherited token variables are replaced: GH_TOKEN/GITHUB_TOKEN by
+    the project's builder token (for `gh` and scripts), GITHUB_REVIEWER_TOKEN is dropped
+    (fabrik then reads it from the file) — global values belong to a different identity."""
     env = dict(os.environ if base is None else base)
     for key, value in token_overrides().items():
         if value:
@@ -155,11 +155,11 @@ def process_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
 
 
 def _gh_token_safe(role: str = "dev") -> str:
-    """Token für eine GitHub-Identity (pro Call frisch: Env → Token-Datei).
+    """Token for a GitHub identity (fresh per call: env → token file).
 
-    Die Datei wird JEDEN Call neu gelesen, damit der externe gh-token-refresh
-    (1h-Installation-Token) ohne Restart greift. Mit Projekt-Override (`project_github`)
-    zählt nur dessen Datei: globale GITHUB_TOKEN-Env-Werte gehören zu einer anderen Identität."""
+    The file is re-read on EVERY call so the external gh-token-refresh
+    (1h installation token) takes effect without a restart. With a project override (`project_github`)
+    only its file counts: global GITHUB_TOKEN env values belong to a different identity."""
     env_key = GH_TOKEN_ENV.get(role)
     if env_key is None:
         raise ValueError(f"unbekannte GitHub-Rolle: {role!r} (erlaubt: {list(GH_TOKEN_ENV)})")
@@ -176,17 +176,17 @@ def _gh_token_safe(role: str = "dev") -> str:
 
 
 def tracking_refspec(branch: str) -> str:
-    """Refspec, die `refs/remotes/origin/<branch>` aktualisiert (ohne landet ein Fetch nur in FETCH_HEAD)."""
+    """Refspec that updates `refs/remotes/origin/<branch>` (without it a fetch lands only in FETCH_HEAD)."""
     return f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
 
 
-# Lockfile im gemeinsamen Git-Verzeichnis (`<git-common-dir>/fabrik-repo.lock`): gilt für das Repo
-# und alle seine Worktrees, auch über Prozessgrenzen (Server + CLI).
+# Lock file in the shared git directory (`<git-common-dir>/fabrik-repo.lock`): applies to the repo
+# and all its worktrees, also across process boundaries (server + CLI).
 REPO_LOCK_NAME = "fabrik-repo"
 
 
 def _git_common_dir(path: Path) -> Path | None:
-    """Gemeinsames `.git`-Verzeichnis von `path` (Repo oder einer seiner Worktrees); None außerhalb von Git."""
+    """Shared `.git` directory of `path` (repo or one of its worktrees); None outside git."""
     p = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
         capture_output=True,
@@ -198,11 +198,11 @@ def _git_common_dir(path: Path) -> Path | None:
 
 @contextlib.contextmanager
 def repo_lock(path: Path) -> Iterator[None]:
-    """Serialisiert `fetch` und `worktree add/remove` eines Repos (Issue #460).
+    """Serializes `fetch` and `worktree add/remove` of a repo (issue #460).
 
-    `worktree add` legt `.git/worktrees/<id>/HEAD` an, bevor der Checkout steht; ein paralleles
-    `fetch` läuft über die HEADs aller Worktrees und bricht dann mit `bad object …/HEAD` ab.
-    Nicht reentrant (Thread-Lock + flock). Außerhalb von Git: kein Lock."""
+    `worktree add` creates `.git/worktrees/<id>/HEAD` before the checkout exists; a parallel
+    `fetch` runs over the HEADs of all worktrees and then aborts with `bad object …/HEAD`.
+    Not reentrant (thread lock + flock). Outside git: no lock."""
     common = _git_common_dir(path)
     if common is None:
         yield
@@ -212,9 +212,9 @@ def repo_lock(path: Path) -> Iterator[None]:
 
 
 def _git_fetch(repo_root: Path, ref: str | None = None) -> None:
-    """fetch origin; bei Auth-Fehler (URL ohne Token) Retry per Token-URL.
-    Expliziter Refspec — sonst landet das Fetch nur in FETCH_HEAD und
-    refs/remotes/origin/<ref> bleibt stale."""
+    """fetch origin; on auth error (URL without token) retry via token URL.
+    Explicit refspec — otherwise the fetch lands only in FETCH_HEAD and
+    refs/remotes/origin/<ref> stays stale."""
     refspec = [tracking_refspec(ref)] if ref else []
     p = subprocess.run(
         ["git", "-C", str(repo_root), "fetch", "origin", *refspec], capture_output=True, text=True, timeout=300
@@ -238,7 +238,7 @@ def _git_fetch(repo_root: Path, ref: str | None = None) -> None:
 
 
 def worktree_roots() -> list[Path]:
-    """Worktree-Wurzeln: aktuelle zuerst, dann die Legacy-Wurzel im Repo (ADR 0047, Nachtrag)."""
+    """Worktree roots: current first, then the legacy root in the repo (ADR 0047, addendum)."""
     roots = [config.WORKTREES_DIR]
     if config.LEGACY_WORKTREES_DIR.resolve() != config.WORKTREES_DIR.resolve():
         roots.append(config.LEGACY_WORKTREES_DIR)
@@ -246,13 +246,13 @@ def worktree_roots() -> list[Path]:
 
 
 def run_worktree_path(project: str, run_id: str) -> Path:
-    """Worktree-Pfad eines Runs: `<WORKTREES_DIR>/<projekt>/<run_id>` (ADR 0028).
+    """Worktree path of a run: `<WORKTREES_DIR>/<project>/<run_id>` (ADR 0028).
 
-    Ein schon vorhandener Worktree unter der Legacy-Wurzel gewinnt: ein vor dem Umzug
-    pausierter Run setzt dort fort, statt mit leerem Checkout neu zu beginnen.
-    Gezählt wird nur ein echter Worktree (`.git`-Datei) — ein leerer/verwaister
-    Legacy-Ordner (z. B. nach gecrashtem `worktree add`) darf die neue Wurzel nicht
-    verdecken, sonst würde `ensure_worktree` in einem leeren Verzeichnis weiterlaufen."""
+    An already existing worktree under the legacy root wins: a run paused before the move
+    resumes there instead of starting over with an empty checkout.
+    Only a real worktree (`.git` file) counts — an empty/orphaned
+    legacy folder (e.g. after a crashed `worktree add`) must not
+    shadow the new root, otherwise `ensure_worktree` would continue in an empty directory."""
     for root in worktree_roots()[1:]:
         legacy = root / project / run_id
         if (legacy / ".git").exists():
@@ -261,11 +261,11 @@ def run_worktree_path(project: str, run_id: str) -> Path:
 
 
 def ensure_worktree(spec: dict, run_id: str) -> Path:
-    """Liefert den Worktree des Runs (Basis inkl. `subpath`).
+    """Returns the run's worktree (base incl. `subpath`).
 
-    Jeder Run hat einen eigenen Worktree, detached auf origin/<branch> (ADR 0028).
-    Existiert er bereits (Resume nach Approval), bleibt der Bestand unangetastet —
-    kein fetch/reset, vor-Approval-Work darf nicht zerstört werden."""
+    Every run has its own worktree, detached at origin/<branch> (ADR 0028).
+    If it already exists (resume after approval), the existing state stays untouched —
+    no fetch/reset, pre-approval work must not be destroyed."""
     repo = spec.get("repo")
     if not repo:
         return Path(spec["root"])
@@ -274,8 +274,8 @@ def ensure_worktree(spec: dict, run_id: str) -> Path:
     repo_root = Path(spec["root"])
     if not wt.is_dir():
         wt.parent.mkdir(parents=True, exist_ok=True)
-        # detached: kollidiert nie mit dem Haupt-Checkout (z. B. main),
-        # Tests brauchen keinen Branch, nur den Stand von origin/<branch>
+        # detached: never collides with the main checkout (e.g. main),
+        # tests need no branch, only the state of origin/<branch>
         with repo_lock(repo_root):  # fetch + add atomar gegen parallele Runs desselben Repos
             _git_fetch(repo_root, branch)
             p = subprocess.run(
@@ -295,17 +295,17 @@ def ensure_worktree(spec: dict, run_id: str) -> Path:
 
 
 def lease_path(wt: Path) -> Path:
-    """Lease-Datei eines Run-Worktrees: Geschwisterdatei `<run_id>.lease` (nicht im Git-Tree)."""
+    """Lease file of a run worktree: sibling file `<run_id>.lease` (not in the git tree)."""
     return wt.parent / f"{wt.name}{config.WORKTREE_LEASE_SUFFIX}"
 
 
 def lease_lock(wt: Path) -> contextlib.AbstractContextManager[None]:
-    """Projektweiter Lock (`<projekt>.lock`) um Lease-Schreiben/-Entfernen und Cleanup-Prüfung.
+    """Project-wide lock (`<project>.lock`) around lease writing/removal and cleanup check.
 
-    Macht „Lease prüfen → Claim (Lease entfernen)“ atomar gegenüber Anlegen/Erneuern einer
-    Lease. Das Entfernen des Worktrees selbst läuft außerhalb (unter `repo_lock`), damit
-    dieser Lock nie über die `repo_lock`-Erwerbung gehalten wird (ADR 0028).
-    Hostlokal (flock); mehrere Hosts/Instanzen: #280. Nicht reentrant."""
+    Makes "check lease → claim (remove lease)" atomic with respect to creating/renewing a
+    lease. The removal of the worktree itself runs outside (under `repo_lock`) so
+    this lock is never held across the `repo_lock` acquisition (ADR 0028).
+    Host-local (flock); multiple hosts/instances: #280. Not reentrant."""
     return locked(wt.parent)
 
 
@@ -319,8 +319,8 @@ class LeaseInfo:
 
     @classmethod
     def parse(cls, raw: str) -> LeaseInfo | None:
-        """Validierte Lease aus JSON; None bei korruptem Inhalt (kein Objekt, PID ≤ 0,
-        Heartbeat nicht endlich/≤ 0, falsche Typen) — eine korrupte Lease schützt nie."""
+        """Validated lease from JSON; None on corrupt content (not an object, PID ≤ 0,
+        heartbeat not finite/≤ 0, wrong types) — a corrupt lease never protects."""
         try:
             data = json.loads(raw)
         except ValueError:
@@ -340,15 +340,15 @@ class LeaseInfo:
         return json.dumps({"pid": self.pid, "heartbeat": self.heartbeat, "token": self.token})
 
     def is_fresh(self, now: float) -> bool:
-        """Heartbeat liegt höchstens `WORKTREE_LEASE_TIMEOUT_S` von `now` entfernt.
+        """Heartbeat is at most `WORKTREE_LEASE_TIMEOUT_S` away from `now`.
 
-        Symmetrisch: ein leicht in der Zukunft liegender Heartbeat (Uhr zurückgestellt, NTP)
-        zählt als frisch; ein weit in der Zukunft liegender ist korrupt und schützt nicht."""
+        Symmetric: a heartbeat slightly in the future (clock set back, NTP)
+        counts as fresh; one far in the future is corrupt and does not protect."""
         return math.isfinite(now) and abs(now - self.heartbeat) <= config.WORKTREE_LEASE_TIMEOUT_S
 
 
 def _is_number(value: object) -> TypeGuard[int | float]:
-    """int/float, aber kein bool (JSON `true` ist in Python ein int)."""
+    """int/float, but not bool (JSON `true` is an int in Python)."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
@@ -360,13 +360,13 @@ def _read_lease_text(wt: Path) -> str | None:
 
 
 def read_lease(wt: Path) -> LeaseInfo | None:
-    """Lease des Worktrees; None, wenn sie fehlt oder korrupt ist."""
+    """Lease of the worktree; None if missing or corrupt."""
     raw = _read_lease_text(wt)
     return None if raw is None else LeaseInfo.parse(raw)
 
 
 def write_lease(wt: Path, token: str | None = None) -> str:
-    """Schreibt/erneuert die Lease (PID + Heartbeat) des Worktrees atomar (ADR 0028)."""
+    """Writes/renews the worktree's lease (PID + heartbeat) atomically (ADR 0028)."""
     path = lease_path(wt)
     path.parent.mkdir(parents=True, exist_ok=True)
     lease = LeaseInfo(os.getpid(), time.time(), token or uuid.uuid4().hex)
@@ -377,7 +377,7 @@ def write_lease(wt: Path, token: str | None = None) -> str:
 
 
 def release_lease(wt: Path, token: str | None = None) -> None:
-    """Entfernt die eigene Lease: mit `token` nur bei gleichem Besitz-Token, sonst nur bei eigener PID."""
+    """Removes the own lease: with `token` only on the same ownership token, otherwise only on own PID."""
     lease = read_lease(wt)
     if lease is None:
         return
@@ -392,14 +392,14 @@ def _pid_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True  # Prozess existiert, gehört nur einem anderen User
+        return True  # Process exists, but belongs to another user only
     return True
 
 
 def lease_held_by_other(wt: Path, now: float | None = None) -> bool:
-    """True, wenn ein *anderer* lebender Prozess den Worktree per frischer Lease hält.
+    """True if *another* live process holds the worktree via a fresh lease.
 
-    Fehlende/korrupte Lease, eigene PID, tote PID oder abgelaufener Heartbeat = nicht gehalten."""
+    Missing/corrupt lease, own PID, dead PID or expired heartbeat = not held."""
     lease = read_lease(wt)
     if lease is None or lease.pid == os.getpid():
         return False
@@ -409,10 +409,10 @@ def lease_held_by_other(wt: Path, now: float | None = None) -> bool:
 
 
 class WorktreeLease:
-    """Hält die Lease eines Run-Worktrees per Heartbeat-Thread, bis `release()` (ADR 0028).
+    """Holds the lease of a run worktree via heartbeat thread until `release()` (ADR 0028).
 
-    `start()` vor dem Anlegen des Worktrees aufrufen: so sieht ein fremder Cleanup nie
-    einen Worktree des Runs ohne Lease. Alle Schreibzugriffe laufen unter `lease_lock`."""
+    Call `start()` before creating the worktree: that way a foreign cleanup never sees
+    a run's worktree without a lease. All write accesses run under `lease_lock`."""
 
     def __init__(self, wt: Path):
         self._wt = wt
@@ -426,9 +426,9 @@ class WorktreeLease:
         self._thread.start()
 
     def _renew(self) -> bool:
-        """Erneuert die Lease, solange sie uns gehört; False, wenn sie entfernt oder übernommen wurde.
+        """Renews the lease as long as it belongs to us; False if it was removed or taken over.
 
-        Eine korrupte (vorhandene, unlesbare) Lease gehört niemandem und wird überschrieben."""
+        A corrupt (existing, unreadable) lease belongs to nobody and is overwritten."""
         with lease_lock(self._wt):
             lease = read_lease(self._wt)
             lost = lease.token != self._token if lease is not None else not lease_path(self._wt).exists()
@@ -439,31 +439,31 @@ class WorktreeLease:
 
     def _beat(self) -> None:
         while not self._stop.wait(config.WORKTREE_LEASE_HEARTBEAT_S):
-            # Schreibfehler ignorieren: nächster Tick versucht es erneut, Ablauf nach Timeout ist der Fallback
+            # Ignore write errors: the next tick tries again, expiry after timeout is the fallback
             with contextlib.suppress(OSError, TypeError):
                 if not self._renew():
-                    return  # verloren (abgelaufen und weggeräumt): nicht neu anlegen
+                    return  # lost (expired and cleaned up): do not recreate
 
     def release(self) -> None:
-        """Stoppt den Heartbeat und entfernt die Lease-Datei (idempotent)."""
+        """Stops the heartbeat and removes the lease file (idempotent)."""
         self._stop.set()
         if self._thread.is_alive():
-            # Warten, falls ein Dateisystemzugriff gerade noch läuft; sonst könnte
-            # der Heartbeat nach dem Entfernen die Lease erneut schreiben.
+            # Wait in case a file-system access is still running; otherwise
+            # the heartbeat could write the lease again after removal.
             self._thread.join()
         with lease_lock(self._wt):
             release_lease(self._wt, self._token)
 
 
 def remove_worktree(repo_root: Path, wt: Path) -> bool:
-    """Entfernt einen Worktree: `git worktree remove`, sonst rmtree + prune.
+    """Removes a worktree: `git worktree remove`, otherwise rmtree + prune.
 
-    Gibt zurück, ob das Verzeichnis danach weg ist. Subprocess-Fehler
-    (Timeout, git fehlt, nonzero exit) werden nicht verschluckt. Läuft unter `repo_lock`
-    (serialisiert `worktree remove` gegen parallele `fetch`/`worktree add`, Issue #460).
-    Die Lease-Datei wird auch bei Fehlern entfernt — auch eine abgelaufene, fremde oder
-    korrupte —, sofern sie sich währenddessen nicht geändert hat (sonst wurde sie
-    erneuert/übernommen und bleibt)."""
+    Returns whether the directory is gone afterwards. Subprocess errors
+    (timeout, git missing, nonzero exit) are not swallowed. Runs under `repo_lock`
+    (serializes `worktree remove` against parallel `fetch`/`worktree add`, issue #460).
+    The lease file is removed even on errors — also an expired, foreign or
+    corrupt one — provided it did not change in the meantime (otherwise it was
+    renewed/taken over and stays)."""
     snapshot = _read_lease_text(wt)
     try:
         if not wt.exists():
@@ -498,9 +498,9 @@ def remove_worktree(repo_root: Path, wt: Path) -> bool:
 
 
 def cleanup_run_worktree(project: str, run_id: str) -> bool:
-    """Räumt den Worktree eines beendeten Runs auf; True, wenn er danach weg ist.
+    """Cleans up the worktree of a finished run; True if it is gone afterwards.
 
-    Unbekanntes Projekt, Spec ohne `repo:` oder fehlender Worktree = No-Op (True)."""
+    Unknown project, spec without `repo:` or missing worktree = no-op (True)."""
     from .specs import load_projects
 
     spec = load_projects().get(project)
@@ -510,17 +510,17 @@ def cleanup_run_worktree(project: str, run_id: str) -> bool:
 
 
 def cleanup_orphaned_worktrees(active_run_ids: set[str] | None = None) -> list[Path]:
-    """Entfernt Worktrees verwaister Runs (Crash/Kill) — beim Start aufrufen (ADR 0028).
+    """Removes worktrees of orphaned runs (crash/kill) — call at startup (ADR 0028).
 
-    Behalten werden Worktrees pausierter Runs (`needs_approval`) und `active_run_ids`;
-    ein `running`-Record ohne aktiven Prozess gilt als gecrasht. Worktrees mit frischer
-    Lease eines anderen lebenden Prozesses bleiben ebenfalls (Multi-Process, ADR 0028).
-    Die Lease-Prüfung + der Claim (Lease-Entfernung) laufen unter `lease_lock`; das
-    Entfernen des Worktrees (`remove_worktree`, unter `repo_lock`) erfolgt außerhalb,
-    damit `lease_lock` nie über die `repo_lock`-Erwerbung gehalten wird.
-    Legacy-Worktrees (`<projekt>/` selbst ist ein Worktree) werden ebenfalls entfernt,
-    ebenso nicht gehaltene Lease-Dateien ohne Worktree. Durchsucht alle `worktree_roots()`.
-    Gibt die entfernten Worktree-Pfade zurück."""
+    Worktrees of paused runs (`needs_approval`) and `active_run_ids` are kept;
+    a `running` record without an active process counts as crashed. Worktrees with a fresh
+    lease of another live process also stay (multi-process, ADR 0028).
+    The lease check + the claim (lease removal) run under `lease_lock`; the
+    removal of the worktree (`remove_worktree`, under `repo_lock`) happens outside,
+    so `lease_lock` is never held across the `repo_lock` acquisition.
+    Legacy worktrees (`<project>/` itself is a worktree) are removed as well,
+    as are unheld lease files without a worktree. Searches all `worktree_roots()`.
+    Returns the removed worktree paths."""
     from .runs import get_run
     from .specs import load_projects
 
@@ -545,12 +545,12 @@ def cleanup_orphaned_worktrees(active_run_ids: set[str] | None = None) -> list[P
             record = get_run(wt.name, proj_dir.name)
             if record and record.get("status") == "needs_approval":
                 continue
-            with lease_lock(wt):  # Claim: Prüfung + Lease-Entfernung atomar gegenüber Anlegen/Erneuern
+            with lease_lock(wt):  # Claim: check + lease removal atomic with respect to create/renew
                 if lease_held_by_other(wt):
                     continue
                 lease_path(wt).unlink(missing_ok=True)
-            # Entfernen außerhalb von `lease_lock`: `remove_worktree` hält selbst `repo_lock`
-            # (kann bis zu ~600 s blockieren) — `lease_lock` darf nie darüber gehalten werden (ADR 0028).
+            # Remove outside `lease_lock`: `remove_worktree` itself holds `repo_lock`
+            # (can block up to ~600 s) — `lease_lock` must never be held across it (ADR 0028).
             remove_worktree(repo_root, wt)
             removed.append(wt)
         _remove_orphaned_leases(proj_dir, keep)
@@ -558,10 +558,10 @@ def cleanup_orphaned_worktrees(active_run_ids: set[str] | None = None) -> list[P
 
 
 def _remove_orphaned_leases(proj_dir: Path, keep: set[str]) -> None:
-    """Lease-Dateien ohne Worktree entfernen (z. B. Crash zwischen Lease und `ensure_worktree`).
+    """Remove lease files without a worktree (e.g. crash between lease and `ensure_worktree`).
 
-    Eine frische Lease eines anderen lebenden Prozesses bleibt: dessen Run legt den
-    Worktree womöglich gerade an."""
+    A fresh lease of another live process stays: its run may just be
+    creating the worktree."""
     for path in sorted(proj_dir.glob(f"*{config.WORKTREE_LEASE_SUFFIX}")):
         wt = path.with_name(path.name.removesuffix(config.WORKTREE_LEASE_SUFFIX))
         if wt.name in keep or wt.exists():
@@ -572,11 +572,11 @@ def _remove_orphaned_leases(proj_dir: Path, keep: set[str]) -> None:
 
 
 def _worktree_sync_check(spec: dict, base: Path) -> dict:
-    """Branch/Head-Info für Logs & Reports.
+    """Branch/head info for logs & reports.
 
-    Zwei separate Calls: `--abbrev-ref` gilt global für alle Refs, daher würde
-    `rev-parse --abbrev-ref HEAD HEAD` für BEIDE das Branch-Name liefern (statt
-    Branch + Commit-SHA)."""
+    Two separate calls: `--abbrev-ref` applies globally to all refs, so
+    `rev-parse --abbrev-ref HEAD HEAD` would return the branch name for BOTH
+    (instead of branch + commit SHA)."""
     branch = subprocess.run(
         ["git", "-C", str(base), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
     ).stdout.strip()
@@ -590,10 +590,10 @@ def _git_out(workdir: Path, *args: str) -> str | None:
 
 
 def exclude_dir_locally(workdir: Path, dirname: str) -> None:
-    """`<dirname>/` des Workdirs lokal git-ignorieren (`info/exclude`; No-Op außerhalb von Git).
+    """Locally git-ignore the workdir's `<dirname>/` (`info/exclude`; no-op outside git).
 
-    Verankert auf den Workdir-Pfad im Repo (`/<prefix><dirname>/`), damit gleichnamige
-    Projektverzeichnisse (z. B. Terraform-`state/`) nicht still ignoriert werden."""
+    Anchored to the workdir path in the repo (`/<prefix><dirname>/`) so same-named
+    project directories (e.g. Terraform `state/`) are not silently ignored."""
     exclude, prefix = (
         _git_out(workdir, "rev-parse", "--git-path", "info/exclude"),
         _git_out(workdir, "rev-parse", "--show-prefix"),
@@ -623,11 +623,11 @@ exec {real_gh} "$@"
 
 
 def _gh_wrapper_dir(role: str, path: str) -> Path | None:
-    """Verzeichnis mit einem `gh`-Wrapper, der das Token pro Call frisch aus FABRIK_ENV_FILE liest.
+    """Directory with a `gh` wrapper that reads the token fresh per call from FABRIK_ENV_FILE.
 
-    Die Env eines laufenden Agent-Prozesses ist fix; Runs mit `timeout` > 1h überlebten sonst
-    ihr 1h-Token. Fehlt die Env-Datei oder der Key, gilt das Token aus der Prozess-Env.
-    None, wenn kein echtes `gh` im PATH liegt."""
+    The env of a running agent process is fixed; runs with `timeout` > 1h would otherwise outlive
+    their 1h token. If the env file or the key is missing, the token from the process env applies.
+    None if no real `gh` is in the PATH."""
     wrapper_dir = GH_WRAPPER_DIR / role
     clean_path = os.pathsep.join(p for p in path.split(os.pathsep) if p and Path(p) != wrapper_dir)
     real_gh = shutil.which("gh", path=clean_path)
@@ -645,17 +645,17 @@ def _gh_wrapper_dir(role: str, path: str) -> Path | None:
         tmp = wrapper_dir / f".gh.{os.getpid()}"
         tmp.write_text(script)
         tmp.chmod(0o755)
-        tmp.replace(target)  # atomar: parallele Runs sehen nie ein halbes Skript
+        tmp.replace(target)  # atomic: parallel runs never see a half-written script
     return wrapper_dir
 
 
 def github_env(role: str) -> dict[str, str]:
-    """Prozess-Env, unter dem `gh`/`git` (Credential-Helper `gh`) als Identity `role` laufen.
+    """Process env under which `gh`/`git` (credential helper `gh`) run as identity `role`.
 
-    Für Agent-Subprozesse (`github_identity:`): ohne diese Variablen nutzt `gh` den
-    lokalen Login des OS-Users. RuntimeError, wenn das Token der Rolle fehlt.
-    Zusätzlich kommt ein `gh`-Wrapper vorn in den PATH, der das Token pro Call frisch aus
-    FABRIK_ENV_FILE liest — so überlebt der Agent-Prozess auch Laufzeiten > 1h."""
+    For agent subprocesses (`github_identity:`): without these variables `gh` uses the
+    OS user's local login. RuntimeError if the role's token is missing.
+    In addition a `gh` wrapper is put at the front of the PATH that reads the token fresh per call from
+    FABRIK_ENV_FILE — so the agent process also survives runtimes > 1h."""
     tok = _gh_token(role)
     env = {"GH_TOKEN": tok, "GITHUB_TOKEN": tok, **subprocess_env()}
     path = os.environ.get("PATH", os.defpath)
@@ -674,9 +674,9 @@ def _gh_token(role: str = "dev") -> str:
 
 
 def _gh_request(req: urllib.request.Request) -> bytes:
-    """urlopen mit Retry bei transienten Netzwerkfehlern (DNS-Flakes,
-    Connection Reset). HTTPError (4xx/5xx) ist eine Antwort, kein Flake —
-    wird NICHT geretried."""
+    """urlopen with retry on transient network errors (DNS flakes,
+    connection reset). HTTPError (4xx/5xx) is an answer, not a flake —
+    NOT retried."""
     for attempt in range(config.GH_RETRIES):
         try:
             with httpsafe.urlopen(req, timeout=60) as r:
@@ -691,8 +691,8 @@ def _gh_request(req: urllib.request.Request) -> bytes:
 
 
 def _gh_api(method: str, url: str, token: str, payload: dict | None = None, accept: str | None = None) -> dict:
-    """GitHub-REST-Call. `accept` überschreibt den JSON-Accept-Header
-    (z. B. "application/vnd.github.diff" für PR-Diffs)."""
+    """GitHub REST call. `accept` overrides the JSON Accept header
+    (e.g. "application/vnd.github.diff" for PR diffs)."""
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode() if payload is not None else None,

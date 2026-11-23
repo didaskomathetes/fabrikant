@@ -1,9 +1,9 @@
-"""OpenID-Connect-Login (Authorization Code Flow + PKCE) mit Rollen-Mapping (ADR 0046).
+"""OpenID Connect login (authorization code flow + PKCE) with role mapping (ADR 0046).
 
-Generischer Client für jeden OIDC-IdP (Cognito, Entra ID, Keycloak, Okta, Google): Discovery über
-``<issuer>/.well-known/openid-configuration``, ID-Token-Prüfung (Signatur per JWKS, ``iss``, ``aud``,
-``exp``, ``nonce``) und Abbildung der Gruppen-Claims auf Fabrik-Rollen. Die Krypto kommt aus dem
-optionalen Extra ``fabrik[oidc]`` (PyJWT); Konfiguration per ``FABRIK_OIDC_*``-Umgebungsvariablen.
+Generic client for any OIDC IdP (Cognito, Entra ID, Keycloak, Okta, Google): discovery via
+``<issuer>/.well-known/openid-configuration``, ID token verification (signature via JWKS, ``iss``, ``aud``,
+``exp``, ``nonce``) and mapping of the group claims to fabrik roles. The crypto comes from the
+optional extra ``fabrik[oidc]`` (PyJWT); configuration via ``FABRIK_OIDC_*`` environment variables.
 """
 
 from __future__ import annotations
@@ -31,25 +31,25 @@ LOGIN_PATH = "/api/login/oidc"
 DEFAULT_SCOPES = "openid profile email"
 DEFAULT_GROUPS_CLAIM = "groups"
 HTTP_TIMEOUT_S = 10
-PENDING_TTL_S = 600  # Zeit, in der der Nutzer den Login beim IdP abschließen muss
+PENDING_TTL_S = 600  # Time within which the user must complete the login at the IdP
 MAX_PENDING = 1000  # Obergrenze offener Login-Versuche (Schutz vor Speicherflut)
 LEEWAY_S = 30  # Uhrenabweichung zum IdP
-# Nur asymmetrische Verfahren: HS*/none würden Token-Fälschung mit dem Client-Secret erlauben.
+# Asymmetric algorithms only: HS*/none would allow token forgery with the client secret.
 SIGNING_ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]
 USERNAME_CLAIMS = ("preferred_username", "email", "sub")
 INSTALL_HINT = "pip install 'fabrik[oidc]'"
-# Bindet den Login-Versuch an den Browser, der ihn begonnen hat (Schutz vor Login-CSRF: sonst
-# könnte ein Angreifer einem Opfer seinen eigenen code+state unterschieben). SameSite=Lax, weil
-# der Callback eine Top-Level-Navigation vom IdP (cross-site) ist.
+# Binds the login attempt to the browser that started it (protection against login CSRF: otherwise
+# an attacker could slip a victim their own code+state). SameSite=Lax, because
+# the callback is a top-level navigation from the IdP (cross-site).
 STATE_COOKIE = "fabrik_oidc_state"
 
 
 class OidcError(auth.AuthError):
-    """Fehler in OIDC-Konfiguration oder -Login (Meldung ist für den Benutzer bestimmt)."""
+    """Error in OIDC configuration or login (the message is meant for the user)."""
 
 
 class NoRoleError(OidcError):
-    """Benutzer ist am IdP authentifiziert, hat aber keine auf eine Fabrik-Rolle gemappte Gruppe."""
+    """User is authenticated at the IdP but has no group mapped to a fabrik role."""
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ def _require_https(url: str, what: str) -> None:
 
 
 def _jwt() -> Any:
-    """PyJWT importieren; ohne Extra verständliche Fehlermeldung."""
+    """Import PyJWT; without the extra, a clear error message."""
     try:
         import jwt
     except ImportError as e:
@@ -119,7 +119,7 @@ def _jwt() -> Any:
 
 
 def check_ready() -> OidcConfig:
-    """Konfiguration + Abhängigkeiten prüfen (beim Serverstart); liefert die Konfiguration."""
+    """Check configuration + dependencies (at server start); returns the configuration."""
     _jwt()
     return OidcConfig.from_env()
 
@@ -129,7 +129,7 @@ def _http_json(url: str, form: dict[str, str] | None = None) -> dict[str, Any]:
     data = urllib.parse.urlencode(form).encode() if form is not None else None
     req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as r:  # noqa: S310  # nosec: B310 — Schema geprüft
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as r:  # noqa: S310  # nosec: B310 — scheme checked
             doc = json.loads(r.read())
     except (OSError, ValueError) as e:  # URLError/HTTPError sind OSError
         raise OidcError(f"IdP-Anfrage an {url} fehlgeschlagen: {e}") from e
@@ -144,7 +144,7 @@ _cache_lock = threading.Lock()
 
 
 def discovery(cfg: OidcConfig) -> dict[str, Any]:
-    """Discovery-Dokument des IdP (gecacht); ``issuer`` muss exakt zur Konfiguration passen."""
+    """Discovery document of the IdP (cached); ``issuer`` must match the configuration exactly."""
     with _cache_lock:
         doc = _discovery_cache.get(cfg.issuer)
     if doc is None:
@@ -196,18 +196,18 @@ def _challenge(verifier: str) -> str:
 
 @dataclass(frozen=True)
 class LoginRedirect:
-    """Start eines Login-Versuchs: Authorize-URL beim IdP und ``state`` für das Browser-Cookie."""
+    """Start of a login attempt: authorize URL at the IdP and ``state`` for the browser cookie."""
 
     url: str
     state: str
 
     def state_cookie(self) -> str:
-        """``Set-Cookie`` für :data:`STATE_COOKIE` (Laufzeit wie der Login-Versuch)."""
+        """``Set-Cookie`` for :data:`STATE_COOKIE` (lifetime like the login attempt)."""
         return auth.cookie_header(STATE_COOKIE, self.state, PENDING_TTL_S, same_site="Lax")
 
 
 def clear_state_cookie() -> str:
-    """``Set-Cookie``, der :data:`STATE_COOKIE` nach dem Callback löscht."""
+    """``Set-Cookie`` that deletes :data:`STATE_COOKIE` after the callback."""
     return auth.cookie_header(STATE_COOKIE, "", 0, same_site="Lax")
 
 
@@ -239,21 +239,21 @@ def begin_login(cfg: OidcConfig) -> LoginRedirect:
 
 
 def _take_pending(state: str, browser_state: str | None) -> _Pending:
-    """Login-Versuch zum ``state`` entnehmen (einmalig); unbekannt/abgelaufen → ``OidcError``.
+    """Take the login attempt for ``state`` (once only); unknown/expired → ``OidcError``.
 
-    ``browser_state`` (Wert von :data:`STATE_COOKIE`) muss zum ``state`` passen: der Callback
-    muss im selben Browser ankommen, der den Login begonnen hat (Login-CSRF)."""
+    ``browser_state`` (value of :data:`STATE_COOKIE`) must match ``state``: the callback
+    must arrive in the same browser that started the login (login CSRF)."""
     if not (browser_state and hmac.compare_digest(browser_state, state)):
         raise OidcError(t("oidc.login_attempt_does_not_belong"))
     with _pending_lock:
-        found = _pending.pop(state, None)  # state ist 256 Bit zufällig → Dict-Lookup genügt
+        found = _pending.pop(state, None)  # state is 256 bits of randomness → dict lookup suffices
     if found is None or found.expires <= time.time():
         raise OidcError(t("oidc.login_attempt_unknown_or_expired"))
     return found
 
 
 def _groups(raw: Any) -> list[str]:
-    """Gruppen-Claim normalisieren: String (z. B. einzelne Gruppe) oder Liste von Strings; sonst leer."""
+    """Normalize the group claim: string (e.g. a single group) or list of strings; otherwise empty."""
     if isinstance(raw, str):
         return [raw]
     if isinstance(raw, list):
@@ -262,7 +262,7 @@ def _groups(raw: Any) -> list[str]:
 
 
 def map_role(claims: dict[str, Any], cfg: OidcConfig) -> str:
-    """Höchste Fabrik-Rolle aus den Gruppen-Claims; keine gemappte Gruppe → ``NoRoleError``."""
+    """Highest fabrik role from the group claims; no mapped group → ``NoRoleError``."""
     roles = [cfg.role_map[g] for g in _groups(claims.get(cfg.groups_claim)) if g in cfg.role_map]
     if not roles:
         raise NoRoleError(t("oidc.access_denied_none_of_your"))
@@ -270,7 +270,7 @@ def map_role(claims: dict[str, Any], cfg: OidcConfig) -> str:
 
 
 def validate_id_token(cfg: OidcConfig, doc: dict[str, Any], id_token: str, nonce: str) -> dict[str, Any]:
-    """ID-Token prüfen (Signatur/JWKS, ``iss``, ``aud``, ``exp``, ``iat``, ``nonce``) und Claims liefern."""
+    """Verify the ID token (signature/JWKS, ``iss``, ``aud``, ``exp``, ``iat``, ``nonce``) and return the claims."""
     jwt = _jwt()
     try:
         key = _signing_key(doc["jwks_uri"], id_token)
@@ -287,7 +287,7 @@ def validate_id_token(cfg: OidcConfig, doc: dict[str, Any], id_token: str, nonce
         raise OidcError(t("oidc.id_token_invalid", e=e)) from e
     if not hmac.compare_digest(str(claims.get("nonce", "")), nonce):
         raise OidcError(t("oidc.id_token_invalid_nonce_does"))
-    # OIDC Core 3.1.3.7: bei mehreren Audiences muss azp (falls vorhanden) der eigene Client sein.
+    # OIDC Core 3.1.3.7: with several audiences azp (if present) must be the own client.
     aud, azp = claims["aud"], claims.get("azp")
     if (azp is not None or (isinstance(aud, list) and len(aud) > 1)) and azp != cfg.client_id:
         raise OidcError(t("oidc.id_token_invalid_azp_is"))
@@ -295,10 +295,10 @@ def validate_id_token(cfg: OidcConfig, doc: dict[str, Any], id_token: str, nonce
 
 
 def complete_login(cfg: OidcConfig, code: str, state: str, browser_state: str | None) -> tuple[str, str]:
-    """Callback abschließen: state an Browser prüfen, Code gegen Token tauschen, ID-Token prüfen, Rolle mappen.
+    """Complete the callback: check state against browser, exchange code for token, verify ID token, map role.
 
-    ``browser_state`` ist der Wert von :data:`STATE_COOKIE`. Liefert ``(benutzername, rolle)``;
-    Fehler als ``OidcError`` (``NoRoleError`` ohne Rolle)."""
+    ``browser_state`` is the value of :data:`STATE_COOKIE`. Returns ``(username, role)``;
+    errors as ``OidcError`` (``NoRoleError`` without a role)."""
     pending = _take_pending(state, browser_state)
     doc = discovery(cfg)
     tokens = _http_json(

@@ -1,9 +1,9 @@
-"""Alert-Intake für den Incident-Roundtrip (ADR 0045): Sentry + CloudWatch.
+"""Alert intake for the incident round trip (ADR 0045): Sentry + CloudWatch.
 
-Reine Funktionen ohne HTTP-Kontext, nach dem Muster von `webhook.py`: Trigger-
-Lookup (`on_alert`), HMAC-Auth, Payload-Normalisierung auf `Alert`, deterministisches
-Routing `Kategorie → Hotfix-Loop`. Der Server startet danach den Triage-Run über
-die gemeinsame Run-Start-Funktion (kein eigener Run-Pfad)."""
+Pure functions without HTTP context, following the `webhook.py` pattern: trigger
+lookup (`on_alert`), HMAC auth, payload normalization to `Alert`, deterministic
+routing `category → hotfix loop`. The server then starts the triage run via
+the shared run-start function (no separate run path)."""
 
 from __future__ import annotations
 
@@ -19,12 +19,12 @@ ALERT_PATH_PREFIX = "/api/alert/"
 TRIGGER_TYPE = "on_alert"
 STEP_TYPE = "alert_route"
 SOURCES = ("sentry", "cloudwatch")
-SENTRY_SIGNATURE_HEADER = "Sentry-Hook-Signature"  # rohes HMAC-SHA256-Hex, ohne Präfix
+SENTRY_SIGNATURE_HEADER = "Sentry-Hook-Signature"  # raw HMAC-SHA256 hex, without prefix
 VAR_PREFIX = "alert_"
-# Triage-Kategorien (Enum im llm-Schema). `unknown` ist die definierte Auffangklasse.
+# Triage categories (enum in the llm schema). `unknown` is the defined catch-all class.
 CATEGORY_UNKNOWN = "unknown"
 CATEGORIES = ("bug", "infra", "noise", CATEGORY_UNKNOWN)
-ROUTE_NONE = "none"  # kein Hotfix-Loop → Run endet ohne Hotfix
+ROUTE_NONE = "none"  # no hotfix loop → run ends without a hotfix
 CLOUDWATCH_ALARM_STATE = "ALARM"
 FINGERPRINT_LEN = 16
 _MAX_FIELD = 2000
@@ -32,7 +32,7 @@ _MAX_FIELD = 2000
 
 @dataclass(frozen=True)
 class Alert:
-    """Normalisierter Alert; alle Felder sind untrusted (framework §1.4)."""
+    """Normalized alert; all fields are untrusted (framework §1.4)."""
 
     source: str
     title: str
@@ -43,12 +43,12 @@ class Alert:
 
     @property
     def fingerprint(self) -> str:
-        """Stabiler Hash über Quelle/Service/Titel (gleicher Alert → gleiche ID)."""
+        """Stable hash over source/service/title (same alert → same ID)."""
         raw = "\0".join((self.source, self.service, self.title))
         return hashlib.sha256(raw.encode()).hexdigest()[:FINGERPRINT_LEN]
 
     def to_vars(self) -> dict[str, str]:
-        """Initial-Variablen (`alert_*`) für den Triage-Run."""
+        """Initial variables (`alert_*`) for the triage run."""
         fields = {
             "source": self.source,
             "title": self.title,
@@ -70,8 +70,8 @@ def _dict(val: object) -> dict:
 
 
 def _project_name(val: object) -> str:
-    """Sentry-Projekt als Service-Name: `{slug, name}`-Objekt (Issue-Webhook),
-    String (Legacy) oder numerische ID (`data.event.project`)."""
+    """Sentry project as service name: `{slug, name}` object (issue webhook),
+    string (legacy) or numeric ID (`data.event.project`)."""
     if isinstance(val, dict):
         return _str(val.get("slug")) or _str(val.get("name"))
     if isinstance(val, int) and not isinstance(val, bool):
@@ -80,7 +80,7 @@ def _project_name(val: object) -> str:
 
 
 def _sentry_service(payload: dict, event: dict, issue: dict) -> str:
-    """Service = Projekt-Slug; Slug-Quellen vor der numerischen Event-Projekt-ID."""
+    """Service = project slug; slug sources before the numeric event project ID."""
     candidates = (
         issue.get("project"),
         payload.get("project_slug"),
@@ -110,9 +110,9 @@ def parse_sentry(payload: dict) -> Alert:
 
 
 def parse_cloudwatch(payload: dict) -> Alert | None:
-    """CloudWatch-Alarm (SNS-Envelope oder direkt). Nicht-`ALARM`-Zustand → None (kein Incident)."""
+    """CloudWatch alarm (SNS envelope or direct). Non-`ALARM` state → None (no incident)."""
     msg = payload.get("Message")
-    if isinstance(msg, str):  # SNS: der Alarm steckt als JSON-String in `Message`
+    if isinstance(msg, str):  # SNS: the alarm is embedded as a JSON string in `Message`
         try:
             inner = json.loads(msg)
         except json.JSONDecodeError as e:
@@ -135,8 +135,8 @@ def parse_cloudwatch(payload: dict) -> Alert | None:
 
 
 def parse_alert(source: str, body: bytes) -> Alert | None:
-    """Body gemäß Quelle normalisieren. 400 bei ungültigem JSON, 422 bei fehlenden Feldern;
-    None = Alert ohne Handlungsbedarf (z. B. CloudWatch `OK`)."""
+    """Normalize the body according to the source. 400 on invalid JSON, 422 on missing fields;
+    None = alert without need for action (e.g. CloudWatch `OK`)."""
     try:
         payload = json.loads(body.decode() or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -147,22 +147,22 @@ def parse_alert(source: str, body: bytes) -> Alert | None:
 
 
 def find_trigger(spec: dict | None, lname: str) -> dict | None:
-    """Erster `on_alert`-Trigger des Loops, sonst None."""
+    """The loop's first `on_alert` trigger, otherwise None."""
     return webhook.find_trigger(spec, lname, TRIGGER_TYPE)
 
 
 def authenticate(trigger: dict | None, body: bytes, fabrik_signature: str, sentry_signature: str = "") -> dict:
-    """Authentifizierten Trigger liefern; 401 einheitlich (kein Orakel).
+    """Return the authenticated trigger; 401 uniformly (no oracle).
 
-    Akzeptiert `X-Fabrik-Signature: sha256=<hex>` (Relay/Lambda für CloudWatch, generisch)
-    und für Quelle `sentry` zusätzlich Sentrys `Sentry-Hook-Signature` (rohes Hex). Die
-    Header-Werte liest der Aufrufer (HTTP-Header sind case-insensitiv)."""
+    Accepts `X-Fabrik-Signature: sha256=<hex>` (relay/Lambda for CloudWatch, generic)
+    and, for source `sentry`, additionally Sentry's `Sentry-Hook-Signature` (raw hex). The
+    caller reads the header values (HTTP headers are case-insensitive)."""
     try:
         return webhook.authenticate(trigger, body, fabrik_signature)
     except WebhookError:
         if not (trigger and trigger.get("source") == "sentry" and sentry_signature.strip()):
             raise
-    # Sentry signiert ohne `sha256=`-Präfix → auf das Fabrik-Format normalisieren.
+    # Sentry signs without the `sha256=` prefix → normalize to the fabrik format.
     return webhook.authenticate(trigger, body, webhook.SIGNATURE_PREFIX + sentry_signature.strip())
 
 
@@ -174,8 +174,8 @@ def route(category: str, routes: dict[str, str] | None, fallback: str = ROUTE_NO
 
 
 def _route_targets(step: dict) -> list[tuple[str, str]]:
-    """Ziele eines `alert_route`-Steps als `(Schlüssel, Loop-Name)`-Paare
-    (`routes.<kategorie>` + `fallback`), ohne `none`."""
+    """Targets of an `alert_route` step as `(key, loop name)` pairs
+    (`routes.<category>` + `fallback`), without `none`."""
     targets = [(f"routes.{k}", v) for k, v in (step.get("routes") or {}).items() if isinstance(v, str)]
     if step.get("fallback") is not None:
         targets.append(("fallback", step["fallback"]))
@@ -183,8 +183,8 @@ def _route_targets(step: dict) -> list[tuple[str, str]]:
 
 
 def _route_edges(spec: dict) -> dict[str, tuple[str, ...]]:
-    """Route-Graph des Projekts: Loop → sortierte Ziel-Loops über alle
-    `alert_route`-Steps (nur Ziele, die existierende Loops sind)."""
+    """The project's route graph: loop → sorted target loops across all
+    `alert_route` steps (only targets that are existing loops)."""
     loops = spec.get("loops") or {}
     edges: dict[str, tuple[str, ...]] = {}
     for lname, ldef in loops.items():
@@ -203,13 +203,13 @@ def _route_edges(spec: dict) -> dict[str, tuple[str, ...]]:
 
 
 def _route_cycle_errors(spec: dict) -> list[str]:
-    """Zyklen in der Route-Kette des Projekts (alle `alert_route`-Steps).
+    """Cycles in the project's route chain (all `alert_route` steps).
 
-    Ein Zyklus — auch über mehrere Loops, z. B. `a → b → a` — würde beim
-    Ausführen unendlich verschachtelte Runs starten (RecursionError)."""
+    A cycle — even across several loops, e.g. `a → b → a` — would start
+    infinitely nested runs on execution (RecursionError)."""
     edges = _route_edges(spec)
     errs: list[str] = []
-    state: dict[str, int] = {}  # 1 = auf dem aktuellen Pfad, 2 = abgeschlossen
+    state: dict[str, int] = {}  # 1 = on the current path, 2 = finished
 
     def dfs(node: str, path: list[str]) -> None:
         state[node] = 1
@@ -234,12 +234,12 @@ def _route_cycle_errors(spec: dict) -> list[str]:
 
 
 def validate_route_step(step: dict, spec: dict, where: str) -> list[str]:
-    """Spec-Validierung eines `alert_route`-Steps (ADR 0045).
+    """Spec validation of an `alert_route` step (ADR 0045).
 
-    `routes` ist `{kategorie: loop}`; jedes Ziel (und `fallback`) ist `none`
-    oder ein Loop desselben Projekts. Zusätzlich muss die Route-Kette des
-    ganzen Projekts zyklusfrei sein — ein Zyklus (auch über mehrere Loops)
-    würde unendlich verschachtelte Runs starten."""
+    `routes` is `{category: loop}`; every target (and `fallback`) is `none`
+    or a loop of the same project. In addition, the route chain of the
+    whole project must be cycle-free — a cycle (even across several loops)
+    would start infinitely nested runs."""
     routes = step.get("routes")
     if not isinstance(routes, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in routes.items()):
         return [t("alerts.alert_route_routes_must_be", where=where)]
@@ -256,7 +256,7 @@ def validate_route_step(step: dict, spec: dict, where: str) -> list[str]:
 
 
 def validate_trigger(trig: dict, where: str) -> list[str]:
-    """Spec-Validierung eines `on_alert`-Triggers."""
+    """Spec validation of an `on_alert` trigger."""
     errs = []
     if trig.get("source") not in SOURCES:
         errs.append(t("alerts.on_alert_source_must_be", where=where, v2=list(SOURCES), v3=trig.get("source")))

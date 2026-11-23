@@ -1,7 +1,7 @@
-"""Exklusiver Lock für Dateien: Thread-Lock (im Prozess) + flock (prozessübergreifend).
+"""Exclusive lock for files: thread lock (in-process) + flock (cross-process).
 
-Der Server und `fabrik approve` (CLI) laufen als getrennte Prozesse und teilen
-sich State-Dateien — ein reiner Thread-Lock reicht dafür nicht."""
+The server and `fabrik approve` (CLI) run as separate processes and share
+state files — a plain thread lock is not enough for that."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows: nur Thread-Lock
+except ImportError:  # pragma: no cover - Windows: thread lock only
     fcntl = None  # type: ignore[assignment]
 
 _thread_locks: dict[str, threading.Lock] = {}
@@ -26,7 +26,7 @@ def _thread_lock(key: str) -> threading.Lock:
 
 @contextlib.contextmanager
 def locked(path: Path) -> Iterator[None]:
-    """Hält einen exklusiven Lock auf `path` (Lockfile `<path>.lock`, wird bei Bedarf angelegt)."""
+    """Holds an exclusive lock on `path` (lock file `<path>.lock`, created if needed)."""
     lock_file = path.with_name(path.name + ".lock")
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     with _thread_lock(str(lock_file)), open(lock_file, "a") as fh:

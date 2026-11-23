@@ -1,14 +1,14 @@
-"""Relay-Dateien im Worktree: Handoff, Session-Dateien, Scope, Commit/Push, Blind-Phase.
+"""Relay files in the worktree: handoff, session files, scope, commit/push, blind phase.
 
-Layout auf dem Branch `fabrik/relay/<N>`:
-    .fabrik/relay/<N>/HANDOFF.md        Zustand + Gedächtnis (committet)
-    .fabrik/relay/<N>/scripts/          jedes ausgeführte Ad-hoc-Skript / SQL (committet)
-    .fabrik/relay/<N>/sessions/s<k>.md  was Session k ausgeführt hat + Ergebnisse (committet)
-    .fabrik/relay/<N>/AUDIT.md, audit/  Audit-Report + Blind-Evidenz (committet, ohne Unterordner)
-    .fabrik/relay/<N>/ruff.toml         nimmt das Verzeichnis aus dem ruff-Lint des Zielrepos (committet)
-    .fabrik-session/                    Brief, SESSION.md, Audit-Arbeitsstand (lokal, git-ignoriert;
-                                        die Sandbox trägt es zum Agenten und zurück)
-    .fabrik-harness/                    Plan, Snapshot, Check-in (lokal, git-ignoriert; nie beim Agenten)
+Layout on the branch `fabrik/relay/<N>`:
+    .fabrik/relay/<N>/HANDOFF.md        state + memory (committed)
+    .fabrik/relay/<N>/scripts/          every executed ad-hoc script / SQL (committed)
+    .fabrik/relay/<N>/sessions/s<k>.md  what session k executed + results (committed)
+    .fabrik/relay/<N>/AUDIT.md, audit/  audit report + blind evidence (committed, without subfolders)
+    .fabrik/relay/<N>/ruff.toml         excludes the directory from the target repo's ruff lint (committed)
+    .fabrik-session/                    brief, SESSION.md, audit work state (local, git-ignored;
+                                        the sandbox carries it to the agent and back)
+    .fabrik-harness/                    plan, snapshot, check-in (local, git-ignored; never at the agent)
 """
 
 from __future__ import annotations
@@ -29,15 +29,15 @@ from ..secrets import _redact
 from .model import Handoff, HandoffError
 
 SESSION_DIR = config.HARNESS_DIR
-# Harness-interner Zustand (Scope, Verify-Kommando, Handoff-Snapshot, Blind-Liste) liegt getrennt
-# vom Austauschverzeichnis: Die Sandbox trägt SESSION_DIR zum Agenten und zurück — was dort liegt,
-# kann der Agent ändern.
+# Harness-internal state (scope, verify command, handoff snapshot, blind list) lives separately
+# from the exchange directory: the sandbox carries SESSION_DIR to the agent and back — what lies there
+# the agent can change.
 PRIVATE_DIR = config.HARNESS_PRIVATE_DIR
-# Bleibt beim Agenten, kommt nicht zurück: Arbeitskopien des Audits (Klone, venvs).
+# Stays with the agent, does not come back: working copies of the audit (clones, venvs).
 HARNESS_LOCAL = "audit/work/\n"
-# Zustand, den Werkzeuge der Agent-Umgebung ungefragt ins Arbeitsverzeichnis schreiben (z. B. der
-# Serena-MCP-Server: `.serena/project.yml`). Lokal ignoriert, damit er nicht als Änderung außerhalb
-# des Scopes zählt und die Session blockiert. Nur ungetrackte Dateien — getrackte bleiben sichtbar.
+# State that tools of the agent environment write into the working directory unasked (e.g. the
+# Serena MCP server: `.serena/project.yml`). Ignored locally so it does not count as a change outside
+# the scope and block the session. Untracked files only — tracked ones stay visible.
 AGENT_TOOL_DIRS = (".serena",)
 _PLAN_FILE = "plan.json"
 _BEFORE_FILE = "HANDOFF.before.md"
@@ -45,14 +45,14 @@ _CHECKIN_FILE = "checkin.json"
 _HIDDEN_FILE = "hidden.json"
 AUDIT_REPORT = "AUDIT.md"
 HANDOFF_FILE = "HANDOFF.md"
-# Vom Blind-Audit wird nur Evidenz veröffentlicht: Dateien direkt in `audit/blind/` (Prüfskripte und
-# Rohausgaben, `<nn>-<invariante>.<ext>`). Unterordner (ausgecheckte Trees, venvs) und große Dateien
-# bleiben lokal: Sie gehören nicht in den PR, und `commit_via: api` lädt jede Datei einzeln hoch.
+# Only evidence is published from the blind audit: files directly in `audit/blind/` (check scripts and
+# raw outputs, `<nn>-<invariant>.<ext>`). Subfolders (checked-out trees, venvs) and large files
+# stay local: they do not belong in the PR, and `commit_via: api` uploads every file individually.
 MAX_EVIDENCE_FILE_BYTES = 1_000_000
 SKIPPED_EVIDENCE_FILE = "SKIPPED.md"
-# Relay-Artefakte (Worker-Skripte, Audit-Evidenz) sind Protokoll, kein Produktcode: Eine verschachtelte
-# ruff-Config nimmt `.fabrik/relay/<N>/` aus dem Lint/Format-Check des Zielrepos, ohne dessen Config
-# anzufassen. Die Skripte bleiben byte-genau (ihre `.out`-Dateien sind ihre Ausgabe).
+# Relay artifacts (worker scripts, audit evidence) are a record, not product code: a nested
+# ruff config excludes `.fabrik/relay/<N>/` from the target repo's lint/format check without touching
+# its config. The scripts stay byte-exact (their `.out` files are their output).
 LINT_CONFIG_FILE = "ruff.toml"
 LINT_CONFIG = (
     "# fabrik relay: worker scripts and audit evidence are records of what ran, not product code.\n"
@@ -60,9 +60,9 @@ LINT_CONFIG = (
     'exclude = ["*"]\n'
 )
 GIT_TIMEOUT_S = 300
-# Credential-Helper liest das Token aus der Env — nie in argv/URL (Prozessliste, Logs).
-# Kein hartkodiertes Passwort: `$RELAY_PUSH_TOKEN` ist eine Env-Variable; der git-Credential-Helper
-# muss wörtlich `password=…` echoen (deshalb NOSONAR).
+# Credential helper reads the token from the env — never in argv/URL (process list, logs).
+# No hardcoded password: `$RELAY_PUSH_TOKEN` is an env variable; the git credential helper
+# must literally echo `password=…` (hence NOSONAR).
 _CRED_HELPER = '!f() { echo username=x-access-token; echo "password=$RELAY_PUSH_TOKEN"; }; f'  # NOSONAR
 
 
@@ -79,7 +79,7 @@ def handoff_path(issue: int) -> str:
 
 
 def matches(path: str, pattern: str) -> bool:
-    """Pfad passt auf Glob; `dir/` und `dir/**` matchen alles darunter."""
+    """Path matches glob; `dir/` and `dir/**` match everything below."""
     stem = pattern.removesuffix("**").rstrip("/")
     if pattern.endswith(("/", "/**")):
         return path == stem or path.startswith(stem + "/")
@@ -88,7 +88,7 @@ def matches(path: str, pattern: str) -> bool:
 
 @dataclass(frozen=True)
 class SessionPlan:
-    """Von `checkout` festgehalten, von `checkin`/`publish` gelesen (Agent ändert ihn nicht)."""
+    """Recorded by `checkout`, read by `checkin`/`publish` (the agent does not change it)."""
 
     issue: int
     session: int
@@ -99,7 +99,7 @@ class SessionPlan:
     verify_command: str | None
     scope: tuple[str, ...]
     forbid: tuple[str, ...]
-    head: str = ""  # Commit beim Checkout — Basis des Scope-Checks ("" = Plan vor diesem Feld)
+    head: str = ""  # Commit at checkout — basis of the scope check ("" = plan before this field)
 
     @classmethod
     def from_dict(cls, data: dict) -> SessionPlan:
@@ -114,7 +114,7 @@ class CheckinResult:
 
 
 class Workspace:
-    """Relay-Sicht auf einen Worktree für Issue `issue`."""
+    """Relay view of a worktree for issue `issue`."""
 
     def __init__(self, root: Path, issue: int):
         self.root = Path(root)
@@ -140,27 +140,27 @@ class Workspace:
         return self.git("rev-parse", "HEAD").strip()
 
     def merge_head(self) -> str | None:
-        """SHA von `MERGE_HEAD`, solange ein Merge (ungecommittet) im Worktree läuft."""
+        """SHA of `MERGE_HEAD` while a merge (uncommitted) is in progress in the worktree."""
         return self.git("rev-parse", "-q", "--verify", "MERGE_HEAD", check=False).strip() or None
 
     def _diff_names(self, rev: str, other: str | None = None) -> list[str]:
-        """Geänderte Pfade: `rev` gegen Worktree, oder `rev` gegen `other` (zwei Revisions)."""
-        # `--no-renames`: ein Rename zählt mit beiden Seiten (sonst verschwände die Löschung).
+        """Changed paths: `rev` against worktree, or `rev` against `other` (two revisions)."""
+        # `--no-renames`: a rename counts with both sides (otherwise the deletion would vanish).
         args = [rev, other] if other is not None else [rev]
         return [p for p in self.git("diff", "--name-only", "--no-renames", "-z", *args).split("\0") if p]
 
     def settle_session(self, start: str, base: str) -> list[str]:
-        """Git-Zustand nach der Agent-Session auf das bringen, was der Scope-Check bewerten kann.
+        """Bring the git state after the agent session to what the scope check can evaluate.
 
-        - Eigene Commits des Agents (HEAD ≠ `start`) werden per Soft-Reset in den Worktree
-          zurückgeholt: Committen ist Sache der Harness, sonst entgingen sie dem Scope-Check.
-        - Ein laufender Merge bleibt nur, wenn er einen Stand von `origin/<base>` einmergt; jeder
-          andere wird vergessen (`merge --quit`), seine Änderungen zählen dann als Session-Änderungen.
-        Liefert Notizen für die Log-Zeile."""
+        - The agent's own commits (HEAD ≠ `start`) are pulled back into the worktree by soft reset:
+          committing is the harness's job, otherwise they would escape the scope check.
+        - A running merge stays only if it merges in a state of `origin/<base>`; any
+          other is forgotten (`merge --quit`), its changes then count as session changes.
+        Returns notes for the log line."""
         notes: list[str] = []
         if start and self.head_sha() != start:
             if self.merge_head():
-                self.git("merge", "--quit")  # Soft-Reset ist mitten im Merge nicht erlaubt
+                self.git("merge", "--quit")  # Soft reset is not allowed in the middle of a merge
             self.git("reset", "-q", "--soft", start)
             notes.append(t("relay.workspace.agent_commits_pulled_back_into"))
         merge = self.merge_head()
@@ -174,21 +174,21 @@ class Workspace:
         return p.returncode == 0
 
     def changed_paths(self) -> list[str]:
-        """Von der Session geänderte + untracked Pfade (repo-relativ, ohne ignorierte).
+        """Paths changed + untracked by the session (repo-relative, without ignored).
 
-        Läuft ein Merge, zählt ein Pfad nur, wenn er von BEIDEN Seiten abweicht: Was unverändert
-        aus `MERGE_HEAD` kommt, hat der Merge gebracht, nicht die Session. Ausnahme: Hat die Base
-        einen Pfad gegenüber dem Merge-Base geändert, der Branch nicht, und steht im Worktree die
-        HEAD-Version, hat die Session die Base-Änderung zurückgedreht ("take ours") — das ist
-        unsichtbar für `diff HEAD`, zählt aber als Änderung."""
+        If a merge is running, a path counts only if it deviates from BOTH sides: what comes unchanged
+        from `MERGE_HEAD` was brought by the merge, not the session. Exception: if the base
+        changed a path relative to the merge base, the branch did not, and the worktree has the
+        HEAD version, the session reverted the base change ("take ours") — this is
+        invisible to `diff HEAD` but counts as a change."""
         head = self._diff_names("HEAD")
         if merge := self.merge_head():
             theirs = set(self._diff_names(merge))
             tracked = [p for p in head if p in theirs]
             base = self.git("merge-base", "HEAD", merge).strip()
             main_only = set(self._diff_names(base, merge)) - set(self._diff_names(base, "HEAD"))
-            # Nur Pfade, deren Worktree-Stand exakt der HEAD-Stand ist (sonst z. B. eine von der
-            # Base hinzugefügte Datei, die der Merge korrekt ins Worktree gelegt hat).
+            # Only paths whose worktree state is exactly the HEAD state (otherwise e.g. a file added by the
+            # base that the merge correctly placed into the worktree).
             tracked += [p for p in main_only if p not in head]
         else:
             tracked = head
@@ -196,7 +196,7 @@ class Workspace:
         return sorted({p for p in tracked + untracked if p})
 
     def split_changes(self, allowed: tuple[str, ...], forbid: tuple[str, ...] = ()) -> tuple[list[str], list[str]]:
-        """Geänderte Pfade → (passt auf `allowed` und nicht auf `forbid`, Rest)."""
+        """Changed paths → (matches `allowed` and not `forbid`, rest)."""
         inside: list[str] = []
         outside: list[str] = []
         for path in self.changed_paths():
@@ -205,21 +205,21 @@ class Workspace:
         return inside, outside
 
     def partition(self, scope: tuple[str, ...], forbid: tuple[str, ...]) -> tuple[list[str], list[str]]:
-        """(in Scope, außerhalb) einer Session — Relay-Verzeichnis + `scope`, minus `forbid`."""
+        """(in scope, outside) of a session — relay directory + `scope`, minus `forbid`."""
         return self.split_changes((relay_dir(self.issue) + "/", *scope), forbid)
 
     def audit_paths(self) -> tuple[str, ...]:
-        """Was ein Audit committen darf: Report, Blind-Evidenz, Handoff und Lint-Config (beide von der Harness)."""
+        """What an audit may commit: report, blind evidence, handoff and lint config (both from the harness)."""
         rel = relay_dir(self.issue)
         return (handoff_path(self.issue), f"{rel}/{AUDIT_REPORT}", f"{rel}/audit/", f"{rel}/{LINT_CONFIG_FILE}")
 
     def commit(self, paths: list[str], message: str, author: tuple[str, str]) -> str:
-        """`paths` stagen + committen (No-Op ohne Änderung); liefert den Kurz-SHA von HEAD.
+        """Stage + commit `paths` (no-op without change); returns the short SHA of HEAD.
 
-        Committet wird genau `paths` — Vorgestagtes außerhalb fliegt aus dem Index. Ausnahme:
-        Läuft ein Merge, wird der ganze Merge-Stand committet (ein Merge-Commit mit Teilstand
-        würde die fehlenden Änderungen der Gegenseite still zurückdrehen); Fremdes hat der
-        Check-in bis dahin verworfen. `author` = (name, email) für Author und Committer."""
+        Exactly `paths` is committed — pre-staged things outside are dropped from the index. Exception:
+        if a merge is running, the entire merge state is committed (a merge commit with a partial state
+        would silently revert the other side's missing changes); foreign things have been discarded
+        by the check-in up to then. `author` = (name, email) for author and committer."""
         merging = self.merge_head() is not None
         if merging:
             self.git("add", "-A")
@@ -237,9 +237,9 @@ class Workspace:
         return p.returncode == 1
 
     def push(self, repo: str, token: str) -> None:
-        """HEAD → `fabrik/relay/<N>` als Builder-App; jeder andere Branch wird verweigert.
+        """HEAD → `fabrik/relay/<N>` as builder app; any other branch is refused.
 
-        Projekt mit `commit_via: api`: von GitHub signierte API-Commits statt `git push`."""
+        Project with `commit_via: api`: GitHub-signed API commits instead of `git push`."""
         branch = branch_name(self.issue)
         if self.current_branch() != branch:
             raise RuntimeError(
@@ -255,11 +255,11 @@ class Workspace:
         self._authed(repo, token, "push", f"HEAD:refs/heads/{branch}")
 
     def fetch(self, repo: str, token: str, refspec: str) -> None:
-        """`refspec` vom GitHub-Repo holen (authentifiziert wie der Push)."""
+        """Fetch `refspec` from the GitHub repo (authenticated like the push)."""
         self._authed(repo, token, "fetch", refspec)
 
     def _authed(self, repo: str, token: str, command: str, *args: str) -> None:
-        """`git <command> https://github.com/<repo>.git <args>` mit dem Token per Credential-Helper."""
+        """`git <command> https://github.com/<repo>.git <args>` with the token via credential helper."""
         env = {**os.environ, "RELAY_PUSH_TOKEN": token, "GIT_TERMINAL_PROMPT": "0"}
         self.git(
             "-c",
@@ -273,18 +273,18 @@ class Workspace:
         )
 
     def branch_changes(self, base: str) -> list[str]:
-        """Pfade, die der Relay-Branch gegenüber `origin/<base>` hinzugefügt/geändert/gelöscht hat.
+        """Paths the relay branch added/changed/deleted relative to `origin/<base>`.
 
-        `--no-renames`: ein Rename zählt als Löschung + Hinzufügung, beide Seiten sind sichtbar."""
+        `--no-renames`: a rename counts as deletion + addition, both sides are visible."""
         out = self.git("diff", "--name-only", "--no-renames", "--diff-filter=AMD", "-z", f"origin/{base}...HEAD")
         return sorted(p for p in out.split("\0") if p)
 
     def revert(self, paths: list[str]) -> None:
-        """Änderungen an `paths` verwerfen (Index + Worktree).
+        """Discard changes to `paths` (index + worktree).
 
-        Ziel ist HEAD; während eines Merges `MERGE_HEAD`: Pfade außerhalb des Scopes ändert der
-        Branch nie, ihr korrektes Merge-Ergebnis ist also der Stand der eingemergten Seite.
-        Pfade, die es im Ziel nicht gibt, werden aus dem Index genommen und gelöscht."""
+        The target is HEAD; during a merge `MERGE_HEAD`: the branch never changes paths outside the scope,
+        so their correct merge result is the state of the merged-in side.
+        Paths that do not exist in the target are removed from the index and deleted."""
         target = self.merge_head() or "HEAD"
         gone = [p for p in paths if not self._in_tree(target, p)]
         if gone:
@@ -304,7 +304,7 @@ class Workspace:
         for sub in ("scripts", "sessions"):
             (self.relay / sub).mkdir(parents=True, exist_ok=True)
         lint = self.relay / LINT_CONFIG_FILE
-        if not lint.exists():  # eine vorhandene (auch vom Team angepasste) Config bleibt
+        if not lint.exists():  # an existing (also team-adjusted) config stays
             lint.write_text(LINT_CONFIG, encoding="utf-8")
 
     @property
@@ -323,11 +323,11 @@ class Workspace:
         return self.relay / "sessions" / f"s{session}.md"
 
     def write_text(self, name: str, text: str) -> Path:
-        """Datei für den Agenten im Austauschverzeichnis (SESSION_DIR) schreiben."""
+        """Write a file for the agent in the exchange directory (SESSION_DIR)."""
         return _write(self.session / name, text)
 
     def _private(self, name: str) -> Path:
-        """Harness-interne Datei (PRIVATE_DIR); fehlt sie, lief der vorherige Step nicht."""
+        """Harness-internal file (PRIVATE_DIR); if it is missing, the previous step did not run."""
         f = self.private / name
         if not f.is_file():
             raise RuntimeError(t("relay.workspace.missing_did_the_previous_relay", v1=PRIVATE_DIR, name=name))
@@ -340,7 +340,7 @@ class Workspace:
         return json.loads(self._private(name).read_text(encoding="utf-8"))
 
     def save_snapshot(self, handoff: Handoff) -> None:
-        """Handoff-Stand vor dem Agent (Session oder Audit); Basis für das Zurücksetzen danach."""
+        """Handoff state before the agent (session or audit); basis for the reset afterwards."""
         _write(self.private / _BEFORE_FILE, handoff.render())
 
     def load_snapshot(self) -> Handoff:
@@ -363,7 +363,7 @@ class Workspace:
         return CheckinResult(data["status"], tuple(data["notes"]), tuple(data["out_of_scope"]))
 
     def read_handoff_or_none(self) -> tuple[Handoff | None, str | None]:
-        """(Handoff, None) oder (None, Fehler) — für den Check-in nach der Agent-Session."""
+        """(handoff, None) or (None, error) — for the check-in after the agent session."""
         try:
             handoff = self.read_handoff()
         except HandoffError as e:
@@ -372,12 +372,12 @@ class Workspace:
 
     # ── Audit (Blind-Phase) ──────────────────────────────────────────────────
     def hide(self, paths: list[str], base: str) -> list[str]:
-        """Branch-Änderungen für die Blind-Phase aus dem Worktree nehmen (Inhalt bleibt in Git).
+        """Take branch changes for the blind phase out of the worktree (content stays in git).
 
-        Hinzugefügte/geänderte Dateien werden entfernt; auf dem Branch gelöschte Dateien
-        werden aus `origin/<base>` wiederhergestellt, damit die Löschung nicht sichtbar ist.
-        Der Worktree ist in der Blind-Phase *bewusst* schmutzig (unstaged) — `reveal()`
-        stellt den Branch-Zustand wieder her."""
+        Added/changed files are removed; files deleted on the branch
+        are restored from `origin/<base>` so the deletion is not visible.
+        The worktree is *deliberately* dirty (unstaged) in the blind phase — `reveal()`
+        restores the branch state."""
         hidden = []
         for rel in paths:
             f = self.root / rel
@@ -396,7 +396,7 @@ class Workspace:
         for rel in hidden:
             if self._in_head(rel):
                 self.git("checkout", "HEAD", "--", rel)
-            else:  # auf dem Branch gelöscht: Base-Wiederherstellung wieder entfernen
+            else:  # deleted on the branch: remove the base restoration again
                 self.git("rm", "-q", "-f", "--", rel)
         return hidden
 
@@ -429,11 +429,11 @@ def _write(f: Path, text: str) -> Path:
 
 
 def copy_evidence(src: Path, dest: Path) -> list[str]:
-    """Evidenz-Dateien direkt aus ``src`` nach ``dest`` kopieren; liefert die übersprungenen Einträge.
+    """Copy evidence files directly from ``src`` to ``dest``; returns the skipped entries.
 
-    Übersprungen werden Unterordner, Symlinks, keine regulären Dateien und Dateien über
-    :data:`MAX_EVIDENCE_FILE_BYTES`; sie stehen mit Grund in ``dest/SKIPPED.md``, damit der
-    Report nicht auf Fehlendes verweist. Ein Manifest aus einem früheren Lauf wird ersetzt."""
+    Skipped are subfolders, symlinks, non-regular files and files above
+    :data:`MAX_EVIDENCE_FILE_BYTES`; they are listed with a reason in ``dest/SKIPPED.md`` so the
+    report does not refer to missing things. A manifest from an earlier run is replaced."""
     dest.mkdir(parents=True, exist_ok=True)
     (dest / SKIPPED_EVIDENCE_FILE).unlink(missing_ok=True)
     skipped: list[str] = []

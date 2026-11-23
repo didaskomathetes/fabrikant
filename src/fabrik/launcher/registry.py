@@ -1,13 +1,13 @@
-"""Launcher-Registry: Substrat-Name → Adapter-Factory.
+"""Launcher registry: substrate name → adapter factory.
 
-Lässt ``engine.py`` port-only bleiben: der Core importiert nur
-:func:`create_launcher` (und den Port :class:`RunLauncher`), nie konkrete
-Adapter. Neue Substrate (``k8s``, ``ecs``) registrieren sich hier — der Core
-ändert sich nicht (analog :mod:`fabrik.backends.registry`).
+Lets ``engine.py`` stay port-only: the core only imports
+:func:`create_launcher` (and the port :class:`RunLauncher`), never concrete
+adapters. New substrates (``k8s``, ``ecs``) register here — the core
+does not change (analogous to :mod:`fabrik.backends.registry`).
 
-Die Factory erhält die vom Core injizierten Abhängigkeiten als Keyword-Argumente
-(in-process: ``pool_factory``/``pool_or_none``); Substrate mit anderen
-Anforderungen definieren ihre eigenen Parameter.
+The factory receives the dependencies injected by the core as keyword arguments
+(in-process: ``pool_factory``/``pool_or_none``); substrates with different
+requirements define their own parameters.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ def known_launchers() -> list[str]:
 
 
 def create_launcher(name: str, **kwargs: Any) -> RunLauncher:
-    """Instanziiert den Launcher für `name` (port-typisiert).
+    """Instantiates the launcher for `name` (port-typed).
 
-    Wirft `ValueError` für unbekannte Namen — der Core zeigt die verfügbaren
-    Substrate an. `kwargs` werden an die Adapter-Factory weitergereicht."""
+    Raises `ValueError` for unknown names — the core shows the available
+    substrates. `kwargs` are passed on to the adapter factory."""
     factory = ADAPTERS.get(name)
     if factory is None:
         raise ValueError(t("launcher.registry.unknown_substrate", name=name, available=", ".join(known_launchers())))

@@ -1,10 +1,10 @@
-"""Agent-Backends (Ports & Adapters).
+"""Agent backends (ports & adapters).
 
-`port.AgentBackend` ist der vom Core definierte Vertrag. Die Adapter
-implementieren ihn: `opencode` (HTTP-API, strukturell), `claude_code` /
-`codex` / `copilot` (CLI-One-Shot, erben `OneShotCliBackend`).
-`registry.create_backend` ist die Factory, über die der Dispatcher
-port-only bleibt.
+`port.AgentBackend` is the contract defined by the core. The adapters
+implement it: `opencode` (HTTP API, structured), `claude_code` /
+`codex` / `copilot` (CLI one-shot, inherit `OneShotCliBackend`).
+`registry.create_backend` is the factory through which the dispatcher
+stays port-only.
 """
 
 from ._oneshot import OneShotCliBackend

@@ -1,9 +1,9 @@
-"""Freigabe-Anfrage (Approval-Request) eines pausierten Runs.
+"""Approval request of a paused run.
 
-Typisiert den bisher losen `record['approval']`-Dict (Vorstufe zum Run-Modell
-aus ADR 0034). Das JSON-Format im Run-Record bleibt unverändert: `to_dict()`
-lässt leere Felder weg, `from_dict()` liest auch ältere bzw. unvollständige
-Records (unbekannte Keys werden ignoriert).
+Types the formerly loose `record['approval']` dict (precursor of the run model
+from ADR 0034). The JSON format in the run record is unchanged: `to_dict()`
+omits empty fields, `from_dict()` also reads older or incomplete
+records (unknown keys are ignored).
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from dataclasses import asdict, dataclass, field, replace
 
 from .i18n import t
 
-# Felder in fester Reihenfolge — gemeinsam für Run-Log, Chat und CLI
-# (die UI in web/app.js formatApproval hält dieselbe Reihenfolge). Labels: i18n `approval.<feld>`.
+# Fields in fixed order — shared by run log, chat and CLI
+# (the UI in web/app.js formatApproval keeps the same order). Labels: i18n `approval.<field>`.
 _TEXT_FIELDS = ("kind", "condition", "why", "what")
 
 _STR_FIELDS = ("reason", "kind", "step", "condition", "why", "what", "issue", "pr", "pr_title")
@@ -22,21 +22,22 @@ _STR_FIELDS = ("reason", "kind", "step", "condition", "why", "what", "issue", "p
 
 @dataclass(frozen=True)
 class ApprovalRequest:
-    """Was freigegeben werden soll und warum.
+    """What is to be approved and why.
 
-    reason:      Auslöser — "step" (approval/approval_when), "gate" (Step meldet
-                 zur Laufzeit needs_approval), "tier" (Tier-Gate am Loop-Ende),
-                 "criticality" (human_gate), "escalation" (an einen Menschen eskaliert, ADR 0059).
-    kind:        Eskalationsart bei reason "escalation" (config.ESCALATION_KINDS), sonst leer.
-    step:        Name des wartenden Steps ("" beim Tier-Gate).
-    condition:   erfüllte `approval_when`-Bedingung, z. B. "label = needs approval".
-    why:         fachliche Begründung (Step-Feld `approval_reason`, z. B. LLM-reasoning).
-    what:        was der Step tun wird (deterministisch aus der Spec abgeleitet).
-    permissions: Agent-Rechte des Steps, lesbar formatiert.
-    issue:       Link zum auslösenden GitHub-Issue.
-    pr:          Link zur PR des Runs (on_pr-Trigger bzw. `pr_url` aus dem pr-Step).
-    pr_title:    Titel dieser PR — sagt dem Approver, WORUM es geht (z. B. welche ADR).
-    tier:        Tier des Loops beim Tier-Gate.
+    reason:      trigger — "step" (approval/approval_when), "gate" (step reports
+                 needs_approval at runtime), "tier" (tier gate at loop end),
+                 "criticality" (human_gate), "escalation" (escalated to a human, ADR 0059).
+    kind:        escalation kind for reason "escalation" (config.ESCALATION_KINDS), otherwise empty.
+    step:        name of the waiting step ("" for the tier gate).
+    condition:   satisfied `approval_when` condition, e.g. "label = needs approval".
+    why:         domain rationale (step field `approval_reason`, e.g. LLM reasoning).
+    what:        what the step will do (derived deterministically from the spec).
+    permissions: agent permissions of the step, formatted readably.
+    issue:       link to the triggering GitHub issue.
+    pr:          link to the run's PR (on_pr trigger or `pr_url` from the pr step).
+    pr_title:    title of this PR — tells the approver WHAT it is about (e.g. which ADR).
+    tier:        tier of the loop at the tier gate.
+
     """
 
     reason: str
@@ -53,10 +54,10 @@ class ApprovalRequest:
 
     @classmethod
     def from_dict(cls, data: object) -> ApprovalRequest:
-        """Aus `record['approval']`; kein Dict (alte/defekte Records) → leere Anfrage.
+        """From `record['approval']`; not a dict (old/broken records) → empty request.
 
-        Felder mit falschem Typ werden verworfen (→ Default); `permissions` akzeptiert
-        nur Listen, deren String-Elemente übernommen werden.
+        Fields with the wrong type are discarded (→ default); `permissions` accepts
+        only lists, of which the string elements are kept.
         """
         if not isinstance(data, Mapping):
             data = {}
@@ -71,18 +72,18 @@ class ApprovalRequest:
         )
 
     def to_dict(self) -> dict[str, str | int | list[str]]:
-        """JSON-Form für den Run-Record; leere Felder entfallen (wie bisher)."""
+        """JSON form for the run record; empty fields are omitted (as before)."""
         return {k: v for k, v in asdict(self).items() if v not in ("", [], None)}
 
     def merged(self, data: Mapping[str, object] | None) -> ApprovalRequest:
-        """Kopie mit überschriebenen Feldern (z. B. Laufzeit-Kontext von human_gate)."""
+        """Copy with overridden fields (e.g. runtime context from human_gate)."""
         override = ApprovalRequest.from_dict(data).to_dict()
         if not override.get("reason"):
             override.pop("reason", None)
         return replace(self, **override)  # type: ignore[arg-type]
 
     def lines(self) -> list[str]:
-        """Kontext als "key: wert"-Zeilen für Run-Log, Chat und CLI."""
+        """Context as "key: value" lines for run log, chat and CLI."""
         out = [f"{t(f'approval.{key}')}: {getattr(self, key)}" for key in _TEXT_FIELDS if getattr(self, key)]
         out += [f"{t('approval.permissions')}: {p}" for p in self.permissions]
         if self.issue:

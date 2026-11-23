@@ -1,7 +1,7 @@
-"""Ausgangsschema Run-Store (ADR 0034, #277): Runs, Steps, Review/Verify, Approvals, Variablen, Session-Log.
+"""Initial run-store schema (ADR 0034, #277): runs, steps, review/verify, approvals, variables, session log.
 
-Eingefroren: Status-Werte stehen hier als Literale, nicht aus den Enums — eine Enum-Änderung
-braucht eine neue Revision (ein Test prüft ``upgrade head`` gegen :mod:`fabrik.runschema`).
+Frozen: status values are literals here, not from the enums — an enum change
+needs a new revision (a test checks ``upgrade head`` against :mod:`fabrik.runschema`).
 
 Revision ID: 0001
 Revises: -
