@@ -36,6 +36,7 @@ from typing import Any
 from ..context import _substitute
 from ..failures import ConfigError
 from ..hosting import Provider, PullRequest, get_provider
+from ..i18n import t
 from ..validation import validate_branch_name
 from .git import _git
 
@@ -43,7 +44,7 @@ from .git import _git
 def _step_pr(ctx: dict, step: dict) -> dict:
     repo_cfg = step.get("repo")  # "owner/name"
     if not repo_cfg:
-        raise ConfigError("pr-step: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.pr.pr_step_repo_owner_name"))
     provider = get_provider(repo_cfg)
     base_branch = _substitute(step.get("base", "main"), ctx)
     head_branch = (
@@ -62,16 +63,16 @@ def _step_pr(ctx: dict, step: dict) -> dict:
         provider.add_labels(repo_cfg, existing.number, labels)
         return {
             "ok": True,
-            "summary": f"PR #{existing.number} existiert bereits (head {head_branch}) — wiederverwendet",
+            "summary": t("steps.pr.pr_already_exists_head_reused", v1=existing.number, head_branch=head_branch),
         }
     if _commits_ahead(provider, repo_cfg, base_branch, head_branch) == 0:
         return {
             "ok": True,
             "done": True,
-            "summary": f"keine Commits auf {head_branch} gegenüber {base_branch} — kein PR",
+            "summary": t("steps.pr.no_commits_on_compared_to", head_branch=head_branch, base_branch=base_branch),
         }
     title = _substitute(step.get("title", "fabrik: {loop} {run_id}"), ctx)
-    body = _substitute(step.get("body", "Erzeugt von **fabrik** (Loop `{loop}`, Trigger `{trigger}`)."), ctx)
+    body = _substitute(step.get("body", t("steps.pr.created_by_fabrik_loop_trigger")), ctx)
     pr = provider.create_pr(repo_cfg, title=title, head=head_branch, base=base_branch, body=body)
     _export_pr(ctx, pr)
     provider.add_labels(repo_cfg, pr.number, labels)

@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from typing import Any, TypeAlias
 from urllib.parse import urlparse
 
+from .i18n import t
+
 SIGNATURE_HEADER = "X-Fabrik-Signature"
 SIGNATURE_PREFIX = "sha256="
 ORIGIN_ENV = "FABRIK_WEBHOOK_ORIGIN"
@@ -54,11 +56,11 @@ def parse_content_length(raw: str | None) -> int:
     try:
         length = int(raw)
     except ValueError:
-        raise WebhookError(400, "Content-Length ungültig") from None
+        raise WebhookError(400, t("webhook.content_length_invalid")) from None
     if length < 0:
-        raise WebhookError(400, "Content-Length ungültig")
+        raise WebhookError(400, t("webhook.content_length_invalid"))
     if length > MAX_BODY_BYTES:
-        raise WebhookError(413, "Payload zu groß")
+        raise WebhookError(413, t("webhook.payload_too_large"))
     return length
 
 
@@ -145,15 +147,15 @@ def map_payload(body: bytes, mapping: PayloadMap | None) -> dict[str, str]:
     try:
         payload = json.loads(body.decode() or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise WebhookError(400, "ungültiges JSON") from e
+        raise WebhookError(400, t("webhook.invalid_json")) from e
     if not isinstance(payload, dict):
-        raise WebhookError(400, "JSON-Objekt erwartet")
+        raise WebhookError(400, t("webhook.json_object_expected"))
     out: dict[str, str] = {}
     for var, path in (mapping or {}).items():
         try:
             val = _lookup(payload, str(path))
         except KeyError:
-            raise WebhookError(422, f"Feld fehlt: {path}") from None
+            raise WebhookError(422, t("webhook.field_missing", path=path)) from None
         out[str(var)] = val if isinstance(val, str) else json.dumps(val, ensure_ascii=False)
     return out
 
@@ -189,20 +191,20 @@ def _check_replay(secret: str, body: bytes, header: str, timestamp: str, nonce: 
 
     Signatur zuerst: Fehlermeldungen zu Timestamp/Nonce gibt es nur für authentische Requests."""
     if not nonce or len(nonce) > MAX_NONCE_LEN or not timestamp:
-        raise WebhookError(401, "Signatur ungültig")
+        raise WebhookError(401, t("api.invalid_signature"))
     if not secret or not header or not hmac.compare_digest(header.strip(), sign_replay(secret, body, timestamp, nonce)):
-        raise WebhookError(401, "Signatur ungültig")
+        raise WebhookError(401, t("api.invalid_signature"))
     try:
         ts = float(timestamp)
     except ValueError:
-        raise WebhookError(401, "Timestamp ungültig") from None
+        raise WebhookError(401, t("webhook.timestamp_invalid")) from None
     # Nicht-endliche Werte (nan/inf) umgehen das Fenster: nan vergleicht nie >.
     if not math.isfinite(ts):
-        raise WebhookError(401, "Timestamp ungültig")
+        raise WebhookError(401, t("webhook.timestamp_invalid"))
     if abs(now - ts) > REPLAY_WINDOW_S:
-        raise WebhookError(401, "Timestamp abgelaufen")
+        raise WebhookError(401, t("webhook.timestamp_expired"))
     if not NONCES.add(nonce, now):
-        raise WebhookError(401, "Nonce bereits verwendet")
+        raise WebhookError(401, t("webhook.nonce_already_used"))
 
 
 def authenticate(
@@ -224,7 +226,7 @@ def authenticate(
         _check_replay(secret, body, header, timestamp, nonce, time.time() if now is None else now)
         return trigger
     if not trigger or not verify_signature(secret, body, header):
-        raise WebhookError(401, "Signatur ungültig")
+        raise WebhookError(401, t("webhook.invalid_signature"))
     return trigger
 
 
@@ -232,10 +234,10 @@ def validate_trigger(trig: Trigger, where: str) -> list[str]:
     """Spec-Validierung eines `on_webhook`-Triggers."""
     errs = []
     if not isinstance(trig.get("secret_env"), str) or not trig["secret_env"]:
-        errs.append(f"{where}: on_webhook braucht secret_env (Name der Env-Variable mit dem Shared Secret)")
+        errs.append(t("webhook.on_webhook_needs_secret_env", where=where))
     m = trig.get("map")
     if m is not None and (not isinstance(m, dict) or not all(isinstance(v, str) for v in m.values())):
-        errs.append(f"{where}: on_webhook map muss Variable → Pfad (String) sein")
+        errs.append(t("webhook.on_webhook_map_must_be", where=where))
     if REPLAY_FLAG in trig and not isinstance(trig[REPLAY_FLAG], bool):
-        errs.append(f"{where}: on_webhook {REPLAY_FLAG} muss bool sein")
+        errs.append(t("webhook.on_webhook_flag_must_be_bool", where=where, flag=REPLAY_FLAG))
     return errs

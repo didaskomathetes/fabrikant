@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import auth
+from .i18n import t
 
 DISCOVERY_PATH = "/.well-known/openid-configuration"
 CALLBACK_PATH = "/api/oidc/callback"
@@ -69,7 +70,7 @@ class OidcConfig:
         env = {k: os.environ.get(f"FABRIK_OIDC_{k}", "").strip() for k in _ENV_KEYS}
         missing = [f"FABRIK_OIDC_{k}" for k in _REQUIRED_ENV if not env[k]]
         if missing:
-            raise OidcError(f"OIDC-Konfiguration unvollständig: {', '.join(missing)} fehlt")
+            raise OidcError(t("oidc.oidc_configuration_incomplete_missing", v1=", ".join(missing)))
         issuer = env["ISSUER"].rstrip("/")
         _require_https(issuer, "FABRIK_OIDC_ISSUER")
         return cls(
@@ -94,12 +95,10 @@ def parse_role_map(spec: str) -> dict[str, str]:
         group, sep, role = part.rpartition("=")
         group, role = group.strip(), role.strip()
         if not (sep and group) or role not in auth.ROLES:
-            raise OidcError(
-                f"FABRIK_OIDC_ROLE_MAP: '{part}' ungültig (Format gruppe=rolle, Rollen: {', '.join(auth.ROLES)})"
-            )
+            raise OidcError(t("oidc.fabrik_oidc_role_map_invalid", part=part, v2=", ".join(auth.ROLES)))
         mapping[group] = role
     if not mapping:
-        raise OidcError("FABRIK_OIDC_ROLE_MAP ist leer — ohne Mapping könnte sich niemand anmelden")
+        raise OidcError(t("oidc.fabrik_oidc_role_map_is"))
     return mapping
 
 
@@ -107,7 +106,7 @@ def _require_https(url: str, what: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme == "https" or (parsed.scheme == "http" and auth.is_loopback(parsed.hostname or "")):
         return
-    raise OidcError(f"{what} muss https:// sein (http nur für Loopback): {url}")
+    raise OidcError(t("oidc.must_be_https_http_only", what=what, url=url))
 
 
 def _jwt() -> Any:
@@ -115,9 +114,7 @@ def _jwt() -> Any:
     try:
         import jwt
     except ImportError as e:
-        raise OidcError(
-            f"FABRIK_AUTH=oidc braucht das Extra fabrik[oidc] (PyJWT + cryptography): {INSTALL_HINT}"
-        ) from e
+        raise OidcError(t("oidc.fabrik_auth_oidc_needs_the", v1=INSTALL_HINT)) from e
     return jwt
 
 
@@ -137,7 +134,7 @@ def _http_json(url: str, form: dict[str, str] | None = None) -> dict[str, Any]:
     except (OSError, ValueError) as e:  # URLError/HTTPError sind OSError
         raise OidcError(f"IdP-Anfrage an {url} fehlgeschlagen: {e}") from e
     if not isinstance(doc, dict):
-        raise OidcError(f"IdP-Antwort von {url} ist kein JSON-Objekt")
+        raise OidcError(t("oidc.idp_response_from_is_not", url=url))
     return doc
 
 
@@ -153,10 +150,10 @@ def discovery(cfg: OidcConfig) -> dict[str, Any]:
     if doc is None:
         doc = _http_json(cfg.issuer + DISCOVERY_PATH)
         if doc.get("issuer") != cfg.issuer:
-            raise OidcError(f"Discovery-issuer {doc.get('issuer')!r} passt nicht zu FABRIK_OIDC_ISSUER {cfg.issuer!r}")
+            raise OidcError(t("oidc.discovery_issuer_does_not_match", v1=doc.get("issuer"), v2=cfg.issuer))
         for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
             if not isinstance(doc.get(key), str):
-                raise OidcError(f"Discovery-Dokument ohne '{key}'")
+                raise OidcError(t("oidc.discovery_document_without", key=key))
             _require_https(doc[key], key)
         with _cache_lock:
             _discovery_cache[cfg.issuer] = doc
@@ -223,7 +220,7 @@ def begin_login(cfg: OidcConfig) -> LoginRedirect:
         for key in [k for k, p in _pending.items() if p.expires <= now]:
             del _pending[key]
         if len(_pending) >= MAX_PENDING:
-            raise OidcError("zu viele offene Login-Versuche — bitte später erneut versuchen")
+            raise OidcError(t("oidc.too_many_open_login_attempts"))
         _pending[state] = _Pending(verifier, nonce, now + PENDING_TTL_S)
     query = urllib.parse.urlencode(
         {
@@ -247,11 +244,11 @@ def _take_pending(state: str, browser_state: str | None) -> _Pending:
     ``browser_state`` (Wert von :data:`STATE_COOKIE`) muss zum ``state`` passen: der Callback
     muss im selben Browser ankommen, der den Login begonnen hat (Login-CSRF)."""
     if not (browser_state and hmac.compare_digest(browser_state, state)):
-        raise OidcError("Login-Versuch gehört nicht zu diesem Browser (state) — bitte erneut anmelden")
+        raise OidcError(t("oidc.login_attempt_does_not_belong"))
     with _pending_lock:
         found = _pending.pop(state, None)  # state ist 256 Bit zufällig → Dict-Lookup genügt
     if found is None or found.expires <= time.time():
-        raise OidcError("Login-Versuch unbekannt oder abgelaufen (state) — bitte erneut anmelden")
+        raise OidcError(t("oidc.login_attempt_unknown_or_expired"))
     return found
 
 
@@ -268,7 +265,7 @@ def map_role(claims: dict[str, Any], cfg: OidcConfig) -> str:
     """Höchste Fabrik-Rolle aus den Gruppen-Claims; keine gemappte Gruppe → ``NoRoleError``."""
     roles = [cfg.role_map[g] for g in _groups(claims.get(cfg.groups_claim)) if g in cfg.role_map]
     if not roles:
-        raise NoRoleError("Zugriff verweigert: keine Ihrer IdP-Gruppen ist einer Fabrik-Rolle zugeordnet")
+        raise NoRoleError(t("oidc.access_denied_none_of_your"))
     return max(roles, key=auth.ROLES.index)
 
 
@@ -287,13 +284,13 @@ def validate_id_token(cfg: OidcConfig, doc: dict[str, Any], id_token: str, nonce
             options={"require": ["exp", "iat", "iss", "aud", "sub"]},
         )
     except jwt.PyJWTError as e:
-        raise OidcError(f"ID-Token ungültig: {e}") from e
+        raise OidcError(t("oidc.id_token_invalid", e=e)) from e
     if not hmac.compare_digest(str(claims.get("nonce", "")), nonce):
-        raise OidcError("ID-Token ungültig: nonce stimmt nicht")
+        raise OidcError(t("oidc.id_token_invalid_nonce_does"))
     # OIDC Core 3.1.3.7: bei mehreren Audiences muss azp (falls vorhanden) der eigene Client sein.
     aud, azp = claims["aud"], claims.get("azp")
     if (azp is not None or (isinstance(aud, list) and len(aud) > 1)) and azp != cfg.client_id:
-        raise OidcError("ID-Token ungültig: azp ist nicht dieser Client")
+        raise OidcError(t("oidc.id_token_invalid_azp_is"))
     return claims
 
 
@@ -317,7 +314,7 @@ def complete_login(cfg: OidcConfig, code: str, state: str, browser_state: str | 
     )
     id_token = tokens.get("id_token")
     if not isinstance(id_token, str):
-        raise OidcError("Token-Antwort ohne id_token")
+        raise OidcError(t("oidc.token_response_without_id_token"))
     claims = validate_id_token(cfg, doc, id_token, pending.nonce)
     role = map_role(claims, cfg)
     name = next((str(claims[c]) for c in USERNAME_CLAIMS if claims.get(c)), str(claims["sub"]))

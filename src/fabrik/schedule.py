@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import config, cron
+from .i18n import t
 from .specs import load_projects
 
 ONETIME_FILE = "onetime-runs.json"
@@ -89,7 +90,7 @@ def parse_when(raw: object, now: datetime | None = None) -> datetime:
     if m:
         hh, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
         if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
-            raise ValueError(f"ungültige Uhrzeit: {text}")
+            raise ValueError(t("schedule.invalid_time_of_day", text=text))
         dt = now.replace(hour=hh, minute=mm, second=ss, microsecond=0)
         if dt <= now:
             dt += timedelta(days=1)
@@ -99,16 +100,16 @@ def parse_when(raw: object, now: datetime | None = None) -> datetime:
     if m:
         n = int(m.group(1))
         if n < 1:
-            raise ValueError(f"relativer Wert muss ≥ 1 sein: {text}")
+            raise ValueError(t("schedule.relative_value_must_be_1", text=text))
         return now + timedelta(seconds=n * _WHEN_REL_UNITS[m.group(2).lower()])
 
     try:
         dt = datetime.fromisoformat(text)
     except ValueError:
-        raise ValueError(f"Zeit nicht erkannt: {text!r} — erlaubt: 15:05 · in 10 min · 2026-11-06T09:00") from None
+        raise ValueError(t("schedule.time_not_recognized_allowed_15", text=text)) from None
     dt = _local_naive(dt)
     if dt <= now:
-        raise ValueError(f"Zeit liegt in der Vergangenheit: {text}")
+        raise ValueError(t("schedule.time_is_in_the_past", text=text))
     return dt
 
 
@@ -162,7 +163,7 @@ def _onetime_key(project: str, loop: str) -> str:
 def _valid_project_loop(project: str, loop: str) -> None:
     spec = load_projects().get(project)
     if not spec or spec.get("_error"):
-        raise NotFoundError(f"unbekanntes Projekt: {project}")
+        raise NotFoundError(t("schedule.unknown_project", project=project))
     if loop not in (spec.get("loops") or {}):
         raise NotFoundError(f"unbekannter Loop: {project}/{loop}")
 

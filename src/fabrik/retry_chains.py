@@ -38,6 +38,7 @@ from . import config, cron, pause
 from .failures import parse_kind, parse_retry_after
 from .filelock import locked
 from .gitops import SPEC_ENV_FILE_KEY, project_github
+from .i18n import t as _t
 from .retry import RetryPolicy
 from .runmodel import FAILED_RUN_STATUSES, FailureKind, InvalidTransition, RunStatus, check_transition
 from .runs import RunClaim, get_run, load_records
@@ -162,7 +163,7 @@ class ChainStore:
         except ValueError as e:
             raise ChainStoreCorrupt(f"{p}: {e}") from e
         if not isinstance(data, dict):
-            raise ChainStoreCorrupt(f"{p}: kein JSON-Objekt")
+            raise ChainStoreCorrupt(_t("retry_chains.not_a_json_object", p=p))
         return {k: v for k, v in data.items() if isinstance(v, dict)}
 
     def _save(self, chains: dict[str, dict]) -> None:
@@ -221,15 +222,19 @@ class ChainStore:
         exhausted) blockieren nicht — ein späterer Fehlschlag eröffnet eine neue
         Kette."""
         if state is ChainState.PENDING and next_attempt_at is None:
-            raise ValueError(f"pending-Kette {project}::{loop}::{trigger_key} braucht next_attempt_at")
+            raise ValueError(
+                _t("retry_chains.pending_chain_needs_next_attempt", project=project, loop=loop, trigger_key=trigger_key)
+            )
         if state is ChainState.EXHAUSTED and next_attempt_at is not None:
-            raise ValueError(f"exhausted-Kette {project}::{loop}::{trigger_key} trägt kein next_attempt_at")
+            raise ValueError(
+                _t("retry_chains.exhausted_chain_carries_no_next", project=project, loop=loop, trigger_key=trigger_key)
+            )
         key = _store_key(project, loop, trigger_key)
         with locked(self.root):
             chains = self._load()
             existing = self._parse(chains.get(key, {}))
             if existing is not None and existing.state is ChainState.PENDING:
-                raise ValueError(f"Kette {key} ist bereits pending")
+                raise ValueError(_t("retry_chains.chain_is_already_pending", key=key))
             chain = RetryChain(
                 project=project,
                 loop=loop,
@@ -314,7 +319,14 @@ class ChainStore:
             if chain is None:
                 return None
             if expect_claim is not None and chain.claimed_run_id != expect_claim:
-                raise ClaimConflict(f"Kette {key}: Claim {chain.claimed_run_id!r} statt {expect_claim!r}")
+                raise ClaimConflict(
+                    _t(
+                        "retry_chains.chain_claim_instead_of",
+                        key=key,
+                        v2=chain.claimed_run_id,
+                        expect_claim=expect_claim,
+                    )
+                )
             target = chain.state if to is None else to
             if target is not chain.state:
                 check_transition(CHAIN_TRANSITIONS, chain.state, target)
@@ -529,9 +541,7 @@ def validate_retry_cron(spec: dict, lname: str, ldef: dict, policy: RetryPolicy 
                 errs.append(f"loop {lname}: retry.backoff-Wert {value} >= Cron-Intervall {interval}")
         total = sum(delays, timedelta(0))
         if total > interval:
-            warns.append(
-                f"loop {lname}: Retry-Kette ({total}) länger als Cron-Intervall ({interval}) — Ticks werden übersprungen"
-            )
+            warns.append(_t("retry_chains.loop_retry_chain_longer_than", lname=lname, total=total, interval=interval))
     return errs, warns
 
 
@@ -722,7 +732,7 @@ def on_run_finished_safe(spec: dict, project: str, loop_name: str, record: dict)
     try:
         return on_run_finished(spec, project, loop_name, record)
     except (OSError, ValueError) as e:
-        print(f"[fabrik] Retry-Kette: Run-Ende {project}/{loop_name} nicht gebucht: {e}")
+        print(_t("retry_chains.fabrik_retry_chain_run_end", project=project, loop_name=loop_name, e=e))
         return {"in_chain": False}
 
 
@@ -812,10 +822,10 @@ def _gh_get(repo: str, kind: str, num: str, *, accept_closed: bool = False) -> t
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None, False
-        print(f"[fabrik] Retry: {label} nicht abrufbar: {e}")
+        print(_t("retry_chains.fabrik_retry_could_not_be", label=label, e=e))
         return None, True
     except Exception as e:
-        print(f"[fabrik] Retry: {label} nicht abrufbar: {e}")
+        print(_t("retry_chains.fabrik_retry_could_not_be", label=label, e=e))
         return None, True
     if not isinstance(data, dict) or "number" not in data:
         return None, False
@@ -859,7 +869,7 @@ class _Attempt:
 
         No-Op auf der Kette, wenn der Claim uns nicht mehr gehört."""
         c = self.chain
-        print(f"[fabrik] Retry-Versuch {self.run_id} ({c.key}) nicht gestartet: {reason}")
+        print(_t("retry_chains.fabrik_retry_attempt_not_started", v1=self.run_id, v2=c.key, reason=reason))
         now = config.utcnow()
         store = ChainStore()
         if self.manual:
@@ -884,9 +894,9 @@ class _Attempt:
             to=ChainState.DISMISSED,
             next_attempt_at=None,
         )
-        print(f"[fabrik] Retry-Kette {c.key}: Trigger nicht mehr vorhanden → dismissed")
+        print(_t("retry_chains.fabrik_retry_chain_trigger_no", v1=c.key))
         if self.manual:
-            self._record_not_started("Trigger nicht mehr vorhanden")
+            self._record_not_started(_t("retry_chains.trigger_no_longer_exists"))
 
     def _record_not_started(self, reason: str) -> None:
         """``error``-Record unter der Run-Id eines manuellen Versuchs, die die
@@ -905,7 +915,7 @@ class _Attempt:
             "started": now,
             "finished": now,
             "status": RunStatus.ERROR.value,
-            "error": f"Retry nicht gestartet: {reason}",
+            "error": _t("retry_chains.retry_not_started", reason=reason),
             "steps": [],
             "started_by": self.actor,
             "approved_by": None,
@@ -917,7 +927,7 @@ class _Attempt:
         try:
             STORE.create(c.project, self.run_id, record)
         except (OSError, RunStoreError) as e:
-            print(f"[fabrik] Retry-Versuch {self.run_id}: Record nicht geschrieben: {e}")
+            print(_t("retry_chains.fabrik_retry_attempt_record_not", v1=self.run_id, e=e))
 
     def _prepare(self) -> dict | None:
         """Gates prüfen, Trigger-Variablen laden, Claim-Besitz neu prüfen.
@@ -933,7 +943,7 @@ class _Attempt:
             initial_vars, api_error = _attempt_vars(c.trigger_key, accept_closed=self.accept_closed)
         if initial_vars is None:
             if api_error:
-                self.abort("GitHub nicht erreichbar")
+                self.abort(_t("retry_chains.github_not_reachable"))
             else:
                 self.dismiss()
             return None
@@ -942,7 +952,7 @@ class _Attempt:
         # ist dann bereits beendet — nicht starten.
         fresh = ChainStore().get(c.project, c.loop, c.trigger_key)
         if fresh is None or fresh.claimed_run_id != self.run_id:
-            self.abort("Claim nicht mehr gehalten")
+            self.abort(_t("retry_chains.claim_no_longer_held"))
             return None
         return initial_vars
 
@@ -993,7 +1003,7 @@ class _Attempt:
             try:
                 STORE.write(c.project, self.run_id, record, expect=RunStatus.RUNNING)
             except (OSError, RunStoreError) as e:
-                print(f"[fabrik] Retry-Versuch {self.run_id}: Record nicht geschrieben: {e}")
+                print(_t("retry_chains.fabrik_retry_attempt_record_not", v1=self.run_id, e=e))
         record_run_end(c.project, record)
         return True
 
@@ -1007,7 +1017,7 @@ class _Attempt:
             return
         claim = claim_run(self.chain.project, self.chain.loop, initial_vars)
         if claim is None:
-            self.abort("kein Run-Slot frei")
+            self.abort(_t("retry_chains.no_run_slot_free"))
             return
         try:
             self._execute(claim.scope, initial_vars)
@@ -1070,10 +1080,10 @@ def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
         if spec is None or spec.get("_error"):
             continue  # Projekt fehlt/defekt: Kette bleibt pending (nächster Tick)
         if chain.loop not in (spec.get("loops") or {}):
-            _end_chain(store, chain, ChainState.DISMISSED, now, "Loop nicht mehr vorhanden")
+            _end_chain(store, chain, ChainState.DISMISSED, now, _t("retry_chains.loop_no_longer_exists"))
             continue
         if policy_for(spec, chain.loop) is None:
-            _end_chain(store, chain, ChainState.EXHAUSTED, now, "Retry für den Loop abgeschaltet")
+            _end_chain(store, chain, ChainState.EXHAUSTED, now, _t("retry_chains.retry_disabled_for_the_loop"))
             continue
         if pause.trigger_blocked(chain.project, chain.loop):
             continue  # pausiert/deaktiviert: wartet, kein Budget-Verbrauch
@@ -1084,7 +1094,7 @@ def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
         if not store.claim(chain.project, chain.loop, chain.trigger_key, run_id, now):
             continue  # ein anderer Starter hat den Versuch bekommen
         started.append(run_id)
-        print(f"[fabrik] Retry-Versuch {attempt} für {chain.key} (Run {run_id})")
+        print(_t("retry_chains.fabrik_retry_attempt_for_run", attempt=attempt, v2=chain.key, run_id=run_id))
         _submit(
             _Attempt(
                 chain,
@@ -1133,7 +1143,7 @@ def release_stale_claims() -> int:
         else:
             store.release_claim(chain.project, chain.loop, chain.trigger_key, chain.claimed_run_id, now)
         freed += 1
-        print(f"[fabrik] Retry-Kette {chain.key}: Claim {chain.claimed_run_id} freigegeben (Run nicht aktiv)")
+        print(_t("retry_chains.fabrik_retry_chain_claim_released", v1=chain.key, v2=chain.claimed_run_id))
     return freed
 
 

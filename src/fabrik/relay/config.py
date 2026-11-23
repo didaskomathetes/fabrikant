@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .. import config
+from ..i18n import t
 from ..retry import RetryPolicy
 from .model import Labels
 
@@ -57,7 +58,7 @@ class AgentRole:
         if raw is None:
             return cls()
         if not isinstance(raw, dict) or set(raw) - {"backend", "model"}:
-            errs.append(f"relay.{where}: Mapping mit backend/model erwartet")
+            errs.append(t("relay.config.relay_mapping_with_backend_model", where=where))
             return cls()
         return cls(backend=raw.get("backend"), model=raw.get("model"))
 
@@ -76,14 +77,14 @@ class TrailArchiveConfig:
         if raw is None:
             return None
         if not isinstance(raw, dict) or set(raw) - {"type"}:
-            errs.append("relay.trail_archive: Mapping mit `type` erwartet")
+            errs.append(t("relay.config.relay_trail_archive_mapping_with"))
             return None
         kind = raw.get("type")
         if kind in TRAIL_ARCHIVE_PLANNED:
-            errs.append(f"relay.trail_archive.type: {kind!r} ist vorgesehen, aber noch nicht umgesetzt")
+            errs.append(t("relay.config.relay_trail_archive_type_is", kind=kind))
             return None
         if kind not in TRAIL_ARCHIVE_TYPES:
-            errs.append(f"relay.trail_archive.type: eins von {', '.join(TRAIL_ARCHIVE_TYPES)} (ist {kind!r})")
+            errs.append(t("relay.config.relay_trail_archive_type_one", v1=", ".join(TRAIL_ARCHIVE_TYPES), kind=kind))
             return None
         return cls(type=str(kind))
 
@@ -92,7 +93,7 @@ def _str_list(raw: Any, where: str, errs: list[str]) -> tuple[str, ...]:
     if raw is None:
         return ()
     if not isinstance(raw, list) or not all(isinstance(x, str) and x.strip() for x in raw):
-        errs.append(f"relay.{where}: Liste nicht-leerer Strings erwartet")
+        errs.append(t("relay.config.relay_list_of_non_empty", where=where))
         return ()
     return tuple(x.strip() for x in raw)
 
@@ -101,7 +102,7 @@ def _positive(raw: Any, default: int, where: str, errs: list[str]) -> int:
     if raw is None:
         return default
     if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
-        errs.append(f"relay.{where}: positive Zahl erwartet (ist {raw!r})")
+        errs.append(t("relay.config.relay_positive_number_expected_is", where=where, raw=raw))
         return default
     return raw
 
@@ -144,21 +145,21 @@ class RelayConfig:
         raw = spec.get("relay")
         errs: list[str] = []
         if not isinstance(raw, dict):
-            raise ValueError("relay: Mapping erwartet")
+            raise ValueError(t("relay.config.relay_mapping_expected"))
         known = {f for f in cls.__dataclass_fields__ if f not in ("project", "dispatch_cron")} | {"dispatch"}
         errs += [f"relay.{k}: unbekannter Key" for k in raw if k not in known]
         repo = raw.get("repo") or spec.get("github")
         if not isinstance(repo, str) or "/" not in repo:
-            errs.append("relay.repo (oder github: auf Spec-Ebene) als owner/name nötig")
+            errs.append(t("relay.config.relay_repo_or_github_at"))
         allowed = _str_list(raw.get("allowed"), "allowed", errs)
         if not allowed:
-            errs.append("relay.allowed: mindestens ein GitHub-Login (Briefs sind Agent-Anweisungen)")
+            errs.append(t("relay.config.relay_allowed_at_least_one"))
         bot_login = raw.get("bot_login")
         if not isinstance(bot_login, str) or not bot_login.strip():
-            errs.append("relay.bot_login: Pflicht (Status-Kommentare nur von der gepinnten Identität)")
+            errs.append(t("relay.config.relay_bot_login_required_status"))
         audit = raw.get("audit", True)
         if not isinstance(audit, bool):
-            errs.append("relay.audit muss true/false sein")
+            errs.append(t("relay.config.relay_audit_must_be_true"))
         cfg = cls(
             project=str(spec.get("name", "")),
             repo=str(repo),
@@ -222,16 +223,14 @@ def build_loops(cfg: RelayConfig) -> dict[str, dict]:
     """Die Relay-Loops eines Projekts (Specs-Dicts im normalen Loop-Format)."""
     loops = {
         LOOP_DISPATCH: {
-            "description": f"Relay-Dispatcher: startet die nächste fällige Session/das Audit für `{cfg.label}`-Issues "
-            "(kein Agent, keine Kosten ohne fällige Tasks)",
+            "description": t("relay.config.relay_dispatcher_starts_the_next", v1=cfg.label),
             "tier": 1,
             "worktree": False,
             "triggers": [{"type": "cron", "cron": cfg.dispatch_cron}],
             "steps": [_shell("dispatch", "dispatch", 300, issue=False)],
         },
         LOOP_SESSION: {
-            "description": "Relay-Session: Brief + Handoff → Agent arbeitet bis zur Deadline → Check-in "
-            "(Verify, Scope, Stall) → Commit + Push auf fabrik/relay/<N> → Status-Kommentar",
+            "description": t("relay.config.relay_session_brief_handoff_agent"),
             "tier": 1,
             "triggers": [{"type": "manual"}],
             "steps": [
@@ -245,8 +244,7 @@ def build_loops(cfg: RelayConfig) -> dict[str, dict]:
     }
     if cfg.audit:
         loops[LOOP_AUDIT] = {
-            "description": "Relay-Audit (Reviewer, read-only): Phase 1 blind eigene Reconciliation, "
-            "Phase 2 Prüfung der Session-Skripte/-Logs → AUDIT.md + Verdikt",
+            "description": t("relay.config.relay_audit_reviewer_read_only"),
             "tier": 1,
             "triggers": [{"type": "manual"}],
             "steps": [
@@ -273,7 +271,7 @@ def expand_loops(spec: dict) -> None:
         return  # Spec-Validierung meldet den Fehler
     clash = sorted(set(loops) & {LOOP_DISPATCH, *RUN_LOOPS})
     if clash:
-        raise ValueError(f"relay: Loop-Namen {clash} sind für Relay reserviert")
+        raise ValueError(t("relay.config.relay_loop_names_are_reserved", clash=clash))
     loops.update(build_loops(cfg))
 
 
@@ -283,5 +281,5 @@ def load(project: str) -> tuple[dict, RelayConfig]:
 
     spec = specs.load_spec(specs.spec_path(project))
     if spec.get("relay") is None:
-        raise ValueError(f"Projekt {project!r} hat keinen relay:-Block")
+        raise ValueError(t("relay.config.project_has_no_relay_block", project=project))
     return spec, RelayConfig.from_spec(spec)

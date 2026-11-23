@@ -21,12 +21,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import config
+from .i18n import t
 from .specs import load_projects
 
 ACTIVE, PAUSED, DISABLED = "active", "paused", "disabled"
 STATES = (ACTIVE, PAUSED, DISABLED)
 
 _lock = threading.Lock()
+
+
+class UnknownTargetError(ValueError):
+    """Project or loop does not exist (HTTP 404 in the API)."""
 
 
 def _states_path() -> Path:
@@ -88,7 +93,7 @@ def _audit(actor: str, project: str, loop: str | None, old: str, new: str, until
     with _audit_path().open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     scope = _key(project, loop)
-    print(f"[fabrik] State {scope}: {old} → {new}" + (f" bis {until}" if until else "") + f" (von {actor})")
+    print(f"[fabrik] State {scope}: {old} → {new}" + (f" bis {until}" if until else "") + t("pause.by", actor=actor))
 
 
 def parse_until(raw: str | None) -> str | None:
@@ -98,12 +103,12 @@ def parse_until(raw: str | None) -> str | None:
     try:
         dt = datetime.fromisoformat(str(raw))
     except ValueError as e:
-        raise ValueError(f"until: ungültiger ISO-8601-Zeitstempel: {raw}") from e
+        raise ValueError(t("pause.until_invalid_iso_8601_timestamp", raw=raw)) from e
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     dt = dt.astimezone(UTC)
     if dt <= config.utcnow():
-        raise ValueError("until liegt nicht in der Zukunft")
+        raise ValueError(t("pause.until_is_not_in_the"))
     return dt.isoformat()
 
 
@@ -129,7 +134,7 @@ def trigger_blocked(project: str, loop: str) -> bool:
 def manual_block_reason(project: str, loop: str) -> str | None:
     """Begründung, falls ein manueller Run verboten ist (nur `disabled`), sonst None."""
     if effective_state(project, loop) == DISABLED:
-        return f"{_key(project, loop)} ist deaktiviert (disabled) — keine manuellen Runs"
+        return t("pause.is_disabled_no_manual_runs", v1=_key(project, loop))
     return None
 
 
@@ -139,14 +144,14 @@ def set_state(project: str, loop: str | None, state: str, *, until: str | None =
     Raises ValueError bei unbekanntem Projekt/Loop/State oder ungültigem `until`.
     """
     if state not in STATES:
-        raise ValueError(f"state muss einer von {', '.join(STATES)} sein")
+        raise ValueError(t("pause.state_must_be_one_of", v1=", ".join(STATES)))
     spec = load_projects().get(project)
     if not spec or spec.get("_error"):
-        raise ValueError(f"Projekt unbekannt: {project}")
+        raise UnknownTargetError(t("pause.unknown_project", project=project))
     if loop and loop not in (spec.get("loops") or {}):
-        raise ValueError(f"Loop unbekannt: {loop}")
+        raise UnknownTargetError(t("pause.unknown_loop", loop=loop))
     if state == ACTIVE and until:
-        raise ValueError("until ist nur bei paused/disabled erlaubt")
+        raise ValueError(t("pause.until_is_only_allowed_with"))
     until_iso = parse_until(until)
     with _lock:
         data = _load()

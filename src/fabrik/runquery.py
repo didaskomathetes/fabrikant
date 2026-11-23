@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
+from .i18n import t
 from .runmodel import Run
 
 SortKey = tuple[str, str, str]
@@ -47,7 +48,7 @@ def _check_date(name: str, value: str) -> str:
         else:
             datetime.fromisoformat(value)
     except ValueError as e:
-        raise ValueError(f"ungültiges Datum für '{name}': {value!r} (erwartet YYYY-MM-DD[THH:MM:SS])") from e
+        raise ValueError(t("runquery.invalid_date_for_expected_yyyy", name=name, value=value)) from e
     return value
 
 

@@ -39,6 +39,7 @@ import subprocess
 from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
 from ..gitops import process_env
+from ..i18n import t
 from ..procs import run_group
 from ..runmodel import FailureKind, split_verdict
 from ..secrets import _redact
@@ -69,10 +70,9 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
         # nicht-str sein; der Kollisions-Check braucht konsistente Typen.
         clash = set(_PLACEHOLDER_RE.findall(raw_cmd)) & {str(k) for k in env_step}
         if clash:
-            msg = (
-                "cmd enthält Inline-Placehalter, die mit env:-Keys kollidieren ("
-                f"{', '.join('{' + name + '}' for name in sorted(clash))}) — "
-                "untrusted Werte gehören in env:, nicht in cmd (Issue #62)"
+            msg = t(
+                "steps.shell.cmd_contains_inline_placeholders_that",
+                v1=", ".join("{" + name + "}" for name in sorted(clash)),
             )
             emit(f"  ERROR: {msg}")
             return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="placeholder-env-clash")

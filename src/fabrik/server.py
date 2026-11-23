@@ -44,6 +44,8 @@ from . import llm as llm_registry
 from .chat import _cancel_chat, _chat, _chat_resume, _finish_chat, _register_chat, requeue_approved_runs
 from .engine import pool_status, queued_trigger_snapshot, requeue_queued_runs, start_priority_run
 from .gitops import cleanup_orphaned_worktrees
+from .i18n import t
+from .i18n import t as _t
 from .runmeta import run_meta
 from .runs import (
     LOCK_KEY_SEP,
@@ -74,7 +76,7 @@ def _chains_or_empty() -> list[retry_chains.RetryChain]:
     try:
         return retry_chains.ChainStore().all()
     except (OSError, ValueError) as e:
-        print(f"[fabrik] Retry-Ketten nicht lesbar: {e}")
+        print(t("server.chains_unreadable", error=e))
         return []
 
 
@@ -121,10 +123,10 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 raise ValueError(length)
             payload = json.loads(self.rfile.read(length).decode() or "{}")
         except (ValueError, UnicodeDecodeError):  # JSONDecodeError ist ein ValueError
-            self._json({"error": "ungültiges JSON"}, 400)
+            self._json({"error": t("api.invalid_json")}, 400)
             return None
         if not isinstance(payload, dict):
-            self._json({"error": "ungültiges JSON"}, 400)
+            self._json({"error": t("api.invalid_json")}, 400)
             return None
         return payload
 
@@ -164,7 +166,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         """CORS-Preflight: nur für die Webhook-Route und den Tunnel-Origin."""
         path = self.path.split("?")[0]
         if self._tunnel_blocked(path):
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
             return
         self.send_response(204)
         if path.startswith(webhook.WEBHOOK_PATH_PREFIX):
@@ -182,7 +184,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         length = webhook.parse_content_length(self.headers.get("Content-Length"))
         body = self.rfile.read(length) if length else b""
         if len(parts) != 2 or not all(parts):
-            raise webhook.WebhookError(401, "Signatur ungültig")
+            raise webhook.WebhookError(401, t("api.invalid_signature"))
         return parts[0], parts[1], body
 
     def _webhook(self, path: str):
@@ -220,7 +222,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, e.status)
             return
         if alert is None:
-            self._json({"ignored": True, "reason": "kein Incident (Zustand != ALARM)"}, 200)
+            self._json({"ignored": True, "reason": t("api.not_an_incident")}, 200)
             return
         self._json(*self._start_run(name, lname, "alert", alert.to_vars(), alerts.TRIGGER_TYPE, actor="alert"))
 
@@ -267,11 +269,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
         if required is None:
             return True
         if self._who is None:
-            self._json({"error": "login nötig"}, 401)
+            self._json({"error": t("api.login_required")}, 401)
         elif not self._who.allows(required):
-            self._json({"error": f"Rolle '{required}' nötig"}, 403)
+            self._json({"error": t("api.role_required", role=required)}, 403)
         elif writes and not auth.csrf_ok(self._who, self.headers.get(auth.CSRF_HEADER, "")):
-            self._json({"error": "CSRF-Token ungültig"}, 403)
+            self._json({"error": t("api.csrf_invalid")}, 403)
         else:
             return True
         return False
@@ -294,11 +296,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
         if auth.mode() != auth.MODE_LOCAL:
-            self._json({"error": "Login nur im Modus FABRIK_AUTH=local"}, 400)
+            self._json({"error": _t("server.login_only_in_fabrik_auth")}, 400)
             return
         result = auth.login(str(payload.get("user", "")), str(payload.get("password", "")))
         if result is None:
-            self._json({"error": "Zugangsdaten ungültig"}, 401)
+            self._json({"error": t("api.bad_credentials")}, 401)
             return
         sid, who = result
         self._json(
@@ -328,7 +330,12 @@ class FabrikHandler(BaseHTTPRequestHandler):
         params = self._query_params()
         if params.get("error"):
             self._json(
-                {"error": f"IdP meldet Fehler: {params['error']} {params.get('error_description', '')}".strip()}, 401
+                {
+                    "error": t(
+                        "api.idp_error", error=params["error"], description=params.get("error_description", "")
+                    ).strip()
+                },
+                401,
             )
             return
         try:
@@ -403,7 +410,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if self._tunnel_blocked(path):
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
             return
         if not self._gate("GET", path):
             return
@@ -432,7 +439,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             rid = path[len("/api/run/") : -len("/log")]
             log = get_run_log(rid, self._query_param("project"))
             if log is None:
-                self._json({"error": "Log nicht gefunden"}, 404)
+                self._json({"error": t("api.log_not_found")}, 404)
                 return
             params = self._query_params()
             if params.get("lines"):
@@ -496,12 +503,12 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 with contextlib.suppress(BrokenPipeError, ConnectionResetError):
                     self.wfile.write(body)
             else:
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
         elif path.startswith("/api/projects/") and path.endswith("/spec"):
             name = path[len("/api/projects/") : -len("/spec")]
             specs = load_projects()
             if name not in specs:
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
                 return
             p = spec_path(name, specs)
             if self._query_params().get("raw") == "1":
@@ -509,7 +516,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 # UI-Graph-Editor: vars wörtlich, use:/insert: un-inlined, alle
                 # Loop-Schlüssel erhalten. + _hash für den Optimistischen Lock.
                 if not p.is_file():
-                    self._json({"error": "unbekanntes Projekt"}, 404)
+                    self._json({"error": t("api.unknown_project")}, 404)
                     return
                 raw = load_spec_raw(p)
                 raw["_hash"] = spec_hash(p)
@@ -527,7 +534,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             q = self._query_params()
             proj = q.get("project")
             if proj and proj not in load_projects():
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
                 return
             proj_path = spec_path(proj) if proj else None
             try:
@@ -540,7 +547,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             name = path[len("/api/projects/") : -len("/branches")]
             spec = load_projects().get(name)
             if not spec or spec.get("_error"):
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
                 return
             repo = spec.get("repo") or {}
             b = branches.list_branches(spec["root"]) if repo else []
@@ -555,7 +562,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 try:
                     state = retry_chains.ChainState(state)
                 except ValueError:
-                    self._json({"error": f"unbekannter state: {state!r}"}, 400)
+                    self._json({"error": t("api.unknown_state", state=repr(state))}, 400)
                     return
             chains = [
                 asdict(c)
@@ -576,7 +583,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             self._alert(path)  # eigene HMAC-Auth, wie Webhooks (ADR 0045)
             return
         if self._tunnel_blocked(path):
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
             return
         if not self._gate("POST", path):
             return
@@ -590,7 +597,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name, lname = payload.get("project"), payload.get("loop")
             if not name or not lname:
-                self._json({"error": "project + loop nötig"}, 400)
+                self._json({"error": t("api.project_loop_required")}, 400)
                 return
             note = payload.get("note", "")
             # Optionale Initiale-Variablen (K=V), z. B. issue_number für
@@ -600,7 +607,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             # halten (der Handler-Thread würde sonst ohne Release sterben).
             raw_vars = payload.get("vars")
             if raw_vars is not None and not isinstance(raw_vars, dict):
-                self._json({"error": "vars muss ein Objekt (K=V) sein"}, 400)
+                self._json({"error": _t("server.vars_must_be_an_object")}, 400)
                 return
             initial_vars = {str(k): str(v) for k, v in (raw_vars or {}).items()} or None
 
@@ -616,7 +623,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name, lname = payload.get("project"), payload.get("loop")
             if not name or not lname:
-                self._json({"error": "project + loop nötig"}, 400)
+                self._json({"error": t("api.project_loop_required")}, 400)
                 return
             try:
                 when = schedule.parse_when(payload.get("when", ""), datetime.now())
@@ -634,7 +641,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             msg = str(payload.get("message", "")).strip()
             if not msg:
-                self._json({"error": "message nötig"}, 400)
+                self._json({"error": t("api.message_required")}, 400)
                 return
             # Client kann eigene req_id mitschicken (damit er sofort canceln kann,
             # bevor die Antwort da ist); sonst generieren wir eine.
@@ -660,7 +667,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             # (Der LLM-Call läuft im Hintergrund zu Ende — Daemon-Thread, Ergebnis verworfen.)
             while not done.wait(timeout=0.2):
                 if cancel_event.is_set():
-                    self._json({"reply": "⊘ abgebrochen", "req_id": req_id})
+                    self._json({"reply": t("chat.cancelled"), "req_id": req_id})
                     return
             self._json({"reply": reply, "req_id": req_id})
         elif path == "/api/chat/cancel":
@@ -669,7 +676,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             rid = str(payload.get("req_id", "")).strip()
             if not rid:
-                self._json({"error": "req_id nötig"}, 400)
+                self._json({"error": t("api.req_id_required")}, 400)
                 return
             ok = _cancel_chat(rid)
             self._json({"ok": ok, "cancelled": ok})
@@ -679,7 +686,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name, run_id = payload.get("project"), payload.get("run_id")
             if not name or not run_id:
-                self._json({"error": "project + run_id nötig"}, 400)
+                self._json({"error": t("api.project_run_required")}, 400)
                 return
             try:
                 reply, resumed = _chat_resume(name, run_id, path == "/api/approve", actor=self._actor)
@@ -698,7 +705,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name = str(payload.get("provider", "")).strip()
             if not name:
-                self._json({"error": "provider nötig"}, 400)
+                self._json({"error": t("api.provider_required")}, 400)
                 return
             try:
                 llm_registry.set_active(name)
@@ -720,8 +727,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
                     until=payload.get("until"),
                     actor=self._audit_actor,
                 )
+            except pause.UnknownTargetError as e:
+                self._json({"error": str(e)}, 404)
+                return
             except ValueError as e:
-                self._json({"error": str(e)}, 404 if "unbekannt" in str(e) else 400)
+                self._json({"error": str(e)}, 400)
                 return
             self._json({"ok": True, **res})
         elif path.startswith("/api/projects/") and path.endswith("/branch"):
@@ -732,17 +742,17 @@ class FabrikHandler(BaseHTTPRequestHandler):
             branch = str(payload.get("branch", "")).strip()
             spec = load_projects().get(name)
             if not spec or spec.get("_error"):
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
                 return
             if not spec.get("repo"):
-                self._json({"error": "Projekt hat kein repo (kein Branch-Wechsel)"}, 400)
+                self._json({"error": t("api.no_repo")}, 400)
                 return
             if not branch:
-                self._json({"error": "branch nötig"}, 400)
+                self._json({"error": t("api.branch_required")}, 400)
                 return
             available = branches.list_branches(spec["root"])
             if available and branch not in available:
-                self._json({"error": f"Branch '{branch}' existiert nicht (verfügbar: {', '.join(available)})"}, 400)
+                self._json({"error": t("api.branch_missing", branch=branch, available=", ".join(available))}, 400)
                 return
             branches.save_override(name, branch)
             self._json({"ok": True, "project": name, "branch": branch})
@@ -755,12 +765,12 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name, lname, tkey = payload.get("project"), payload.get("loop"), payload.get("trigger_key")
             if not name or not lname or not tkey:
-                self._json({"error": "project + loop + trigger_key nötig"}, 400)
+                self._json({"error": t("api.chain_key_required")}, 400)
                 return
             if path.endswith("/dismiss"):
                 chain = retry_chains.dismiss_chain(name, lname, tkey, actor=self._audit_actor)
                 if chain is None:
-                    self._json({"error": "Kette nicht gefunden (oder nicht pending/exhausted)"}, 404)
+                    self._json({"error": t("api.chain_not_retryable")}, 404)
                     return
                 self._json({"ok": True, "chain": asdict(chain)})
             else:
@@ -771,16 +781,16 @@ class FabrikHandler(BaseHTTPRequestHandler):
                     self._json({"error": str(e)}, 409)
                     return
                 if run_id is None:
-                    self._json({"error": "Kette nicht gefunden (oder nicht exhausted)"}, 404)
+                    self._json({"error": t("api.chain_not_exhausted")}, 404)
                     return
                 self._json({"ok": True, "run_id": run_id})
         else:
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
 
     def do_PUT(self):
         path = self.path.split("?")[0]
         if self._tunnel_blocked(path):
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
             return
         if not self._gate("PUT", path):
             return
@@ -795,13 +805,13 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             base_hash = payload.get("base_hash")
             if base_hash is not None and not isinstance(base_hash, str):
-                self._json({"error": "base_hash muss ein String sein"}, 400)
+                self._json({"error": _t("server.base_hash_must_be_a")}, 400)
                 return
             try:
                 update = SpecUpdate.from_payload({k: v for k, v in payload.items() if k != "base_hash"})
                 saved = save_spec(name, update, base_hash=base_hash)
             except KeyError:
-                self._json({"error": "unbekanntes Projekt"}, 404)
+                self._json({"error": t("api.unknown_project")}, 404)
                 return
             except SpecConflict as e:
                 self._json({"error": str(e)}, 409)
@@ -813,12 +823,12 @@ class FabrikHandler(BaseHTTPRequestHandler):
         elif path.startswith(auth.CONNECTIONS_PREFIX + "/"):
             self._connection_put(path[len(auth.CONNECTIONS_PREFIX) + 1 :])
         else:
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
 
     def do_DELETE(self):
         path = self.path.split("?")[0]
         if self._tunnel_blocked(path):
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
             return
         if not self._gate("DELETE", path):
             return
@@ -828,11 +838,11 @@ class FabrikHandler(BaseHTTPRequestHandler):
                 return
             name, lname = payload.get("project"), payload.get("loop")
             if not name or not lname:
-                self._json({"error": "project + loop nötig"}, 400)
+                self._json({"error": t("api.project_loop_required")}, 400)
                 return
             entry = schedule.remove_onetime(name, lname)
             if entry is None:
-                self._json({"error": "kein One-time-Run angesetzt"}, 404)
+                self._json({"error": t("api.no_onetime")}, 404)
                 return
             self._json({"ok": True, "onetime": entry})
         elif path.startswith(auth.CONNECTIONS_PREFIX + "/"):
@@ -840,9 +850,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
             if connections.delete_connection(name):
                 self._json({"ok": True})
             else:
-                self._json({"error": "unbekannte Verbindung (Env-Verbindungen sind nicht löschbar)"}, 404)
+                self._json({"error": t("api.unknown_connection")}, 404)
         else:
-            self._json({"error": "unbekannte Route"}, 404)
+            self._json({"error": t("api.unknown_route")}, 404)
 
     def _connection_put(self, name: str) -> None:
         """PUT /api/connections/<name>: anlegen/ändern. Fehlendes ``secret`` behält das gespeicherte,
@@ -882,7 +892,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         project = self._query_param("project")
         # Nur Existenz prüfen (Pfad), nicht die ganze Log-Datei einlesen.
         if get_run(rid, project) is None and get_run_log_path(rid, project) is None:
-            self._json({"error": "Run nicht gefunden"}, 404)
+            self._json({"error": t("api.run_not_found")}, 404)
             return
         offset = stream.parse_offset(self.headers.get("Last-Event-ID") or self._query_param("offset"))
         self.send_response(200)
@@ -900,17 +910,17 @@ class FabrikHandler(BaseHTTPRequestHandler):
     def _run_transcript(self, rid: str):
         """GET /api/run/<id>/transcript?after=<event-id>&limit=N: Agent-Turns aus dem SessionLog."""
         if get_run(rid, self._query_param("project")) is None:
-            self._json({"error": "Run nicht gefunden"}, 404)
+            self._json({"error": t("api.run_not_found")}, 404)
             return
         params = self._query_params()
         try:
             after = max(0, int(params.get("after") or 0))
             limit = int(params.get("limit") or sessionlog.TRANSCRIPT_PAGE)
         except ValueError:
-            self._json({"error": "after/limit müssen Zahlen sein"}, 400)
+            self._json({"error": t("api.after_limit_numeric")}, 400)
             return
         if limit < 1:
-            self._json({"error": "limit muss >= 1 sein"}, 400)
+            self._json({"error": _t("server.limit_must_be_1")}, 400)
             return
         entries = sessionlog.transcript(rid, after, min(limit, sessionlog.TRANSCRIPT_PAGE))
         self._json({"entries": [e.to_dict() for e in entries], "next_after": entries[-1].id if entries else after})
@@ -1016,7 +1026,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
         try:
             chain = retry_chains.ChainStore().get(project, loop, key)
         except (OSError, ValueError) as e:  # defekter Store: Run-Ansicht ohne Ketten-Info
-            print(f"[fabrik] Retry-Ketten nicht lesbar: {e}")
+            print(t("server.chains_unreadable", error=e))
             return None
         if chain is None or not chain.is_active:
             return None
@@ -1285,9 +1295,9 @@ def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
     # Erst die Vorrang-Warter registrieren, DANN den Scheduler starten — sonst
     # schnappt dessen erster Poll den Lock vor den eingereihten Runs.
     for rid in requeue_approved_runs():
-        print(f"[fabrik] Freigabe {rid} wartet weiter auf einen freien Run-Slot")
+        print(t("server.approval_still_waiting", run_id=rid))
     for rid in requeue_queued_runs():
-        print(f"[fabrik] Eingereihter Run {rid} wartet weiter auf einen freien Run-Slot")
+        print(t("server.queued_still_waiting", run_id=rid))
     sched = Scheduler()
     sched.start()
     workers = config.configured_workers()

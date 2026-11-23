@@ -9,6 +9,7 @@ from .. import llm as llm_registry
 from ..billing import for_step as billing_for_step
 from ..context import _cap, _substitute, untrusted_blocks
 from ..failures import classify_exception, failed
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 from .extra_context import render_extra_context
@@ -46,18 +47,18 @@ def _validate_schema(parsed: dict, schema: dict) -> list[str]:
             if isinstance(spec, dict) and "default" in spec:
                 parsed[key] = spec["default"]
             else:
-                errs.append(f"'{key}' fehlt")
+                errs.append(_t("steps.llm.missing", key=key))
                 continue
         t: type | tuple[type, ...] | None = _SCHEMA_TYPES.get(typ) if isinstance(typ, str) else None
         v = parsed[key]
         if t is None:
             errs.append(f"'{key}': unbekannter Schema-Typ '{typ}'")
         elif typ == "integer" and isinstance(v, bool):
-            errs.append(f"'{key}' soll integer sein, ist bool")
+            errs.append(_t("steps.llm.should_be_integer_is_bool", key=key))
         elif not isinstance(v, t):
-            errs.append(f"'{key}' soll {typ} sein, ist {type(v).__name__}")
+            errs.append(_t("steps.llm.should_be_is", key=key, typ=typ, v3=type(v).__name__))
         elif enum is not None and v not in enum:
-            errs.append(f"'{key}': Wert {v!r} nicht in erlaubten Werten {enum}")
+            errs.append(_t("steps.llm.value_not_in_allowed_values", key=key, v=v, enum=enum))
     return errs
 
 
@@ -103,12 +104,12 @@ def _resolve_provider(step: dict) -> dict:
     if prov_name:
         prov = llm_registry.get_provider(prov_name)
         if not prov:
-            known = ", ".join(p["name"] for p in llm_registry.list_providers()) or "(keine)"
-            raise _ProviderError(f"LLM-Provider '{prov_name}' unbekannt (verfügbar: {known})")
+            known = ", ".join(p["name"] for p in llm_registry.list_providers()) or _t("steps.llm.none")
+            raise _ProviderError(_t("steps.llm.llm_provider_unknown_available", prov_name=prov_name, known=known))
         return prov
     prov = llm_registry.active_provider()
     if not prov:
-        raise _ProviderError("kein LLM konfiguriert (FABRIK_LLM_URL + FABRIK_LLM_MODEL oder FABRIK_LLM_PROVIDERS)")
+        raise _ProviderError(_t("steps.llm.no_llm_configured_fabrik_llm"))
     return prov
 
 
@@ -129,7 +130,7 @@ def _complete(prov: dict, step: dict, prompt: str, model: str, emit) -> dict:
     def _call(budget: int) -> dict:
         return llm_registry.complete(
             prov,
-            step.get("system", "Antworte NUR mit validem JSON. Kein Markdown, keine Kommentare."),
+            step.get("system", _t("steps.llm.answer_only_with_valid_json")),
             prompt,
             model=model,
             temperature=float(step.get("temperature", 0.2)),
@@ -140,7 +141,7 @@ def _complete(prov: dict, step: dict, prompt: str, model: str, emit) -> dict:
     res = _call(max_tokens)
     if res.get("finish_reason") == "length":
         retry_budget = max_tokens * _TRUNCATION_RETRY_FACTOR
-        emit(f"  ⚠ LLM-Antwort abgeschnitten (max_tokens={max_tokens}) — Retry mit max_tokens={retry_budget}")
+        emit(_t("steps.llm.llm_answer_truncated_max_tokens", max_tokens=max_tokens, retry_budget=retry_budget))
         first_usage = res["usage"]
         res = _call(retry_budget)
         res["usage"] = {k: v + first_usage.get(k, 0) for k, v in res["usage"].items()}
@@ -166,10 +167,10 @@ def _inject_schema_keys(parsed: dict, schema: dict, ctx: dict, emit) -> list[str
     injected = []
     for k, v in parsed.items():
         if k not in schema:
-            emit(f"  ⚠ llm: Key '{k}' nicht im Schema — ignoriert (ctx-Isolation)")
+            emit(_t("steps.llm.llm_key_not_in_the", k=k))
             continue
         if k in ctx:
-            emit(f"  ⚠ llm: Key '{k}' existiert bereits im ctx — nicht überschrieben")
+            emit(_t("steps.llm.llm_key_already_exists_in", k=k))
             continue
         ctx[k] = v if isinstance(v, (str, int, float, bool)) else json.dumps(v, ensure_ascii=False)
         injected.append(f"{k}={str(v)[:40]}")
@@ -195,7 +196,7 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
     untrusted = step.get("untrusted") or []
     emit(
         f"  LLM {model} (prompt {len(prompt)} chars"
-        + (f", {len(untrusted)} untrusted-Blöcke" if untrusted else "")
+        + (_t("steps.llm.untrusted_blocks", v1=len(untrusted)) if untrusted else "")
         + ")"
     )
     try:
@@ -211,10 +212,10 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
     }
     text, parsed = _extract_json(text)
     if parsed is None:
-        summary = "LLM lieferte kein JSON-Object"
+        summary = _t("steps.llm.llm_returned_no_json_object")
         if res.get("finish_reason") == "length":
             max_tokens = int(step.get("max_tokens", _DEFAULT_MAX_TOKENS))
-            summary += f" (abgeschnitten, auch mit max_tokens={max_tokens * _TRUNCATION_RETRY_FACTOR})"
+            summary += _t("steps.llm.truncated_even_with_max_tokens", v1=max_tokens * _TRUNCATION_RETRY_FACTOR)
         return {"ok": False, "output": _cap(text), "summary": summary, "usage": usage}
     schema = step.get("schema") or {}
     errs = _validate_schema(parsed, schema)
@@ -225,6 +226,6 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
     return {
         "ok": True,
         "output": _cap(text),
-        "summary": ", ".join(injected) if injected else "kein Schema — LLM-Output nur im Log",
+        "summary": ", ".join(injected) if injected else _t("steps.llm.no_schema_llm_output_only"),
         "usage": usage,
     }

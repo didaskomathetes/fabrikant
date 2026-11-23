@@ -23,6 +23,7 @@ from typing import Protocol
 from urllib.parse import urlencode
 
 from . import config, httpsafe
+from .i18n import t
 
 SLACK_API = "https://slack.com/api"
 DEFAULT_POLL_S = 60
@@ -40,7 +41,6 @@ CHANNEL_ID_RE = re.compile(r"^[A-Z0-9]{2,32}$")  # Channel-/DM-ID, z. B. "C0123A
 # State-Datei; ohne Lock gehen Updates verloren (→ Doppel-Run eines pending Alerts).
 _state_lock = threading.Lock()
 log = logging.getLogger("fabrik.slack")
-TRUNCATION_MARKER = "… [gekürzt, {total} Zeichen]"  # Suffix eines gekürzten `alert_text`
 
 
 class SlackError(Exception):
@@ -101,7 +101,7 @@ class WebApiClient:
         with httpsafe.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
             data = json.loads(resp.read().decode())
         if not data.get("ok"):
-            raise SlackError(data.get("error", "unbekannter Fehler"))
+            raise SlackError(data.get("error", t("slack.unknown_error")))
         next_cursor = str((data.get("response_metadata") or {}).get("next_cursor") or "")
         return list(data.get("messages") or []), next_cursor
 
@@ -151,7 +151,7 @@ def cap_text(text: str, limit: int) -> str:
     """`text` auf `limit` Zeichen kürzen, mit Marker samt Originallänge."""
     if len(text) <= limit:
         return text
-    return text[:limit] + TRUNCATION_MARKER.format(total=len(text))
+    return text[:limit] + t("slack.truncation_marker", total=len(text))
 
 
 def _is_alert(msg: dict) -> bool:
@@ -162,16 +162,16 @@ def validate_trigger(trig: dict, where: str) -> list[str]:
     """Spec-Validierung eines `on_slack`-Triggers."""
     errs = []
     if "token" in trig:
-        errs.append(f"{where}: on_slack token gehört nicht ins Spec — token_env (Env-Name) verwenden")
+        errs.append(t("slack.on_slack_token_does_not", where=where))
     if not isinstance(trig.get("token_env"), str) or not trig["token_env"]:
-        errs.append(f"{where}: on_slack braucht token_env (Name der Env-Variable mit dem Bot-Token)")
+        errs.append(t("slack.on_slack_needs_token_env", where=where))
     chans = trig.get("channels")
     if (
         not isinstance(chans, list)
         or not chans
         or not all(isinstance(c, str) and CHANNEL_ID_RE.match(c) for c in chans)
     ):
-        errs.append(f"{where}: on_slack braucht channels (nicht-leere Whitelist von Channel-IDs wie C0123ABC)")
+        errs.append(t("slack.on_slack_needs_channels_non", where=where))
     pat = trig.get("pattern")
     if pat is not None:
         try:
@@ -179,7 +179,7 @@ def validate_trigger(trig: dict, where: str) -> list[str]:
                 raise TypeError
             re.compile(pat)
         except (re.error, TypeError):
-            errs.append(f"{where}: on_slack pattern muss ein gültiger Regex-String sein")
+            errs.append(t("slack.on_slack_pattern_must_be", where=where))
     return errs
 
 
@@ -322,13 +322,13 @@ def _merge_history(
     elif msgs:
         st["gap_latest"], st["gap_high"] = msgs[0]["ts"], newest
         log.warning(
-            "on_slack %s: Seitenlimit erreicht — Nachrichten nach %s und vor %s folgen beim nächsten Poll",
+            t("slack.on_slack_s_page_limit"),
             channel,
             st["cursor"],
             msgs[0]["ts"],
         )
     else:
-        log.warning("on_slack %s: Seitenlimit ohne gültige Nachrichten — Cursor bleibt", channel)
+        log.warning(t("slack.on_slack_s_page_limit_2"), channel)
     return alerts
 
 
@@ -339,9 +339,7 @@ def _accept(st: dict, channel: str, msg: dict, pending: dict[str, Alert], rules:
         return None
     text = cap_text(msg["text"], rules.max_chars)
     if text != msg["text"]:
-        log.debug(
-            "on_slack %s@%s: alert_text gekürzt (%d → %d Zeichen)", channel, ts, len(msg["text"]), rules.max_chars
-        )
+        log.debug(t("slack.on_slack_s_s_alert"), channel, ts, len(msg["text"]), rules.max_chars)
     alert = Alert(text=text, channel=channel, ts=ts)
     if rules.defer_seen:
         pending[ts] = alert

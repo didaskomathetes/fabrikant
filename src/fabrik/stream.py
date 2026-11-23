@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from . import secrets
+from .i18n import t
 from .runs import get_run, get_run_log_path
 from .secrets import _redact
 
@@ -81,7 +82,7 @@ def _redact_with_offsets(text: str, offset: int) -> tuple[str, list[int]]:
     # Gleicher Durchlauf wie `boundaries` → Längen stimmen immer überein.
     # Cross-Check gegen den Repo-Helfer, damit eine Änderung an `_redact`
     # hier laut auffällt, statt die Offsets still zu verschieben.
-    assert redacted_text == _redact(original), "Stream-Redaction weicht von secrets._redact ab"
+    assert redacted_text == _redact(original), t("stream.stream_redaction_deviates_from_secrets")
     return redacted_text, boundaries
 
 

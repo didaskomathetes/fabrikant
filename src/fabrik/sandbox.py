@@ -58,6 +58,7 @@ from pathlib import Path
 
 from . import egress
 from .config import HARNESS_DIR, HARNESS_LOCAL_FILE, HARNESS_PRIVATE_DIR
+from .i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class SandboxConfig:
         try:
             pids_limit = int(pids_raw)
         except ValueError:
-            raise RuntimeError(f"{PIDS_LIMIT_VAR} muss eine Ganzzahl sein (ist {pids_raw!r})") from None
+            raise RuntimeError(t("sandbox.must_be_an_integer_is", v1=PIDS_LIMIT_VAR, pids_raw=pids_raw)) from None
         return cls(
             image=env.get(IMAGE_VAR, "") or DEFAULT_IMAGE,
             memory=env.get(MEMORY_VAR, "") or DEFAULT_MEMORY,
@@ -296,7 +297,7 @@ def _require_worktree_root(workdir: str) -> None:
     Bundle das ganze Repo enthalten und der Wurzel-relative Patch am falschen Ort angewendet."""
     top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
     if os.path.realpath(top) != os.path.realpath(workdir):
-        raise SandboxError(f"Sandbox braucht die Worktree-Wurzel ({top}), nicht {workdir}")
+        raise SandboxError(t("sandbox.sandbox_needs_the_worktree_root", top=top, workdir=workdir))
 
 
 def _carry_files(workdir: str, carry: tuple[str, ...], env: Mapping[str, str] | None = None) -> list[str]:
@@ -351,7 +352,7 @@ def _reject_unsafe_paths(paths: list[str]) -> None:
     Kein Pfad unter dem privaten Harness-Verzeichnis: der Agent darf dort keinen Zustand fälschen."""
     for path in paths:
         if any(part.lower() == ".git" for part in path.split("/")):
-            raise SandboxError(f"Ergebnis abgewiesen: Pfad {path!r} berührt .git")
+            raise SandboxError(t("sandbox.result_rejected_path_touches_git", path=path))
         if path.split("/", 1)[0] == HARNESS_PRIVATE_DIR:
             raise SandboxError(f"Ergebnis abgewiesen: Pfad {path!r} liegt im privaten Harness-Verzeichnis")
 
@@ -388,9 +389,9 @@ def apply_result(ex: Exchange, workdir: str) -> bool:
         return False
     st = os.lstat(bundle)
     if not stat.S_ISREG(st.st_mode):  # kein Symlink auf Host-Dateien
-        raise SandboxError("Ergebnis abgewiesen: result.bundle ist keine reguläre Datei")
+        raise SandboxError(t("sandbox.result_rejected_result_bundle_is"))
     if st.st_size > MAX_BUNDLE_BYTES:
-        raise SandboxError(f"Ergebnis abgewiesen: result.bundle zu groß ({st.st_size} > {MAX_BUNDLE_BYTES} Bytes)")
+        raise SandboxError(t("sandbox.result_rejected_result_bundle_too", v1=st.st_size, v2=MAX_BUNDLE_BYTES))
     _git(
         workdir,
         "-c",
@@ -407,13 +408,13 @@ def apply_result(ex: Exchange, workdir: str) -> bool:
     try:
         _git(workdir, "merge-base", "--is-ancestor", ex.base, ex.result_ref)
     except SandboxError:
-        raise SandboxError("Ergebnis abgewiesen: stammt nicht vom Basis-Commit ab") from None
+        raise SandboxError(t("sandbox.result_rejected_does_not_descend")) from None
     diff_args = ("--no-renames", "--no-ext-diff", "--no-textconv", ex.base, ex.result_ref)
     raw = _git(workdir, "diff", "--raw", "-z", *diff_args).stdout.decode(errors="surrogateescape")
     _reject_unsafe_entries(_parse_raw_diff(raw))
     patch = _git(workdir, "diff", "--binary", *diff_args).stdout
     if len(patch) > MAX_PATCH_BYTES:
-        raise SandboxError(f"Ergebnis abgewiesen: Patch zu groß ({len(patch)} > {MAX_PATCH_BYTES} Bytes)")
+        raise SandboxError(t("sandbox.result_rejected_patch_too_large", v1=len(patch), v2=MAX_PATCH_BYTES))
     if patch:
         _git(workdir, "apply", "--binary", "--whitespace=nowarn", "-", stdin=patch)
     return True
@@ -568,6 +569,6 @@ def sweep_stale_containers() -> int:
         if ids:
             subprocess.run(["docker", "rm", "-f", *ids], capture_output=True, text=True, timeout=DOCKER_TIMEOUT)
     except (subprocess.TimeoutExpired, OSError) as e:
-        log.warning("Sandbox-Sweep übersprungen: %s", e)
+        log.warning(t("sandbox.sandbox_sweep_skipped_s"), e)
         return 0
     return len(ids)

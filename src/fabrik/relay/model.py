@@ -14,6 +14,7 @@ from functools import cached_property
 
 import yaml
 
+from ..i18n import t
 from ..retry import RetryPolicy
 from ..runmodel import FailureKind
 
@@ -85,7 +86,7 @@ def parse_time(value: object) -> datetime | None:
         try:
             dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
         except ValueError as e:
-            raise HandoffError(f"keine ISO-Zeit: {value!r}") from e
+            raise HandoffError(t("relay.model.not_an_iso_time", value=value)) from e
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
@@ -208,13 +209,13 @@ class Handoff:
     def parse(cls, text: str) -> Handoff:
         m = _FRONT_MATTER_RE.match(text.replace("\r\n", "\n"))
         if not m:
-            raise HandoffError("Front Matter (--- … ---) fehlt")
+            raise HandoffError(t("relay.model.front_matter_missing"))
         try:
             meta = yaml.safe_load(m.group(1)) or {}
         except yaml.YAMLError as e:
-            raise HandoffError(f"Front Matter ist kein YAML: {e}") from e
+            raise HandoffError(t("relay.model.front_matter_is_not_yaml", e=e)) from e
         if not isinstance(meta, dict):
-            raise HandoffError("Front Matter muss ein Mapping sein")
+            raise HandoffError(t("relay.model.front_matter_must_be_a"))
         known = {f.name for f in fields(cls)} - {"body"}
         values = {k: v for k, v in meta.items() if k in known}
         try:
@@ -223,9 +224,9 @@ class Handoff:
             values["stalled"] = int(values.get("stalled") or 0)
             values["status"] = Status(str(values.get("status") or Status.ACTIVE))
         except KeyError as e:
-            raise HandoffError(f"Pflichtfeld fehlt: {e}") from e
+            raise HandoffError(t("relay.model.required_field_missing", e=e)) from e
         except (TypeError, ValueError) as e:
-            raise HandoffError(f"ungültiger Wert: {e}") from e
+            raise HandoffError(t("relay.model.invalid_value", e=e)) from e
         for name in _TIME_FIELDS:
             values[name] = parse_time(values.get(name))
         for name in ("progress", "blocked_reason", "verify_sha256", "verify_result"):
@@ -314,17 +315,17 @@ class Task:
         (Neu-Labeln = Freigabe der aktuellen Fassung). Ohne das Label (entfernt = angehalten) nie,
         auch nicht für einen von Hand gestarteten Run."""
         if label not in self.labels:
-            return f"Label `{label}` fehlt (Task angehalten)"
+            return t("relay.model.label_missing_task_halted", label=label)
         allowed_norm = {normalize_login(a) for a in allowed}
         if normalize_login(self.label_actor) not in allowed_norm:
-            return f"Label `{label}` von {self.label_actor or '?'} gesetzt (nicht in relay.allowed)"
+            return t("relay.model.label_set_by_not_in", label=label, v2=self.label_actor or "?")
         editor = self.body_editor or self.author
         if normalize_login(editor) in allowed_norm:
             return None
         edited_at = self.body_edited_at or self.created_at
         if self.label_at and edited_at and self.label_at >= edited_at:
             return None
-        return f"Brief zuletzt von {editor} bearbeitet — Label `{label}` neu setzen gibt die Fassung frei"
+        return t("relay.model.brief_last_edited_by_re", editor=editor, label=label)
 
 
 @dataclass(frozen=True)
@@ -363,21 +364,22 @@ def _retry_decision(streak: list[RunOutcome], policy: RetryPolicy | None, now: d
         # Ohne Endzeit lässt sich kein Backoff berechnen → wie nicht wiederholbar behandeln (fail closed).
         return Decision(
             Action.BLOCK,
-            f"Run {last.run_id} scheiterte (`{kind}`), keine automatische Wiederholung "
-            "— Label entfernen versucht es erneut",
+            t("relay.model.run_failed_no_automatic_retry", v1=last.run_id, kind=kind),
             failures_seen=ack,
         )
     attempt = len(streak)  # nächster Versuch (1-basiert)
     if attempt > policy.max:
         return Decision(
             Action.BLOCK,
-            f"Wiederholungen erschöpft ({policy.max} Retries, zuletzt {last.run_id}, "
-            f"`{kind}`) — Label entfernen versucht es erneut",
+            t("relay.model.retries_exhausted_retries_last_removing", v1=policy.max, v2=last.run_id, kind=kind),
             failures_seen=ack,
         )
     due = policy.next_attempt_at(attempt, last.finished, last.retry_after)
     if due > now:
-        return Decision(Action.SKIP, f"Retry {attempt}/{policy.max} nach `{kind}` nicht vor {format_time(due)}")
+        return Decision(
+            Action.SKIP,
+            t("relay.model.retry_after_not_before", attempt=attempt, v2=policy.max, kind=kind, v4=format_time(due)),
+        )
     return None
 
 
@@ -495,7 +497,10 @@ def evaluate(
     brief = task.brief
     if missing := brief.missing_sections():
         return Decision(
-            Action.BLOCK, "Brief unvollständig: " + ", ".join(f"`## {s.title()}`" for s in missing) + " fehlt"
+            Action.BLOCK,
+            t("relay.model.brief_incomplete")
+            + ", ".join(f"`## {s.title()}`" for s in missing)
+            + t("relay.model.missing"),
         )
     if labels.blocked in task.labels:
         return Decision(Action.SKIP, "blocked (Label)")
@@ -512,15 +517,13 @@ def evaluate(
         if state.verify_pending != brief.verify_sha256:
             return Decision(
                 Action.BLOCK,
-                "`## Verify` wurde geändert — Label entfernen übernimmt die neue Fassung",
+                t("relay.model.verify_was_changed_removing_the"),
                 verify_pending=brief.verify_sha256,
             )
         repin = True
     max_sessions = brief.settings.max_sessions
     if handoff.session >= max_sessions:
-        return Decision(
-            Action.BLOCK, f"max_sessions ({max_sessions}) erreicht — in `## Settings` erhöhen, dann Label entfernen"
-        )
+        return Decision(Action.BLOCK, t("relay.model.max_sessions_reached_raise_it", max_sessions=max_sessions))
     if handoff.status is Status.ACTIVE and handoff.not_before and handoff.not_before > now:
-        return Decision(Action.SKIP, f"nicht vor {format_time(handoff.not_before)}")
-    return Decision(Action.SESSION, "fällig", repin=repin)
+        return Decision(Action.SKIP, t("relay.model.not_before", v1=format_time(handoff.not_before)))
+    return Decision(Action.SESSION, t("relay.model.due"), repin=repin)

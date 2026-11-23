@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from .i18n import t
 from .runmodel import FailureKind
 
 RETRYABLE_KINDS = frozenset({FailureKind.INTERRUPTED, FailureKind.TRANSIENT})
@@ -31,7 +32,7 @@ def parse_duration(raw: object) -> timedelta:
     """`45s`, `5m`, `2h`, `1d` → timedelta (> 0); ValueError sonst."""
     m = _DURATION_RE.match(str(raw).strip())
     if not m or int(m.group(1)) <= 0:
-        raise ValueError(f"Dauer wie 5m/2h erwartet (ist {raw!r})")
+        raise ValueError(t("retry.duration_like_5m_2h_expected", raw=raw))
     return timedelta(seconds=int(m.group(1)) * _UNIT_S[m.group(2)])
 
 
@@ -74,17 +75,17 @@ class RetryPolicy:
             # PyYAML (YAML 1.1) liest den unquotierten Key `on` als bool True.
             raw = {("on" if k is True else k): v for k, v in raw.items()}
         if not isinstance(raw, dict) or set(raw) - _KEYS:
-            errs.append(f"{where}: Mapping mit {'/'.join(sorted(_KEYS))} erwartet")
+            errs.append(t("retry.mapping_with_expected", where=where, v2="/".join(sorted(_KEYS))))
             return None
         n = raw.get("max", DEFAULT_MAX)
         if isinstance(n, bool) or not isinstance(n, int) or n < 0:
-            errs.append(f"{where}.max: ganze Zahl >= 0 erwartet (ist {n!r})")
+            errs.append(t("retry.max_integer_0_expected_is", where=where, n=n))
             n = DEFAULT_MAX
         backoff: tuple[timedelta, ...] = DEFAULT_BACKOFF
         if "backoff" in raw:
             values = raw["backoff"]
             if not isinstance(values, list) or not values:
-                errs.append(f"{where}.backoff: nicht-leere Liste von Dauern erwartet")
+                errs.append(t("retry.backoff_non_empty_list_of", where=where))
             else:
                 try:
                     backoff = tuple(parse_duration(v) for v in values)
@@ -98,7 +99,7 @@ class RetryPolicy:
                 errs.append(f"{where}.max_wait: {e}")
         on = raw.get("on", sorted(RETRYABLE_KINDS))
         if not isinstance(on, list) or not on or any(k not in RETRYABLE_KINDS for k in on):
-            errs.append(f"{where}.on: nicht-leere Teilmenge von {sorted(RETRYABLE_KINDS)} erwartet (ist {on!r})")
+            errs.append(t("retry.on_non_empty_subset_of", where=where, v2=sorted(RETRYABLE_KINDS), on=on))
             on = sorted(RETRYABLE_KINDS)
         if n == 0:
             return None

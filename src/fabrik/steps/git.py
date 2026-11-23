@@ -22,6 +22,7 @@ from ..apicommit import push_branch
 from ..context import _substitute, missing_vars
 from ..failures import GitError, failed
 from ..gitops import repo_lock
+from ..i18n import t
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..validation import validate_branch_name
@@ -84,8 +85,7 @@ def _step_git(ctx: dict, step: dict) -> dict:
         leftover = _unstaged_paths(ctx, base)
         if leftover:
             return failed(
-                f"BLOCKED: {len(leftover)} Änderung(en) außerhalb von commit.add "
-                f"nicht gestaged: {', '.join(leftover[:5])}",
+                t("steps.git.blocked_change_s_outside_commit", v1=len(leftover), v2=", ".join(leftover[:5])),
                 FailureKind.ENVIRONMENT,  # commit.add der Spec deckt die Änderungen nicht ab
                 output="\n".join(leftover),
             )
@@ -99,9 +99,7 @@ def _step_git(ctx: dict, step: dict) -> dict:
         protected = step.get("protected") or config.PROTECTED_DEFAULT
         cur = _git(ctx, base, "rev-parse", "--abbrev-ref", "HEAD")
         if cur in protected or cur == "HEAD":
-            return failed(
-                f"BLOCKED: push auf geschützten Branch '{cur}' verweigert", FailureKind.ENVIRONMENT, output=""
-            )
+            return failed(t("steps.git.blocked_push_to_protected_branch", cur=cur), FailureKind.ENVIRONMENT, output="")
         validate_branch_name(cur)
         summary_parts.append(push_branch(base, cur, protected=protected))
-    return {"ok": True, "summary": ", ".join(summary_parts) or "kein-op"}
+    return {"ok": True, "summary": ", ".join(summary_parts) or t("steps.git.no_op")}

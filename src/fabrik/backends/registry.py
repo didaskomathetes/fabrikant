@@ -12,6 +12,7 @@ Jeder Adapter implementiert `create(step, endpoint, model, stale_after)`
 from __future__ import annotations
 
 from .. import sandbox
+from ..i18n import t
 from .claude_code import ClaudeCodeBackend
 from .codex import CodexBackend
 from .copilot import CopilotBackend
@@ -49,5 +50,11 @@ def create_backend(backend_name: str, step: dict, endpoint: str, model: str, sta
     if cls is not None and sandbox.sandbox_enabled():
         cls = SANDBOX_ADAPTERS.get(backend_name, cls)
     if cls is None:
-        raise ValueError(f"agent-step: unbekanntes Backend '{backend_name}' (verfügbar: {', '.join(known_backends())})")
+        raise ValueError(
+            t(
+                "backends.registry.agent_step_unknown_backend_available",
+                backend_name=backend_name,
+                v2=", ".join(known_backends()),
+            )
+        )
     return cls.create(step, endpoint, model, stale_after)

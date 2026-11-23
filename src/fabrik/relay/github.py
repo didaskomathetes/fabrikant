@@ -9,6 +9,7 @@ from typing import Any
 
 from .. import gitops
 from ..failures import ConfigError
+from ..i18n import t
 from .model import StatusState, Task, normalize_login, parse_time
 from .status import STATUS_MARKER, parse_state
 
@@ -73,7 +74,7 @@ class RelayGitHub:
         """`bot_login` ist Pflicht: Status-Kommentare werden nur von dieser Identität vertraut
         (ohne gepinnte Identität wäre jeder Bot mit Kommentarrecht vertrauenswürdig)."""
         if not bot_login:
-            raise ValueError("bot_login ist Pflicht (Status-Kommentare nur von der gepinnten Identität)")
+            raise ValueError(t("relay.github.bot_login_is_required_status"))
         self.repo = repo
         self.owner, self.name = repo.split("/", 1)
         self.role = role
@@ -108,7 +109,7 @@ class RelayGitHub:
         data = self._graphql(_TASK_QUERY, owner=self.owner, name=self.name, number=number)
         node = (data.get("repository") or {}).get("issue")
         if not node:
-            raise GitHubError(f"Issue #{number} nicht gefunden in {self.repo}")
+            raise GitHubError(t("relay.github.issue_not_found_in", number=number, v2=self.repo))
         return task_from_node(node, label)
 
     def file(self, path: str, ref: str) -> str | None:
@@ -194,9 +195,7 @@ class RelayGitHub:
                 author = _login(created.get("user"))
                 if created.get("id"):
                     self._rest("DELETE", f"issues/comments/{created['id']}")
-                raise ConfigError(
-                    f"relay.bot_login ist {self.bot_login!r}, das Builder-Token kommentiert aber als {author!r}"
-                )
+                raise ConfigError(t("relay.github.relay_bot_login_is_but", v1=self.bot_login, author=author))
         elif found[1] != body:
             self._rest("PATCH", f"issues/comments/{found[0]}", {"body": body})
 

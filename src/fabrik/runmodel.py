@@ -16,6 +16,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import TypeVar
 
+from .i18n import t
+
 
 class RunStatus(StrEnum):
     """Status eines Runs (Werte = Strings im Run-JSON)."""
@@ -124,7 +126,7 @@ _E = TypeVar("_E", bound=StrEnum)
 def check_transition(table: Mapping[_E, frozenset[_E]], current: _E, target: _E) -> _E:
     """Prüft ``current → target`` gegen ``table``; liefert ``target`` oder wirft :class:`InvalidTransition`."""
     if target not in table.get(current, frozenset()):
-        raise InvalidTransition(f"{type(current).__name__}: {current.value} → {target.value} nicht erlaubt")
+        raise InvalidTransition(t("runmodel.not_allowed", v1=type(current).__name__, v2=current.value, v3=target.value))
     return target
 
 
@@ -205,7 +207,7 @@ _VERDICT_LINE_RE = re.compile(r"^" + re.escape(VERDICT_MARKER) + r"(\S*)[ \t]*(?
 def verdict_line(verdict: str) -> str:
     """Ausgabezeile, mit der ein Shell-Step sein Verdikt meldet (ValueError bei ungültigem Wort)."""
     if not _VERDICT_RE.fullmatch(verdict):
-        raise ValueError(f"ungültiges Verdikt {verdict!r} (a-z, _, -; max. 20 Zeichen)")
+        raise ValueError(t("runmodel.invalid_verdict_a_z_max", verdict=verdict))
     return f"{VERDICT_MARKER}{verdict}"
 
 

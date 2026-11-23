@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import config
+from .i18n import t
 from .runstore import STORE, RunStore
 from .secrets import _redact
 
@@ -252,7 +253,7 @@ def finish_orphaned_run(session_id: str, finished_at: str) -> None:
             c.commit()
     except sqlite3.Error as e:
         # best-effort: kein Log-Fehler fällt einen Run — aber nicht lautlos
-        print(f"[fabrik] sessionlog: Orphan-Run {session_id} nicht aktualisiert: {e}")
+        print(t("sessionlog.fabrik_sessionlog_orphan_run_not", session_id=session_id, e=e))
 
 
 def session_totals(session_id: str) -> dict:

@@ -15,6 +15,7 @@ from . import config, cron, metrics, pause, retry_chains, schedule, slack
 from .engine import _safe_run, start_priority_run
 from .gitops import project_github
 from .hosting import Provider, get_provider
+from .i18n import t as _t
 from .runmodel import RunStatus
 from .runs import loop_run_triggers
 from .runstore import STORE, RunStoreError
@@ -80,7 +81,7 @@ def _cron_chain_pending(project: str, loop: str, spec: dict) -> bool:
     try:
         chain = retry_chains.ChainStore().get(project, loop, tkey)
     except (OSError, ValueError) as e:
-        print(f"[fabrik] Retry-Kette {project}/{loop} nicht lesbar: {e}")
+        print(_t("scheduler.fabrik_retry_chain_unreadable", project=project, loop=loop, e=e))
         return False
     return chain is not None and chain.state is retry_chains.ChainState.PENDING
 
@@ -231,7 +232,7 @@ def _log_blocked(st: dict, repo: str, blocked: dict[int, list[str]] | None) -> N
     prev = st.get("blocked") or {}
     for num, blockers in blocked.items():
         if prev.get(num) != blockers:
-            print(f"[fabrik] Issue {repo}#{num} wartet auf Blocker: {', '.join(blockers)}")
+            print(_t("scheduler.fabrik_issue_waiting_for_blocker", repo=repo, num=num, v3=", ".join(blockers)))
     st["blocked"] = blocked
 
 
@@ -336,7 +337,7 @@ class Scheduler(threading.Thread):
         try:
             self._fire_onetimes(local)
         except (OSError, ValueError, TypeError, KeyError) as e:
-            print(f"[fabrik] One-time-Runs nicht geprüft: {e}")
+            print(_t("scheduler.fabrik_one_time_runs_not", e=e))
         projects = load_projects()
         for name, spec in projects.items():
             if spec.get("_error"):
@@ -348,7 +349,7 @@ class Scheduler(threading.Thread):
         try:
             retry_chains.start_due_attempts(projects)
         except (OSError, ValueError) as e:  # z. B. defekter Ketten-Store: Trigger laufen weiter
-            print(f"[fabrik] Retry-Versuche nicht gestartet: {e}")
+            print(_t("scheduler.fabrik_retry_attempts_not_started", e=e))
         self._first_tick = False
 
     def _check_cron(self, name: str, lname: str, spec: dict, trig: dict, minute: str, local: datetime) -> None:
@@ -368,7 +369,7 @@ class Scheduler(threading.Thread):
         # Pending Retry-Kette: Tick überspringen — die Kette
         # plant den nächsten Versuch (ADR 0036, Entscheidung 2).
         if _cron_chain_pending(name, lname, spec):
-            print(f"[fabrik] Cron-Tick {name}/{lname} übersprungen (Retry-Kette pending)")
+            print(_t("scheduler.fabrik_cron_tick_skipped_retry", name=name, lname=lname))
             return
         if not on_start:
             _safe_run(name, lname, "cron")
@@ -385,7 +386,7 @@ class Scheduler(threading.Thread):
             if done.is_set():
                 continue
             if now >= deadline:
-                print(f"[fabrik] {name}: on_start-Run nach {START_GATE_MAX_S}s nicht fertig — Trigger laufen weiter")
+                print(_t("scheduler.fabrik_on_start_run_not", name=name, v2=START_GATE_MAX_S))
                 continue
             pending.append((done, deadline))
         self._start_gates[name] = pending
@@ -413,11 +414,11 @@ class Scheduler(threading.Thread):
                     note=f"one-time (geplant {entry['at']})" + (f": {entry['note']}" if entry.get("note") else ""),
                     actor="scheduler",
                 )
-                print(f"[fabrik] One-time {name}/{lname} gestartet: {run_id}")
+                print(_t("scheduler.fabrik_one_time_started", name=name, lname=lname, run_id=run_id))
             except Exception as e:
                 retry = schedule.requeue_failed(entry, local)
                 outcome = f"neuer Versuch {retry['at']}" if retry else "verworfen"
-                print(f"[fabrik] One-time {name}/{lname} nicht gestartet ({outcome}): {e}")
+                print(_t("scheduler.fabrik_one_time_not_started", name=name, lname=lname, outcome=outcome, e=e))
 
     def _tick_project(self, name: str, spec: dict, now: datetime, local: datetime) -> None:
         """Trigger aller Loops eines Projekts prüfen (Cron, Datei, Issue, PR).

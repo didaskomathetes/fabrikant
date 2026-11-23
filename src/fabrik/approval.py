@@ -11,9 +11,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, replace
 
-# Anzeige-Labels in fester Reihenfolge — gemeinsam für Run-Log, Chat und CLI
-# (die UI in web/app.js formatApproval hält dieselbe Reihenfolge).
-_TEXT_LINES = (("kind", "art"), ("condition", "bedingung"), ("why", "warum"), ("what", "was"))
+from .i18n import t
+
+# Felder in fester Reihenfolge — gemeinsam für Run-Log, Chat und CLI
+# (die UI in web/app.js formatApproval hält dieselbe Reihenfolge). Labels: i18n `approval.<feld>`.
+_TEXT_FIELDS = ("kind", "condition", "why", "what")
 
 _STR_FIELDS = ("reason", "kind", "step", "condition", "why", "what", "issue", "pr", "pr_title")
 
@@ -81,8 +83,8 @@ class ApprovalRequest:
 
     def lines(self) -> list[str]:
         """Kontext als "key: wert"-Zeilen für Run-Log, Chat und CLI."""
-        out = [f"{label}: {getattr(self, key)}" for key, label in _TEXT_LINES if getattr(self, key)]
-        out += [f"rechte: {p}" for p in self.permissions]
+        out = [f"{t(f'approval.{key}')}: {getattr(self, key)}" for key in _TEXT_FIELDS if getattr(self, key)]
+        out += [f"{t('approval.permissions')}: {p}" for p in self.permissions]
         if self.issue:
             out.append(f"issue: {self.issue}")
         if self.pr:

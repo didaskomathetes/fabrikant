@@ -26,6 +26,7 @@ from typing import TypeGuard, cast
 from . import config, httpsafe
 from .failures import GitError, SetupError
 from .filelock import locked
+from .i18n import t
 from .secrets import _redact
 
 # Dual-Identity (ADR 0010): "dev" = Builder-App (erstellt/mergt PRs),
@@ -133,7 +134,7 @@ def token_overrides() -> dict[str, str]:
     if dev:
         overrides[GH_CLI_TOKEN_VAR] = overrides[GH_TOKEN_ENV["dev"]] = dev
     else:
-        print(f"[fabrik] Warnung: {GH_TOKEN_ENV['dev']} fehlt in {token_env_file()}", file=sys.stderr)
+        print(t("gitops.fabrik_warning_missing_in", v1=GH_TOKEN_ENV["dev"], v2=token_env_file()), file=sys.stderr)
     return overrides
 
 
@@ -289,7 +290,7 @@ def ensure_worktree(spec: dict, run_id: str) -> Path:
     sub = repo.get("subpath")
     base = wt / sub if sub else wt
     if not base.is_dir():
-        raise SetupError(f"Subpfad {sub} existiert nicht im Worktree {wt}")
+        raise SetupError(t("gitops.subpath_does_not_exist_in", sub=sub, wt=wt))
     return base
 
 
@@ -668,7 +669,7 @@ def _gh_token(role: str = "dev") -> str:
     tok = _gh_token_safe(role)
     if not tok:
         env_key = GH_TOKEN_ENV[role]
-        raise SetupError(f"{env_key} nicht verfügbar (Env oder {token_env_file()})")
+        raise SetupError(t("gitops.not_available_env_or", env_key=env_key, v2=token_env_file()))
     return tok
 
 

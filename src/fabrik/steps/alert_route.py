@@ -12,6 +12,7 @@ eigene Tier-/Approval-Gates) und bekommt die `alert_*`-Variablen + `category`.""
 from __future__ import annotations
 
 from ..alerts import CATEGORY_UNKNOWN, ROUTE_NONE, VAR_PREFIX, route
+from ..i18n import t
 
 # Terminal-Status des Hotfix-Runs, die den Triage-Run nicht scheitern lassen
 # (needs_approval = Hotfix wartet auf Freigabe, das ist der gewollte Normalfall).
@@ -26,10 +27,10 @@ def _step_alert_route(ctx: dict, step: dict, emit) -> dict:
     target = route(category, step.get("routes"), str(step.get("fallback") or ROUTE_NONE))
     ctx["route"] = target
     if target == ROUTE_NONE:
-        emit(f"  alert_route: Kategorie '{category}' → kein Hotfix")
-        return {"ok": True, "summary": f"category={category}: kein Hotfix-Workflow"}
+        emit(t("steps.alert_route.alert_route_category_no_hotfix", category=category))
+        return {"ok": True, "summary": t("steps.alert_route.category_no_hotfix_workflow", category=category)}
     if target == ctx.get("loop"):
-        return {"ok": False, "summary": f"Route '{target}' zeigt auf den Triage-Loop selbst (Endlosschleife)"}
+        return {"ok": False, "summary": t("steps.alert_route.route_points_to_the_triage", target=target)}
     initial = {k: v for k, v in ctx.items() if k.startswith(VAR_PREFIX)} | {"category": category}
     emit(f"  alert_route: Kategorie '{category}' → Loop '{target}'")
     rec = run_loop(ctx["project"], target, trigger=f"alert:{ctx['run_id']}", initial_vars=initial)

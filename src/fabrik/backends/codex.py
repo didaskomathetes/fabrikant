@@ -24,6 +24,7 @@ import os
 
 from ..agentenv import CODEX_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
+from ..i18n import t
 from ..tokens import TokenCounts, as_count
 from ._oneshot import OneShotCliBackend
 
@@ -77,7 +78,7 @@ class CodexBackend(OneShotCliBackend):
         base = {"tokens": tokens.as_poll(), "cost": 0.0, "tools": []}
         if returncode == 0:
             return {**base, "status": "done", "text": text.strip()}
-        reason = error or err.strip() or out.strip() or "codex: kein Output"
+        reason = error or err.strip() or out.strip() or t("backends.codex.codex_no_output")
         return {**base, "status": "failed", "text": reason[:300]}
 
     @staticmethod

@@ -28,6 +28,7 @@ from pathlib import Path
 from sqlalchemy import insert, inspect, select
 from sqlalchemy.engine import make_url
 
+from .i18n import t
 from .runschema import run_artifacts, run_checkpoints, run_events, runs
 from .runstore import RecordError, RunStore, RunStoreError, parse_run
 from .runstore_sql import SqlRunStore, make_engine, migrate, store_for_url
@@ -78,7 +79,12 @@ class MigrationReport:
         mode = "Probelauf (nichts geschrieben)" if self.dry_run else "Import"
         out = [
             f"{mode} → {self.target}",
-            f"Runs: {self.runs_found} gefunden, {self.runs_imported} importiert, {self.runs_existing} schon vorhanden",
+            t(
+                "runmigrate.runs_found_imported_already_present",
+                v1=self.runs_found,
+                v2=self.runs_imported,
+                v3=self.runs_existing,
+            ),
             f"Session-Log: {self.sessions_imported} Sessions ({self.events_imported} Events, "
             f"{self.checkpoints_imported} Checkpoints, {self.artifacts_imported} Artefakte) importiert, "
             f"{self.sessions_existing} schon vorhanden",
@@ -88,7 +94,7 @@ class MigrationReport:
         if self.orphan_sessions:
             total = sum(self.orphan_sessions.values())
             top = ", ".join(f"{p} ({n})" for p, n in self.orphan_sessions.most_common(SAMPLE_LIMIT))
-            out.append(f"Sessions ohne Run-Record (nicht übernommen): {total} — {top}")
+            out.append(t("runmigrate.sessions_without_run_record_not", total=total, top=top))
         out.append(f"Probleme: {len(self.issues)}")
         out += [f"  ✖ {i.run_id} [{i.source}]: {i.reason}" for i in self.issues]
         return out
@@ -134,7 +140,7 @@ def _import_runs(
             report.issues.append(MigrationIssue(run_id, where, str(raw)))
             continue
         if run_id in seen:
-            report.issues.append(MigrationIssue(run_id, where, f"Id schon in Projekt {seen[run_id]!r}"))
+            report.issues.append(MigrationIssue(run_id, where, t("runmigrate.id_already_in_project", v1=seen[run_id])))
             continue
         seen[run_id] = project
         if run_id in existing:
@@ -144,7 +150,7 @@ def _import_runs(
         try:
             expected = parse_run(raw, project)
         except RecordError as e:
-            report.issues.append(MigrationIssue(run_id, where, f"nicht ins Modell abbildbar: {e}"))
+            report.issues.append(MigrationIssue(run_id, where, t("runmigrate.cannot_be_mapped_to_the", e=e)))
             continue
         try:
             store.create(project, run_id, copy.deepcopy(raw))
@@ -154,7 +160,7 @@ def _import_runs(
         report.runs_imported += 1
         present.add(run_id)
         stored = store.get(run_id, project)
-        diff = _run_diff(expected, stored) if stored is not None else ["nicht lesbar"]
+        diff = _run_diff(expected, stored) if stored is not None else [t("runmigrate.unreadable")]
         if diff:
             report.issues.append(MigrationIssue(run_id, where, f"Abweichung nach Import: {', '.join(diff)}"))
         else:

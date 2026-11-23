@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .. import config
+from ..i18n import t
 from .model import TrailRef, format_time
 from .workspace import AUDIT_REPORT, GIT_TIMEOUT_S, HANDOFF_FILE, Workspace, relay_dir
 
@@ -120,13 +121,13 @@ def archive_next(archiver: TrailArchive, ws: Workspace, commit: str, start: int,
             return archiver.archive(ws, commit, index, now)
         except ArchiveExists:
             continue
-    raise ArchiveError(f"keine freie Archiv-Nummer in audit-{start}…audit-{start + MAX_ARCHIVE_PROBES - 1}")
+    raise ArchiveError(t("relay.archive.no_free_archive_number_in", start=start, v2=start + MAX_ARCHIVE_PROBES - 1))
 
 
 def verify(archiver: TrailArchive, ref: TrailRef) -> dict[str, bytes]:
     """Archiv vorhanden und Inhalt == gebundener Hash; liefert die Dateien."""
     if not archiver.exists(ref):
-        raise ArchiveError(f"Archiv {ref.name} ({ref.uri}) nicht gefunden")
+        raise ArchiveError(t("relay.archive.archive_not_found", v1=ref.name, v2=ref.uri))
     files = archiver.restore(ref)
     if (digest := trail_digest(files)) != ref.sha256:
         raise ArchiveError(f"Archiv {ref.name}: Hash {digest[:12]}… ≠ gebunden {ref.sha256[:12]}…")
@@ -178,7 +179,7 @@ class GitRefArchive:
     def restore(self, ref: TrailRef) -> dict[str, bytes]:
         if not _has_commit(self.repo_root, ref.commit):
             if self.fetch is None:
-                raise ArchiveError(f"Commit {ref.commit[:12]} fehlt lokal und kein Fetch möglich")
+                raise ArchiveError(t("relay.archive.commit_missing_locally_and_no", v1=ref.commit[:12]))
             name = self._ref(ref)
             self.fetch(f"+{name}:{name}")
         return _files_at(self.repo_root, ref.commit, relay_dir(ref.issue))

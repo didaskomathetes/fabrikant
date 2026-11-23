@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import config, gitops
 from .filelock import locked
+from .i18n import t
 
 # Dateien (relativ zu `<workdir>/state/`), die zwischen Runs geteilt werden.
 SHARED_FILES = ("replied-comments.json", "reviewed-prs.json")
@@ -42,9 +43,9 @@ def _load(p: Path) -> dict:
     except FileNotFoundError:
         return {}
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        raise AgentStateError(f"Ungültiger Agent-State in {p}: {e}") from e
+        raise AgentStateError(t("agent_state.invalid_agent_state_in", p=p, e=e)) from e
     if not isinstance(data, dict):
-        raise AgentStateError(f"Ungültiger Agent-State in {p}: erwartet ein JSON-Objekt")
+        raise AgentStateError(t("agent_state.invalid_agent_state_in_expected", p=p))
     return data
 
 

@@ -39,6 +39,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from . import config, connections, httpsafe, llm_cli
+from .i18n import t
 from .tokens import TokenCounts
 
 log = logging.getLogger("fabrik.llm")
@@ -105,7 +106,7 @@ def list_providers() -> list[dict]:
         for c in connections.db_connections(connections.ConnectionKind.LLM):
             merged[c.name] = c.as_llm_provider()
     except Exception:  # DB nicht verfügbar → Env-Provider bleiben nutzbar
-        log.warning("UI-Connections nicht lesbar — nur Env-Provider", exc_info=True)
+        log.warning(t("llm.ui_connections_unreadable_env_providers"), exc_info=True)
     return list(merged.values())
 
 
@@ -155,8 +156,8 @@ def set_active(name: str) -> str:
     global _active_cache
     with _guard:
         if not get_provider(name):
-            known = ", ".join(p["name"] for p in list_providers()) or "(keine)"
-            raise ValueError(f"LLM-Provider '{name}' unbekannt (verfügbar: {known})")
+            known = ", ".join(p["name"] for p in list_providers()) or t("llm.none")
+            raise ValueError(t("llm.llm_provider_unknown_available", name=name, known=known))
         _ACTIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _ACTIVE_FILE.write_text(name + "\n")
         _active_cache = name

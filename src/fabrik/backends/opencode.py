@@ -31,6 +31,7 @@ import urllib.request
 
 from .. import httpsafe
 from ..failures import classify_exception
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 
@@ -138,7 +139,7 @@ class _ServeApi:
             payload = {"title": title, "model": model, "permission": permissions}
             _, d = self._req("POST", "/session", payload, directory=workdir, timeout=30)
         if not d.get("id"):
-            raise RuntimeError(f"opencode: Session-Create ohne id: {str(d)[:200]}")
+            raise RuntimeError(_t("backends.opencode.opencode_session_create_without_id", v1=str(d)[:200]))
         return d["id"]
 
     def send_prompt(self, session_id: str, prompt: str, directory: str) -> None:
@@ -304,10 +305,10 @@ class OpenCodeBackend:
         """
         if self._detect() is not None:
             return None
-        base = f"opencode serve nicht erreichbar: {self.endpoint}"
+        base = _t("backends.opencode.opencode_serve_not_reachable", v1=self.endpoint)
         if any(isinstance(e, urllib.error.HTTPError) and e.code == 401 for e in self._probe_errors):
-            return f"{base} — Server antwortet, aber Auth fehlgeschlagen (401): FABRIK_AGENT_PASSWORD prüfen"
-        return f"{base} — läuft `opencode serve`? (Default-Port 4096, konfiguriert: {self.endpoint})"
+            return _t("backends.opencode.server_answers_but_authentication_failed", base=base)
+        return _t("backends.opencode.is_opencode_serve_running_default", base=base, v2=self.endpoint)
 
     def unhealthy_kind(self) -> FailureKind:
         """Abgelehnte Auth (401/403) → `environment`; Server nicht erreichbar → `transient`."""
@@ -318,7 +319,7 @@ class OpenCodeBackend:
         api = self._detect()
         if api is None:
             hint = "" if self.password else " (2.x: FABRIK_AGENT_PASSWORD setzen?)"
-            raise RuntimeError(f"opencode serve nicht erreichbar: {self.endpoint}{hint}")
+            raise RuntimeError(_t("backends.opencode.opencode_serve_not_reachable_2", v1=self.endpoint, hint=hint))
         return api
 
     # -- Port-Interface ----------------------------------------------------
@@ -379,7 +380,7 @@ class OpenCodeBackend:
                             **base,
                             "status": "failed",
                             "retryable": True,
-                            "text": f"Session inaktiv seit {int(age)}s (keine Aktivität)",
+                            "text": _t("backends.opencode.session_inactive_for_s_no", v1=int(age)),
                         }
             return {**base, "status": "running", "text": last_txt}
         # abgeschlossene Message: Substanz-Check
@@ -426,7 +427,7 @@ class OpenCodeBackend:
         return {
             **base,
             "status": "failed",
-            "text": "Session ohne Substanz (leere/falsche Assistant-Messages, z. B. LLM-500)",
+            "text": _t("backends.opencode.session_without_substance_empty_wrong"),
         }
 
     def transcript(self, session_id: str, directory: str) -> list[dict]:

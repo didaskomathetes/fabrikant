@@ -33,23 +33,12 @@ from .. import config
 from ..context import _cap
 from ..failures import ConfigError, failed, from_result
 from ..hosting import FileChange, get_provider
+from ..i18n import t
 from .llm import _step_llm
 from .pr_review import _resolve_pr_number
 
 # Step-Keys, die an den llm-Step durchgereicht werden (Provider-Pinning, Budget).
 _LLM_PASSTHROUGH_KEYS = ("provider", "model", "max_tokens", "timeout", "extra_context")
-
-_LLM_PROMPT = (
-    "Entscheide, ob die folgende PR-Änderung KRITISCH ist und eine menschliche "
-    "Freigabe erfordert. Kritisch = ja, wenn: eine ADR-/Architektur-Entscheidung "
-    "geändert oder obsolet wird, ein großes Refactoring/Architektur-Change vorliegt, "
-    "Datenverlust möglich ist, GDPR/Datenschutz betroffen ist, Sicherheitsrelevanz "
-    "(Secrets, Krypto, Auth) besteht, oder die Änderung andere Subsysteme "
-    "unvorhersehbar bricht. Ansonsten nein.\n"
-    'Antworte NUR mit JSON: {"gate_critical": true|false, "gate_reason": "<ein Satz>"}\n\n'
-    "Geänderte Dateien:\n{files}\n\n"
-    "Diff (gekürzt):\n---\n{diff}\n---\n"
-)
 
 
 def _heuristic_reasons(files: list[FileChange], step: dict) -> list[str]:
@@ -63,12 +52,12 @@ def _heuristic_reasons(files: list[FileChange], step: dict) -> list[str]:
         name = f.path
         for adr in adr_paths:
             if name.startswith(adr.rstrip("/") + "/") or name == adr:
-                reasons.append(f"ADR-/Entscheidungs-Doku geändert: {name}")
+                reasons.append(t("human_gate.adr_changed", name=name))
     total_lines = sum(f.additions + f.deletions for f in files)
     if len(files) > max_files:
-        reasons.append(f"Diff groß: {len(files)} Dateien (Limit {max_files})")
+        reasons.append(t("human_gate.diff_files", n=len(files), limit=max_files))
     if total_lines > max_lines:
-        reasons.append(f"Diff groß: {total_lines} Zeilen +/- (Limit {max_lines})")
+        reasons.append(t("human_gate.diff_lines", n=total_lines, limit=max_lines))
     for kw in keywords:
         for f in files:
             haystack = (f.path + " " + f.patch).lower()
@@ -81,7 +70,7 @@ def _heuristic_reasons(files: list[FileChange], step: dict) -> list[str]:
 def _llm_reason(files: list[FileChange], diff: str, ctx: dict, step: dict, emit) -> tuple[str | None, dict]:
     """LLM-Meinung. Liefert (grund|None, llm-result). None = nicht kritisch."""
     file_list = "\n".join(f"- {f.path} (+{f.additions}/-{f.deletions})" for f in files[:100])
-    prompt = _LLM_PROMPT.replace("{files}", file_list).replace("{diff}", _cap(diff))
+    prompt = t("human_gate.llm_prompt").replace("{files}", file_list).replace("{diff}", _cap(diff))
     res = _step_llm(
         ctx,
         {
@@ -104,7 +93,7 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
         return {"ok": True, "summary": "human_gate: freigegeben (Resume)"}
     repo = str(step.get("repo") or "").strip()
     if not repo:
-        raise ConfigError("human_gate: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.human_gate.human_gate_repo_owner_name"))
     provider = get_provider(repo)
     pr_number = _resolve_pr_number(ctx, step, repo, provider)
     files = provider.pr_files(repo, pr_number)
@@ -129,13 +118,13 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
     if not reasons:
         return {
             "ok": True,
-            "summary": f"human_gate: PR #{pr_number} nicht kritisch — auto weiter",
+            "summary": t("steps.human_gate.human_gate_pr_not_critical", pr_number=pr_number),
             "usage": usage,
         }
     # Kritisch: Flag VOR der Pause setzen (wird per record["vars"] persistiert,
     # damit der Resume-Run den Check nicht wiederholt).
     ctx["human_gate_passed"] = "true"
-    what = "Kritische Änderung (menschliche Freigabe): " + " · ".join(reasons)
+    what = t("human_gate.critical", reasons=" · ".join(reasons))
     emit(f"  ⚠ kritisch: {what}")
     return {
         "ok": True,

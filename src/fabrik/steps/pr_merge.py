@@ -28,6 +28,7 @@ import urllib.error
 from ..context import _substitute
 from ..failures import ConfigError, Failure, classify_http, failed
 from ..hosting import Provider, get_provider
+from ..i18n import t
 from ..runmodel import FailureKind
 
 _MERGE_METHODS = ("squash", "merge", "rebase")
@@ -47,8 +48,7 @@ class _UpdateBranchError(Exception):
 
 def _conflict(repo: str, pr_number: int, why: str) -> dict:
     return failed(
-        f"pr_merge: PR #{pr_number} ({repo}) hat einen Merge-Konflikt mit der Base — {why}; "
-        "manuell auflösen (Branch aktualisieren/rebasen)",
+        t("steps.pr_merge.pr_merge_pr_has_a", pr_number=pr_number, repo=repo, why=why),
         FailureKind.OUTCOME,
     )
 
@@ -63,13 +63,14 @@ def _wait_for_updated_head(provider: Provider, repo: str, pr_number: int, old_sh
         head = pr.head_sha
         if head and head != old_sha and pr.mergeable is not None:
             if pr.mergeable is False:
-                raise _UpdateBranchError(_conflict(repo, pr_number, "nach update-branch nicht mergebar"))
+                raise _UpdateBranchError(
+                    _conflict(repo, pr_number, t("steps.pr_merge.not_mergeable_after_update_branch"))
+                )
             return head
         if time.monotonic() >= deadline:
             raise _UpdateBranchError(
                 failed(
-                    f"pr_merge: PR #{pr_number} meldet nach update-branch nicht innerhalb "
-                    f"{_UPDATE_WAIT_TIMEOUT_S}s einen neuen, mergebaren Head",
+                    t("steps.pr_merge.pr_merge_after_update_branch", pr_number=pr_number, v2=_UPDATE_WAIT_TIMEOUT_S),
                     FailureKind.TRANSIENT,
                 )
             )
@@ -102,17 +103,18 @@ def _update_branch_if_behind(provider: Provider, repo: str, pr_number: int) -> s
 def _step_pr_merge(ctx: dict, step: dict) -> dict:
     repo = str(step.get("repo") or "").strip()
     if not repo:
-        raise ConfigError("pr_merge: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.pr_merge.pr_merge_repo_owner_name"))
     method = str(step.get("method") or "squash").strip().lower()
     if method not in _MERGE_METHODS:
         return failed(
-            f"pr_merge: method '{method}' ungültig (erlaubt: {', '.join(_MERGE_METHODS)})", FailureKind.ENVIRONMENT
+            t("steps.pr_merge.pr_merge_method_invalid_allowed", method=method, v2=", ".join(_MERGE_METHODS)),
+            FailureKind.ENVIRONMENT,
         )
     provider = get_provider(repo)
     raw = _substitute(str(step.get("pr") or ""), ctx).strip() or str(ctx.get("pr_number") or "").strip()
     if not raw.isdigit():
         # Kommt meist aus dem Kontext (z. B. kein PR im Vorlauf erstellt) — kein Umgebungsfehler.
-        return failed(f"pr_merge: PR-Number nicht auflösbar (pr: {raw!r})", FailureKind.UNKNOWN)
+        return failed(t("steps.pr_merge.pr_merge_pr_number_cannot", raw=raw), FailureKind.UNKNOWN)
     pr_number = int(raw)
     sha: str | None = None
     if step.get("update_branch"):
@@ -130,12 +132,15 @@ def _step_pr_merge(ctx: dict, step: dict) -> dict:
         with contextlib.suppress(Exception):  # Body-Read ist best-effort
             detail = e.read().decode()[:300]
         return failed(
-            f"pr_merge: Merge abgelehnt (HTTP {e.code}) — z. B. fehlende Approval, "
-            f"fehlende Checks oder Konflikt: {detail}",
+            t("steps.pr_merge.pr_merge_merge_rejected_http", v1=e.code, detail=detail),
             _merge_refusal(e),
         )
     if res.raw.get("merged") is False:
-        return failed(f"pr_merge: PR #{pr_number} nicht gemerged: {res.raw.get('message', '?')}", FailureKind.OUTCOME)
+        return failed(
+            t("steps.pr_merge.pr_merge_pr_not_merged", pr_number=pr_number, v2=res.raw.get("message", "?")),
+            FailureKind.OUTCOME,
+        )
+
     return {"ok": True, "summary": f"PR #{pr_number} gemerged ({method}) {res.url}"}
 
 
