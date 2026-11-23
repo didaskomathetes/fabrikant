@@ -136,8 +136,16 @@ indistinguishable from UI approvals in the run record (except `actor=mcp`).
   in-flight run workers are drained for up to 10 minutes.
 - **Inputs and outputs:** `limit`/`lines` are validated, `get_run_log` returns a bounded
   tail (flagged `truncated`), secret-looking keys (token, password, api key, ...) are redacted
-  and the spec `_path` is dropped in `get_spec`. Approve/reject failures are
+  and the spec `_path` is dropped in `get_spec`. Token counts and limits (`max_tokens`,
+  `token_budget`, ...) are not treated as secrets. Approve/reject failures are
   tool errors, not success-shaped results.
+- **Masked values cannot be written back.** Agents only ever see masked secrets, so a proposal
+  that contains the mask (`***redacted***`) is refused when proposed and again when applied;
+  agents send only the fields they change.
+- **Decisions are serialised.** Apply and reject run under one cross-process lock (CLI, web UI,
+  MCP), so a proposal is decided exactly once.
+- **Proposals are stored unencrypted** as JSON under `<state>/spec-proposals` (the patch may
+  contain secret values the agent supplied); protect the state directory like the specs.
 
 ### Tool results
 
