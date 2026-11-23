@@ -34,4 +34,8 @@ visibility, and a reviewer needs to see *what would change*, not the patch.
 
 - No new write path: the UI cannot apply anything the CLI could not.
 - The diff compares the expanded (template-resolved) loops, so a changed template shows up in every loop using it.
-- Decided proposals stay on disk as audit records and are no longer diffed.
+- Decided proposals stay on disk as audit records and are no longer diffed. They are moved to a
+  `decided/` subdirectory of the proposal store when applied/rejected, so the web UI's frequent
+  poll for *pending* proposals never reads the (unbounded) audit history.
+- A spec that moves on between a proposal's dry-run check and its final write surfaces as a clean
+  "stale" error (`ProposalError`), not a raw `SpecConflict`/500, in both the CLI and the web UI.

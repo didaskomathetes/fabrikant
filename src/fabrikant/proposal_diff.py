@@ -147,6 +147,10 @@ def compute_diff(proposal: SpecProposal) -> ProposalDiff:
     except ValueError as e:
         result.error = f"invalid change: {e}"
         return result
+    except OSError as e:
+        # The spec file vanished (or turned unreadable) between the checks above and the hash/read.
+        result.error = f"spec file unavailable: {e}"
+        return result
     result.loops = _loop_changes(current.get("loops") or {}, proposed.get("loops") or {})
     result.fields = _field_changes(current, proposed)
     return result

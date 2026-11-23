@@ -176,6 +176,44 @@ def test_reject_keeps_the_record(proj):
         sp.apply(pr.id, "cli:me")
 
 
+def test_apply_maps_spec_conflict_to_proposal_error(proj, monkeypatch):
+    # The dry-run check passes, then the spec moves on before the final write: the
+    # SpecConflict must surface as a clean ProposalError (not a raw 500 in the web UI).
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    real_save = specs.save_spec
+
+    def conflict_on_write(*a, **k):
+        if k.get("backup"):
+            raise specs.SpecConflict("spec changed externally")
+        return real_save(*a, **k)
+
+    monkeypatch.setattr(sp, "save_spec", conflict_on_write)
+    with pytest.raises(sp.ProposalError, match="changed while applying"):
+        sp.apply(pr.id, "cli:me")
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
+
+
+def test_decided_proposal_moves_to_decided_dir(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    pending = sp.proposals_dir() / f"{pr.id}.json"
+    decided = sp.decided_dir() / f"{pr.id}.json"
+    assert pending.is_file() and not decided.exists()
+    sp.reject(pr.id, "cli:me")
+    # The audit record is kept, but out of the pending hot path.
+    assert not pending.exists() and decided.is_file()
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.REJECTED
+    assert [p.id for p in sp.list_proposals(sp.ProposalStatus.REJECTED)] == [pr.id]
+    assert sp.list_proposals(sp.ProposalStatus.PENDING) == []
+
+
+def test_pending_listing_needs_no_decided_dir(proj):
+    # A fresh store with only pending records: the pending listing works and the
+    # decided dir is never created as a side effect.
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    assert [p.id for p in sp.list_proposals(sp.ProposalStatus.PENDING)] == [pr.id]
+    assert not sp.decided_dir().exists()
+
+
 # ---------------------------------------------------------------------- MCP tools
 _call = call
 

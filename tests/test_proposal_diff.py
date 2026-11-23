@@ -140,6 +140,36 @@ def test_reject_endpoint_and_unknown_action(fabrikant_url, spec_file):
     assert spec_file.read_bytes() == before
 
 
+def test_list_filters_by_matching_project_and_status(fabrikant_url, spec_file):
+    pr = _propose(spec_file, {"loops": {"new": NEW_LOOP}})
+    # ?project= matches the proposal's project
+    assert [p["id"] for p in json.loads(_req(f"{fabrikant_url}{PROPOSALS}?project=uitest")[1])["proposals"]] == [pr.id]
+    # after a decision the record is listed under its status, not under pending
+    _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}/apply", "POST", {})
+    assert json.loads(_req(fabrikant_url + PROPOSALS)[1])["proposals"] == []
+    applied = json.loads(_req(f"{fabrikant_url}{PROPOSALS}?status=applied")[1])["proposals"]
+    assert [p["id"] for p in applied] == [pr.id] and applied[0]["decided_by"].startswith("ui:")
+
+
+def test_get_returns_error_field_when_patch_no_longer_validates(fabrikant_url, spec_file):
+    pr = _propose(spec_file, {"loops": {"new": NEW_LOOP}})
+    pr.patch = {"loops": {"new": {"steps": [{"type": "nope"}]}}}
+    sp._write(pr)  # persist the broken patch
+    status, body, _ = _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}")
+    out = json.loads(body)
+    assert status == 200 and "invalid change" in out["error"] and out["loops"] == []
+
+
+def test_get_decided_proposal_carries_decision_metadata(fabrikant_url, spec_file):
+    pr = _propose(spec_file, {"loops": {"new": NEW_LOOP}})
+    _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}/reject", "POST", {})
+    status, body, _ = _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}")
+    out = json.loads(body)
+    assert status == 200 and out["status"] == "rejected"
+    assert out["decided_by"].startswith("ui:") and out["decided"]
+    assert out["loops"] == [] and out["fields"] == []  # metadata only, no diff
+
+
 def test_roles_and_csrf(local_url, spec_file):  # noqa: F811
     pr = _propose(spec_file, {"loops": {"new": NEW_LOOP}})
     url = f"{local_url}{PROPOSALS}/{pr.id}"
