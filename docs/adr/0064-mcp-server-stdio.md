@@ -64,7 +64,7 @@ See `docs/threat-model.md`.
 Handshake, version negotiation, `ping`, `tools/list`, `tools/call`, error mapping and malformed
 input are handled by the SDK. A tool that raises a domain error returns an **`isError: true`** result
 so the agent sees the message in-band. Tool visibility depends on flags (see *Tools*): 10 tools by
-default, +2 with `--allow-approvals`, +2 with `--allow-spec-write` (+1 more with `--spec-write-direct`).
+default, +2 with `--allow-approvals`, +2 with `--allow-spec-write`.
 
 ### Tools (runs, specs, approvals)
 
@@ -87,7 +87,6 @@ thin adapter. Actions are audited with actor `mcp`.
 | `reject_run` | `chat._chat_resume(…, approve=False)` | approvals |
 | `propose_spec_change` | `specs.save_spec(…, dry_run=True)` + persistent proposal store (`spec_proposals.py`); patch (`loops`, `remove_loops`, `description`, `max_parallel`) + required `base_hash` | spec-write |
 | `list_spec_proposals` | proposal store | spec-write |
-| `write_spec_change` | propose + apply in one call (destructive; needs `--spec-write-direct`) | spec-write |
 
 **Approvals are opt-in.** `approve_run` and `reject_run` are offered (and callable) only with
 `--allow-approvals` or `FABRIKANT_MCP_ALLOW_APPROVALS=1`. Approval is the human gate, and locally
@@ -97,7 +96,7 @@ the caller is a model that may be prompt-injected; it must not reach the gate by
 
 **Spec writes are opt-in and approval-gated.** An operator agent that can start and approve runs but
 cannot create or edit the loops they run is only half an operator, so spec-write tools exist
-(`propose_spec_change`, `list_spec_proposals`, `write_spec_change`). They are offered and callable only
+(`propose_spec_change`, `list_spec_proposals`). They are offered and callable only
 with `--allow-spec-write` or `FABRIKANT_MCP_ALLOW_SPEC_WRITE=1`; `--read-only` wins. A spec controls what
 runs, including tiers, shell steps and sandbox/egress settings, so a prompt-injected agent with write
 access is a larger risk than one that can only start runs. Therefore:
@@ -110,9 +109,8 @@ access is a larger risk than one that can only start runs. Therefore:
   or rejects it with `fabrikant proposals list|show|apply|reject`**; nothing is written before that.
   Apply uses the regular `save_spec`: atomic write, previous file kept as `<spec>.bak`, comments
   preserved. The record keeps `proposed_by=mcp` and `decided_by=cli:<user>`;
-- a **direct write** (`write_spec_change`, no human gate) is a further explicit opt-in
-  (`--spec-write-direct` or `FABRIKANT_MCP_SPEC_WRITE_DIRECT=1`); it is propose plus apply in one call and
-  is audited with `decided_by=mcp`;
+- there is **no direct write**: an agent can never change a spec without a human decision. A
+  one-call propose-and-apply tool was considered and dropped (see *Alternatives considered*);
 - the tools edit **existing** specs only: creating a new project spec and deleting one are out of scope
   (a loop can be removed through `remove_loops` in a patch); applying proposals from the web UI is a
   follow-up;
