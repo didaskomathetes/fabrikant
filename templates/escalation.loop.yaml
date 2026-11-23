@@ -1,0 +1,26 @@
+# Loop-Vorlage `escalation` (ADR 0059): Items mit Label `needs human` → wartender Gate-Run in der
+# fabrik-UI/CLI. Freigeben = Fortsetzen (Label weg, Loops laufen weiter), Ablehnen = Aufgeben
+# (Label bleibt). Das Label setzt `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`).
+# Einbindung (ADR 0047):  escalation: {use: escalation}
+params:
+  repo: null
+  item_label: fabrik  # nur fabrik-PRs (AND mit human_label)
+  human_label: needs human
+  poll: 60
+loop:
+  description: "Eskalation (ADR 0059): PR mit '{human_label}' → Pause mit Begründung → Mensch setzt fort oder gibt auf"
+  tier: 1
+  worktree: false  # nur GitHub-API (ADR 0020)
+  triggers:
+    - type: on_pr
+      repo: "{repo}"
+      labels: ["{item_label}", "{human_label}"]
+      poll: "{poll}"
+      # Pro Head-SHA reconcilen (ADR 0023): eine erneute Eskalation nach „Fortsetzen“ feuert, sobald
+      # der Builder gepusht hat. Solange ein Run pausiert, blockiert der Claim weitere Runs (ADR 0043).
+      reconcile: head
+  steps:
+    - name: wait-for-human
+      type: escalation
+      repo: "{repo}"
+      label: "{human_label}"

@@ -7,7 +7,7 @@ import subprocess
 import pytest
 from helpers import http_error, not_none
 
-from fabrik import validation
+from fabrik import gitops, validation
 from fabrik.engine import run_loop
 from fabrik.steps import git, pr
 
@@ -238,8 +238,8 @@ def test_pr_creates(monkeypatch, tmp_path):
         seen.update(method=method, url=url, token=token, payload=payload)
         return {"number": 7, "html_url": "https://gh/pr/7"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     ctx = _ctx(repo)
     res = pr._step_pr(ctx, {"repo": "o/r", "head": "dev"})
     assert res["ok"] is True
@@ -265,8 +265,8 @@ def test_pr_head_and_base_substitute_variables(monkeypatch, tmp_path):
         seen.update(payload=payload)
         return {"number": 8, "html_url": "https://gh/pr/8"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     ctx = {**_ctx(repo), "issue_number": "70"}
     res = pr._step_pr(ctx, {"repo": "o/r", "head": "fabrik/auto/{issue_number}", "base": "main"})
     assert res["ok"] is True
@@ -285,8 +285,8 @@ def test_pr_reuses_existing_open_pr(monkeypatch, tmp_path):
             return [{"number": 42, "html_url": "https://gh/pr/42"}]
         return {"number": 43, "html_url": "https://gh/pr/43"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     ctx = _ctx(repo)
     res = pr._step_pr(ctx, {"repo": "o/r", "head": "dev"})
     assert res["ok"] is True
@@ -312,9 +312,8 @@ def test_pr_exports_title_for_approval_context(monkeypatch, tmp_path, existing):
             return [{"number": 42, "html_url": "u", "title": "Alt-Titel"}] if existing else []
         return {"number": 43, "html_url": "u", "title": payload["title"]}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
-    monkeypatch.setattr(pr, "_commits_ahead", lambda *a: 1)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     ctx = _ctx(repo)
     pr._step_pr(ctx, {"repo": "o/r", "head": "dev", "title": "Neu {run_id}"})
     assert ctx["pr_title"] == ("Alt-Titel" if existing else "Neu r1")
@@ -331,8 +330,8 @@ def test_pr_creates_when_lookup_empty(monkeypatch, tmp_path):
             return []
         return {"number": 7, "html_url": "https://gh/pr/7"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     res = pr._step_pr(_ctx(repo), {"repo": "o/r", "head": "dev"})
     assert res["ok"] is True
     assert "PR #7" in res["summary"]
@@ -351,8 +350,8 @@ def _compare_fake(monkeypatch, compare: object) -> list[tuple[str, str]]:
             return []
         return {"number": 9, "html_url": "https://gh/pr/9"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     return calls
 
 
@@ -403,8 +402,8 @@ def test_pr_compare_http_error_falls_back_to_create(monkeypatch, tmp_path):
             return []
         return {"number": 9, "html_url": "https://gh/pr/9"}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     res = pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev"})
     assert "done" not in res
     assert "PR #9" in res["summary"]
@@ -425,8 +424,8 @@ def _label_calls(monkeypatch, *, existing: dict | None = None) -> list[tuple[str
             return {"number": 8, "html_url": "https://gh/pr/8"}
         return {}
 
-    monkeypatch.setattr(pr, "_gh_token", lambda: "tok")
-    monkeypatch.setattr(pr, "_gh_api", _fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _fake)
     return calls
 
 
@@ -541,6 +540,6 @@ def test_step_git_commit_noop_independent_of_locale(tmp_path, monkeypatch):
 
 
 def test_step_pr_rejects_invalid_head(tmp_path, monkeypatch):
-    monkeypatch.setattr(pr, "_gh_token", lambda: "t")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "t")
     with pytest.raises(ValueError):
         pr._step_pr(_ctx(tmp_path), {"repo": "o/r", "head": "bad branch"})

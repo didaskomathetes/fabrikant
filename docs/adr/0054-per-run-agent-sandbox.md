@@ -10,7 +10,7 @@ Am 2026-11-06 überarbeitet: Austausch über git-Bundles statt Worktree-Mount.
 ## Kontext
 
 Eine injizierte Anweisung lässt den Agent-Befehl **executieren** — auf dem Host.
-Der One-Shot-Subprozess (claude-code/codex/copilot) läuft mit den Rechten des
+Der One-Shot-Subprozess (claude-code/codex/copilot/opencode) läuft mit den Rechten des
 fabrik-Betreibers, sieht das gesamte Dateisystem und (ohne ADR 0051) das Internet.
 Prompt-Defense begrenzt die Wahrscheinlichkeit, nicht den Schaden. Die Kontrolle
 gehört in die Ausführungsebene: jeder Agent-Run ist ein isolierter Container.

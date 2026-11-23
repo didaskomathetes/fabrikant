@@ -39,7 +39,10 @@ def test_all_used_keys_exist_and_no_unused_keys():
             continue
         used |= set(re.findall(r"\b_?t\(\s*[\"']([a-z0-9_.]+)[\"']", f.read_text(encoding="utf-8")))
         used |= set(re.findall(r"\bi18n\.t\(\s*[\"']([a-z0-9_.]+)[\"']", f.read_text(encoding="utf-8")))
-    used |= {"approval.condition", "approval.why", "approval.what"}  # built dynamically in approval.py
+    from fabrik.approval import _TEXT_FIELDS
+
+    used |= {f"approval.{name}" for name in _TEXT_FIELDS}  # built dynamically in approval.py
+
     catalog = set(i18n._CATALOGS["de"])
     assert used - catalog == set(), "keys used but not in the catalog"
     assert catalog - used == set(), "unused catalog keys"

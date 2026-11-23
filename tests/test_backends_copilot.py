@@ -309,7 +309,13 @@ def test_poll_running_when_proc_not_started():
     be = CopilotBackend()
     sid = be.create_task("/tmp/wd", "t")
     r = be.poll(sid, "/tmp/wd")
-    assert r == {"status": "running", "text": "", "tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+    assert r == {
+        "status": "running",
+        "text": "",
+        "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0},
+        "cost": 0.0,
+        "tools": [],
+    }
 
 
 def test_poll_running_while_process_alive():
@@ -340,7 +346,7 @@ def test_poll_done_with_jsonl_result():
     r = be.poll(sid, "/tmp/wd")
     assert r["status"] == "done"
     assert r["text"] == "pong"
-    assert r["tokens"] == {"input": 0, "output": 0}
+    assert r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     assert r["cost"] == 0.0
     assert r["tools"] == []
 
@@ -551,7 +557,7 @@ def test_parse_reports_premium_requests_from_result_event():
     )
     r = CopilotBackend()._parse(out, "", 0)
     assert r["status"] == "done" and r["premium_requests"] == 3
-    assert r["tokens"] == {"input": 0, "output": 0}
+    assert r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 
 def test_parse_without_usage_has_no_premium_requests_key():

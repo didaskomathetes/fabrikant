@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from fabrik import gitops
 from fabrik.steps import human_gate
 
 FILES_ADR = [{"filename": "docs/adr/0001-x.md", "additions": 1, "deletions": 1, "patch": "+x"}]
@@ -18,13 +19,13 @@ def _ctx():
 def _patch(monkeypatch, files, llm=None, llm_ok=True):
     """GitHub-API + LLM faken. llm=None → LLM-Call soll nicht stattfinden."""
     calls = {"api": [], "llm": 0}
-    monkeypatch.setattr(human_gate, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
 
     def _api(method, url, token, payload=None, accept=None):
         calls["api"].append(url)
         return files
 
-    monkeypatch.setattr(human_gate, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_api", _api)
 
     def _llm(ctx, step, emit):
         calls["llm"] += 1

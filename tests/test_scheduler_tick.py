@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import retry_chains, scheduler
+from fabrik import gitops, retry_chains, scheduler
 from fabrik.scheduler import Scheduler
 
 
@@ -280,8 +280,9 @@ def _mk_issue_test(monkeypatch, issues):
     s = _FakeSched()
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append((t, kw)))
-    monkeypatch.setattr(scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: list(issues))
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(issues))
     trig = {"repo": "o/r", "poll": 0}
     return s, fired, trig
 
@@ -295,7 +296,7 @@ def test_check_issue_first_poll_no_fire(monkeypatch):
 def test_check_issue_new_fires(monkeypatch):
     s, fired, trig = _mk_issue_test(monkeypatch, [_issue(1)])
     s._check_issue("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: [_issue(1), _issue(2, "neu", "body")])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_issue(1), _issue(2, "neu", "body")])
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert len(fired) == 1
     assert fired[0][0] == "on_issue:#2"
@@ -306,7 +307,9 @@ def test_check_issue_new_fires(monkeypatch):
 def test_check_issue_filters_prs(monkeypatch):
     s, fired, trig = _mk_issue_test(monkeypatch, [])
     s._check_issue("p", "l", {"github": "o/r"}, trig)
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: [{"number": 5, "title": "pr", "pull_request": {}}])
+    monkeypatch.setattr(
+        gitops, "_gh_api", lambda m, u, t, payload=None: [{"number": 5, "title": "pr", "pull_request": {}}]
+    )
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert fired == []  # PRs werden gefiltert
 
@@ -324,8 +327,9 @@ def test_check_issue_no_token(monkeypatch):
     fired = []
     api = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(scheduler, "_gh_token_safe", lambda: "")
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: api.append(1) or [])
+
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: api.append(1) or [])
     s._check_issue("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert api == []
     assert fired == []
@@ -335,12 +339,13 @@ def test_check_issue_api_error(monkeypatch):
     s = _FakeSched()
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(scheduler, "_gh_token_safe", lambda: "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
 
-    def _boom(m, u, t):
+    def _boom(m, u, t, payload=None):
         raise RuntimeError("down")
 
-    monkeypatch.setattr(scheduler, "_gh_api", _boom)
+    monkeypatch.setattr(gitops, "_gh_api", _boom)
     s._check_issue("p", "l", {"github": "o/r"}, {"repo": "o/r", "poll": 0})
     assert fired == []
 
@@ -359,15 +364,16 @@ def _mk_reconcile_test(monkeypatch, runs_dir, issues, **trig_extra):
     fired, urls = [], []
     per = scheduler.GH_PER_PAGE
 
-    def _api(m, u, t):
+    def _api(m, u, t, payload=None):
         urls.append(u)
         page = int(u.split("&page=")[1].split("&")[0])
         return issues[(page - 1) * per : page * per]
 
     monkeypatch.setattr(scheduler.config, "RUNS_DIR", runs_dir)
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(scheduler, "_gh_token_safe", lambda: "tok")
-    monkeypatch.setattr(scheduler, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_api", _api)
     return s, fired, urls, {"repo": "o/r", "poll": 0, "reconcile": True, **trig_extra}
 
 
@@ -453,14 +459,14 @@ def _mk_blocked_test(monkeypatch, tmp_path, issues, blockers: dict[int, list[tup
     s, fired, _, trig = _mk_reconcile_test(monkeypatch, tmp_path, issues, skip_blocked=True)
     dep_calls: list[int] = []
 
-    def _blocked_by(repo, number, tok):
+    def _blocked_by(repo, number, tok, kind="blocked_by"):
         dep_calls.append(number)
         return [
             {"number": b[0], "state": b[1], "state_reason": b[2] if len(b) > 2 else None}
             for b in blockers.get(number, [])
         ]
 
-    monkeypatch.setattr(scheduler, "_gh_dependencies", _blocked_by)
+    monkeypatch.setattr(gitops, "_gh_dependencies", _blocked_by)
     return s, fired, trig, dep_calls
 
 
@@ -514,10 +520,10 @@ def test_skip_blocked_api_error_fails_closed(monkeypatch, tmp_path):
     """Dependency-API-Fehler → Poll bricht ab, nichts startet."""
     s, fired, trig, _ = _mk_blocked_test(monkeypatch, tmp_path, [_dep_issue(1, 1), _dep_issue(2)], {})
 
-    def _boom(repo, number, tok):
+    def _boom(repo, number, tok, kind="blocked_by"):
         raise RuntimeError("HTTP 502")
 
-    monkeypatch.setattr(scheduler, "_gh_dependencies", _boom)
+    monkeypatch.setattr(gitops, "_gh_dependencies", _boom)
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert fired == []
 
@@ -525,7 +531,7 @@ def test_skip_blocked_api_error_fails_closed(monkeypatch, tmp_path):
 def test_skip_blocked_off_ignores_dependencies(monkeypatch, tmp_path):
     """Ohne skip_blocked bleibt das Verhalten unverändert (kein Dependency-Call)."""
     s, fired, _, trig = _mk_reconcile_test(monkeypatch, tmp_path, [_dep_issue(1, 1)])
-    monkeypatch.setattr(scheduler, "_gh_dependencies", lambda *a: pytest.fail("kein Call erwartet"))
+    monkeypatch.setattr(gitops, "_gh_dependencies", lambda *a: pytest.fail("kein Call erwartet"))
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert fired == ["on_issue:#1"]
 
@@ -775,7 +781,7 @@ def test_check_issue_event_mode_priority_order(monkeypatch):
     trig["priority_labels"] = PRIO
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     new = [_prio_issue(3, "p2"), _prio_issue(2, "p0"), _prio_issue(1)]
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: list(new))
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(new))
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert [t for t, _ in fired] == ["on_issue:#2", "on_issue:#3"]
 
@@ -786,7 +792,7 @@ def test_check_issue_event_mode_priority_same_tier_oldest_first(monkeypatch):
     trig["priority_labels"] = PRIO
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     new = [_prio_issue(4, "p1"), _prio_issue(3), _prio_issue(2, "p1"), _prio_issue(1)]
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: list(new))
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(new))
     s._check_issue("p", "l", {"github": "o/r"}, trig)
     assert [t for t, _ in fired] == ["on_issue:#2", "on_issue:#4", "on_issue:#3"]
 

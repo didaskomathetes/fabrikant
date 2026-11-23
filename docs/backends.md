@@ -23,11 +23,41 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
   what the backends actually support. There is no per-session `resume`;
   recovery is run-level (ADR 0036). See the [roadmap](roadmap.md) for the
   full reconciliation.
-- **Cost & usage.** `opencode` and `claude_code` report tokens and cost;
-  `codex` and `copilot` report none (their CLIs emit no
-  usage data), so step summaries show 0 tokens for them. The draft's rule
-  was `cost: None`, not 0. Capturing usage across all backends is open
-  (issue #1).
+- **Cost & usage.** `poll()` reports `tokens: {input, output, cache_read,
+  cache_write}` (`fabrik.tokens.TokenCounts`). `input` is the whole prompt
+  *including* the cache share. An agent re-reads its context every turn, so
+  on long sessions most of `input` is cheap cache reads. A 1M-token run can
+  cost about $0.50; check `cost_usd`, not the token count. What each backend
+  can report:
+
+  | Backend | input/output | cache_read | cache_write | USD |
+  |---|---|---|---|---|
+  | `claude_code` | ✓ | ✓ | ✓ | ✓ (`total_cost_usd`) |
+  | `opencode` (API + CLI) | ✓ (reasoning counts as output) | ✓ | ✓ | ✓ |
+  | `codex` | ✓ | ✓ (`cached_input_tokens`) | ✓ (`cache_write_input_tokens`) | – (credits/limits only in the rollout file, not in `--json`) |
+  | `copilot` | – (only `premium_requests`) | – | – | – |
+  | `llm` step, HTTP | ✓ | ✓ (`prompt_tokens_details.cached_tokens`) | – | – |
+
+  Usage without `cost_usd` counts as `unpriced_steps`, and the summed cost
+  is then a lower bound.
+- **Billing (`usage.billing`).** `cost_usd` is computed from API list prices.
+  It is only real money when the CLI runs on an API key. On a subscription
+  login it is an API-equivalent estimate, and the run uses up plan limits or
+  credits instead (`fabrik.billing`):
+
+  | Backend | `api` when | `subscription` when |
+  |---|---|---|
+  | `claude_code` | `ANTHROPIC_API_KEY` passed (wins in `-p` mode) | only `CLAUDE_CODE_OAUTH_TOKEN` |
+  | `codex` | only `OPENAI_API_KEY` | only `CODEX_AUTH_JSON_B64` (ChatGPT login) |
+  | `copilot` | – | always (premium requests) |
+  | `opencode`, `llm` | – | – (provider-dependent: set it in the spec) |
+
+  Anything else is `unknown`. A step can pin it with `billing: api |
+  subscription | unknown`; for `opencode` and `llm` steps that is the only
+  source. The UI shows subscription cost as `≈ $x API-equiv. (subscription
+  limit)`. Fabrik cannot see how much of a plan limit is left. Codex reports a
+  reached workspace/member limit or depleted credits as an error, which is
+  classified as `environment` (no announced reset).
 
 One-Shot-CLI-Backends (`claude_code`, `codex`, `copilot`) leeren stdout/stderr ab dem
 Spawn per Hintergrund-Thread (`_oneshot.py`, `_PipeDrain`): Eine erst nach Prozessende
@@ -83,8 +113,8 @@ killed die Prozessgruppe (killpg) — keine Orphans.
 - **Sandbox:** Default `workspace-write` (bubblewrap). In Gateway-/Service-Kontexten
   ohne bubblewrap: `FABRIK_CODEX_SANDBOX=danger-full-access` — Containment dann über
   User/VM/Container, nicht über die Sandbox.
-- **Keine Token-/Cost-Daten:** `codex exec` ohne `--json` liefert kein Usage —
-  die Step-Summary zeigt 0 tokens (wie bei allen CLI-Backends).
+- **Tokens ja, Kosten nein:** `codex exec --json` liefert Tokens je Turn (inkl.
+  `cached_input_tokens`), aber keine USD-Kosten — der Step zählt als `unpriced`.
 - **Auth:** Codex-CLI-Login (ChatGPT-Plan oder `FABRIK…`/`OPENAI_API_KEY` via
   `codex login`) — gehört in die Deployment-Umgebung, nicht in die Spec.
 

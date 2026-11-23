@@ -340,9 +340,9 @@ def test_pr_review_review_and_fix_prompts_get_fresh_context(monkeypatch, tmp_pat
         output = "fixed" if "You are the developer" in prompt else next(verdicts)
         return {"ok": True, "output": output}
 
-    monkeypatch.setattr(pr_review, "_gh_token", lambda role="dev": "tok")
-    monkeypatch.setattr(pr_review, "_gh_diff", lambda *a: "diff")
-    monkeypatch.setattr(pr_review, "_gh_api", lambda m, url, *a, **k: {"head": {"sha": "sha1"}})
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_diff", lambda *a: "diff")
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, url, *a, **k: {"head": {"sha": "sha1"}})
     monkeypatch.setattr(pr_review, "_step_agent_backend", _agent)
     git_answers = {("status", "--porcelain"): "M f", ("rev-parse", "--abbrev-ref", "HEAD"): "dev"}
     monkeypatch.setattr(pr_review, "_git", lambda ctx, base, *args, check=True: git_answers.get(args, "sha1"))
