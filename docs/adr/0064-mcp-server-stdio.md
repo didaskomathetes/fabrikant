@@ -146,8 +146,9 @@ machine-readable `structuredContent` (the raw object), so agents can parse eithe
 
 ## Consequences
 
-- New module `fabrik/mcp_server.py`; new CLI subcommand `mcp`; new console script
-  `fabrik-mcp`.
+- Module `fabrikant/mcp_server.py` (rewritten on the SDK; the hand-rolled version is
+  replaced); CLI subcommand `mcp` and console script `fabrikant-mcp` (existing, unchanged
+  in name).
 - New core dependency: the official `mcp` SDK (see *Transport*); no change to the spec format, the engine, or the store.
 - Agents can drive fabrik end-to-end (read specs → start a run → approve it) without
   HTTP.
