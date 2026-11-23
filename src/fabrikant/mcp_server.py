@@ -287,12 +287,14 @@ class ProposalList(BaseModel):
 
 
 def _redact(obj: Any) -> Any:
-    """Recursively mask values of secret-looking keys (token, password, api key, ...)."""
+    """Recursively mask values of secret-looking keys (token, password, api key, ...).
+
+    A matching key masks its *entire* value (any type), so a secret held as a list or
+    nested dict (e.g. ``api_keys: [...]``, ``credentials: {user, pass}``) is not returned
+    verbatim.
+    """
     if isinstance(obj, dict):
-        return {
-            k: REDACTED if _SECRET_KEY_RE.search(str(k)) and isinstance(v, (str, int)) else _redact(v)
-            for k, v in obj.items()
-        }
+        return {k: REDACTED if _SECRET_KEY_RE.search(str(k)) else _redact(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_redact(v) for v in obj]
     return obj
@@ -386,7 +388,8 @@ def list_runs_tool(
     runs = list_runs(project or None, None if status else limit)
     if status:
         runs = [r for r in runs if r.get("status") == status][:limit]
-    return RunList(runs=runs, count=len(runs))
+    # Run records carry ``vars`` (secrets may have been passed to start_run): mask them.
+    return RunList(runs=[_redact(r) for r in runs], count=len(runs))
 
 
 def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
@@ -394,7 +397,7 @@ def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
     rec = get_run(run_id, project or None)
     if rec is None:
         raise ToolError(f"run not found: {run_id!r}")
-    return rec
+    return _redact(rec)
 
 
 def get_run_log_tool(run_id: _RunId, project: _OptProject = None, lines: _LogLines | None = None) -> RunLog:

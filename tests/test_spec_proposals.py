@@ -147,6 +147,27 @@ def test_apply_refuses_when_spec_changed_since(proj):
     assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
 
 
+def test_apply_maps_final_write_failures_to_proposal_error(proj, monkeypatch):
+    # The dry-run check passes, then the real write fails (spec moved on / I/O error):
+    # apply must raise a clean ProposalError, not a raw SpecConflict/OSError/traceback.
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    real_save = specs.save_spec
+
+    def fail_on_write(*a, **k):
+        if k.get("backup"):
+            raise specs.SpecConflict("spec changed externally")
+        return real_save(*a, **k)
+
+    monkeypatch.setattr(sp, "save_spec", fail_on_write)
+    with pytest.raises(sp.ProposalError, match="stale"):
+        sp.apply(pr.id, "cli:me")
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
+
+    monkeypatch.setattr(sp, "save_spec", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(sp.ProposalError, match="could not apply"):
+        sp.apply(pr.id, "cli:me")
+
+
 def test_reject_keeps_the_record(proj):
     pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
     assert sp.reject(pr.id, "cli:me").status is sp.ProposalStatus.REJECTED

@@ -187,6 +187,24 @@ def test_get_spec_redacts_secret_values(projects_dir):
     assert "hunter2" not in json.dumps(mcp.get_spec("p")) + json.dumps(mcp.get_raw_spec("p"))
 
 
+def test_redact_masks_whole_value_under_secret_key():
+    # A secret-looking key masks its entire value (any type), not just str/int leaves.
+    out = mcp._redact(
+        {
+            "api_keys": ["hunter2", "x"],
+            "credentials": {"user": "u", "password": "pw"},
+            "token": 7,
+            "name": "n",
+            "nested": {"ok": 1, "secret": ["leak"]},
+        }
+    )
+    assert out["api_keys"] == mcp.REDACTED
+    assert out["credentials"] == mcp.REDACTED
+    assert out["token"] == mcp.REDACTED
+    assert out["name"] == "n"
+    assert out["nested"] == {"ok": 1, "secret": mcp.REDACTED}
+
+
 def test_get_spec_unknown_project_raises(projects_dir):
     with pytest.raises(ToolError):
         mcp.get_spec("ghost")
@@ -239,6 +257,17 @@ def test_get_run(projects_dir, runs_dir):
     assert mcp.get_run_tool("r1", "p")["status"] == "pass"
     with pytest.raises(ToolError):
         mcp.get_run_tool("ghost", "p")
+
+
+def test_run_records_redact_secret_vars(projects_dir, runs_dir):
+    # Run records carry ``vars`` (secrets may have been passed to start_run): masked on the way out.
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "r1", vars={"api_token": "s3cret-value", "n": 1})
+    got = mcp.get_run_tool("r1", "p")
+    assert got["vars"]["api_token"] == mcp.REDACTED and got["vars"]["n"] == 1
+    listed = mcp.list_runs_tool("p").runs
+    assert listed[0]["vars"]["api_token"] == mcp.REDACTED
+    assert "s3cret-value" not in json.dumps(got) + json.dumps(listed)
 
 
 def test_get_run_log_tail_and_bound(projects_dir, runs_dir):

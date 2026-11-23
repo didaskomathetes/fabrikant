@@ -97,19 +97,24 @@ def _spec_file(project: str) -> Path:
     return path
 
 
+def _map_save_error(e: Exception, project: str) -> ProposalError:
+    """Map a ``save_spec`` failure to a :class:`ProposalError` (safe to show to a human/agent)."""
+    if isinstance(e, KeyError):
+        return ProposalError(f"unknown project: {project!r}")
+    if isinstance(e, SpecConflict):  # before ValueError: SpecConflict is a ValueError subclass
+        return ProposalError("stale base_hash: the spec changed since it was read; re-read it and propose again")
+    if isinstance(e, ValueError):
+        return ProposalError(f"invalid change: {e}")
+    return ProposalError(f"could not apply the change: {e}")
+
+
 def _check(project: str, update: SpecUpdate, base_hash: str) -> None:
     """Dry-run the change through ``save_spec``; map its failures to :class:`ProposalError`."""
     _spec_file(project)
     try:
         save_spec(project, update, base_hash=base_hash, dry_run=True)
-    except KeyError:
-        raise ProposalError(f"unknown project: {project!r}") from None
-    except SpecConflict:
-        raise ProposalError(
-            "stale base_hash: the spec changed since it was read; re-read it and propose again"
-        ) from None
-    except ValueError as e:
-        raise ProposalError(f"invalid change: {e}") from e
+    except (KeyError, SpecConflict, ValueError, OSError) as e:
+        raise _map_save_error(e, project) from e
 
 
 def _path(proposal_id: str) -> Path:
@@ -177,13 +182,21 @@ def propose(project: str, patch: dict, base_hash: str, actor: str) -> SpecPropos
 
 
 def apply(proposal_id: str, actor: str) -> SpecProposal:
-    """Apply a pending proposal for real (backup of the previous file, atomic replace)."""
+    """Apply a pending proposal for real (backup of the previous file, atomic replace).
+
+    A spec that moves on between the dry-run check and the final write (or a filesystem
+    error) raises :class:`ProposalError`, so callers (CLI, web UI) see a clean error
+    instead of a raw traceback.
+    """
     proposal = get_proposal(proposal_id)
     if proposal.status is not ProposalStatus.PENDING:
         raise ProposalError(f"proposal {proposal.id} is already {proposal.status}")
     update = SpecUpdate.from_payload(proposal.patch)
     _check(proposal.project, update, proposal.base_hash)
-    save_spec(proposal.project, update, base_hash=proposal.base_hash, backup=True)
+    try:
+        save_spec(proposal.project, update, base_hash=proposal.base_hash, backup=True)
+    except (KeyError, SpecConflict, ValueError, OSError) as e:
+        raise _map_save_error(e, proposal.project) from e
     return _decide(proposal, ProposalStatus.APPLIED, actor)
 
 
