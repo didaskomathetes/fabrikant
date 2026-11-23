@@ -15,29 +15,30 @@ from . import config, cron, metrics, pause, retry_chains, schedule, slack
 from .engine import _safe_run, start_priority_run
 from .gitops import project_github
 from .hosting import Provider, get_provider
+from .i18n import t as _t
 from .runmodel import RunStatus
 from .runs import loop_run_triggers
 from .runstore import STORE, RunStoreError
 from .specs import load_projects
 from .steps import _notify
 
-DEFAULT_POLL_S = 300  # Default-Poll-Intervall für on_issue/on_pr
-GH_PER_PAGE = 50  # GitHub-Seitengröße für Issue-/PR-Polls
+DEFAULT_POLL_S = 300  # Default poll interval for on_issue/on_pr
+GH_PER_PAGE = 50  # GitHub page size for issue/PR polls
 ACTIVE_RUN_STATUSES = ("running", "needs_approval")
 RECONCILE_MAX_PAGES = 10  # Obergrenze Pagination im Reconcile-Modus (≤ 500 Issues/Poll)
 PR_SEEN_MAX = 2 * RECONCILE_MAX_PAGES * GH_PER_PAGE  # Retention on_pr-Dedup-Historie (2 Poll-Fenster)
-# Höchstens so lange warten die übrigen Trigger eines Projekts auf dessen `on_start`-Fires
-# (z. B. wenn der Run hinter belegten Workern in der Queue hängt).
+# The project's other triggers wait at most this long for its `on_start` fires
+# (e.g. if the run hangs in the queue behind busy workers).
 START_GATE_MAX_S = 120
 DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. neue Runs pro Poll und Loop (ADR 0014)
 
 
 def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[str]):
-    """Offene Issues, älteste zuerst, lazy über bis zu RECONCILE_MAX_PAGES Seiten.
+    """Open issues, oldest first, lazily over up to RECONCILE_MAX_PAGES pages.
 
-    Liefert die rohen Provider-Payloads (``Issue.raw``) — die übrigen Helfer
-    (`issue_vars`, `_priority_rank`, …) arbeiten auf den Dictionaries. PRs, die die
-    Issues-API mitliefert, werden über ``is_pr`` herausgefiltert (ADR 0062)."""
+    Returns the raw provider payloads (``Issue.raw``) — the other helpers
+    (`issue_vars`, `_priority_rank`, …) work on the dictionaries. PRs that the
+    issues API also returns are filtered out via ``is_pr`` (ADR 0062)."""
     for page in range(1, RECONCILE_MAX_PAGES + 1):
         issues = provider.list_issues(
             repo, state="open", labels=labels, sort="created", direction="asc", page=page, per_page=GH_PER_PAGE
@@ -48,11 +49,11 @@ def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[s
 
 
 def _list_pulls(repo: str, provider: Provider, state: str, labels: list[str]) -> list[dict]:
-    """PRs eines States, paginiert bis zu RECONCILE_MAX_PAGES Seiten (≤ 500 PRs).
+    """PRs of a state, paginated up to RECONCILE_MAX_PAGES pages (≤ 500 PRs).
 
-    Liefert die rohen Provider-Payloads (``PullRequest.raw``). Der Label-Filter ist
-    Server-seitig OR-Semantik (nur Payload-Reduktion); die AND-Semantik (PR hat ALLE
-    Labels) wird client-seitig in `_check_pr` erzwungen."""
+    Returns the raw provider payloads (``PullRequest.raw``). The server-side label filter
+    has OR semantics (payload reduction only); the AND semantics (PR has ALL
+    labels) is enforced client-side in `_check_pr`."""
     out: list[dict] = []
     for page in range(1, RECONCILE_MAX_PAGES + 1):
         prs = provider.list_prs(repo, state=state, labels=labels, page=page, per_page=GH_PER_PAGE)
@@ -63,30 +64,30 @@ def _list_pulls(repo: str, provider: Provider, state: str, labels: list[str]) ->
 
 
 def _pr_trigger(num: int, head_sha: str = "") -> str:
-    """Trigger-String eines on_pr-Runs: ``on_pr:#N`` bzw. ``on_pr:#N@<sha>`` (ADR 0023).
+    """Trigger string of an on_pr run: ``on_pr:#N`` or ``on_pr:#N@<sha>`` (ADR 0023).
 
-    Ohne SHA (fehlt in der API-Antwort) → PR-Schlüssel ``on_pr:#N``; der Aufrufer
-    gleicht ihn dann zusätzlich gegen alle ``on_pr:#N@…``-Records ab."""
+    Without SHA (missing in the API response) → PR key ``on_pr:#N``; the caller
+    then additionally matches it against all ``on_pr:#N@…`` records."""
     return f"on_pr:#{num}@{head_sha}" if head_sha else f"on_pr:#{num}"
 
 
 def _cron_chain_pending(project: str, loop: str, spec: dict) -> bool:
-    """Hat der Cron-Trigger des Loops eine ``pending``-Retry-Kette (ADR 0036)?
+    """Does the loop's cron trigger have a ``pending`` retry chain (ADR 0036)?
 
-    Ein unlesbarer Ketten-Store hält die Cron-Trigger nicht an (False + Log)."""
+    An unreadable chain store does not stop the cron triggers (False + log)."""
     tkey = retry_chains.trigger_key(spec, loop, "cron")
     if not tkey:
         return False
     try:
         chain = retry_chains.ChainStore().get(project, loop, tkey)
     except (OSError, ValueError) as e:
-        print(f"[fabrik] Retry-Kette {project}/{loop} nicht lesbar: {e}")
+        print(_t("scheduler.fabrik_retry_chain_unreadable", project=project, loop=loop, e=e))
         return False
     return chain is not None and chain.state is retry_chains.ChainState.PENDING
 
 
 def issue_vars(issue: dict) -> dict:
-    """Trigger-Variablen eines on_issue-Runs aus einem GitHub-Issue (untrusted!)."""
+    """Trigger variables of an on_issue run from a GitHub issue (untrusted!)."""
     return {
         "issue_number": issue["number"],
         "issue_title": issue.get("title", ""),
@@ -95,7 +96,7 @@ def issue_vars(issue: dict) -> dict:
 
 
 def pr_vars(pr: dict) -> dict:
-    """Trigger-Variablen eines on_pr-Runs aus einem GitHub-PR (untrusted!)."""
+    """Trigger variables of an on_pr run from a GitHub PR (untrusted!)."""
     head = pr.get("head") or {}
     return {
         "pr_number": pr["number"],
@@ -112,53 +113,53 @@ cron_matches = cron.matches
 
 
 def _new_issues(st: dict, issues: list[dict]) -> list[dict]:
-    """Event-Modus: Issues, die seit dem letzten Poll neu sind (Erst-Poll: keine)."""
+    """Event mode: issues that are new since the last poll (first poll: none)."""
     ids = {it["number"] for it in issues}
     if st["seen"] is None:
         st["seen"] = ids  # initialisieren, nicht feuern
         return []
     new = ids - st["seen"]
-    # Union (nicht Replace): ein Issue, das aus dem 50er-Fenster fällt und
-    # später wieder auftaucht (Re-Label, Fenster-Shift), darf nicht erneut
-    # feuern. Issue-Nummern sind kleine Ints — das Set wächst bounded.
+    # Union (not replace): an issue that falls out of the window of 50 and
+    # later reappears (re-label, window shift) must not fire
+    # again. Issue numbers are small ints — the set grows bounded.
     st["seen"] = st["seen"] | ids
     return [it for it in issues if it["number"] in new]
 
 
 def _priority_rank(issue: dict, priority_labels: list[str]) -> int:
-    """Index des ersten Labels aus `priority_labels`, das das Issue trägt.
+    """Index of the first label from `priority_labels` that the issue carries.
 
-    Ohne Treffer `len(priority_labels)`: unpriorisierte Issues kommen zuletzt.
+    Without a hit `len(priority_labels)`: unprioritized issues come last.
     """
     names = {str(lbl.get("name", "")) for lbl in issue.get("labels") or [] if isinstance(lbl, dict)}
     return next((i for i, p in enumerate(priority_labels) if p in names), len(priority_labels))
 
 
 def _by_priority(issues: list[dict], priority_labels: list[str]) -> list[dict]:
-    """Sortiert nach Prioritäts-Label (ADR 0021), innerhalb einer Stufe älteste
-    (kleinste Issue-Nummer) zuerst — unabhängig von der Eingabe-Reihenfolge,
-    denn der Event-Modus liest neueste zuerst."""
+    """Sorted by priority label (ADR 0021), within a level oldest
+    (smallest issue number) first — independent of the input order,
+    since event mode reads newest first."""
     if not priority_labels:
         return issues
     return sorted(issues, key=lambda it: (_priority_rank(it, priority_labels), it["number"]))
 
 
-# Close-Gründe, mit denen ein Blocker als erledigt gilt; None = Alt-Issues ohne Grund.
+# Close reasons with which a blocker counts as done; None = legacy issues without a reason.
 RESOLVED_STATE_REASONS = (None, "completed")
 
 
 def _unresolved_blockers(repo: str, provider: Provider, issue: dict) -> list[str]:
-    """Blocker von `issue`, die nicht erledigt sind (native Dependencies, ADR 0031):
+    """Blockers of `issue` that are not done (native dependencies, ADR 0031):
     `["#9", "#12 (not_planned)"]`.
 
-    Erledigt = geschlossen als `completed`. Ein als `duplicate`/`not_planned`
-    geschlossener Blocker blockiert weiter — die Vorarbeit fehlt ja noch; ein Mensch
-    (oder der Duplikat-Close mit `duplicate_of`, der die Relation umhängt) muss
-    entscheiden. `issue_dependencies_summary` aus der Listen-Antwort spart den Call
-    für Issues ohne Blocker. API-Fehler propagieren (fail closed).
+    Done = closed as `completed`. A blocker closed as `duplicate`/`not_planned`
+    keeps blocking — the prerequisite work is still missing; a human
+    (or the duplicate close with `duplicate_of`, which re-hangs the relation) must
+    decide. `issue_dependencies_summary` from the list response saves the call
+    for issues without blockers. API errors propagate (fail closed).
 
-    Native Dependencies sind ein GitHub-Feature; auf GitLab wirft der Provider
-    `HostingNotSupported` (dokumentierte Lücke, ADR 0062) — wird vom Poll gefangen.
+    Native dependencies are a GitHub feature; on GitLab the provider raises
+    `HostingNotSupported` (documented gap, ADR 0062) — caught by the poll.
     """
     summary = issue.get("issue_dependencies_summary") or {}
     if not summary.get("total_blocked_by"):
@@ -173,12 +174,12 @@ def _unresolved_blockers(repo: str, provider: Provider, issue: dict) -> list[str
 
 
 def _label_names(item: dict) -> set[str]:
-    """Label-Namen eines Issues/PRs aus der REST-Antwort."""
+    """Label names of an issue/PR from the REST response."""
     return {str(lbl.get("name", "")) for lbl in item.get("labels") or [] if isinstance(lbl, dict)}
 
 
 def _without_excluded(items: list[dict], exclude: list[str]) -> list[dict]:
-    """Items ohne eines der `exclude_labels` (z. B. `needs human`, ADR 0059)."""
+    """Items without any of the `exclude_labels` (e.g. `needs human`, ADR 0059)."""
     if not exclude:
         return items
     return [it for it in items if not _label_names(it) & set(exclude)]
@@ -194,20 +195,20 @@ def _unprocessed_issues(
     blocked: dict[int, list[str]] | None = None,
     exclude: list[str] | None = None,
 ) -> list[dict]:
-    """Reconcile-Modus: bis zu `limit` offene Issues, deren Trigger nicht in `done`
-    (Trigger-Strings bisheriger Runs, s. `loop_run_triggers`) steht — höchste
-    Priorität zuerst, innerhalb einer Stufe älteste zuerst.
+    """Reconcile mode: up to `limit` open issues whose trigger is not in `done`
+    (trigger strings of previous runs, see `loop_run_triggers`) — highest
+    priority first, within a level oldest first.
 
-    Ohne `priority_labels` wird lazy paginiert (Abbruch beim `limit`-ten
-    Kandidaten). Mit Prioritäten müssen alle Seiten (≤ RECONCILE_MAX_PAGES)
-    gelesen werden, sonst verdeckt ein altes p3-Issue ein neues p0-Issue.
+    Without `priority_labels` it paginates lazily (abort at the `limit`-th
+    candidate). With priorities all pages (≤ RECONCILE_MAX_PAGES) must
+    be read, otherwise an old p3 issue would hide a new p0 issue.
 
-    `blocked` (dict, `skip_blocked`, ADR 0031): Issues mit unerledigten Blockern
-    werden übersprungen und mit ihren Blockern dort eingetragen. Sie belegen
-    kein `limit`-Kontingent und feuern, sobald alle Blocker erledigt sind.
+    `blocked` (dict, `skip_blocked`, ADR 0031): issues with unfinished blockers
+    are skipped and entered there with their blockers. They occupy
+    no `limit` quota and fire as soon as all blockers are done.
 
-    `exclude` (`exclude_labels`): Issues mit einem dieser Labels werden übersprungen, ohne
-    Kontingent zu belegen; sie feuern, sobald das Label entfernt ist.
+    `exclude` (`exclude_labels`): issues with one of these labels are skipped without
+    occupying quota; they fire as soon as the label is removed.
     """
     todo: list[dict] = []
     for it in _iter_open_issues_oldest_first(repo, provider, labels):
@@ -225,19 +226,19 @@ def _unprocessed_issues(
 
 
 def _log_blocked(st: dict, repo: str, blocked: dict[int, list[str]] | None) -> None:
-    """Loggt blockierte Issues nur bei Änderung (sonst eine Zeile pro Poll und Issue)."""
+    """Logs blocked issues only on change (otherwise one line per poll and issue)."""
     if blocked is None:
         return
     prev = st.get("blocked") or {}
     for num, blockers in blocked.items():
         if prev.get(num) != blockers:
-            print(f"[fabrik] Issue {repo}#{num} wartet auf Blocker: {', '.join(blockers)}")
+            print(_t("scheduler.fabrik_issue_waiting_for_blocker", repo=repo, num=num, v3=", ".join(blockers)))
     st["blocked"] = blocked
 
 
 def _bounded_seen(seen: dict, keep: set, limit: int = PR_SEEN_MAX) -> dict:
-    """Kürzt die Dedup-Historie auf `limit` Einträge; `keep` (aktuell gepollte PRs)
-    bleibt immer erhalten, übrige Einträge zählen nach PR-Nummer (neueste zuerst)."""
+    """Trims the dedup history to `limit` entries; `keep` (currently polled PRs)
+    is always kept, remaining entries count by PR number (newest first)."""
     if len(seen) <= limit:
         return seen
     room = max(limit - len(keep), 0)
@@ -246,7 +247,7 @@ def _bounded_seen(seen: dict, keep: set, limit: int = PR_SEEN_MAX) -> dict:
 
 
 def _is_start_cron(trig: dict) -> bool:
-    """Cron-Trigger mit `on_start: true` (feuert einmal nach Serverstart, vor den übrigen Triggern)."""
+    """Cron triggers with `on_start: true` (fire once after server start, before the other triggers)."""
     return trig.get("type") == "cron" and bool(trig.get("on_start"))
 
 
@@ -261,23 +262,23 @@ def _pr_fire_kind(
     head_sha: str,
     done: set[str],
 ) -> str | None:
-    """Fire-Entscheidung für eine gepollte PR: Art des Feuer-Ereignisses oder
-    ``None`` (nicht feuern). Reine Funktion ohne I/O — die einzige Stelle mit
-    der Reconcile-vs-Event-Logik (ADR 0011) und `reconcile: head` (ADR 0023).
+    """Fire decision for a polled PR: kind of fire event or
+    ``None`` (do not fire). Pure function without I/O — the only place with
+    the reconcile-vs-event logic (ADR 0011) and `reconcile: head` (ADR 0023).
 
-    `prev`: Dedup-Historie `{num: (state, updated_at)}` des letzten Polls;
-    ``None`` = Erst-Poll. `floor`: Wasserstand — PR-Nummern ≤ `floor` gelten als
-    gesehen, auch wenn sie aus `prev` verdrängt wurden. `done`: Trigger-Strings
-    bisheriger Runs (nur im Reconcile-Modus relevant).
+    `prev`: dedup history `{num: (state, updated_at)}` of the last poll;
+    ``None`` = first poll. `floor`: watermark — PR numbers ≤ `floor` count as
+    seen, even if they were displaced from `prev`. `done`: trigger strings
+    of previous runs (relevant only in reconcile mode).
 
-    - Reconcile-Modus: ``None``, wenn der Trigger (bei `per_head` inkl.
-      `head_sha`) bereits in `done` steht — ohne `head_sha` zählt auch jeder
-      ``on_pr:#N@…``-Record als erledigt (ADR 0023). Sonst ``"neu"`` (PR unbekannt
-      und über `floor`) oder ``"head <sha[:7]">`` (`per_head`) bzw.
-      ``"reconcile"`` (bekannte PR nachholen).
-    - Event-Modus: ``None`` beim Erst-Poll, bei unveränderter PR (State +
-      `updated_at` gleich) und für unter `floor` verdrängte PRs. Sonst
-      ``"neu"``, ``"state-wechsel <alt>→<neu>"`` oder ``"aktualisiert"``.
+    - Reconcile mode: ``None`` if the trigger (with `per_head` incl.
+      `head_sha`) is already in `done` — without `head_sha` every
+      ``on_pr:#N@…`` record also counts as done (ADR 0023). Otherwise ``"neu"`` (PR unknown
+      and above `floor`) or ``"head <sha[:7]">`` (`per_head`) or
+      ``"reconcile"`` (catch up a known PR).
+    - Event mode: ``None`` on the first poll, for an unchanged PR (state +
+      `updated_at` equal) and for PRs displaced below `floor`. Otherwise
+      ``"neu"``, ``"state-wechsel <old>→<new>"`` or ``"aktualisiert"``.
     """
     if reconcile:
         trigger = _pr_trigger(num, head_sha if per_head else "")
@@ -290,9 +291,9 @@ def _pr_fire_kind(
         return None  # Erst-Poll: initialisieren, nicht feuern
     old = prev.get(num)
     if old == (state, updated_at):
-        return None  # unverändert
+        return None  # unchanged
     if old is None and num <= floor:
-        return None  # verdrängte, schon gesehene PR (Wasserstand)
+        return None  # displaced, already seen PR (watermark)
     if old is None:
         return "neu"
     if old[0] != state:
@@ -301,11 +302,11 @@ def _pr_fire_kind(
 
 
 class Scheduler(threading.Thread):
-    """Tickt alle 2 s; feuert cron- und on_file-Triggers."""
+    """Ticks every 2 s; fires cron and on_file triggers."""
 
     def __init__(self):
         super().__init__(daemon=True, name="fabrik-scheduler")
-        self._last_cron: dict[tuple, str] = {}  # (proj, loop) -> Minute, die zuletzt gefeuert wurde
+        self._last_cron: dict[tuple, str] = {}  # (proj, loop) -> minute that last fired
         self._seen_files: dict[str, dict] = {}  # "proj:loop:glob" -> {mtime, stable_since, fired}
         self._issue_state: dict[tuple, dict] = {}  # (proj, loop) -> {"ts": float, "seen": set}
         self._pr_state: dict[tuple, dict] = {}  # (proj, loop) -> {"ts": float, "seen": {num: updated_at}}
@@ -332,31 +333,31 @@ class Scheduler(threading.Thread):
         pause.resume_expired()
         now = config.utcnow()
         local = datetime.now()
-        # One-time-Store (Schedule-View) darf Cron/Datei/Issue/PR nicht blockieren.
+        # The one-time store (schedule view) must not block cron/file/issue/PR.
         try:
             self._fire_onetimes(local)
         except (OSError, ValueError, TypeError, KeyError) as e:
-            print(f"[fabrik] One-time-Runs nicht geprüft: {e}")
+            print(_t("scheduler.fabrik_one_time_runs_not", e=e))
         projects = load_projects()
         for name, spec in projects.items():
             if spec.get("_error"):
                 continue
-            with project_github(spec):  # Polls mit den Tokens des Projekts
+            with project_github(spec):  # Polls with the project's tokens
                 self._tick_project(name, spec, now, local)
-        # Fällige Retry-Versuche starten (ADR 0036, Entscheidung 5) — auch nach
-        # Neustart; je Kette genau ein Starter (atomarer Claim).
+        # Start due retry attempts (ADR 0036, decision 5) — also after
+        # restart; exactly one starter per chain (atomic claim).
         try:
             retry_chains.start_due_attempts(projects)
         except (OSError, ValueError) as e:  # z. B. defekter Ketten-Store: Trigger laufen weiter
-            print(f"[fabrik] Retry-Versuche nicht gestartet: {e}")
+            print(_t("scheduler.fabrik_retry_attempts_not_started", e=e))
         self._first_tick = False
 
     def _check_cron(self, name: str, lname: str, spec: dict, trig: dict, minute: str, local: datetime) -> None:
-        """Cron-Trigger: höchstens ein Fire pro Minute.
+        """Cron trigger: at most one fire per minute.
 
-        `on_start: true` feuert zusätzlich einmal pro Serverprozess, sobald der Trigger aktiv ist
-        (erster Tick bzw. erster Tick nach Resume) — für Loops, deren Ergebnis beim Start schon
-        fehlen kann, z. B. ein abgelaufenes 1h-Token nach einer Server-Pause (token-refresh)."""
+        `on_start: true` additionally fires once per server process as soon as the trigger is active
+        (first tick or first tick after resume) — for loops whose result may already be
+        missing at start, e.g. an expired 1h token after a server pause (token-refresh)."""
         key = (name, lname)
         if self._last_cron.get(key) == minute:
             return
@@ -365,10 +366,10 @@ class Scheduler(threading.Thread):
             return
         self._started_cron.add(key)
         self._last_cron[key] = minute
-        # Pending Retry-Kette: Tick überspringen — die Kette
-        # plant den nächsten Versuch (ADR 0036, Entscheidung 2).
+        # Pending retry chain: skip the tick — the chain
+        # plans the next attempt (ADR 0036, decision 2).
         if _cron_chain_pending(name, lname, spec):
-            print(f"[fabrik] Cron-Tick {name}/{lname} übersprungen (Retry-Kette pending)")
+            print(_t("scheduler.fabrik_cron_tick_skipped_retry", name=name, lname=lname))
             return
         if not on_start:
             _safe_run(name, lname, "cron")
@@ -378,26 +379,26 @@ class Scheduler(threading.Thread):
         _safe_run(name, lname, "cron", done=done)
 
     def _start_gate_open(self, name: str) -> bool:
-        """True, wenn keine `on_start`-Fires des Projekts mehr laufen (oder ihre Wartezeit um ist)."""
+        """True if no `on_start` fires of the project are running any more (or their wait time is over)."""
         now = time.monotonic()
         pending = []
         for done, deadline in self._start_gates.get(name, []):
             if done.is_set():
                 continue
             if now >= deadline:
-                print(f"[fabrik] {name}: on_start-Run nach {START_GATE_MAX_S}s nicht fertig — Trigger laufen weiter")
+                print(_t("scheduler.fabrik_on_start_run_not", name=name, v2=START_GATE_MAX_S))
                 continue
             pending.append((done, deadline))
         self._start_gates[name] = pending
         return not pending
 
     def _fire_onetimes(self, local: datetime) -> None:
-        """One-time-Overrides (Schedule-View): fällige Einträge feuern wie manuelle Runs.
+        """One-time overrides (schedule view): due entries fire like manual runs.
 
-        `disabled` verwerfen (manuelle Runs sind dort verboten, ADR 0019); `paused`
-        erlaubt sie. `pop_due` hat fällige Einträge bereits entfernt; ein Start-Fehler
-        setzt den Eintrag mit Backoff erneut an (`schedule.requeue_failed`, begrenzte
-        Versuche, ein inzwischen neu angesetzter Eintrag gewinnt)."""
+        Discard on `disabled` (manual runs are forbidden there, ADR 0019); `paused`
+        allows them. `pop_due` has already removed due entries; a start error
+        reschedules the entry with backoff (`schedule.requeue_failed`, limited
+        attempts, an entry meanwhile newly scheduled wins)."""
         for entry in schedule.pop_due(local):
             name, lname = entry["project"], entry["loop"]
             if pause.effective_state(name, lname) == pause.DISABLED:
@@ -413,19 +414,19 @@ class Scheduler(threading.Thread):
                     note=f"one-time (geplant {entry['at']})" + (f": {entry['note']}" if entry.get("note") else ""),
                     actor="scheduler",
                 )
-                print(f"[fabrik] One-time {name}/{lname} gestartet: {run_id}")
+                print(_t("scheduler.fabrik_one_time_started", name=name, lname=lname, run_id=run_id))
             except Exception as e:
                 retry = schedule.requeue_failed(entry, local)
                 outcome = f"neuer Versuch {retry['at']}" if retry else "verworfen"
-                print(f"[fabrik] One-time {name}/{lname} nicht gestartet ({outcome}): {e}")
+                print(_t("scheduler.fabrik_one_time_not_started", name=name, lname=lname, outcome=outcome, e=e))
 
     def _tick_project(self, name: str, spec: dict, now: datetime, local: datetime) -> None:
-        """Trigger aller Loops eines Projekts prüfen (Cron, Datei, Issue, PR).
+        """Check the triggers of all loops of a project (cron, file, issue, PR).
 
-        Cron-Trigger mit `on_start` zuerst. Solange deren Start-Fire läuft (z. B. token-refresh nach
-        einer Server-Pause), warten alle übrigen Trigger des Projekts — sonst lesen sie im selben Tick
-        noch das abgelaufene Token (401). Ein aufgeschobener Cron feuert im nächsten Tick derselben
-        Minute nach (`_last_cron` bleibt bis dahin unberührt)."""
+        Cron triggers with `on_start` first. As long as their start fire is running (e.g. token-refresh after
+        a server pause), all other triggers of the project wait — otherwise they would still read
+        the expired token (401) in the same tick. A deferred cron fires in the next tick of the same
+        minute (`_last_cron` stays untouched until then)."""
         minute = now.strftime("%Y%m%d%H%M")
         loops = [
             (lname, ldef.get("triggers") or [])
@@ -441,7 +442,7 @@ class Scheduler(threading.Thread):
         for lname, triggers in loops:
             for trig in triggers:
                 ttype = trig.get("type")
-                if ttype == "cron" and not _is_start_cron(trig):  # Start-Crons: schon oben geprüft
+                if ttype == "cron" and not _is_start_cron(trig):  # Start crons: already checked above
                     self._check_cron(name, lname, spec, trig, minute, local)
                 elif ttype == "on_file":
                     self._check_file(name, lname, spec, trig, local)
@@ -471,39 +472,38 @@ class Scheduler(threading.Thread):
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": False}
             return
         if newest != state["mtime"]:
-            # Datei geändert → Debounce-Fenster neu starten, noch nicht gefeuert.
+            # File changed → restart the debounce window, not fired yet.
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": False}
             return
-        # mtime unverändert: genau einmal feuern, wenn sie seit `debounce`
-        # Sekunden stabil ist (nicht wiederholt bei jedem Poll).
+        # mtime unchanged: fire exactly once when it has been stable for `debounce`
+        # seconds (not repeatedly on every poll).
         if not state["fired"] and (now - state["stable_since"]) > debounce:
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": True}
             _safe_run(name, lname, f"on_file:{pattern}")
 
     def _check_issue(self, name: str, lname: str, spec: dict, trig: dict):
-        """Pollt GitHub-Issues (optional label-gefiltert, AND); neue Issue → Loop-Start.
+        """Polls GitHub issues (optionally label-filtered, AND); new issue → loop start.
 
-        Ohne `reconcile` event-basiert: der erste Poll initialisiert nur das
-        In-Memory-`seen`-Set; danach feuern neu aufgetauchte Issues.
+        Without `reconcile` event-based: the first poll only initializes the
+        in-memory `seen` set; afterwards newly appeared issues fire.
 
-        `reconcile: true` (ADR 0014): feuert für jedes passende offene Issue,
-        für das der Loop noch NIE einen Run hatte (Status egal, kein Auto-Retry)
-        — geprüft über die Run-Records, überlebt also Restarts und arbeitet den
-        Bestand ab. Höchstens `max_per_poll` (Default DEFAULT_MAX_PER_POLL)
-        Runs pro Poll, älteste Issues zuerst.
+        `reconcile: true` (ADR 0014): fires for every matching open issue
+        for which the loop has NEVER had a run (status irrelevant, no auto-retry)
+        — checked via the run records, so it survives restarts and works off the
+        backlog. At most `max_per_poll` (default DEFAULT_MAX_PER_POLL)
+        runs per poll, oldest issues first.
 
-        `priority_labels` (ADR 0021, z. B. `[p0, p1, p2, p3]`): Kandidaten
-        werden in beiden Modi nach dem ersten passenden Label dieser Liste
-        sortiert; Issues ohne Prioritäts-Label kommen zuletzt.
+        `priority_labels` (ADR 0021, e.g. `[p0, p1, p2, p3]`): candidates
+        are sorted in both modes by the first matching label of this list;
+        issues without a priority label come last.
 
-        `skip_blocked: true` (ADR 0031, nur mit `reconcile`): Issues mit unerledigten
-        "blocked by"-Dependencies starten nicht; sie bleiben ohne Run-Record und
-        feuern beim ersten Poll, nachdem ihr letzter Blocker als `completed`
-        geschlossen wurde.
+        `skip_blocked: true` (ADR 0031, only with `reconcile`): issues with unfinished
+        "blocked by" dependencies do not start; they stay without a run record and
+        fire on the first poll after their last blocker has been closed as `completed`.
 
-        `exclude_labels` (ADR 0059, z. B. `[needs human]`): Issues mit einem dieser Labels
-        starten nicht. Im Reconcile-Modus feuern sie, sobald das Label weg ist; im Event-Modus
-        gelten sie als gesehen.
+        `exclude_labels` (ADR 0059, e.g. `[needs human]`): issues with one of these labels
+        do not start. In reconcile mode they fire as soon as the label is gone; in event mode
+        they count as seen.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -540,17 +540,17 @@ class Scheduler(threading.Thread):
             return
         for it in todo:
             print(f"[fabrik] neues Issue {repo}#{it['number']}: {it['title']}")
-            # Issue-Content als Variable (untrusted! — nur markiert in LLM-Prompts,
-            # Triage → deterministisches Mapping, keine freie LLM-Aktion)
+            # Issue content as variable (untrusted! — only marked in LLM prompts,
+            # triage → deterministic mapping, no free LLM action)
             _safe_run(name, lname, f"on_issue:#{it['number']}", initial_vars=issue_vars(it))
 
     def _check_slack(self, name: str, lname: str, trig: dict, client: slack.SlackClient | None = None):
-        """Pollt Whitelist-Channels nach Alerts (ADR 0040); jeder neue Treffer → genau ein Run.
+        """Polls whitelist channels for alerts (ADR 0040); every new hit → exactly one run.
 
-        Start über `_safe_run` mit `alert_text/alert_channel/alert_ts` — derselbe
-        Pfad wie `on_issue`. Ohne Token in `token_env` passiert nichts. Ein Alert
-        bleibt `pending` (State-Datei), bis sein Run geclaimt ist; solange ein
-        Start-Versuch läuft, wird er nicht erneut eingereiht."""
+        Start via `_safe_run` with `alert_text/alert_channel/alert_ts` — the same
+        path as `on_issue`. Without a token in `token_env` nothing happens. An alert
+        stays `pending` (state file) until its run is claimed; while a
+        start attempt is running, it is not queued again."""
         key = (name, lname)
         if time.time() - self._slack_ts.get(key, 0.0) < float(trig.get("poll", slack.DEFAULT_POLL_S)):
             return
@@ -593,37 +593,36 @@ class Scheduler(threading.Thread):
         )
 
     def _check_pr(self, name: str, lname: str, spec: dict, trig: dict):
-        """Pollt GitHub-PRs (States aus `states`, Default: `open`); neue ODER
-        aktualisierte PR (updated_at-Change) ODER State-Wechsel (z. B.
-        open→closed bei `states: [open, closed]`) → Loop-Start.
+        """Polls GitHub PRs (states from `states`, default: `open`); new OR
+        updated PR (updated_at change) OR state change (e.g.
+        open→closed with `states: [open, closed]`) → loop start.
 
-        `updated_at` ändert sich bei neuen Commits, Titel/Body-Edit, Label- und
-        Review-Changes — d. h. 'create/update' im Sinne des Triggers. Der erste
-        Poll initialisiert nur (nicht feuern), damit bestehende PRs nicht sofort
-        alle gescannt werden. Dedup: eine PR feuert nur bei Change
-        (State + updated_at) — erneutes Pollen derselben PR löst keinen
-        zweiten Run aus.
+        `updated_at` changes on new commits, title/body edits, label and
+        review changes — i.e. 'create/update' in the sense of the trigger. The first
+        poll only initializes (does not fire), so existing PRs are not
+        all scanned immediately. Dedup: a PR fires only on change
+        (state + updated_at) — polling the same PR again does not trigger a
+        second run.
 
-        `reconcile: true` macht den Trigger zu einem Reconciling-Controller:
-        Der erste Poll feuert AUCH auf bestehende PRs, und jeder Poll feuert nur
-        auf PRs, für die der Loop noch NIE einen Run hatte (Status egal, aus
-        den Run-Records — überlebt Restarts) — damit ein PR genau einen
-        Approval-Run hat (ADR 0011). Ohne `reconcile` bleibt das
-        Event-Verhalten (Erst-Poll initialisiert, feuert auf neu/aktualisiert/
-        State-Wechsel).
+        `reconcile: true` turns the trigger into a reconciling controller:
+        the first poll ALSO fires on existing PRs, and every poll fires only
+        on PRs for which the loop has NEVER had a run (status irrelevant, from
+        the run records — survives restarts) — so a PR has exactly one
+        approval run (ADR 0011). Without `reconcile` the event behavior stays
+        (first poll initializes, fires on new/updated/state change).
 
-        `reconcile: head` (ADR 0023) reconciled pro Head-SHA statt pro PR
-        (Trigger `on_pr:#N@<sha>`): jeder neue Push feuert genau einmal,
-        Kommentare/Labels ohne Push nicht; ein verworfener Trigger (Lock belegt,
-        kein Run-Record) wird beim nächsten Poll nachgeholt. Fehlt `head.sha`,
-        gilt die PR als erledigt, sobald irgendein Run für sie existiert.
+        `reconcile: head` (ADR 0023) reconciles per head SHA instead of per PR
+        (trigger `on_pr:#N@<sha>`): every new push fires exactly once,
+        comments/labels without a push do not; a discarded trigger (lock busy,
+        no run record) is caught up on the next poll. If `head.sha` is missing,
+        the PR counts as done as soon as any run exists for it.
 
-        Die Fire-Entscheidung pro PR rechnet der reine Helfer `_pr_fire_kind`
-        (ohne I/O); hier bleiben nur Polling/Throttling, Label-Filter,
-        Dedup-State (`seen`/`floor`) und das Run-Starten via `_safe_run`.
+        The fire decision per PR is computed by the pure helper `_pr_fire_kind`
+        (without I/O); only polling/throttling, label filter,
+        dedup state (`seen`/`floor`) and run starting via `_safe_run` remain here.
 
-        `exclude_labels` (ADR 0059, z. B. `[needs human]`): PRs mit einem dieser Labels feuern
-        nicht; das Entfernen des Labels ist selbst eine Änderung und feuert danach wieder.
+        `exclude_labels` (ADR 0059, e.g. `[needs human]`): PRs with one of these labels do not
+        fire; removing the label is itself a change and fires again afterwards.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -637,8 +636,8 @@ class Scheduler(threading.Thread):
         reconcile = bool(trig.get("reconcile"))
         per_head = trig.get("reconcile") == config.RECONCILE_PER_HEAD
         required_labels = [str(x) for x in (trig.get("labels") or [])]
-        # Dedup (Reihenfolge bleibt): `states: [open, open]` würde sonst die API
-        # zweimal aufrufen und dieselben PRs doppelt in `prs` hängen → doppelte Runs.
+        # Dedup (order kept): `states: [open, open]` would otherwise call the API
+        # twice and add the same PRs twice to `prs` → duplicate runs.
         states = list(dict.fromkeys(str(s) for s in (trig.get("states") or ["open"])))
         prs: list[dict] = []
         try:
@@ -650,24 +649,25 @@ class Scheduler(threading.Thread):
         except Exception as e:
             print(f"[fabrik] on_pr Poll {repo} fehlgeschlagen: {e}")
             return
-        # AND-Semantik: PR muss ALLE geforderten Labels haben — die GitHub-API
-        # filtert nur OR. Ohne dies würde z. B. 'needs approval' auch
-        # Nicht-fabrik-PRs treffen (ADR 0011).
+        # AND semantics: the PR must have ALL required labels — the GitHub API
+        # filters only OR. Without this e.g. 'needs approval' would also hit
+        # non-fabrik PRs (ADR 0011).
         if required_labels:
             prs = [pr for pr in prs if set(required_labels) <= _label_names(pr)]
         prs = _without_excluded(prs, [str(x) for x in (trig.get("exclude_labels") or [])])
-        # State + updated_at pro PR tracken: State-Wechsel (z. B. open→closed)
-        # ist ein eigenes Feuer-Ereignis, Update (gleicher State, neues
-        # updated_at) ebenfalls; unverändert → kein Fire (Dedup).
+        # Track state + updated_at per PR: a state change (e.g. open→closed)
+        # is its own fire event, an update (same state, new
+        # updated_at) likewise; unchanged → no fire (dedup).
+
         cur = {pr["number"]: (pr.get("state", "open"), pr.get("updated_at", "")) for pr in prs}
         prev = st["seen"]
-        # Merge (nicht Replace): eine PR, die aus dem paginierten Fenster fällt und
-        # unverändert zurückkehrt, darf nicht erneut feuern. Retention: auf
-        # PR_SEEN_MAX Einträge begrenzt (aktuelle PRs + höchste/neueste Nummern der
-        # Historie). Verdrängte Nummern wandern in den Wasserstand `floor`: PR-Nummern
-        # wachsen monoton, eine unbekannte Nummer ≤ floor ist daher nie neu, sondern
-        # eine verdrängte, bereits gesehene PR → kein Re-Fire (Zustand wird still
-        # neu gelernt; eine Änderung während der Abwesenheit geht dabei verloren).
+        # Merge (not replace): a PR that falls out of the paginated window and
+        # returns unchanged must not fire again. Retention: limited to
+        # PR_SEEN_MAX entries (current PRs + highest/newest numbers of the
+        # history). Displaced numbers move into the watermark `floor`: PR numbers
+        # grow monotonically, so an unknown number ≤ floor is never new but
+        # a displaced, already seen PR → no re-fire (state is silently
+        # relearned; a change during the absence is lost in the process).
         merged = {**(prev or {}), **cur}
         st["seen"] = _bounded_seen(merged, keep=set(cur))
         evicted = merged.keys() - st["seen"].keys()
@@ -686,10 +686,10 @@ class Scheduler(threading.Thread):
             _safe_run(name, lname, _pr_trigger(num, head_sha if per_head else ""), initial_vars=pr_vars(pr))
 
     def _check_stale_runs(self):
-        """Dead-Man's-Switch: Runs in 'running' älter als Xh → error + Alert."""
+        """Dead-man's switch: runs in 'running' older than X h → error + alert."""
         limit_h = float(os.environ.get("FABRIK_STALE_HOURS", "6"))
         now_ts = time.time()
-        projects: dict[str, dict] | None = None  # einmal laden, erst wenn ein Run bereinigt wird
+        projects: dict[str, dict] | None = None  # load once, only when a run is cleaned up
         for r in STORE.load_records(status=RunStatus.RUNNING):
             try:
                 age_h = (now_ts - datetime.fromisoformat(r["started"]).timestamp()) / 3600
@@ -697,8 +697,8 @@ class Scheduler(threading.Thread):
                 continue
             if age_h < limit_h:
                 continue
-            # Über den Store: Vorbedingung `running` — ein Run, den die Engine inzwischen
-            # beendet hat, wird nicht überschrieben (PreconditionError → überspringen).
+            # Via the store: precondition `running` — a run the engine has meanwhile
+            # ended is not overwritten (PreconditionError → skip).
             try:
                 r = STORE.reap(r["project"], r["id"], error=f"stale: >{limit_h:.0f}h in 'running' — Dead-Man's-Switch")
             except (RunStoreError, OSError):

@@ -1,16 +1,16 @@
-"""Gemeinsamer Agent-State über parallele Runs (ADR 0028).
+"""Shared agent state across parallel runs (ADR 0028).
 
-Agent-Loops (review-pr, pr-reply) pflegen "bereits verarbeitet" in JSON-Dateien
-unter `<workdir>/state/`. Jeder Run hat einen eigenen Worktree, daher liegt die
-Quelle der Wahrheit in `config.STATE_DIR/agent/<projekt>/`:
+Agent loops (review-pr, pr-reply) keep "already processed" in JSON files
+under `<workdir>/state/`. Each run has its own worktree, so the source of
+truth lives in `config.STATE_DIR/agent/<project>/`:
 
-- `seed`: kopiert den gemeinsamen Stand beim Run-Start (bzw. Resume) in den Worktree.
-- `merge_back`: überträgt am Run-Ende (bzw. bei der Pause) NUR die Änderungen
-  des Runs unter Lock in den gemeinsamen Stand — Updates paralleler Runs
-  gehen nicht verloren (Key-weiser Merge statt Überschreiben).
+- `seed`: copies the shared state into the worktree at run start (or resume).
+- `merge_back`: at run end (or on pause) transfers ONLY the run's changes
+  into the shared state under lock — updates from parallel runs are not
+  lost (key-wise merge instead of overwrite).
 
-`seed` trägt `<workdir>/state/` außerdem lokal in `info/exclude` ein: Projekte, die
-das Verzeichnis nicht selbst ignorieren, würden es sonst per `git add :/` committen."""
+`seed` also adds `<workdir>/state/` locally to `info/exclude`: projects that
+do not ignore the directory themselves would otherwise commit it via `git add :/`."""
 
 from __future__ import annotations
 
@@ -22,14 +22,15 @@ from pathlib import Path
 
 from . import config, gitops
 from .filelock import locked
+from .i18n import t
 
-# Dateien (relativ zu `<workdir>/state/`), die zwischen Runs geteilt werden.
+# Files (relative to `<workdir>/state/`) shared between runs.
 SHARED_FILES = ("replied-comments.json", "reviewed-prs.json")
 _SNAPSHOT_FILE = ".agent-state-snapshot.json"
 
 
 class AgentStateError(ValueError):
-    """State-Datei ist nicht lesbares JSON-Objekt."""
+    """State file is not a readable JSON object."""
 
 
 def shared_dir(project: str) -> Path:
@@ -42,9 +43,9 @@ def _load(p: Path) -> dict:
     except FileNotFoundError:
         return {}
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        raise AgentStateError(f"Ungültiger Agent-State in {p}: {e}") from e
+        raise AgentStateError(t("agent_state.invalid_agent_state_in", p=p, e=e)) from e
     if not isinstance(data, dict):
-        raise AgentStateError(f"Ungültiger Agent-State in {p}: erwartet ein JSON-Objekt")
+        raise AgentStateError(t("agent_state.invalid_agent_state_in_expected", p=p))
     return data
 
 
@@ -95,7 +96,7 @@ def seed(project: str, workdir: Path) -> dict[str, dict]:
 
 
 def merge_back(project: str, workdir: Path, snapshot: dict[str, dict] | None = None) -> None:
-    """Überträgt die Run-Änderungen (lokal vs. Snapshot) unter Lock in den gemeinsamen Stand.
+    """Transfers the run's changes (local vs. snapshot) into the shared state under lock.
 
     The snapshot is persisted in the worktree by :func:`seed`, so resumes after
     a process restart retain the baseline from before approval.
@@ -112,7 +113,7 @@ def merge_back(project: str, workdir: Path, snapshot: dict[str, dict] | None = N
             for k, v in local.items():
                 if k not in base or base[k] != v:
                     merged[k] = v
-            for k in base.keys() - local.keys():  # lokal gelöscht
+            for k in base.keys() - local.keys():  # deleted locally
                 # Do not erase a value written by another run after this
                 # run's snapshot; concurrent update/delete conflicts keep the
                 # update regardless of merge order.

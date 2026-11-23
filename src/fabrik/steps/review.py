@@ -1,18 +1,18 @@
-"""Step: review — Cross-Model Cold Critic (ADR 0003, Issue #12).
+"""Step: review — cross-model cold critic (ADR 0003, issue #12).
 
-Startet eine Agent-Session mit **anderem Modell** als der Builder-Step
-(frischer Kontext, kein Bias). Der Reviewer-Verdict landet im Run-Record
-(`review`-Feld: verdict, findings). `changes_requested` → Step failt →
-Run failt (Findings in der Summary). Der Reviewer kann also den Run
-zurücksetzen, der Builder nicht.
+Starts an agent session with a **different model** than the builder step
+(fresh context, no bias). The reviewer verdict lands in the run record
+(`review` field: verdict, findings). `changes_requested` → step fails →
+run fails (findings in the summary). So the reviewer can
+reset the run, the builder cannot.
 
-Step-Def:
+Step def:
     type: review
-    model: <Pflicht, muss ≠ Builder-Modell sein>
-    backend: opencode | claude_code | codex   (Default: opencode / FABRIK_AGENT_BACKEND)
+    model: <required, must be ≠ builder model>
+    backend: opencode | claude_code | codex   (default: opencode / FABRIK_AGENT_BACKEND)
     endpoint: <opencode>
-    target: <optional, {vars}-substituiert; Default: Output des letzten Agent-Steps>
-    prompt_file: <optional, ersetzt die Review-Vorlage>
+    target: <optional, {vars}-substituted; default: output of the last agent step>
+    prompt_file: <optional, replaces the review template>
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import os
 
 from ..context import _substitute
 from ..failures import failed
+from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..spec_sources import resolve_relative
 from .agent import _step_agent_backend
@@ -39,21 +40,21 @@ _REVIEW_TEMPLATE = (
     "Work to review:\n---\n{target}\n---\n"
 )
 
-# Backend der Review-Steps, wenn weder Step noch FABRIK_AGENT_BACKEND eins setzen.
+# Backend of the review steps if neither step nor FABRIK_AGENT_BACKEND sets one.
 DEFAULT_REVIEW_BACKEND = "opencode"
-# So viele Findings nennt die Summary eines gescheiterten Reviews.
+# This many findings are named in the summary of a failed review.
 SUMMARY_FINDINGS = 5
 # Status-Vokabular der AC-Verifikation (ADR 0013 Stufe 2).
 ACCEPTANCE_STATUSES = ("met", "unmet", "unverifiable")
 
 
 def _validate_acceptance(raw: object) -> list[dict] | None:
-    """``acceptance``-Feld des Verdicts validieren (ADR 0013 Stufe 2).
+    """Validate the ``acceptance`` field of the verdict (ADR 0013 stage 2).
 
-    Liefert die normalisierte Liste ``[{criterion, status, evidence}]``;
-    fehlendes Feld → ``[]``. Ungültige Struktur (kein List, Eintrag kein
-    Dict, leeres Kriterium, unbekannter Status) → ``None`` — das Verdict
-    wird abgelehnt statt still ignoriert."""
+    Returns the normalized list ``[{criterion, status, evidence}]``;
+    missing field → ``[]``. Invalid structure (not a list, entry not a
+    dict, empty criterion, unknown status) → ``None`` — the verdict
+    is rejected instead of silently ignored."""
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -71,8 +72,8 @@ def _validate_acceptance(raw: object) -> list[dict] | None:
 
 
 def _parse_verdict(text: str) -> dict | None:
-    """JSON-Verdict aus dem Agent-Final-Text extrahieren (tolerant:
-    erstes '{' bis letztes '}'). None = kein gültiges Verdict."""
+    """Extract the JSON verdict from the agent final text (tolerant:
+    first '{' to last '}'). None = no valid verdict."""
     t = (text or "").strip()
     start, end = t.find("{"), t.rfind("}")
     if start == -1 or end <= start:
@@ -89,7 +90,7 @@ def _parse_verdict(text: str) -> dict | None:
     d["findings"] = [f if isinstance(f, dict) else {"severity": "medium", "text": str(f)} for f in findings]
     acceptance = _validate_acceptance(d.get("acceptance"))
     if acceptance is None:
-        return None  # ungültiges acceptance-JSON wird abgelehnt, nicht still ignoriert (ADR 0013)
+        return None  # invalid acceptance JSON is rejected, not silently ignored (ADR 0013)
     d["acceptance"] = acceptance
     return d
 
@@ -100,16 +101,16 @@ def _resolve_backend(step: dict) -> str:
 
 
 def _check_cold_critic(model: str, ctx: dict, label: str) -> dict | None:
-    """Prüft das Reviewer-Modell (ADR 0003): Pflicht und ≠ Builder-Modell.
+    """Checks the reviewer model (ADR 0003): required and ≠ builder model.
 
-    ``label`` leitet die Fehlermeldung ein (``review-Step``, ``pr_review``).
-    Liefert ein ``failed``-Result oder None, wenn das Modell passt."""
+    ``label`` introduces the error message (``review step``, ``pr_review``).
+    Returns a ``failed`` result or None if the model fits."""
     if not model:
-        return failed(f"{label}: model fehlt (Pflicht)", FailureKind.ENVIRONMENT)
+        return failed(_t("steps.review.model_missing_required", label=label), FailureKind.ENVIRONMENT)
     builder_model = (ctx.get("last_agent_model") or "").strip()
     if builder_model and builder_model == model:
         return failed(
-            f"{label}: model muss ≠ Builder-Modell sein ({model}) — Cold Critic ist der Punkt",
+            _t("steps.review.model_must_be_builder_model", label=label, model=model),
             FailureKind.ENVIRONMENT,
         )
     return None
@@ -121,15 +122,15 @@ def _finding_label(f: dict) -> str:
 
 
 def _summarize_findings(findings: list[dict], n: int = SUMMARY_FINDINGS) -> str:
-    """Die ersten ``n`` Findings einzeilig für die Step-Summary; leer → ``ohne Findings``."""
-    return "; ".join(_finding_label(f) for f in findings[:n]) or "ohne Findings"
+    """The first ``n`` findings on one line for the step summary; empty → ``without findings``."""
+    return "; ".join(_finding_label(f) for f in findings[:n]) or _t("steps.review.without_findings")
 
 
 def _review_field(verdict: dict, model: str, **extra) -> dict:
-    """``review``-Feld des Run-Records (Verdict-Vertrag, ADR 0003) plus Step-spezifische Felder.
+    """``review`` field of the run record (verdict contract, ADR 0003) plus step-specific fields.
 
-    ``acceptance`` (ADR 0013): AC-Verifikation pro Kriterium — auch
-    `unverifiable` landet im Run-Record, blockiert aber nicht."""
+    ``acceptance`` (ADR 0013): AC verification per criterion — even
+    `unverifiable` lands in the run record but does not block."""
     return {
         "verdict": verdict["verdict"],
         "model": model,
@@ -149,24 +150,24 @@ def _step_review(ctx: dict, step: dict, emit) -> dict:
     if not target:
         target = (ctx.get("last_agent_output") or "").strip()
     if not target:
-        return failed("review-Step: nichts zu reviewen (kein target, kein Agent-Output davor)", FailureKind.ENVIRONMENT)
+        return failed(_t("steps.review.review_step_nothing_to_review"), FailureKind.ENVIRONMENT)
     target = _substitute(target, ctx)
     if step.get("prompt_file"):
         pf = resolve_relative(step["prompt_file"], ctx.get("spec_path"))
         if not pf.is_file():
-            return failed(f"review-Step: prompt_file fehlt: {pf}", FailureKind.ENVIRONMENT)
+            return failed(_t("steps.review.review_step_prompt_file_missing", pf=pf), FailureKind.ENVIRONMENT)
         prompt = _substitute(pf.read_text(encoding="utf-8").strip(), ctx)
     else:
         prompt = _REVIEW_TEMPLATE.replace("{target}", target)
     prompt += render_extra_context(ctx, step, emit)
     res = _step_agent_backend(ctx, step, emit, _resolve_backend(step), prompt)
     if not res.get("ok"):
-        return res  # Backend-Fehler — kein Verdict
+        return res  # Backend error — no verdict
     verdict = _parse_verdict(res.get("output", ""))
     if verdict is None:
         return {
             "ok": False,
-            "summary": "review-Step: kein JSON-Verdict im Agent-Output",
+            "summary": _t("steps.review.review_step_no_json_verdict"),
             "output": res.get("output", ""),
             "usage": res.get("usage"),
         }

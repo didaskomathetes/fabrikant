@@ -1,98 +1,100 @@
-# ADR 0010: Dual-Identity PR-Pipeline (Builder ≠ Reviewer, Mensch nur bei kritisch)
+# ADR 0010: Dual-identity PR pipeline (builder ≠ reviewer, human only when critical)
 
-**Status:** Accepted (2026-10-18); Amendment 2026-10-27 (PR #364): Konkrete
-Identitäten sind Konfiguration, keine Architektur — die Invariante "zwei
-verschiedene Identitäten" ist die Entscheidung.
-Amendment 2026-11-03 (PR #453): Identitäten pro Projekt überschreibbar
-(`github_env_file`); optional von GitHub signierte Commits (`commit_via: api`).
-Nachtrag 2026-11-04 (ADR 0013 Stufe 2): AC-Verifikation im `pr_review`
-(strukturiertes `acceptance`-Verdict, `unmet` → `changes_requested`).
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Kontext
+**Status:** Accepted (2026-10-18); amendment 2026-10-27 (PR #364): concrete
+identities are configuration, not architecture — the invariant "two
+different identities" is the decision.
+Amendment 2026-11-03 (PR #453): identities can be overridden per project
+(`github_env_file`); optional GitHub-signed commits (`commit_via: api`).
+Addendum 2026-11-04 (ADR 0013 stage 2): AC verification in `pr_review`
+(structured `acceptance` verdict, `unmet` → `changes_requested`).
 
-Ziel: PR-Pipeline ohne Menschen im Loop — außer bei kritischen Entscheidungen
-(ADR-Änderung, große Refactoring/Architektur-Changes, Datenverlust, GDPR, …).
+## Context
 
-**Kernproblem: Review-Prozesse müssen von einer anderen Identity kommen als
-die PR-Autorin.** Ein PR kann **nicht** von derselben Identity approved
-werden, die ihn erstellt hat (User ODER App — GitHub-Regel, Self-Approval
-wird abgelehnt). Dasselbe gilt für Review-Events allgemein (APPROVE /
-REQUEST_CHANGES, Merge-Freigabe): sie müssen von einer Identity kommen, die
-separat von der autorisierenden Identity ist. Vollautomatische Approval
-braucht also zwingend **zwei verschiedene Identitäten**.
+Goal: a PR pipeline without a human in the loop — except for critical decisions
+(ADR change, large refactoring/architecture changes, data loss, GDPR, …).
 
-## Entscheidung
+**Core problem: review processes must come from a different identity than
+the PR author.** A PR **cannot** be approved by the same identity
+that created it (user OR app — GitHub rule, self-approval is
+rejected). The same applies to review events in general (APPROVE /
+REQUEST_CHANGES, merge approval): they must come from an identity that is
+separate from the authorizing identity. Fully automatic approval
+therefore necessarily needs **two different identities**.
 
-**Identitäts-Split: Builder und Reviewer sind immer zwei verschiedene
-Identitäten.**
+## Decision
 
-- Die **Builder-Identity** (Developer) arbeitet im Worktree, pusht die
-  Branch, legt den PR an und **mergt** (squash) nach Approval.
-- Die **Reviewer-Identity** (QA) reviewt den PR (APPROVE /
-  REQUEST_CHANGES) — sichtbar als eigene Identity, nie die des Builders.
-- **Die zwei Identitäten müssen verschieden sein** — das ist die
-  Architekturentscheidung. Review-Prozesse (Approval, Changes-Request,
-  Merge-Freigabe) klappen nur, wenn sie von einer Identity kommen, die
-  separat von der PR-Autorin ist; eine Identity, die eigene PRs approvet,
-  wird vom Host abgelehnt.
+**Identity split: builder and reviewer are always two different
+identities.**
 
-**Konkrete Identitäten sind Konfiguration, keine Architektur** (wie
-Modellwahl, ADR 0022): Welche Identitäten Builder und Reviewer konkret
-sind — GitHub-Apps, PATs, User, auf einem anderen Host (z. B. GitLab)
-andere Bot-Identitäten — bestimmt die Projekt-Config (Spec/`fabrik.env`),
-nicht diese ADR. Ein anderes Projekt auf GitLab nutzt andere Identitäten;
-das Prinzip (zwei verschiedene Identitäten, Review separat von der
-Autorin) bleibt gleich.
+- The **builder identity** (developer) works in the worktree, pushes the
+  branch, creates the PR and **merges** (squash) after approval.
+- The **reviewer identity** (QA) reviews the PR (APPROVE /
+  REQUEST_CHANGES) — visible as its own identity, never the builder's.
+- **The two identities must be different** — that is the
+  architectural decision. Review processes (approval, changes request,
+  merge approval) only work if they come from an identity that is
+  separate from the PR author; an identity that approves its own PRs
+  is rejected by the host.
 
-*Historische Bindungen (Konfiguration, nicht Teil der Entscheidung):*
-- 2026-10-18: agent-host-App (Builder) + persönlicher PAT (Reviewer).
-- 2026-10-27 (PR #364): zwei GitHub-Apps — `fabrik-builder` (Builder) +
-  `fabrik-reviewer` (Reviewer), beide mit 1h-Installation-Tokens.
+**Concrete identities are configuration, not architecture** (like
+model choice, ADR 0022): which identities builder and reviewer concretely
+are — GitHub apps, PATs, users, on another host (e.g. GitLab)
+other bot identities — is determined by the project config (spec/`fabrik.env`),
+not by this ADR. Another project on GitLab uses other identities;
+the principle (two different identities, review separate from the
+author) stays the same.
 
-**Beispiel: Token-Handling (GitHub-Implementierung, Config):**
-Konkretes Beispiel, wie die zwei Identitäten in der Projekt-Config
-abgebildet werden:
-- `GITHUB_TOKEN` = Builder-Installation-Token (Developer). Wird extern per
-  `scripts/gh-token-refresh.py` (Cron) alle ~30 min erneuert und in
-  `FABRIK_ENV_FILE` (Default `/root/.hermes/.env`) geschrieben — die Datei
-  wird pro API-Call neu gelesen, kein Restart nötig.
-- `GITHUB_REVIEWER_TOKEN` = Reviewer-Installation-Token (QA). Ebenfalls 1h
-  gültig, per `scripts/gh-token-refresh.py --role reviewer` (Cron) erneuert.
-- `gitops._gh_token(role)` mit `role="dev" | "reviewer"`.
+*Historical bindings (configuration, not part of the decision):*
+- 2026-10-18: agent-host app (builder) + personal PAT (reviewer).
+- 2026-10-27 (PR #364): two GitHub apps — `fabrik-builder` (builder) +
+  `fabrik-reviewer` (reviewer), both with 1h installation tokens.
 
-**Neue Steps:**
-- `pr_review`: LLM-Review des PR-Diffs (Cross-Model, ADR 0003-Vertrag) +
-  GitHub-Review via Reviewer-Token (`APPROVE` / `REQUEST_CHANGES`).
-  `changes_requested` → bounded Fix-Runden (Developer-Agent fixt im Worktree,
-  pusht, Re-Review; Default `max_rounds: 2`). Danach immer noch
-  `changes_requested` → Step fail.
-- `pr_merge`: squash-merge via Developer-Token nach Approval.
-- `human_gate`: Kritizitäts-Check am PR-Diff. Heuristiken (ADR-Pfade,
-  Diff-Größe, Keywords) **und** LLM-Meinung. Kritisch → Run pausiert
-  (`needs_approval`), Mensch approvet via `fabrik approve`. Nicht kritisch →
-  auto weiter. Statisch "immer menschlich" bleibt `approval: true` in der
-  Loop-Spec (bestehende Semantik).
+**Example: token handling (GitHub implementation, config):**
+A concrete example of how the two identities are mapped in the project
+config:
+- `GITHUB_TOKEN` = builder installation token (developer). Renewed externally via
+  `scripts/gh-token-refresh.py` (cron) every ~30 min and written to
+  `FABRIK_ENV_FILE` (default `/root/.hermes/.env`) — the file
+  is re-read per API call, no restart needed.
+- `GITHUB_REVIEWER_TOKEN` = reviewer installation token (QA). Also valid
+  for 1h, renewed via `scripts/gh-token-refresh.py --role reviewer` (cron).
+- `gitops._gh_token(role)` with `role="dev" | "reviewer"`.
 
-**Engine:** Steps können dynamisch pausieren — Step-Result
-`{"needs_approval": true, "approval": {...}}` → Run geht in
-`needs_approval` (analog zum statischen `approval: true`, aber zur Laufzeit
-entschieden). Resume führt den Step erneut aus; der Step merkt sich den
-Zustand per ctx-Variable (`human_gate_passed`), die über
-`record["vars"]` persistiert wird.
+**New steps:**
+- `pr_review`: LLM review of the PR diff (cross-model, ADR 0003 contract) +
+  GitHub review via the reviewer token (`APPROVE` / `REQUEST_CHANGES`).
+  `changes_requested` → bounded fix rounds (developer agent fixes in the worktree,
+  pushes, re-review; default `max_rounds: 2`). If it is still
+  `changes_requested` afterwards → step fails.
+- `pr_merge`: squash merge via the developer token after approval.
+- `human_gate`: criticality check on the PR diff. Heuristics (ADR paths,
+  diff size, keywords) **and** LLM opinion. Critical → run pauses
+  (`needs_approval`), a human approves via `fabrik approve`. Not critical →
+  continues automatically. Statically "always human" stays `approval: true` in the
+  loop spec (existing semantics).
 
-## Beispiel-Loop (vollautomatisch, Mensch nur bei kritisch)
+**Engine:** steps can pause dynamically — step result
+`{"needs_approval": true, "approval": {...}}` → the run goes into
+`needs_approval` (analogous to the static `approval: true`, but decided at
+runtime). Resume executes the step again; the step remembers the
+state via a ctx variable (`human_gate_passed`) that is persisted via
+`record["vars"]`.
+
+## Example loop (fully automatic, human only when critical)
 
 ```yaml
 loops:
   auto-dev:
-    description: Issue → PR → Review → Merge (Mensch nur bei kritisch)
-    tier: 1  # T1: kein synthetisches Tier-Gate am Ende
+    description: Issue → PR → review → merge (human only when critical)
+    tier: 1  # T1: no synthetic tier gate at the end
     triggers:
       - on_issue
     steps:
       - name: develop
         type: agent
-        prompt: "Löse das Issue {issue_title}: {issue_body}"
+        prompt: "Solve the issue {issue_title}: {issue_body}"
       - name: push
         type: git
         branch: "fabrik/auto/{issue_number}"
@@ -105,7 +107,7 @@ loops:
       - name: review
         type: pr_review
         repo: owner/name
-        model: <anderes Modell als develop>
+        model: <different model than develop>
         max_rounds: 2
       - name: gate
         type: human_gate
@@ -116,73 +118,73 @@ loops:
         method: squash
 ```
 
-**on_pr-Trigger-Hinweis:** Ein `REQUEST_CHANGES`-Review ändert `updated_at`
-des PRs → ein `on_pr`-Trigger feuert. Fix-Runden laufen bewusst INNERHALB
-des `pr_review`-Steps (bounded), nicht über on_pr-Re-Runs — on_pr-Loops
-sollten per `labels` gefiltert werden, um Review-Updates nicht als
-neue Work-Trigger zu interpretieren.
+**on_pr trigger note:** a `REQUEST_CHANGES` review changes the PR's `updated_at`
+→ an `on_pr` trigger fires. Fix rounds deliberately run INSIDE
+the `pr_review` step (bounded), not via on_pr re-runs — on_pr loops
+should be filtered by `labels` so that review updates are not interpreted as
+new work triggers.
 
-## Amendment 2026-11-03 (PR #453): Identitäten pro Projekt, signierte Commits
+## Amendment 2026-11-03 (PR #453): per-project identities, signed commits
 
-Die Invariante (Builder ≠ Reviewer) bleibt. Zwei Erweiterungen, beide opt-in:
+The invariant (builder ≠ reviewer) remains. Two extensions, both opt-in:
 
-- **`github_env_file: <abs. Pfad>` (Projekt-Spec):** Token-Datei nur für dieses
-  Projekt (andere App-Installation/Org, PAT als Reviewer). Runs, Trigger-Polls,
-  Retry-Versuche und alle Subprozesse (Shell, Agent-`gh`, Relay-CLI) lesen
-  `GITHUB_TOKEN`/`GITHUB_REVIEWER_TOKEN` dann **nur** aus dieser Datei; globale
-  Token-Env-Werte gelten dort nicht (sie gehören zu einer anderen Identität).
-  Ohne die Option bleibt alles wie oben (Env → `FABRIK_ENV_FILE`).
-- **`commit_via: git|api` (Projekt-Spec, Default `git`):** Repos mit
-  `required_signatures` lehnen die lokal erzeugten, unsignierten Bot-Commits ab
-  (Squash-Merge hilft nicht). Mit `api` baut fabrik jeden fehlenden Commit über
-  die Git-Data-API nach, GitHub signiert ihn für die Builder-App. Trade-off:
-  Autor/Zeitstempel der lokalen Commits gehen verloren (Autor = App-Bot), keine
-  Root-Commits. Abgesichert durch Tree-SHA-Vergleich pro Commit und
-  non-fast-forward-Prüfung wie bei `git push`.
+- **`github_env_file: <abs. path>` (project spec):** token file for this project
+  only (another app installation/org, PAT as reviewer). Runs, trigger polls,
+  retry attempts and all subprocesses (shell, agent `gh`, relay CLI) then read
+  `GITHUB_TOKEN`/`GITHUB_REVIEWER_TOKEN` **only** from this file; global
+  token env values do not apply there (they belong to a different identity).
+  Without the option everything stays as above (env → `FABRIK_ENV_FILE`).
+- **`commit_via: git|api` (project spec, default `git`):** repos with
+  `required_signatures` reject the locally created, unsigned bot commits
+  (squash merge does not help). With `api`, fabrik rebuilds every missing commit via
+  the Git Data API, and GitHub signs it for the builder app. Trade-off:
+  author/timestamp of the local commits are lost (author = app bot), no
+  root commits. Secured by a tree-SHA comparison per commit and a
+  non-fast-forward check as with `git push`.
 
-Abgelehnt: ein Signing-Key auf dem Host (Schlüsselverwaltung, widerspricht der
-App-Identity) und ein globaler Token pro Prozess (kann nicht mehrere
-Installationen bedienen).
+Rejected: a signing key on the host (key management, contradicts the
+app identity) and a global token per process (cannot serve multiple
+installations).
 
-## Nachtrag 2026-11-04 (ADR 0013, Stufe 2): AC-Verifikation im `pr_review`
+## Addendum 2026-11-04 (ADR 0013, stage 2): AC verification in `pr_review`
 
-`pr_review` verifiziert die Acceptance Criteria des verlinkten Issues: der
-AC-Abschnitt geht dem Reviewer als **untrusted Daten** ins Prompt, der Verdict
-trägt pro Kriterium `acceptance: [{criterion, status: met|unmet|unverifiable,
-evidence}]` (Verdict-Vertrag, ADR 0003-Nachtrag) und landet im Run-Record
+`pr_review` verifies the acceptance criteria of the linked issue: the
+AC section goes into the prompt for the reviewer as **untrusted data**, the verdict
+carries per criterion `acceptance: [{criterion, status: met|unmet|unverifiable,
+evidence}]` (verdict contract, ADR 0003 addendum) and lands in the run record
 (`step.review`).
 
-- **≥ 1 `unmet` → `changes_requested`** — deterministisch in der Engine
-  (auch gegen ein `approved`-Verdict des Reviewers); jedes unmet-Kriterium
-  wird als high-Severity-Finding ergänzt, damit die bounded Fix-Runden
-  (`max_rounds`) es adressieren. Keine neue Schleife.
-- **`unverifiable` blockiert nicht**, ist aber im GitHub-Review-Text und im
-  Run-Record nachvollziehbar.
-- Ungültiges `acceptance`-JSON wird abgelehnt (kein Verdict → Step fail),
-  nicht still ignoriert.
+- **≥ 1 `unmet` → `changes_requested`** — deterministic in the engine
+  (even against an `approved` verdict from the reviewer); each unmet criterion
+  is added as a high-severity finding so that the bounded fix rounds
+  (`max_rounds`) address it. No new loop.
+- **`unverifiable` does not block**, but is traceable in the GitHub review text and in the
+  run record.
+- Invalid `acceptance` JSON is rejected (no verdict → step fails),
+  not silently ignored.
 
-## Konsequenzen
+## Consequences
 
-+ Vollautomatischer Kreislauf: PR → Review → Approval → Merge, ohne Mensch
-+ Mensch nur bei kritisch (Heuristik + LLM, deterministisch nachvollziehbar
-  im Run-Record: `step.approval` mit Gründen)
-+ Approval-Identity = Mensch → GitHub-Branch-Protection ("require 1 review")
-  wird zur harten Merge-Gate, die GitHub selbst erzwingt
-+ App kann eigene PRs nicht approvieren → Self-Approval strukturell unmöglich
-- Zweites Token (`GITHUB_REVIEWER_TOKEN`) in der Umgebung; Reviewer-App
-  braucht Contents:read + Pull requests:read/write
-- Builder-App braucht Contents:read/write + Pull requests:read/write + Issues:read/write
-- Fix-Runden sind LLM-Work: kosten Tokens, bounded via `max_rounds`
-- `human_gate`-LLM-Call pro PR: ein zusätzlicher Call (aktivierter Provider)
++ Fully automatic cycle: PR → review → approval → merge, without a human
++ Human only when critical (heuristics + LLM, deterministically traceable
+  in the run record: `step.approval` with reasons)
++ Approval identity = human → GitHub branch protection ("require 1 review")
+  becomes a hard merge gate that GitHub itself enforces
++ An app cannot approve its own PRs → self-approval is structurally impossible
+- A second token (`GITHUB_REVIEWER_TOKEN`) in the environment; the reviewer app
+  needs Contents:read + Pull requests:read/write
+- The builder app needs Contents:read/write + Pull requests:read/write + Issues:read/write
+- Fix rounds are LLM work: they cost tokens, bounded via `max_rounds`
+- `human_gate` LLM call per PR: one additional call (activated provider)
 
-## Alternativen (abgelehnt)
+## Alternatives (rejected)
 
-- **PAT erstellt, App approvet:** funktioniert, aber Machine-PRs tragen die
-  persönliche Identity als Author (schlechtere Audit-Story).
-- **Review nur lokal (bestehender `review`-Step), kein GitHub-Review:**
-  keine sichtbare PR-Approval → Branch-Protection als Merge-Gate nicht
-  nutzbar, kein Audit-Spur in GitHub.
-- **Unbounded Fix-Runden:** Risiko Endlosschleife (Reviewer und Builder
-  im Ping-Pong) → bounded + Run-Fail als Ausweg.
-- **Kritizität nur statisch (`approval: true`):** verpasst unerwartet
-  kritische Changes (z. B. Agent "vergisst", eine ADR anzufassen).
+- **PAT creates, app approves:** works, but machine PRs carry the
+  personal identity as author (worse audit story).
+- **Review only locally (existing `review` step), no GitHub review:**
+  no visible PR approval → branch protection cannot be used as a merge gate,
+  no audit trail in GitHub.
+- **Unbounded fix rounds:** risk of an endless loop (reviewer and builder
+  ping-ponging) → bounded + run fail as the way out.
+- **Criticality only static (`approval: true`):** misses unexpectedly
+  critical changes (e.g. the agent "forgets" to touch an ADR).

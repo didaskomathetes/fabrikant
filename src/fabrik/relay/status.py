@@ -1,4 +1,4 @@
-"""Der eine Status-Kommentar pro Relay-Issue: aktueller Stand für Menschen + Zustand für den Dispatcher."""
+"""The one status comment per relay issue: current state for humans + state for the dispatcher."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ STATUS_MARKER = "<!-- fabrik-relay-status -->"
 _STATE_PREFIX = "<!-- fabrik-relay-state "
 _STATE_RE = re.compile(re.escape(_STATE_PREFIX) + r"(\{.*?\}) -->", re.S)
 _STATUS_ICON = {Status.ACTIVE: "🔄", Status.BLOCKED: "⛔", Status.DONE: "✅"}
-# GitHub-Kommentare sind auf 65 536 Zeichen begrenzt; Ergebnis/Audit bleiben Zusammenfassungen.
+# GitHub comments are limited to 65,536 characters; result/audit remain summaries.
 SECTION_MAX_CHARS = 4000
 
 
@@ -25,17 +25,17 @@ def _archive_cell(ref: TrailRef) -> str:
     return f"`{ref.name}` · {where} · removed from the branch"
 
 
-# Block im PR-Body, der auf den archivierten Trail zeigt; fabrik besitzt nur den Text zwischen den Markern.
+# Block in the PR body pointing to the archived trail; fabrik owns only the text between the markers.
 PR_TRAIL_START = "<!-- fabrik-relay-trail -->"
 PR_TRAIL_END = "<!-- /fabrik-relay-trail -->"
 _PR_TRAIL_RE = re.compile(r"\n*" + re.escape(PR_TRAIL_START) + r".*?" + re.escape(PR_TRAIL_END) + r"\n?", re.S)
 
 
 def pr_trail_block(repo: str, issue: int, trail_dir: str, ref: TrailRef, ref_name: str) -> str:
-    """Markdown-Block für den PR-Body: wo der archivierte Trail liegt und wie man ihn prüft.
+    """Markdown block for the PR body: where the archived trail lives and how to verify it.
 
-    `ref_name` ist der Git-Ref des Archivs (nur bei `git-ref`, sonst leer). Die letzte Zeile von
-    `AUDIT.md` im Archiv trägt den Trail-Hash — der Prüfbefehl zeigt genau sie."""
+    `ref_name` is the archive's git ref (only for `git-ref`, otherwise empty). The last line of
+    `AUDIT.md` in the archive carries the trail hash — the verification command shows exactly it."""
     lines = [PR_TRAIL_START, "---", f"**Relay trail** (archived after the audit, not part of this diff) · #{issue}", ""]
     if ref.method == "git-ref" and ref.uri.startswith("https://"):
         report = f"https://github.com/{repo}/blob/{ref.commit}/{trail_dir}/AUDIT.md"
@@ -51,7 +51,7 @@ def pr_trail_block(repo: str, issue: int, trail_dir: str, ref: TrailRef, ref_nam
 
 
 def with_pr_trail(body: str, block: str | None) -> str:
-    """PR-Body mit genau einem Trail-Block (`block`) bzw. ohne (`None`); übriger Text bleibt."""
+    """PR body with exactly one trail block (`block`) or none (`None`); remaining text stays."""
     rest = _PR_TRAIL_RE.sub("\n", body or "").rstrip()
     if block is None:
         return rest + "\n" if rest else ""
@@ -59,7 +59,7 @@ def with_pr_trail(body: str, block: str | None) -> str:
 
 
 def parse_state(body: str) -> StatusState:
-    """Zustand aus einem Status-Kommentar; fehlt/kaputt → Default-Zustand."""
+    """State from a status comment; missing/broken → default state."""
     m = _STATE_RE.search(body)
     if not m:
         return StatusState()
@@ -72,12 +72,12 @@ def parse_state(body: str) -> StatusState:
 def render(
     repo: str, branch: str, handoff_path: str, handoff: Handoff | None, state: StatusState, max_sessions: int
 ) -> str:
-    """Markdown des Status-Kommentars (wird bei jeder Änderung in-place editiert)."""
+    """Markdown of the status comment (edited in place on every change)."""
     base = f"https://github.com/{repo}"
     audit_path = handoff_path.rsplit("/", 1)[0] + "/AUDIT.md"
-    # Trail archiviert (vom Branch entfernt): Links auf den archivierten Commit statt auf den Branch.
-    # Nur `git-ref` hat einen dauerhaften, verlinkbaren Commit; `local` ist Entwicklung/Tests-only,
-    # dort zeigen die Links nach dem Strip auf den (leeren) Branch — vertretbar, kein Verhalten ändern.
+    # Trail archived (removed from the branch): links to the archived commit instead of the branch.
+    # Only `git-ref` has a permanent, linkable commit; `local` is development/tests only,
+    # there the links point to the (empty) branch after the strip — acceptable, no behavior change.
     trail_ref = state.archive.commit if state.archive and state.archive.method == "git-ref" else branch
     lines = [STATUS_MARKER, "### fabrik relay — status", ""]
     if handoff is None:

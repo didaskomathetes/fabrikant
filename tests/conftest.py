@@ -138,3 +138,9 @@ def live_server():
     for server in servers:
         server.shutdown()
         server.server_close()
+
+
+@pytest.fixture(autouse=True)
+def _default_message_language(monkeypatch):
+    """Server messages are asserted in the default language (de), independent of the host env."""
+    monkeypatch.delenv("FABRIK_LANG", raising=False)

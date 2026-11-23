@@ -1,14 +1,14 @@
-"""Durable Session-Log (End-Schema, ADR 0002; ADR 0034 Nr. 7).
+"""Durable session log (final schema, ADR 0002; ADR 0034 no. 7).
 
-Append-only Event-Store: events, artifacts, checkpoints je Run (Session = Run).
+Append-only event store: events, artifacts, checkpoints per run (session = run).
 
-- JSON-Run-Store (Default bis #278): eigene SQLite-Datei ``sessionlog.db`` mit
-  Tabelle ``sessions`` als Projektion des Run-Records.
-- SQL-Run-Store (``FABRIK_RUN_STORE=sql``): das Log liegt im selben Store
-  (:class:`fabrik.runstore_sql.SqlSessionLog`); Status und Zeiten der Session
-  sind die des Runs, ``set_status``/``finish_orphaned_run`` entfallen.
+- JSON run store (default until #278): own SQLite file ``sessionlog.db`` with
+  table ``sessions`` as a projection of the run record.
+- SQL run store (``FABRIK_RUN_STORE=sql``): the log lives in the same store
+  (:class:`fabrik.runstore_sql.SqlSessionLog`); status and times of the session
+  are those of the run, ``set_status``/``finish_orphaned_run`` are dropped.
 
-Best-effort: Log-Fehler fallen keinen Run (ADR 0002, Invariante 5).
+Best effort: log errors fell no run (ADR 0002, invariant 5).
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import config
+from .i18n import t
 from .runstore import STORE, RunStore
 from .secrets import _redact
 
@@ -108,18 +109,18 @@ def _ts() -> str:
 
 
 def _sql_log() -> SqlSessionLog | None:
-    """Session-Log des SQL-Run-Stores, wenn dieser aktiv ist; sonst None (Datei ``sessionlog.db``)."""
+    """Session log of the SQL run store if it is active; otherwise None (file ``sessionlog.db``)."""
     if config.run_store_backend() != config.RUN_STORE_SQL:
         return None
     return STORE.backend().session_log
 
 
 class SessionLog:
-    """Einen fabrik-Run (Session) im Log abbilden.
+    """Map a fabrik run (session) into the log.
 
-    Use per Run aus der Engine: start() → events/checkpoints/artifacts →
-    finish(). Alle Writes laufen durch _redact; Exceptions werden geschluckt
-    (best-effort, ADR 0002 Invariante 5).
+    Used per run from the engine: start() → events/checkpoints/artifacts →
+    finish(). All writes go through _redact; exceptions are swallowed
+    (best effort, ADR 0002 invariant 5).
     """
 
     def __init__(self, session_id: str, project: str, loop: str, trigger: str = "", spec_hash: str = ""):
@@ -138,7 +139,7 @@ class SessionLog:
                 c.execute(sql, params)
                 c.commit()
         except Exception:
-            pass  # best-effort: kein Log-Fehler fällt einen Run
+            pass  # best effort: no log error fells a run
 
     def _fetchone(self, sql: str, params: tuple = ()):
         try:
@@ -150,14 +151,14 @@ class SessionLog:
 
     # -- public API
     def _sql(self, op: Callable[[SqlSessionLog], object]) -> bool:
-        """``op`` auf dem SQL-Session-Log ausführen, falls aktiv (best-effort); True = SQL-Store aktiv."""
+        """Execute ``op`` on the SQL session log if active (best effort); True = SQL store active."""
         try:
             log = _sql_log()
         except Exception:
             return False
         if log is None:
             return False
-        with contextlib.suppress(Exception):  # best-effort: kein Log-Fehler fällt einen Run
+        with contextlib.suppress(Exception):  # best effort: no log error fells a run
             op(log)
         return True
 
@@ -168,9 +169,9 @@ class SessionLog:
         if self._sql(_resume_seq):  # Session = Run: Status/Zeiten stehen im Run-Record
             self.event("run_start", data={"loop": self.loop, "trigger": self.trigger})
             return
-        # Resume: Counter ans letzte Event ansetzen (keine doppelten seqs),
-        # Status zurück auf running (INSERT OR IGNORE würde sonst needs_approval
-        # aus dem alten Run stehen lassen).
+        # Resume: attach the counter to the last event (no duplicate seqs),
+        # status back to running (INSERT OR IGNORE would otherwise leave needs_approval
+        # from the old run standing).
         row = self._fetchone("SELECT COALESCE(MAX(seq), 0) FROM events WHERE session_id=?", (self.session_id,))
         self._seq = int(row[0]) if row else 0
         exists = self._fetchone("SELECT 1 FROM sessions WHERE session_id=?", (self.session_id,))
@@ -206,8 +207,8 @@ class SessionLog:
         )
 
     def checkpoint(self, step_idx: int, step_name: str, status: str, **data) -> None:
-        # Plain INSERT (append-only, ADR Invariante 1): bei einem Step-Rerun
-        # bleibt das alte Checkpoint erhalten, der Dup-Insert wird geschluckt.
+        # Plain INSERT (append-only, ADR invariant 1): on a step rerun
+        # the old checkpoint is kept, the duplicate insert is swallowed.
         blob = json.dumps(data, ensure_ascii=False, default=str)
         name, payload = _redact(step_name), _redact(blob)
         if self._sql(lambda log: log.checkpoint(self.session_id, step_idx, name, status, payload)):
@@ -218,16 +219,16 @@ class SessionLog:
         )
 
     def set_status(self, status: str) -> None:
-        """Status-Update ohne run_end (z. B. needs_approval — die Session läuft weiter).
+        """Status update without run_end (e.g. needs_approval — the session continues).
 
-        Im SQL-Store ist der Session-Status der Run-Status (nichts zu tun)."""
+        In the SQL store the session status is the run status (nothing to do)."""
         if self._sql(lambda log: None):
             return
         self._exec("UPDATE sessions SET status=? WHERE session_id=?", (status, self.session_id))
 
     def finish(self, status: str, tokens_in: int = 0, tokens_out: int = 0, cost_usd: float = 0.0) -> None:
         self.event("run_end", status=status)
-        if self._sql(lambda log: None):  # Status/Ende stehen im Run, Summen aus step_done-Events
+        if self._sql(lambda log: None):  # Status/end are in the run, sums from step_done events
             return
         self._exec(
             "UPDATE sessions SET status=?, finished_at=?, tokens_in=?, tokens_out=?, cost_usd=? WHERE session_id=?",
@@ -238,7 +239,7 @@ class SessionLog:
 def finish_orphaned_run(session_id: str, finished_at: str) -> None:
     """Mark a run abandoned by a server restart as finished in the projection.
 
-    Im SQL-Store entfällt die Projektion: der Reap hat den Run selbst beendet."""
+    In the SQL store the projection is dropped: the reap ended the run itself."""
     with contextlib.suppress(Exception):
         if _sql_log() is not None:
             return
@@ -251,14 +252,14 @@ def finish_orphaned_run(session_id: str, finished_at: str) -> None:
             )
             c.commit()
     except sqlite3.Error as e:
-        # best-effort: kein Log-Fehler fällt einen Run — aber nicht lautlos
-        print(f"[fabrik] sessionlog: Orphan-Run {session_id} nicht aktualisiert: {e}")
+        # best effort: no log error fells a run — but not silently
+        print(t("sessionlog.fabrik_sessionlog_orphan_run_not", session_id=session_id, e=e))
 
 
 def session_totals(session_id: str) -> dict:
-    """Aggregate aus step_done-events (usage pro Step) — die einzige
-    Total-Quelle, damit Agent-Runs nicht doppelt gezählt werden
-    (cost-Events sind Telemetrie, kein Summand)."""
+    """Aggregates from step_done events (usage per step) — the only
+    total source, so agent runs are not counted twice
+    (cost events are telemetry, not a summand)."""
     row = _fetch_totals(session_id)
     return row or {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
 
@@ -290,16 +291,16 @@ def _fetch_totals(session_id: str) -> dict | None:
 
 # Agent-Turn-Events des Transkripts → Rolle (user = Prompt, tool = Tool-Call).
 TRANSCRIPT_ROLES = {"prompt": "user", "tool_call": "tool", "message": "assistant"}
-TRANSCRIPT_PAGE = 500  # Default-Seitengröße (lazy laden)
+TRANSCRIPT_PAGE = 500  # Default page size (lazy loading)
 
 
 @dataclass(frozen=True)
 class TranscriptEntry:
-    """Ein Agent-Turn im Transkript.
+    """An agent turn in the transcript.
 
-    role: ``user`` (Prompt), ``assistant`` (Antwort) oder ``tool`` (Tool-Call).
-    text: Prompt-/Antworttext (nur ``user``/``assistant``).
-    tool: Tool-Payload (nur ``tool``; Name oder vollständiger Part)."""
+    role: ``user`` (prompt), ``assistant`` (answer) or ``tool`` (tool call).
+    text: prompt/answer text (``user``/``assistant`` only).
+    tool: tool payload (``tool`` only; name or full part)."""
 
     id: int
     ts: str
@@ -321,7 +322,7 @@ class TranscriptEntry:
         return replace(base, text=data.get("text", ""))
 
     def to_dict(self) -> dict:
-        """JSON-Form fürs API (``text`` bzw. ``tool`` je nach Rolle)."""
+        """JSON form for the API (``text`` or ``tool`` depending on the role)."""
         out: dict = {"id": self.id, "ts": self.ts, "role": self.role, "step": self.step}
         if self.role == TRANSCRIPT_ROLES["tool_call"]:
             out["tool"] = self.tool
@@ -331,13 +332,13 @@ class TranscriptEntry:
 
 
 def transcript(session_id: str, after: int = 0, limit: int = TRANSCRIPT_PAGE) -> list[TranscriptEntry]:
-    """Agent-Turns einer Session (Prompt, Tool-Calls, Antworten) in Reihenfolge.
+    """Agent turns of a session (prompt, tool calls, answers) in order.
 
-    Paginiert über die Event-``id`` (``after`` = letzte bekannte id). Inhalte sind
-    beim Schreiben redigiert (``_redact``); Lesefehler → leere Liste."""
+    Paginated via the event ``id`` (``after`` = last known id). Contents are
+    redacted at write time (``_redact``); read errors → empty list."""
     kinds = tuple(TRANSCRIPT_ROLES)
     sql = (
-        "SELECT id, ts, kind, step_name, data FROM events "  # nosec B608 # nur ?-Platzhalter
+        "SELECT id, ts, kind, step_name, data FROM events "  # nosec B608 # only ? placeholders
         f"WHERE session_id=? AND id>? AND kind IN ({','.join('?' * len(kinds))}) ORDER BY id LIMIT ?"
     )
     try:
@@ -359,11 +360,11 @@ _DUMP_CHECKPOINT_COLS = ("session_id", "step_idx", "step_name", "status", "data"
 
 
 def session_log_dump(session_id: str) -> dict:
-    """Session-Log einer Session als Dict (``events``/``checkpoints``/``artifacts``), beide Backends.
+    """Session log of a session as a dict (``events``/``checkpoints``/``artifacts``), both backends.
 
-    SQL-Backend: liest den Run-Store. JSON-Backend: liest ``sessionlog.db`` — eine fehlende
-    Datei ergibt ein leeres Log und wird NICHT angelegt. Lesefehler → leeres Log
-    (best-effort wie die anderen Lesezugriffe)."""
+    SQL backend: reads the run store. JSON backend: reads ``sessionlog.db`` — a missing
+    file yields an empty log and is NOT created. Read errors → empty log
+    (best effort like the other read accesses)."""
     try:
         log = _sql_log()
         if log is not None:
@@ -402,17 +403,17 @@ def session_log_dump(session_id: str) -> dict:
 
 # ---------------------------------------------------------------- Importer
 def import_runs(runs_dir: Path) -> int:
-    """P0-Run-JSONs → SQLite (ADR 0002, Invariante 4). Idempotent:
-    bestehende Sessions (native) werden übersprungen. Best-effort:
-    Connect-Fehler → 0, defekte Records werden übersprungen, Commit pro
-    Record (ein Fehler verliert nur den in-Arbeit-Record). → importierte Count.
-    Abgelöst durch den Import in den SQL-Store (#278)."""
+    """P0 run JSONs → SQLite (ADR 0002, invariant 4). Idempotent:
+    existing sessions (native) are skipped. Best effort:
+    connect error → 0, broken records are skipped, commit per
+    record (an error loses only the record in progress). → imported count.
+    Superseded by the import into the SQL store (#278)."""
     try:
         c = connect()
     except Exception:
         return 0
     imported = 0
-    try:  # Run-JSON nur über den (JSON-)Store lesen; defekte Records überspringt er
+    try:  # Read run JSON only via the (JSON) store; it skips broken records
         records = RunStore(runs_dir).load_records()
     except OSError:
         return 0

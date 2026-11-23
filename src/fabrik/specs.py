@@ -1,7 +1,7 @@
-"""Spec-Loading, -Validierung & -Speicherung (Quellen: spec_sources, vars/Templates: spec_expand; ADR 0047).
+"""Spec loading, validation & saving (sources: spec_sources, vars/templates: spec_expand; ADR 0047).
 
-Speichern (:func:`save_spec`) nutzt ``ruamel.yaml`` im Round-Trip-Modus, damit
-Kommentare und Reihenfolge der unangetasteten Datei-Teile erhalten bleiben."""
+Saving (:func:`save_spec`) uses ``ruamel.yaml`` in round-trip mode so that
+comments and order of the untouched file parts are preserved."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ruamel.yaml import YAML
+
+from .i18n import t as _t
 
 try:
     import yaml
@@ -35,9 +37,9 @@ from .steps import extra_context
 
 
 class SpecConflict(ValueError):
-    """Optimistischer Lock-Verstoß: die Spec wurde seit dem Laden des Drafts
-    extern geändert (``base_hash`` ≠ aktueller Datei-Hash). Der Client soll den
-    Draft neu laden statt die fremden Änderungen zu überschreiben (→ HTTP 409)."""
+    """Optimistic-lock violation: the spec was changed externally since the draft was loaded
+    (``base_hash`` ≠ current file hash). The client should reload the
+    draft instead of overwriting the foreign changes (→ HTTP 409)."""
 
 
 def spec_path(name: str, projects: dict | None = None) -> Path:
@@ -50,20 +52,20 @@ def spec_path(name: str, projects: dict | None = None) -> Path:
     return config.PROJECTS_DIR / f"{name}.fabrik.yaml"
 
 
-# Top-Level-Felder, die per PUT /api/projects/<name>/spec editierbar sind.
-# Whitelist statt Freifahrtschein: `name`/`root`/`loops`/`vars` & Co. bleiben
-# unangetastet (Name ist an den Dateinamen gekoppelt, `vars` an die Expansion).
+# Top-level fields editable via PUT /api/projects/<name>/spec.
+# Whitelist instead of a blank check: `name`/`root`/`loops`/`vars` & co. stay
+# untouched (name is coupled to the file name, `vars` to the expansion).
 SPEC_EDITABLE_FIELDS = ("description", "max_parallel")
 
 
 @dataclass
 class SpecUpdate:
-    """Speicher-Update für ein Projekt (``PUT /api/projects/<name>/spec``).
+    """Save update for a project (``PUT /api/projects/<name>/spec``).
 
-    ``loops`` enthält die zu speichernden Loops (None = unverändert) — sie werden
-    pro Loop gemergt (unbekannte Schlüssel der bestehenden Definition bleiben
-    erhalten), nicht die ganze Sektion ersetzt. ``remove_loops`` nennt Loops, die
-    gelöscht werden. ``project_fields`` aktualisiert einzelne Top-Level-Felder aus
+    ``loops`` contains the loops to save (None = unchanged) — they are merged
+    per loop (unknown keys of the existing definition are kept),
+    not replacing the whole section. ``remove_loops`` names loops that are
+    deleted. ``project_fields`` updates single top-level fields from
     :data:`SPEC_EDITABLE_FIELDS`."""
 
     loops: dict | None = None
@@ -72,25 +74,25 @@ class SpecUpdate:
 
     @classmethod
     def from_payload(cls, payload: dict) -> SpecUpdate:
-        """JSON-Request-Body → :class:`SpecUpdate`; strukturell ungültig → ``ValueError``.
+        """JSON request body → :class:`SpecUpdate`; structurally invalid → ``ValueError``.
 
-        Unbekannte Felder werden abgelehnt (Typo-Schutz), damit ein
-        ``max_paralell``-Feld nicht stumm ignoriert wird."""
+        Unknown fields are rejected (typo protection), so a
+        ``max_paralell`` field is not silently ignored."""
         loops = payload.get("loops")
         if loops is not None and not isinstance(loops, dict):
-            raise ValueError("loops muss ein Objekt (Mapping Loop-Name → Definition) sein")
+            raise ValueError(_t("specs.loops_must_be_an_object"))
         remove = payload.get("remove_loops") or []
         if not isinstance(remove, list) or not all(isinstance(n, str) for n in remove):
-            raise ValueError("remove_loops muss eine Liste von Loop-Namen sein")
+            raise ValueError(_t("specs.remove_loops_must_be_a"))
         fields: dict[str, object] = {}
         for key in SPEC_EDITABLE_FIELDS:
             if key not in payload:
                 continue
             value = payload[key]
             if key == "description" and not isinstance(value, str):
-                raise ValueError("description muss ein String sein")
+                raise ValueError(_t("specs.description_must_be_a_string"))
             if key == "max_parallel" and (isinstance(value, bool) or not isinstance(value, int)):
-                raise ValueError("max_parallel muss eine ganze Zahl sein")
+                raise ValueError(_t("specs.max_parallel_must_be_an"))
             fields[key] = value
         unknown = sorted(set(payload) - {"loops", "remove_loops", *SPEC_EDITABLE_FIELDS})
         if unknown:
@@ -102,13 +104,13 @@ class SpecUpdate:
 
 
 def _roundtrip_yaml() -> YAML:
-    """ruamel-YAML-Instanz im Round-Trip-Modus (Kommentare, Reihenfolge und
-    Quotes der unangetasteten Datei-Teile bleiben erhalten).
+    """ruamel YAML instance in round-trip mode (comments, order and
+    quotes of the untouched file parts are preserved).
 
-    ``width=4096`` verhindert das Umbruch-Neuformatieren langer Zeilen;
-    ``indent(mapping=2, sequence=4, offset=2)`` hält die Haus-Indentation
-    (Sequenzen eingerückt unter dem Key), damit unangetastete Sektionen
-    byte-identisch bleiben."""
+    ``width=4096`` prevents line-wrap reformatting of long lines;
+    ``indent(mapping=2, sequence=4, offset=2)`` keeps the house indentation
+    (sequences indented under the key) so untouched sections
+    stay byte-identical."""
     yml = YAML()
     yml.preserve_quotes = True
     yml.width = 4096
@@ -117,37 +119,37 @@ def _roundtrip_yaml() -> YAML:
 
 
 def _load_doc(path: Path) -> object:
-    """Spec-Datei laden: YAML per ruamel Round-Trip (Kommentare bleiben am
-    Dokument hängen), JSON per ``json`` (dort gibt es keine Kommentare)."""
+    """Load a spec file: YAML via ruamel round trip (comments stay attached to
+    the document), JSON via ``json`` (there are no comments there)."""
     if path.suffix == ".json":
         return json.loads(path.read_text(encoding="utf-8"))
     return _roundtrip_yaml().load(path.read_text(encoding="utf-8"))
 
 
 def load_spec_raw(path: Path) -> dict:
-    """Spec-Datei als rohes (nicht expandiertes) Mapping laden.
+    """Load a spec file as a raw (non-expanded) mapping.
 
-    Im Gegensatz zu :func:`load_spec` werden hier KEINE vars/Templates
-    expandiert, KEINE Relay-Loops generiert und KEINE Validierung gefahren —
-    die Datei wird nur geparst. Das ist die korrekte Draft-Quelle für den
-    UI-Graph-Editor: ``vars``-Platzhalter bleiben wörtlich, ``use:``/``with:``/
-    ``insert:``-Loops bleiben un-inlined, und alle Loop-Schlüssel (``worktree``,
-    ``retry``, ``tier``, …) bleiben erhalten."""
+    Unlike :func:`load_spec`, here NO vars/templates are
+    expanded, NO relay loops generated and NO validation run —
+    the file is only parsed. This is the correct draft source for the
+    UI graph editor: ``vars`` placeholders stay literal, ``use:``/``with:``/
+    ``insert:`` loops stay un-inlined, and all loop keys (``worktree``,
+    ``retry``, ``tier``, …) are preserved."""
     text = path.read_text(encoding="utf-8")
     data = yaml.safe_load(text) if yaml else json.loads(text)
     if not isinstance(data, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     return data
 
 
 def spec_hash(path: Path) -> str:
-    """SHA-256 der Spec-Datei-Bytes (Optimistischer Lock: Basis-Hash für PUT)."""
+    """SHA-256 of the spec file bytes (optimistic lock: base hash for PUT)."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _dump_doc(path: Path, doc: dict) -> str:
-    """Speich-Format der Datei beibehalten: YAML Round-Trip (Kommentare/
-    Reihenfolge der unangetasteten Teile) bzw. JSON bleibt JSON."""
+    """Keep the file's save format: YAML round trip (comments/
+    order of the untouched parts) or JSON stays JSON."""
     if path.suffix == ".json":
         return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     buf = io.StringIO()
@@ -156,31 +158,31 @@ def _dump_doc(path: Path, doc: dict) -> str:
 
 
 def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) -> dict:
-    """Speichert ein :class:`SpecUpdate` in der Spec-Datei des Projekts.
+    """Saves a :class:`SpecUpdate` into the project's spec file.
 
-    Ablauf: Projekt laden (unbekannt → ``KeyError``, defekt → ``ValueError``),
-    Optimistischer Lock prüfen (``base_hash`` ≠ aktueller Datei-Hash →
-    :class:`SpecConflict`), Original-Datei round-trip laden, Update anwenden
-    (Loops pro Loop mergen + ``remove_loops``), die gemergte Spec über den
-    vollen :func:`load_spec`-Pfad (Expand + Relay + Validierung) auf einer
-    Temp-Datei im selben Ordner prüfen — erst dann atomar schreiben
-    (``os.replace``). Bei Validierungsfehlern bleibt die Datei unangetastet.
-    Liefert die validierte, gespeicherte Spec (mit korrigiertem ``_path``).
+    Flow: load project (unknown → ``KeyError``, broken → ``ValueError``),
+    check optimistic lock (``base_hash`` ≠ current file hash →
+    :class:`SpecConflict`), load the original file round-trip, apply the update
+    (merge loops per loop + ``remove_loops``), check the merged spec via the
+    full :func:`load_spec` path (expand + relay + validation) on a
+    temp file in the same folder — only then write atomically
+    (``os.replace``). On validation errors the file stays untouched.
+    Returns the validated, saved spec (with corrected ``_path``).
     """
     spec = load_projects().get(name)
     if not spec:
-        raise KeyError(f"unbekanntes Projekt: {name}")
+        raise KeyError(_t("specs.unknown_project", name=name))
     if spec.get("_error"):
-        raise ValueError(f"Projekt {name} hat eine defekte Spec: {spec['_error']}")
+        raise ValueError(_t("specs.project_has_a_broken_spec", name=name, v2=spec["_error"]))
     path = Path(spec["_path"]).resolve()
     if base_hash is not None and spec_hash(path) != base_hash:
-        raise SpecConflict("Spec wurde extern geändert (Hash-Mismatch) — Draft neu laden")
+        raise SpecConflict(_t("specs.spec_was_changed_externally_hash"))
     doc = _load_doc(path)
     if not isinstance(doc, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     if update.loops is not None:
-        # Pro Loop mergen (unbekannte Schlüssel der bestehenden Definition
-        # bleiben erhalten) statt die ganze Sektion zu ersetzen.
+        # Merge per loop (unknown keys of the existing definition
+        # are kept) instead of replacing the whole section.
         loops = doc.setdefault("loops", {})
         for lname, ldef in update.loops.items():
             if isinstance(ldef, dict) and isinstance(loops.get(lname), dict):
@@ -192,10 +194,10 @@ def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) ->
     for key, value in update.project_fields.items():
         doc[key] = value
     merged = _dump_doc(path, doc)
-    # Validierung auf exakt den Bytes, die geschrieben werden (Temp-Datei im
-    # selben Ordner: relative Pfade wie prompt_file lösen sich identisch auf).
-    # NamedTemporaryFile (eindeutiger Name) statt fixem <file>.tmp: zwei
-    # parallele PUTs dürfen sich nicht die Temp-Datei teilen.
+    # Validation on exactly the bytes that are written (temp file in the
+    # same folder: relative paths like prompt_file resolve identically).
+    # NamedTemporaryFile (unique name) instead of a fixed <file>.tmp: two
+    # parallel PUTs must not share the temp file.
     tmp: Path
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as fd:
         fd.write(merged.encode("utf-8"))
@@ -206,33 +208,33 @@ def save_spec(name: str, update: SpecUpdate, *, base_hash: str | None = None) ->
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
-    os.replace(tmp, path)  # atomar: kein halb geschriebenes Spec nach Crash
+    os.replace(tmp, path)  # atomic: no half-written spec after a crash
     saved["_path"] = str(path)
-    saved["name"] = spec["name"]  # kanonischer Name, nicht aus dem Temp-Pfad abgeleitet
-    saved["_hash"] = spec_hash(path)  # neuer Hash → Basis für den nächsten Optimistischen Lock
+    saved["name"] = spec["name"]  # canonical name, not derived from the temp path
+    saved["_hash"] = spec_hash(path)  # new hash → basis for the next optimistic lock
     return saved
 
 
 def load_spec(path: Path, *, check_root: bool = True) -> dict:
-    """Spec laden, expandieren (vars/Templates) und validieren.
+    """Load, expand (vars/templates) and validate a spec.
 
-    ``check_root=False`` überspringt die host-abhängige Prüfung, ob ``root`` existiert
-    (CI validiert Specs, deren Projekt-Ordner es dort nicht gibt)."""
+    ``check_root=False`` skips the host-dependent check whether ``root`` exists
+    (CI validates specs whose project folder does not exist there)."""
     text = path.read_text(encoding="utf-8")
     data = yaml.safe_load(text) if yaml else json.loads(text)
     if not isinstance(data, dict):
-        raise ValueError(f"Spec muss ein Mapping sein: {path}")
+        raise ValueError(_t("specs.spec_must_be_a_mapping", path=path))
     data = expand_spec(data, path)
     if not data.get("name"):
         data["name"] = spec_sources.default_name(path)
     if not data.get("root") and path.parent.name == config.TARGET_SPEC_RELPATH.parent.name:
-        data["root"] = str(path.parent.parent)  # Spec im Zielrepo: das Repo ist das Projekt
+        data["root"] = str(path.parent.parent)  # Spec in the target repo: the repo is the project
     if data.get("root"):
-        # `~`- und Env-Var-Pfade hier einmalig auflösen, damit alle Konsumenten
-        # (engine, gitops, scheduler, server) den absoluten Pfad sehen.
-        # expandvars ERST, dann expanduser — `~` im VariablENWERT funktioniert.
-        # (os.path.expandvars kennt kein ${VAR:-default}; unset bleibt wörtlich →
-        # is_dir-Gate failt mit verständlicher Meldung.)
+        # Resolve `~` and env-var paths once here, so all consumers
+        # (engine, gitops, scheduler, server) see the absolute path.
+        # expandvars FIRST, then expanduser — `~` in the variable VALUE works.
+        # (os.path.expandvars does not know ${VAR:-default}; unset stays literal →
+        # the is_dir gate fails with an understandable message.)
         data["root"] = str(Path(os.path.expandvars(str(data["root"]))).expanduser())
     data["_path"] = str(path)
     expand_relay_loops(data)  # `relay:` → generierte Relay-Loops (ADR 0037), danach normal validiert
@@ -241,21 +243,21 @@ def load_spec(path: Path, *, check_root: bool = True) -> dict:
 
 
 def _validate_approval_when(st: dict, where: str) -> list[str]:
-    """`approval_when` (ADR 0017): Mapping Variable → Wert | Liste von Werten.
+    """`approval_when` (ADR 0017): mapping variable → value | list of values.
 
-    Nicht kombinierbar mit `approval: true` (das pausiert ohnehin immer)."""
+    Not combinable with `approval: true` (which always pauses anyway)."""
     cond = st.get("approval_when")
     if cond is None:
         return []
     if st.get("approval"):
-        return [f"{where}: approval und approval_when schließen sich aus"]
+        return [_t("specs.approval_and_approval_when_are", where=where)]
     if not isinstance(cond, dict) or not cond:
-        return [f"{where}: approval_when muss ein nicht-leeres Mapping sein (Variable → Wert/Werte)"]
+        return [_t("specs.approval_when_must_be_a", where=where)]
     errs = []
     for var, allowed in cond.items():
         values = allowed if isinstance(allowed, list) else [allowed]
         if not values or not all(isinstance(v, (str, int, bool)) for v in values):
-            errs.append(f"{where}: approval_when.{var} muss Wert oder nicht-leere Werte-Liste sein")
+            errs.append(_t("specs.approval_when_must_be_a_2", where=where, var=var))
     return errs
 
 
@@ -274,10 +276,10 @@ def _worktree_types(steps: list) -> set[str]:
 
 
 def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
-    """``worktree: false`` (ADR 0020) nur für Loops ohne Worktree-Steps."""
+    """``worktree: false`` (ADR 0020) only for loops without worktree steps."""
     wt = ldef.get("worktree", True)
     if not isinstance(wt, bool):
-        return [f"loop {lname}: worktree muss true/false sein (ist {wt!r})"]
+        return [_t("specs.loop_worktree_must_be_true", lname=lname, wt=wt)]
     if wt:
         return []
     needs = sorted(_worktree_types(steps))
@@ -287,22 +289,22 @@ def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
 
 
 def _validate_failure_kind(st: dict, where: str) -> list[str]:
-    """`failure_kind` (ADR 0035): nur shell-Steps lesen es (Klasse für Exit-Codes ≠ 0); Wert aus SPEC_FAILURE_KINDS."""
+    """`failure_kind` (ADR 0035): only shell steps read it (class for exit codes ≠ 0); value from SPEC_FAILURE_KINDS."""
     if st.get("type") != "shell":
-        return [f"{where}: failure_kind gilt nur für shell-Steps (ist {st.get('type')!r})"]
+        return [_t("specs.failure_kind_only_applies_to", where=where, v2=st.get("type"))]
     value = st["failure_kind"]
     if not isinstance(value, str) or value not in SPEC_FAILURE_KINDS:
-        return [f"{where}: failure_kind muss einer von {sorted(SPEC_FAILURE_KINDS)} sein (ist {value!r})"]
+        return [_t("specs.failure_kind_must_be_one", where=where, v2=sorted(SPEC_FAILURE_KINDS), value=value)]
     return []
 
 
 def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
-    """Backend-Feld ``key`` eines Steps gegen die Adapter-Registry prüfen (leer = Env-Default)."""
+    """Check a step's backend field ``key`` against the adapter registry (empty = env default)."""
     value = st.get(key)
     known = known_backends()
     if value in (None, "") or value in known:
         return []
-    return [f"{where}: {label} '{value}' unbekannt (verfügbar: {', '.join(known)})"]
+    return [_t("specs.unknown_available", where=where, label=label, value=value, v4=", ".join(known))]
 
 
 def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[str]:
@@ -311,7 +313,7 @@ def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[st
     if value is None:
         return []
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        return [f"{where}: {key} muss int >= {minimum} sein (ist {value!r})"]
+        return [_t("specs.must_be_int_is", where=where, key=key, minimum=minimum, value=value)]
     return []
 
 
@@ -320,19 +322,19 @@ def _validate_pr_review_fix(st: dict, where: str) -> list[str]:
     ``fix_checks`` Liste nicht-leerer Strings."""
     errs = _validate_int_field(st, "fix_timeout", where, 1) + _validate_int_field(st, "fix_check_timeout", where, 1)
     if st.get("fix_variant") is not None and not isinstance(st["fix_variant"], str):
-        errs.append(f"{where}: fix_variant muss String sein (ist {st['fix_variant']!r})")
+        errs.append(_t("specs.fix_variant_must_be_a", where=where, v2=st["fix_variant"]))
     checks = st.get("fix_checks")
     if checks is not None and (
         not isinstance(checks, list) or not all(isinstance(c, str) and c.strip() for c in checks)
     ):
-        errs.append(f"{where}: fix_checks muss Liste nicht-leerer Shell-Kommandos sein (ist {checks!r})")
+        errs.append(_t("specs.fix_checks_must_be_a", where=where, checks=checks))
     return errs
 
 
 def _validate_retry_block(raw: object, where: str) -> list[str]:
-    """``retry:``-Block (ADR 0036) per :meth:`RetryPolicy.parse` validieren.
+    """Validate a ``retry:`` block (ADR 0036) via :meth:`RetryPolicy.parse`.
 
-    ``max: 0`` ist kein Fehler (schaltet Retry ab); defekte Blöcke werden gemeldet."""
+    ``max: 0`` is not an error (disables retry); broken blocks are reported."""
     from .retry import RetryPolicy
 
     errs: list[str] = []
@@ -344,13 +346,13 @@ _printed_retry_warnings: set[str] = set()
 
 
 def _validate_retry_cron(spec: dict, lname: str, ldef: dict) -> list[str]:
-    """Cron-Intervall-Validierung (ADR 0036, Entscheidung 2) für einen Loop.
+    """Cron interval validation (ADR 0036, decision 2) for a loop.
 
-    Wirksame Policy (Loop-``retry`` ersetzt den Projekt-Block) gegen das
-    Cron-Intervall prüfen: Backoff-Wert ≥ Intervall → Fehler; die ganze Kette
-    länger als das Intervall → Warnung (kein Spec-Fehler). Specs werden bei
-    jedem Scheduler-Tick und Request neu geladen — jede Warnung wird daher nur
-    einmal pro Prozess gedruckt."""
+    Check the effective policy (loop ``retry`` replaces the project block) against the
+    cron interval: backoff value ≥ interval → error; the whole chain
+    longer than the interval → warning (no spec error). Specs are reloaded on
+    every scheduler tick and request — each warning is therefore printed only
+    once per process."""
     from .retry_chains import policy_for, validate_retry_cron
 
     policy = policy_for(spec, lname)
@@ -365,42 +367,42 @@ def _validate_retry_cron(spec: dict, lname: str, ldef: dict) -> list[str]:
 
 def _validate_step_shell(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("cmd"):
-        return [f"{where}: shell ohne cmd"]
+        return [_t("specs.shell_without_cmd", where=where)]
     return []
 
 
 def _validate_step_http(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("url"):
-        return [f"{where}: http ohne url"]
+        return [_t("specs.http_without_url", where=where)]
     return []
 
 
 def _validate_step_llm(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("prompt"):
-        return [f"{where}: llm ohne prompt"]
+        return [_t("specs.llm_without_prompt", where=where)]
     return billing.validate(st, where)
 
 
 def _validate_step_state(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if st.get("action") not in ("get", "set", "add"):
-        errs.append(f"{where}: state action muss get|set|add sein (ist {st.get('action')!r})")
+        errs.append(_t("specs.state_action_must_be_get", where=where, v2=st.get("action")))
     if not st.get("key"):
-        errs.append(f"{where}: state ohne key")
+        errs.append(_t("specs.state_without_key", where=where))
     return errs
 
 
 def _validate_step_verify(st: dict, where: str, spec: dict) -> list[str]:
     checks = st.get("checks")
     if not isinstance(checks, list):
-        return [f"{where}: verify braucht 'checks' als Liste"]
+        return [_t("specs.verify_needs_checks_as_a", where=where)]
     errs = []
     for j, chk in enumerate(checks):
         cwhere = f"{where}: verify-Check {j}"
         t = chk.get("type") if isinstance(chk, dict) else None
         if t not in config.STEP_TYPES:
-            errs.append(f"{cwhere} braucht 'type' in {list(config.STEP_TYPES)} (ist {t!r})")
-        # extra_context wirkt auch auf Checks (effective_step, ADR 0008): nur bei LLM-Step-Typen.
+            errs.append(_t("specs.needs_type_in_is", cwhere=cwhere, v2=list(config.STEP_TYPES), t=t))
+        # extra_context also applies to checks (effective_step, ADR 0008): only for LLM step types.
         if isinstance(chk, dict) and extra_context.KEY in chk:
             errs += extra_context.validate(chk[extra_context.KEY], cwhere, t)
     return errs
@@ -409,30 +411,30 @@ def _validate_step_verify(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not (st.get("prompt") or st.get("prompt_file")):
-        errs.append(f"{where}: agent ohne prompt/prompt_file")
+        errs.append(_t("specs.agent_without_prompt_prompt_file", where=where))
     errs += _validate_backend(st, "backend", where, "agent backend")
     errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
-        errs.append(f"{where}: agent variant muss String sein (ist {st['variant']!r})")
+        errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
     gid = st.get("github_identity")
     if gid is not None and gid not in GH_TOKEN_ENV:
-        errs.append(f"{where}: github_identity muss einer von {sorted(GH_TOKEN_ENV)} sein (ist {gid!r})")
+        errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))
     if st.get("workdir") is not None and not isinstance(st["workdir"], str):
-        errs.append(f"{where}: agent workdir muss String sein")
+        errs.append(_t("specs.agent_workdir_must_be_a", where=where))
     if st.get("timeout") is not None:
         try:
             t = int(st["timeout"])
             if t <= 0:
                 raise ValueError
         except (TypeError, ValueError):
-            errs.append(f"{where}: agent timeout muss positive Zahl sein")
+            errs.append(_t("specs.agent_timeout_must_be_a", where=where))
     return errs
 
 
 def _validate_step_review(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not st.get("model"):
-        errs.append(f"{where}: review ohne model (Pflicht, ≠ Builder-Modell)")
+        errs.append(_t("specs.review_without_model_required_builder", where=where))
     errs += _validate_backend(st, "backend", where, "review backend")
     return errs
 
@@ -444,9 +446,9 @@ def _validate_step_alert_route(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_pr_review(st: dict, where: str, spec: dict) -> list[str]:
     errs = []
     if not st.get("repo"):
-        errs.append(f"{where}: pr_review ohne repo (owner/name)")
+        errs.append(_t("specs.pr_review_without_repo_owner", where=where))
     if not st.get("model"):
-        errs.append(f"{where}: pr_review ohne model (Pflicht, ≠ Builder-Modell)")
+        errs.append(_t("specs.pr_review_without_model_required", where=where))
     errs += _validate_backend(st, "backend", where, "pr_review backend")
     errs += _validate_backend(st, "fix_backend", where, "pr_review fix_backend")
     # max_rounds 0 = Review-only (keine Fix-Runden); max_findings >= 1 (ADR 0039).
@@ -456,10 +458,10 @@ def _validate_step_pr_review(st: dict, where: str, spec: dict) -> list[str]:
     return errs
 
 
-# Step-Type → Validierungs-Helfer (Fehlerliste). Neue Step-Types hängen hier
-# einen Eintrag + Helfer an — `_validate_spec` selbst wächst nicht weiter.
-# `spec` ist die ganze Projekt-Def (für Step-Types, die Kontext brauchen,
-# z. B. `alert_route` prüft die Route-Kette über alle Loops).
+# Step type → validation helper (error list). New step types attach
+# an entry + helper here — `_validate_spec` itself does not grow any further.
+# `spec` is the whole project def (for step types that need context,
+# e.g. `alert_route` checks the route chain across all loops).
 _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
     "shell": _validate_step_shell,
     "http": _validate_step_http,
@@ -475,52 +477,53 @@ _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
 
 def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     errs = []
-    # Strukturschema (Issue #131): Typen/Enums/Pflichtfelder aus
-    # src/fabrik/fabrik-spec.schema.json; semantische Prüfungen folgen darunter.
+    # Structural schema (issue #131): types/enums/required fields from
+    # src/fabrik/fabrik-spec.schema.json; semantic checks follow below.
     errs += specschema.validate_spec(spec)
-    # Lock-Schlüssel "projekt::loop" (ADR 0020) bleibt nur eindeutig, wenn der Separator in Namen fehlt.
+    # Lock key "project::loop" (ADR 0020) stays unique only if the separator is absent from names.
+
     for what, value in [("name", spec.get("name"))] + [("loop", ln) for ln in (spec.get("loops") or {})]:
         if isinstance(value, str) and LOCK_KEY_SEP in value:
-            errs.append(f"{what} {value!r}: darf {LOCK_KEY_SEP!r} nicht enthalten (Lock-Schlüssel)")
+            errs.append(_t("specs.must_not_contain_lock_key", what=what, value=value, v3=LOCK_KEY_SEP))
     if not spec.get("root") or (check_root and not Path(spec["root"]).is_dir()):
-        errs.append(f"root fehlt oder existiert nicht: {spec.get('root')!r}")
+        errs.append(_t("specs.root_missing_or_does_not", v1=spec.get("root")))
     gef = spec.get(SPEC_ENV_FILE_KEY)
-    # Typ (String) prüft das Schema; hier nur Leer-/Absolut-Check, damit Fehler nicht doppelt gemeldet werden.
+    # The schema checks the type (string); only the empty/absolute check here, so errors are not reported twice.
     if isinstance(gef, str) and not gef.strip():
-        errs.append(f"{SPEC_ENV_FILE_KEY} muss ein Pfad (String) sein (ist {gef!r})")
+        errs.append(_t("specs.must_be_a_path_string", v1=SPEC_ENV_FILE_KEY, gef=gef))
     elif isinstance(gef, str) and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
-        errs.append(f"{SPEC_ENV_FILE_KEY} muss ein absoluter Pfad sein (ist {gef!r})")
+        errs.append(_t("specs.must_be_an_absolute_path", v1=SPEC_ENV_FILE_KEY, gef=gef))
     hosting_name = spec.get(HOSTING_KEY)
-    # Nicht-Strings typprüft das Schema; hier nur: ein String muss ein registrierter Provider sein.
+    # The schema type-checks non-strings; only here: a string must be a registered provider.
     if isinstance(hosting_name, str) and hosting_name.strip().lower() not in registered_providers():
         errs.append(
-            f"{HOSTING_KEY} muss ein registrierter Provider sein {registered_providers()} (ist {hosting_name!r})"
+            _t("specs.must_be_registered_provider", v1=HOSTING_KEY, v2=registered_providers(), name=hosting_name)
         )
     if extra_context.KEY in spec:
         errs += extra_context.validate(spec[extra_context.KEY], "projekt", allow_false=False)
     mp = spec.get("max_parallel")
     if mp is not None and (isinstance(mp, bool) or not isinstance(mp, int) or mp < 1):
-        errs.append(f"max_parallel muss int >= 1 sein (ist {mp!r})")
+        errs.append(_t("specs.max_parallel_must_be_int", mp=mp))
     if spec.get("retry") is not None:
         errs += _validate_retry_block(spec["retry"], "retry")
     loops = spec.get("loops")
     if not isinstance(loops, dict) or not loops:
-        errs.append("loops: mindestens ein Loop nötig")
+        errs.append(_t("specs.loops_at_least_one_loop"))
     else:
         for lname, ldef in loops.items():
             if not isinstance(ldef, dict):
-                errs.append(f"loop {lname}: Mapping erwartet")
+                errs.append(_t("specs.loop_mapping_expected", lname=lname))
                 continue
             steps = ldef.get("steps")
             if not isinstance(steps, list) or not steps:
-                errs.append(f"loop {lname}: steps fehlt")
+                errs.append(_t("specs.loop_steps_missing", lname=lname))
                 continue
             for ti, trig in enumerate(ldef.get("triggers") or []):
                 if isinstance(trig, dict) and trig.get("type") == "on_webhook":
                     errs += webhook.validate_trigger(trig, f"loop {lname} trigger {ti}")
             for i, trig in enumerate(ldef.get("triggers") or []):
                 if not isinstance(trig, dict):
-                    errs.append(f"loop {lname} trigger {i}: Mapping erwartet")
+                    errs.append(_t("specs.loop_trigger_mapping_expected", lname=lname, i=i))
                     continue
                 errs.extend(_validate_trigger(lname, i, trig, spec))
             errs += _validate_worktree(lname, ldef, steps)
@@ -528,14 +531,14 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                 errs += _validate_retry_block(ldef["retry"], f"loop {lname}.retry")
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
-                # Step-Typ-Enum prüft das Schema (kein Duplikat hier).
+                # The schema checks the step type enum (no duplicate here).
                 if isinstance(st, dict):
                     where = f"loop {lname} step {i}"
                     errs += _validate_approval_when(st, where)
                     if extra_context.KEY in st:
                         errs += extra_context.validate(st[extra_context.KEY], where, st.get("type"))
                     if "approval_reason" in st and not isinstance(st["approval_reason"], str):
-                        errs.append(f"{where}: approval_reason muss ein String (Template) sein")
+                        errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
                     stype = st.get("type")
@@ -543,11 +546,11 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                     if validator is not None:
                         errs += validator(st, where, spec)
     if errs:
-        raise ValueError("Spec ungültig:\n  " + "\n  ".join(errs))
+        raise ValueError(_t("specs.spec_invalid") + "\n  ".join(errs))
 
 
 def _as_number(value: object) -> float:
-    """Zahl oder Zahl-String (aus `vars`) als float; Bool/sonstiges → NaN."""
+    """Number or number string (from `vars`) as float; bool/other → NaN."""
     if isinstance(value, bool):
         return math.nan
     try:
@@ -557,39 +560,40 @@ def _as_number(value: object) -> float:
 
 
 def _validate_poll(value: object, where: str) -> list[str]:
-    """Optionales `poll`-Intervall: endliche Zahl >= 0 (auch als Zahl-String aus `vars`), kein Bool.
+    """Optional `poll` interval: finite number >= 0 (also as a number string from `vars`), no bool.
 
-    Der Scheduler rechnet mit `float(poll)`; ungültige Werte würden sonst erst im
-    Tick mit ValueError auffallen bzw. ein NaN-Intervall nie/immer feuern lassen."""
+    The scheduler computes with `float(poll)`; invalid values would otherwise only show up in the
+    tick as ValueError or let a NaN interval never/always fire."""
     if value is None:
         return []
     seconds = _as_number(value)
     if not math.isfinite(seconds) or seconds < 0:
-        return [f"{where}: poll muss eine endliche Zahl >= 0 (Sekunden) sein (ist {value!r})"]
+        return [_t("specs.poll_must_be_a_finite", where=where, value=value)]
     return []
 
 
 def _validate_positive_int(trig: dict, key: str, where: str) -> list[str]:
-    """Optionales Trigger-Feld `key`: ganze Zahl >= 1 (auch als Zahl-String aus `vars`), kein Bool."""
+    """Optional trigger field `key`: integer >= 1 (also as a number string from `vars`), no bool."""
     value = trig.get(key)
     if value is None:
         return []
     number = _as_number(value)
     if not math.isfinite(number) or number < 1 or not number.is_integer():
-        return [f"{where}: {key} muss eine ganze Zahl >= 1 sein (ist {value!r})"]
+        return [_t("specs.must_be_an_integer_1", where=where, key=key, value=value)]
     return []
 
 
 def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
-    """Validiert einen Trigger-Def; liefert eine Liste von Fehlermeldungen.
+    """Validates a trigger def; returns a list of error messages.
 
-    `on_issue`/`on_pr` brauchen ein Repo (Trigger- oder Spec-Ebene) — ohne
-    Repo würde der Trigger stumm nie feuern (Config-Fehler statt Silent-Noop).
+    `on_issue`/`on_pr` need a repo (trigger or spec level) — without a
+    repo the trigger would silently never fire (config error instead of silent no-op).
     """
     errs = []
     ttype = trig.get("type")
     if ttype not in config.TRIGGER_TYPES:
-        return errs  # unbekannter Typ: meldet das Schema (Enum), kein Duplikat hier
+        return errs  # unknown type: reported by the schema (enum), no duplicate here
+
     if ttype == "on_slack":
         errs += slack.validate_trigger(trig, f"loop {lname} trigger {i}")
         for key in ("max_pages", "max_alert_chars"):
@@ -597,50 +601,45 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
     if ttype in config.POLL_TRIGGER_TYPES:
         errs += _validate_poll(trig.get("poll"), f"loop {lname} trigger {i}")
     if ttype in ("on_issue", "on_pr") and not (trig.get("repo") or spec.get("github")):
-        errs.append(f"loop {lname} trigger {i}: {ttype} ohne repo (Trigger- oder Spec-Ebene)")
+        errs.append(_t("specs.loop_trigger_without_repo_trigger", lname=lname, i=i, ttype=ttype))
     if ttype == alerts.TRIGGER_TYPE:
         errs += alerts.validate_trigger(trig, f"loop {lname} trigger {i}")
     if trig.get("skip_blocked") and not (ttype == "on_issue" and trig.get("reconcile")):
-        # Event-Modus feuert jedes Issue nur einmal — ein blockiertes Issue ginge
-        # verloren statt nach dem Schließen des Blockers zu starten (ADR 0031).
-        errs.append(f"loop {lname} trigger {i}: skip_blocked nur für on_issue mit reconcile: true")
+        # Event mode fires each issue only once — a blocked issue would be
+        # lost instead of starting after the blocker is closed (ADR 0031).
+        errs.append(_t("specs.loop_trigger_skip_blocked_only", lname=lname, i=i))
     exclude = trig.get("exclude_labels")
     if exclude is not None and (
         ttype not in ("on_issue", "on_pr")
         or not isinstance(exclude, list)
         or not all(isinstance(x, str) and x for x in exclude)
     ):
-        errs.append(
-            f"loop {lname} trigger {i}: exclude_labels nur für on_issue/on_pr, Liste nicht-leerer Strings "
-            f"(ist {exclude!r})"
-        )
+        errs.append(_t("specs.loop_trigger_exclude_labels", lname=lname, i=i, exclude=exclude))
     on_start = trig.get("on_start")
     if on_start is not None and (ttype != "cron" or not isinstance(on_start, bool)):
-        errs.append(f"loop {lname} trigger {i}: on_start nur für cron und nur true/false (ist {on_start!r})")
+        errs.append(_t("specs.loop_trigger_on_start_only", lname=lname, i=i, on_start=on_start))
     if ttype == "on_pr":
         states = trig.get("states")
         if states is not None and (
             not isinstance(states, list) or not states or any(s not in config.PR_STATES for s in states)
         ):
             errs.append(
-                f"loop {lname} trigger {i}: on_pr states muss nicht-leere Liste aus {list(config.PR_STATES)} "
-                f"sein (ist {states!r})"
+                _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
         if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
             errs.append(
-                f"loop {lname} trigger {i}: on_pr reconcile muss true/false oder "
-                f"{config.RECONCILE_PER_HEAD!r} sein (ist {rec!r})"
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
             )
     return errs
 
 
 def collect_projects(files: list[Path] | None = None, *, check_root: bool = True) -> tuple[dict[str, dict], list[str]]:
-    """Specs aller Quellen (spec_sources.spec_files) + Namenskonflikte.
+    """Specs of all sources (spec_sources.spec_files) + name conflicts.
 
-    Bei gleichem Namen gewinnt die Quelle mit der höheren Priorität; jede verdeckte
-    Spec erzeugt eine Konfliktmeldung (``fabrik validate`` schlägt dann fehl).
-    ``files`` ersetzt die Quellen (z. B. CI: nur die Specs im Repo); ``check_root`` wie
+    On equal names the source with the higher priority wins; every shadowed
+    spec produces a conflict message (``fabrik validate`` then fails).
+    ``files`` replaces the sources (e.g. CI: only the specs in the repo); ``check_root`` like
     :func:`load_spec`.
     """
     projects: dict[str, dict] = {}
@@ -652,7 +651,9 @@ def collect_projects(files: list[Path] | None = None, *, check_root: bool = True
             spec = {"name": spec_sources.default_name(f), "_error": str(e)}
         name = spec["name"]
         if name in projects:
-            conflicts.append(f"Projekt {name!r} mehrfach: {projects[name].get('_path') or '?'} (gewinnt) verdeckt {f}")
+            conflicts.append(
+                _t("specs.project_defined_more_than_once", name=name, v2=projects[name].get("_path") or "?", f=f)
+            )
             continue
         spec.setdefault("_path", str(f))
         projects[name] = spec
@@ -660,9 +661,9 @@ def collect_projects(files: list[Path] | None = None, *, check_root: bool = True
 
 
 def load_projects() -> dict[str, dict]:
-    """Lädt alle Specs; defekte Specs werden mit _error gemarkt.
+    """Loads all specs; broken specs are marked with _error.
 
-    Branch-Overrides (state/branch-overrides.json, ADR 0004) werden am Ende
-    darübergelegt, damit Server/Engine/CLI den zur Laufzeit gewählten Branch sehen.
+    Branch overrides (state/branch-overrides.json, ADR 0004) are laid over them
+    at the end, so server/engine/CLI see the branch chosen at runtime.
     """
     return branches.apply_overrides(collect_projects()[0])

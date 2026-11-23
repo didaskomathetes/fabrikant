@@ -1,6 +1,6 @@
-"""CLI für Agents: aktuellen Branch pushen — per `git push` oder als signierte API-Commits (`commit_via`).
+"""CLI for agents: push the current branch — via `git push` or as signed API commits (`commit_via`).
 
-Eigenes Modul, weil `fabrik.apicommit` beim Paket-Import schon geladen ist (`python -m` würde warnen)::
+Own module, because `fabrik.apicommit` is already loaded at package import (`python -m` would warn)::
 
     python -m fabrik.push [--force] [--repo owner/name]
 """

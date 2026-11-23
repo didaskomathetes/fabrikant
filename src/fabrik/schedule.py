@@ -1,12 +1,12 @@
-"""Schedule-View-Backend: nächste Cron-Runs + One-time-Overrides.
+"""Schedule-view backend: next cron runs + one-time overrides.
 
-- `next_cron_times()` = :func:`fabrik.cron.next_times` (dieselbe Cron-Semantik wie
-  der Scheduler, gemeinsamer Code).
-- `parse_when()` übersetzt UI-Eingaben ("15:05", "in 10 min", ISO-8601) in ein lokales
-  DateTime in der Zukunft.
-- One-time-Overrides (einmalige Runs) liegen in `state/onetime-runs.json` (atomic,
-  Pattern wie `pause.py`); der Scheduler feuert fällige Einträge in `tick()` wie
-  manuelle Runs (ADR 0019: `paused` blockiert manuelle Runs nicht, `disabled` schon).
+- `next_cron_times()` = :func:`fabrik.cron.next_times` (same cron semantics as
+  the scheduler, shared code).
+- `parse_when()` translates UI input ("15:05", "in 10 min", ISO 8601) into a local
+  DateTime in the future.
+- One-time overrides (one-off runs) live in `state/onetime-runs.json` (atomic,
+  pattern like `pause.py`); the scheduler fires due entries in `tick()` like
+  manual runs (ADR 0019: `paused` does not block manual runs, `disabled` does).
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import config, cron
+from .i18n import t
 from .specs import load_projects
 
 ONETIME_FILE = "onetime-runs.json"
-# Start-Fehler eines fälligen One-time: Retry nach Backoff, höchstens so oft.
+# Start error of a due one-time: retry after backoff, at most this many times.
 ONETIME_RETRY_DELAY = timedelta(minutes=1)
 ONETIME_MAX_ATTEMPTS = 5
 
@@ -74,12 +75,12 @@ def _local_naive(dt: datetime) -> datetime:
 
 
 def parse_when(raw: object, now: datetime | None = None) -> datetime:
-    """UI-Eingabe → lokales (naives) DateTime in der Zukunft.
+    """UI input → local (naive) DateTime in the future.
 
-    Erkannt: "15:05" / "15:05:30" (Uhrzeit heute, in der Vergangenheit → morgen),
-    "in 10 min" / "in 2h" / "in 1d" (relativ zu `now`), ISO-8601
-    ("2026-11-06T09:00", "2026-11-06 09:00:30"; mit Timezone → lokal).
-    ValueError mit deutscher Meldung bei Unverstandem / Vergangenheit."""
+    Recognized: "15:05" / "15:05:30" (time of day today, in the past → tomorrow),
+    "in 10 min" / "in 2h" / "in 1d" (relative to `now`), ISO 8601
+    ("2026-11-06T09:00", "2026-11-06 09:00:30"; with time zone → local).
+    ValueError with a localized message on misunderstanding / past."""
     now = now or datetime.now()
     text = str(raw or "").strip()
     if not text:
@@ -89,7 +90,7 @@ def parse_when(raw: object, now: datetime | None = None) -> datetime:
     if m:
         hh, mm, ss = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
         if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
-            raise ValueError(f"ungültige Uhrzeit: {text}")
+            raise ValueError(t("schedule.invalid_time_of_day", text=text))
         dt = now.replace(hour=hh, minute=mm, second=ss, microsecond=0)
         if dt <= now:
             dt += timedelta(days=1)
@@ -99,16 +100,16 @@ def parse_when(raw: object, now: datetime | None = None) -> datetime:
     if m:
         n = int(m.group(1))
         if n < 1:
-            raise ValueError(f"relativer Wert muss ≥ 1 sein: {text}")
+            raise ValueError(t("schedule.relative_value_must_be_1", text=text))
         return now + timedelta(seconds=n * _WHEN_REL_UNITS[m.group(2).lower()])
 
     try:
         dt = datetime.fromisoformat(text)
     except ValueError:
-        raise ValueError(f"Zeit nicht erkannt: {text!r} — erlaubt: 15:05 · in 10 min · 2026-11-06T09:00") from None
+        raise ValueError(t("schedule.time_not_recognized_allowed_15", text=text)) from None
     dt = _local_naive(dt)
     if dt <= now:
-        raise ValueError(f"Zeit liegt in der Vergangenheit: {text}")
+        raise ValueError(t("schedule.time_is_in_the_past", text=text))
     return dt
 
 
@@ -120,8 +121,8 @@ def _onetime_path() -> Path:
 
 
 def _load_onetimes() -> dict[str, dict] | None:
-    """Einträge laden; `None` bei fehlendem/grobschlächtig defektem File, sonst
-    `{"proj/loop": entry}` (korrupte Einzel-Einträge werden verworfen)."""
+    """Load entries; `None` for a missing/grossly broken file, otherwise
+    `{"proj/loop": entry}` (corrupt single entries are discarded)."""
     path = _onetime_path()
     if not path.exists():
         return None
@@ -162,13 +163,13 @@ def _onetime_key(project: str, loop: str) -> str:
 def _valid_project_loop(project: str, loop: str) -> None:
     spec = load_projects().get(project)
     if not spec or spec.get("_error"):
-        raise NotFoundError(f"unbekanntes Projekt: {project}")
+        raise NotFoundError(t("schedule.unknown_project", project=project))
     if loop not in (spec.get("loops") or {}):
         raise NotFoundError(f"unbekannter Loop: {project}/{loop}")
 
 
 def add_onetime(project: str, loop: str, at: datetime, note: str = "") -> dict:
-    """One-time-Run ansetzen (ersetzt einen bereits angesetzt für denselben Loop)."""
+    """Schedule a one-time run (replaces one already scheduled for the same loop)."""
     _valid_project_loop(project, loop)
     entry = {
         "project": project,
@@ -206,10 +207,10 @@ def remove_onetime(project: str, loop: str) -> dict | None:
 
 
 def requeue_failed(entry: dict, now: datetime) -> dict | None:
-    """Fälligen One-time nach Start-Fehler erneut ansetzen (Backoff, max. Versuche).
+    """Reschedule a due one-time after a start error (backoff, max. attempts).
 
-    Ein inzwischen neu angesetzter Eintrag für denselben Loop gewinnt (kein
-    Überschreiben). `None`, wenn verworfen (Versuche erschöpft bzw. ersetzt)."""
+    An entry meanwhile newly scheduled for the same loop wins (no
+    overwriting). `None` if discarded (attempts exhausted or replaced)."""
     attempts = int(entry.get("attempts", 0)) + 1
     if attempts >= ONETIME_MAX_ATTEMPTS:
         return None
@@ -225,7 +226,7 @@ def requeue_failed(entry: dict, now: datetime) -> dict | None:
 
 
 def pop_due(now: datetime) -> list[dict]:
-    """Fällige Einträge (`at <= now`) atomar holen UND entfernen (ein Tick feuert sie)."""
+    """Fetch AND remove due entries (`at <= now`) atomically (one tick fires them)."""
     with _lock:
         data = _load_onetimes()
         if not data:

@@ -1,12 +1,12 @@
-"""Agent-Backend-Port (Ports & Adapters / Hexagonal).
+"""Agent backend port (ports & adapters / hexagonal).
 
-Der Port ist der vom Core (`steps/agent.py`) definierte Vertrag. Adapter
-(`opencode`, `claude_code`, `codex`, `copilot`) implementieren ihn; der
-Dispatcher hängt NUR vom Port ab, nie von konkreten Adaptern (Dependency
-Rule). Strukturell (Duck-Typing) — Adapter müssen nicht erben, sie müssen
-nur die Signatur erfüllen. `OneShotCliBackend` (`_oneshot.py`) ist eine
-konkrete Base, die die gemeinsame One-Shot-CLI-Mechanik bündelt; sie ist
-kein Teil des Ports, sondern eine Adapter-Hilfsklasse.
+The port is the contract defined by the core (`steps/agent.py`). Adapters
+(`opencode`, `claude_code`, `codex`, `copilot`) implement it; the
+dispatcher depends ONLY on the port, never on concrete adapters (dependency
+rule). Structural (duck typing) — adapters do not have to inherit, they only
+have to fulfill the signature. `OneShotCliBackend` (`_oneshot.py`) is a
+concrete base that bundles the shared one-shot CLI mechanics; it is
+not part of the port but an adapter helper class.
 """
 
 from __future__ import annotations
@@ -18,46 +18,47 @@ from ..runmodel import FailureKind
 
 @runtime_checkable
 class AgentBackend(Protocol):
-    """Lebenszyklus einer Agent-Task: create_task → send_prompt → poll* → (cancel).
+    """Lifecycle of an agent task: create_task → send_prompt → poll* → (cancel).
 
-    `name` ist ein Class-Attribut (Backend-Identifikator, z. B. "copilot").
-    `poll` liefert `{status: running|done|failed, text, tokens, cost, tools}`; bei `failed` optional
-    `retryable` (transient, Session-Neustart lohnt) bzw. `failure_kind`/`retry_after` (ADR 0035).
-    One-Shot-CLIs ergänzen bei `failed` `exit_code` und `stderr_tail` (Ende von stderr, für Abstürze).
-    Optional: `billing() -> fabrik.billing.Billing` (Abrechnungsart aus der übergebenen Auth);
-    fehlt sie, gilt `unknown`.
+    `name` is a class attribute (backend identifier, e.g. "copilot").
+    `poll` returns `{status: running|done|failed, text, tokens, cost, tools}`; on `failed` optionally
+    `retryable` (transient, session restart worthwhile) or `failure_kind`/`retry_after` (ADR 0035).
+    One-shot CLIs add `exit_code` and `stderr_tail` on `failed` (end of stderr, for crashes).
+    Optional: `billing() -> fabrik.billing.Billing` (billing mode derived from the given auth);
+    if absent, `unknown` applies.
+
     """
 
     name: str
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> AgentBackend:
-        """Konstruiert den Adapter; spezifische Optionen (sandbox, tools, …)
-        extrahiert der Adapter selbst aus `step`/Env."""
+        """Constructs the adapter; the adapter extracts specific options (sandbox, tools, …)
+        from `step`/env itself."""
         ...
 
     def health(self) -> bool:
-        """True, wenn das Backend verfügbar ist (CLI im PATH / Server erreichbar)."""
+        """True if the backend is available (CLI in PATH / server reachable)."""
         ...
 
     def diagnose(self) -> str | None:
-        """Menschenlesbare Diagnose, wenn `health()` False ist (None = keine
-        zusätzliche Information). Dient dem Health-Gate-Error im Agent-Step,
-        damit ein unhealthy-Backend die Ursache nennt (z. B. falscher Port,
-        fehlendes Passwort) statt nur 'unhealthy'."""
+        """Human-readable diagnosis when `health()` is False (None = no
+        additional information). Serves the health-gate error in the agent step,
+        so an unhealthy backend names the cause (e.g. wrong port,
+        missing password) instead of just 'unhealthy'."""
         ...
 
     def unhealthy_kind(self) -> FailureKind:
-        """Fehlerklasse, wenn `health()` False ist (ADR 0035): Server kurz weg → `transient`,
-        fehlende CLI oder abgelehnte Auth → `environment`."""
+        """Failure class when `health()` is False (ADR 0035): server briefly gone → `transient`,
+        missing CLI or rejected auth → `environment`."""
         ...
 
     def create_task(self, workdir: str, title: str, permissions: list | None = None) -> str:
-        """Reserviert eine Task/Session und liefert die session_id."""
+        """Reserves a task/session and returns the session_id."""
         ...
 
     def send_prompt(self, session_id: str, prompt: str, directory: str) -> None:
-        """Startet die Ausführung des Prompts in der Session."""
+        """Starts execution of the prompt in the session."""
         ...
 
     def poll(self, session_id: str, directory: str) -> dict:
@@ -65,13 +66,13 @@ class AgentBackend(Protocol):
         ...
 
     def transcript(self, session_id: str, directory: str) -> list[dict]:
-        """Vollständiger Agent-Dialog als normalisierte Messages `[{info, parts}]`
-        (älteste zuerst, nur Assistant). Dient dem Run-Log (Konversation).
+        """Complete agent dialog as normalized messages `[{info, parts}]`
+        (oldest first, assistant only). Serves the run log (conversation).
 
-        One-Shot-CLI-Backends haben keinen abrufbaren Dialog → liefern `[]`
-        (deren Final-Output steckt bereits in `poll()`'s `text`)."""
+        One-shot CLI backends have no retrievable dialog → return `[]`
+        (their final output is already in `poll()`'s `text`)."""
         ...
 
     def cancel(self, session_id: str, directory: str) -> None:
-        """Bricht die Session ab (no-op, wenn unbekannt/bereits beendet)."""
+        """Aborts the session (no-op if unknown/already finished)."""
         ...

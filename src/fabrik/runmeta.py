@@ -1,7 +1,7 @@
-"""Metadaten eines Runs fürs Detail-Modal: Issue/PR mit Links (``GET /api/run/<id>``, Feld ``meta``).
+"""Metadata of a run for the detail modal: issue/PR with links (``GET /api/run/<id>``, field ``meta``).
 
-Quellen in dieser Reihenfolge: Run-Variablen (``issue_number``/``pr_url``/…), Approval-Kontext,
-Trigger-String (``on_issue:#N``/``on_pr:#N``) + ``github``-Repo der Spec. Reine Funktion, kein I/O.
+Sources in this order: run variables (``issue_number``/``pr_url``/…), approval context,
+trigger string (``on_issue:#N``/``on_pr:#N``) + the spec's ``github`` repo. Pure function, no I/O.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def _clean(value: object) -> str:
 
 
 def issue_link(spec: dict, record: dict) -> RunLink | None:
-    """Auslösendes Issue des Runs (oder ``None``)."""
+    """Triggering issue of the run (or ``None``)."""
     vars_ = record.get("vars") or {}
     trigger = _clean(record.get("trigger"))
     number = _clean(vars_.get("issue_number"))
@@ -38,7 +38,7 @@ def issue_link(spec: dict, record: dict) -> RunLink | None:
 
 
 def pr_link(spec: dict, record: dict) -> RunLink | None:
-    """PR des Runs (oder ``None``)."""
+    """PR of the run (or ``None``)."""
     vars_ = record.get("vars") or {}
     approval = record.get("approval") or {}
     url = _pr_link(spec, _clean(record.get("trigger")), vars_) or _clean(approval.get("pr"))
@@ -49,7 +49,7 @@ def pr_link(spec: dict, record: dict) -> RunLink | None:
 
 
 def run_meta(spec: dict | None, record: dict) -> dict[str, dict]:
-    """``{"issue": {...}, "pr": {...}}`` – nur vorhandene Einträge."""
+    """``{"issue": {...}, "pr": {...}}`` – only existing entries."""
     spec = spec or {}
     links = {"issue": issue_link(spec, record), "pr": pr_link(spec, record)}
     return {k: asdict(v) for k, v in links.items() if v}

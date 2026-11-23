@@ -1,12 +1,12 @@
-"""Retry-Policy (`retry: {max, backoff, on, max_wait}`) nach ADR 0036 (Run-Retry).
+"""Retry policy (`retry: {max, backoff, on, max_wait}`) per ADR 0036 (run retry).
 
-Geteilt, damit Relay-Tasks (ADR 0037) und der Run-Retry (#290) dieselbe Semantik haben:
-- `max`: Anzahl **zusätzlicher** Versuche nach dem ersten Run (`max: 3` → höchstens 4 Runs);
-  `max: 0` = kein Retry.
-- `backoff`: Wartezeit vor Versuch 1..n; der letzte Wert gilt für alle weiteren.
-- `on`: Fehlerklassen (ADR 0035), die wiederholt werden dürfen — nur `interrupted`/`transient`.
-  `unknown` und Runs ohne Klasse werden nie automatisch wiederholt.
-- `max_wait`: Obergrenze für ein gemeldetes `retry_after` (z. B. Reset eines Rate-Limits).
+Shared so relay tasks (ADR 0037) and run retry (#290) have the same semantics:
+- `max`: number of **additional** attempts after the first run (`max: 3` → at most 4 runs);
+  `max: 0` = no retry.
+- `backoff`: wait before attempt 1..n; the last value applies to all further ones.
+- `on`: failure classes (ADR 0035) that may be retried — only `interrupted`/`transient`.
+  `unknown` and runs without a class are never retried automatically.
+- `max_wait`: upper bound for a reported `retry_after` (e.g. reset of a rate limit).
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from .i18n import t
 from .runmodel import FailureKind
 
 RETRYABLE_KINDS = frozenset({FailureKind.INTERRUPTED, FailureKind.TRANSIENT})
@@ -31,7 +32,7 @@ def parse_duration(raw: object) -> timedelta:
     """`45s`, `5m`, `2h`, `1d` → timedelta (> 0); ValueError sonst."""
     m = _DURATION_RE.match(str(raw).strip())
     if not m or int(m.group(1)) <= 0:
-        raise ValueError(f"Dauer wie 5m/2h erwartet (ist {raw!r})")
+        raise ValueError(t("retry.duration_like_5m_2h_expected", raw=raw))
     return timedelta(seconds=int(m.group(1)) * _UNIT_S[m.group(2)])
 
 
@@ -58,8 +59,8 @@ class RetryPolicy:
         return self.backoff[min(attempt, len(self.backoff)) - 1]
 
     def next_attempt_at(self, attempt: int, finished: datetime, retry_after: datetime | None = None) -> datetime:
-        """Frühester Start von Versuch `attempt`: Backoff ab Ende des vorherigen Runs; ein gemeldetes
-        `retry_after` (auf `max_wait` gekappt) verschiebt ihn nach hinten (ADR 0036, Entscheidung 1)."""
+        """Earliest start of attempt `attempt`: backoff from the end of the previous run; a reported
+        `retry_after` (capped at `max_wait`) pushes it back (ADR 0036, decision 1)."""
         due = finished + self.delay(attempt)
         if retry_after is None:
             return due
@@ -67,24 +68,24 @@ class RetryPolicy:
 
     @classmethod
     def parse(cls, raw: Any, where: str, errs: list[str]) -> RetryPolicy | None:
-        """`retry:`-Mapping → Policy; Fehler landen in `errs`. None = kein Retry."""
+        """`retry:` mapping → policy; errors land in `errs`. None = no retry."""
         if raw is None:
             return None
         if isinstance(raw, dict) and True in raw and "on" not in raw:
-            # PyYAML (YAML 1.1) liest den unquotierten Key `on` als bool True.
+            # PyYAML (YAML 1.1) reads the unquoted key `on` as bool True.
             raw = {("on" if k is True else k): v for k, v in raw.items()}
         if not isinstance(raw, dict) or set(raw) - _KEYS:
-            errs.append(f"{where}: Mapping mit {'/'.join(sorted(_KEYS))} erwartet")
+            errs.append(t("retry.mapping_with_expected", where=where, v2="/".join(sorted(_KEYS))))
             return None
         n = raw.get("max", DEFAULT_MAX)
         if isinstance(n, bool) or not isinstance(n, int) or n < 0:
-            errs.append(f"{where}.max: ganze Zahl >= 0 erwartet (ist {n!r})")
+            errs.append(t("retry.max_integer_0_expected_is", where=where, n=n))
             n = DEFAULT_MAX
         backoff: tuple[timedelta, ...] = DEFAULT_BACKOFF
         if "backoff" in raw:
             values = raw["backoff"]
             if not isinstance(values, list) or not values:
-                errs.append(f"{where}.backoff: nicht-leere Liste von Dauern erwartet")
+                errs.append(t("retry.backoff_non_empty_list_of", where=where))
             else:
                 try:
                     backoff = tuple(parse_duration(v) for v in values)
@@ -98,7 +99,7 @@ class RetryPolicy:
                 errs.append(f"{where}.max_wait: {e}")
         on = raw.get("on", sorted(RETRYABLE_KINDS))
         if not isinstance(on, list) or not on or any(k not in RETRYABLE_KINDS for k in on):
-            errs.append(f"{where}.on: nicht-leere Teilmenge von {sorted(RETRYABLE_KINDS)} erwartet (ist {on!r})")
+            errs.append(t("retry.on_non_empty_subset_of", where=where, v2=sorted(RETRYABLE_KINDS), on=on))
             on = sorted(RETRYABLE_KINDS)
         if n == 0:
             return None

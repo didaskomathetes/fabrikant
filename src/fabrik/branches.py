@@ -1,9 +1,9 @@
-"""Branch-Overrides: pro Projekt die Ziel-Branch zur Laufzeit wechseln (UI).
+"""Branch overrides: switch a project's target branch at runtime (UI).
 
-Die Spec-YAML bleibt der kanonische Default. Ein Override in
-``state/branch-overrides.json`` wird beim Spec-Load darübergelegt, ohne die
-YAML-Datei (inkl. Comments) zu reiben. Der Worktree synchronisiert beim
-nächsten Run auf ``origin/<branch>`` (gitops.ensure_worktree). ADR 0004.
+The spec YAML stays the canonical default. An override in
+``state/branch-overrides.json`` is laid over it at spec load, without touching the
+YAML file (incl. comments). The worktree syncs to ``origin/<branch>`` on the
+next run (gitops.ensure_worktree). ADR 0004.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def load_overrides() -> dict[str, str]:
 
 
 def save_override(project: str, branch: str) -> None:
-    """Setzt/aktualisiert den Branch-Override für ein Projekt."""
+    """Sets/updates the branch override for a project."""
     with _lock:
         data = load_overrides()
         data[project] = branch
@@ -45,7 +45,7 @@ def save_override(project: str, branch: str) -> None:
 
 
 def clear_override(project: str) -> None:
-    """Entfernt den Branch-Override (Projekt fällt auf den Spec-Default zurück)."""
+    """Removes the branch override (the project falls back to the spec default)."""
     with _lock:
         data = load_overrides()
         if project in data:
@@ -60,11 +60,11 @@ def _write(data: dict[str, str]) -> None:
 
 
 def apply_overrides(specs: dict[str, dict]) -> dict[str, dict]:
-    """Legt Branch-Overrides auf geladene Specs (``repo.branch``) — mutiert in place.
+    """Lays branch overrides onto loaded specs (``repo.branch``) — mutates in place.
 
-    Wird von ``specs.load_projects()`` aufgerufen, damit alle Konsumenten
-    (Server, Engine, CLI) den Override sehen. Defekte Specs (``_error``) und
-    Projekte ohne ``repo`` bleiben unverändert.
+    Called by ``specs.load_projects()`` so all consumers
+    (server, engine, CLI) see the override. Broken specs (``_error``) and
+    projects without ``repo`` stay unchanged.
     """
     ov = load_overrides()
     if not ov:
@@ -79,11 +79,11 @@ def apply_overrides(specs: dict[str, dict]) -> dict[str, dict]:
 
 
 def list_branches(repo_root: str | Path) -> list[str]:
-    """Lokale + Remote-Branches (ohne ``origin/HEAD``), dedupliziert, sortiert.
+    """Local + remote branches (without ``origin/HEAD``), deduplicated, sorted.
 
-    Remote-Namen werden auf den Kurznamen reduziert (``origin/main`` → ``main``),
-    damit sich lokale und Remote-Branches nicht doppelt listen. Kein Repo /
-    Fehler → leere Liste (UI zeigt dann nur den aktuellen Branch).
+    Remote names are reduced to the short name (``origin/main`` → ``main``),
+    so local and remote branches are not listed twice. No repo /
+    error → empty list (the UI then shows only the current branch).
     """
     p = subprocess.run(
         ["git", "-C", str(repo_root), "branch", "-a", "--format=%(refname:short)"],

@@ -1,17 +1,17 @@
-"""Kindprozesse in eigener Prozessgruppe — Timeout und Server-Ende beenden den ganzen Baum.
+"""Child processes in their own process group — timeout and server end terminate the whole tree.
 
-`subprocess.run(..., timeout=…)` tötet bei Ablauf nur das direkte Kind (`sh`); was der
-Befehl gestartet hat (Python-CLI, `git push`, Testläufe), läuft verwaist weiter. Hier
-startet jeder Befehl mit `start_new_session=True` und wird per `killpg` als Gruppe beendet.
+`subprocess.run(..., timeout=…)` kills only the direct child (`sh`) on expiry; what the
+command started (Python CLI, `git push`, test runs) keeps running orphaned. Here
+every command starts with `start_new_session=True` and is terminated as a group via `killpg`.
 
-Eigene Session heißt auch: ein Ctrl+C im Terminal erreicht die Gruppe nicht mehr. Deshalb
-merkt sich das Modul laufende Gruppen und `kill_all()` beendet sie beim Prozess-Ende
-(`atexit`; `fabrik serve` übersetzt SIGTERM/SIGHUP in ein reguläres Ende).
+Own session also means: a Ctrl+C in the terminal no longer reaches the group. Therefore
+the module remembers running groups and `kill_all()` terminates them at process end
+(`atexit`; `fabrik serve` translates SIGTERM/SIGHUP into a regular end).
 
-Nebenwirkung des Imports: `atexit.register(kill_all)` läuft bei `import fabrik.procs` —
-jeder Prozess (auch CLI-Kommandos, Tests) bekommt damit den Safety-Net-Handler. Er ist
-idempotent und No-Op, solange keine Gruppe vorgemerkt ist; `fabrik serve` ruft `kill_all()`
-zusätzlich explizit im `finally` auf.
+Side effect of the import: `atexit.register(kill_all)` runs on `import fabrik.procs` —
+every process (also CLI commands, tests) thereby gets the safety-net handler. It is
+idempotent and a no-op as long as no group is registered; `fabrik serve` calls `kill_all()`
+additionally and explicitly in `finally`.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ _lock = threading.Lock()
 
 
 def track(proc: subprocess.Popen) -> None:
-    """Gruppe von `proc` (mit `start_new_session=True` gestartet) für `kill_all` vormerken."""
+    """Register the group of `proc` (started with `start_new_session=True`) for `kill_all`."""
     with _lock:
         _live.add(proc)
 
@@ -40,17 +40,17 @@ def untrack(proc: subprocess.Popen) -> None:
 
 
 def kill_group(proc: subprocess.Popen) -> None:
-    """SIGKILL an die Prozessgruppe von `proc`; No-Op, wenn sie schon weg ist.
+    """SIGKILL to the process group of `proc`; no-op if it is already gone.
 
-    Bewusst SIGKILL (nicht SIGTERM): die Gruppen sind Testläufe, `git`- und Agent-CLIs —
-    ein geordnetes Herunterfahren bringt nichts, und ein ignorierendes Kind würde das
-    Ende des Servers/Steps sonst blockieren."""
+    Deliberately SIGKILL (not SIGTERM): the groups are test runs, `git` and agent CLIs —
+    an orderly shutdown gains nothing, and an ignoring child would otherwise block
+    the end of the server/step."""
     with contextlib.suppress(OSError):  # ProcessLookupError: Gruppe schon beendet
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
 def kill_all() -> int:
-    """Alle vorgemerkten, noch laufenden Gruppen beenden. Gibt die Anzahl zurück."""
+    """Terminate all registered, still running groups. Returns the count."""
     with _lock:
         procs = [p for p in _live if p.poll() is None]
         _live.clear()
@@ -60,9 +60,9 @@ def kill_all() -> int:
 
 
 def run_group(argv: Sequence[str], *, timeout: float, **kwargs) -> subprocess.CompletedProcess[str]:
-    """Wie `subprocess.run(argv, capture_output=True, text=True, timeout=timeout)`, aber in
-    eigener Prozessgruppe: bei Timeout (oder Abbruch) stirbt die ganze Gruppe, danach wird
-    `subprocess.TimeoutExpired` (mit dem bis dahin gelesenen Output) weitergereicht."""
+    """Like `subprocess.run(argv, capture_output=True, text=True, timeout=timeout)`, but in
+    its own process group: on timeout (or abort) the whole group dies, afterwards
+    `subprocess.TimeoutExpired` (with the output read so far) is re-raised."""
     with subprocess.Popen(
         argv,
         stdout=subprocess.PIPE,
@@ -74,7 +74,7 @@ def run_group(argv: Sequence[str], *, timeout: float, **kwargs) -> subprocess.Co
         track(proc)
         try:
             out, err = proc.communicate(timeout=timeout)
-        except BaseException:  # Timeout, KeyboardInterrupt, …: keine Waisen zurücklassen
+        except BaseException:  # Timeout, KeyboardInterrupt, …: leave no orphans behind
             kill_group(proc)
             proc.wait()
             raise

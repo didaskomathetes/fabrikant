@@ -1,12 +1,12 @@
-"""Deployment-Profil (`homelab|cloud`) und Adapter-Registry (ADR 0056).
+"""Deployment profile (`homelab|cloud`) and adapter registry (ADR 0056).
 
-Das Profil wird einmal beim Start aufgelöst (CLI > ``FABRIK_PROFILE`` > Default)
-und wählt pro Port die konkrete Implementierung. Nur Config und Composition Root
-(`cli.py`) kennen den Profilnamen; Business-Logik bekommt fertige Adapter
-(Guard: ``tests/test_profiles.py``).
+The profile is resolved once at startup (CLI > ``FABRIK_PROFILE`` > default)
+and selects the concrete implementation per port. Only config and composition root
+(`cli.py`) know the profile name; business logic gets ready-made adapters
+(guard: ``tests/test_profiles.py``).
 
-Neuer Port: ``Port``-Member + Adapter pro Profil in ``_build_default_registry``
-registrieren — die Auswahl-Logik bleibt unverändert.
+New port: register ``Port`` member + adapter per profile in ``_build_default_registry``
+— the selection logic stays unchanged.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any, NoReturn
 
 from . import runstore
+from .i18n import t
 
 PROFILE_ENV = "FABRIK_PROFILE"
 
@@ -30,7 +31,7 @@ class Profile(StrEnum):
 
 
 class Port(StrEnum):
-    """Austauschbare Infrastruktur-Schnittstelle (später z. B. Secrets, Queue, Worker)."""
+    """Replaceable infrastructure interface (later e.g. secrets, queue, worker)."""
 
     STORAGE = "storage"
 
@@ -39,13 +40,13 @@ DEFAULT_PROFILE = Profile.HOMELAB
 
 
 class ProfileError(ValueError):
-    """Ungültiges Profil oder nicht auflösbarer Adapter."""
+    """Invalid profile or unresolvable adapter."""
 
 
 def resolve_profile(cli: str | None = None, env: Mapping[str, str] | None = None) -> Profile:
-    """Profil bestimmen: ``cli`` > Env ``FABRIK_PROFILE`` > Default.
+    """Determine the profile: ``cli`` > env ``FABRIK_PROFILE`` > default.
 
-    Leere Werte zählen als nicht gesetzt. Ungültig → ``ProfileError`` mit den erlaubten Werten."""
+    Empty values count as unset. Invalid → ``ProfileError`` with the allowed values."""
     env = os.environ if env is None else env
     raw = (cli or "").strip() or env.get(PROFILE_ENV, "").strip()
     if not raw:
@@ -54,44 +55,44 @@ def resolve_profile(cli: str | None = None, env: Mapping[str, str] | None = None
         return Profile(raw.lower())
     except ValueError:
         allowed = ", ".join(p.value for p in Profile)
-        raise ProfileError(f"Ungültiges Profil {raw!r} (erlaubt: {allowed})") from None
+        raise ProfileError(t("profiles.invalid_profile_allowed", raw=raw, allowed=allowed)) from None
 
 
 def _local_storage() -> Any:
-    """Homelab-Storage: der bestehende lokale Run-Store (ADR 0034).
+    """Homelab storage: the existing local run store (ADR 0034).
 
-    ``runstore.STORE`` ist genau die Instanz, über die Engine, Server und CLI lesen und schreiben;
-    sie delegiert zur Aufrufzeit an das per ``FABRIK_RUN_STORE`` gewählte lokale Backend
-    (JSON-Dateien oder SQLite)."""
+    ``runstore.STORE`` is exactly the instance through which engine, server and CLI read and write;
+    at call time it delegates to the local backend chosen via ``FABRIK_RUN_STORE``
+    (JSON files or SQLite)."""
     return runstore.STORE
 
 
 def _cloud_storage() -> NoReturn:
-    raise NotImplementedError("Cloud-Storage (Postgres) ist noch nicht implementiert — siehe Folge-Issues (#19, #28)")
+    raise NotImplementedError(t("profiles.cloud_storage_postgres_is_not"))
 
 
 Factory = Callable[[], Any]
 
 
 class AdapterRegistry:
-    """Bildet ``(Profil, Port)`` auf eine Adapter-Factory ab."""
+    """Maps ``(profile, port)`` to an adapter factory."""
 
     def __init__(self) -> None:
         self._factories: dict[tuple[Profile, Port], Factory] = {}
 
     def register(self, profile: Profile, port: Port, factory: Factory) -> None:
-        """Adapter-Factory registrieren (Doppelregistrierung ist ein Fehler)."""
+        """Register an adapter factory (double registration is an error)."""
         key = (profile, port)
         if key in self._factories:
-            raise ProfileError(f"Adapter für {profile.value}/{port.value} bereits registriert")
+            raise ProfileError(t("profiles.adapter_for_already_registered", v1=profile.value, v2=port.value))
         self._factories[key] = factory
 
     def resolve(self, profile: Profile, port: Port | str) -> Any:
-        """Adapter für ``profile``/``port`` bauen. Unbekannter Port/fehlender Adapter → ``ProfileError``."""
+        """Build the adapter for ``profile``/``port``. Unknown port/missing adapter → ``ProfileError``."""
         try:
             factory = self._factories[(profile, Port(port))]
         except (ValueError, KeyError):
-            raise ProfileError(f"Kein Adapter für Port {str(port)!r} im Profil {profile.value!r}") from None
+            raise ProfileError(t("profiles.no_adapter_for_port_in", v1=str(port), v2=profile.value)) from None
         return factory()
 
 
@@ -107,14 +108,14 @@ DEFAULT_REGISTRY = _build_default_registry()
 
 @dataclass(frozen=True)
 class Adapters:
-    """Aufgelöste Adapter eines Profils — wird im Composition Root gebaut und weitergereicht.
+    """Resolved adapters of a profile — built in the composition root and passed on.
 
-    ``storage`` bietet die Operationen von :class:`fabrik.runstore.BaseRunStore`."""
+    ``storage`` offers the operations of :class:`fabrik.runstore.BaseRunStore`."""
 
     storage: Any
 
 
 def compose(profile: Profile, registry: AdapterRegistry | None = None) -> Adapters:
-    """Composition Root: alle Ports einmalig für ``profile`` auflösen."""
+    """Composition root: resolve all ports once for ``profile``."""
     reg = registry or DEFAULT_REGISTRY
     return Adapters(storage=reg.resolve(profile, Port.STORAGE))

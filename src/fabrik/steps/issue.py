@@ -1,45 +1,45 @@
-"""Step: issue — native Issue-Operationen über den Hosting-Provider (ADR 0001 §5, 0061).
+"""Step: issue — native issue operations via the hosting provider (ADR 0001 §5, 0061).
 
-Ersetzt `shell` + `gh` in Triage-/Sweep-Loops (ADR 0001 §5): Werte gehen als
-JSON-Payload an die REST-API, nie durch eine Shell → keine Injection über
-Issue-/LLM-Text. Der Step spricht den Hosting-Provider (ADR 0062), nicht die
-GitHub-API direkt: GitHub und GitLab laufen über denselben Pfad.
+Replaces `shell` + `gh` in triage/sweep loops (ADR 0001 §5): values go as a
+JSON payload to the REST API, never through a shell → no injection via
+issue/LLM text. The step talks to the hosting provider (ADR 0062), not the
+GitHub API directly: GitHub and GitLab use the same path.
 
-Auth: Developer-Identity (ADR 0010); das Token steht nie in Output/Summary und
-wird zusätzlich vom Secret-Masking erfasst.
+Auth: developer identity (ADR 0010); the token never appears in output/summary and
+is additionally covered by secret masking.
 
-GitHub-spezifische Features (native Issue-Dependencies, ADR 0031): `block` und
-`duplicate_of` nutzen native "blocked by"-Relationen, die GitLab nicht hat —
-dort werfen sie `HostingNotSupported` (fail-closed).
+GitHub-specific features (native issue dependencies, ADR 0031): `block` and
+`duplicate_of` use native "blocked by" relations, which GitLab does not have —
+there they raise `HostingNotSupported` (fail-closed).
 
-Step-Def:
+Step def:
     type: issue
     action: create | edit | label | close | list | block
     repo: owner/name
-    number: {issue_number}   # Pflicht außer bei create/list
-    title: ...               # create (Pflicht), edit (optional)
-    body: ...                # create/edit; edit + append: true hängt an den Bestand an
-    labels: [a, b]           # create/label: hinzufügen (Liste oder "a,b")
-    remove_labels: [c]       # label: entfernen (fehlende Labels sind kein Fehler)
+    number: {issue_number}   # required except for create/list
+    title: ...               # create (required), edit (optional)
+    body: ...                # create/edit; edit + append: true appends to the existing body
+    labels: [a, b]           # create/label: add (list or "a,b")
+    remove_labels: [c]       # label: remove (missing labels are no error)
     state: open | closed     # edit (optional)
-    comment: ...             # close: Begründung als Kommentar vor dem Schließen
-    state_reason: ...        # close: completed | not_planned | duplicate (leer = Host-Default)
-    duplicate_of: "#12"      # close: als Duplikat schließen + Blocker-Relationen auf #12 umhängen (ADR 0031, GitHub)
-    emit: var                # create: Zielvariable der neuen Nummer (Default issue_number)
-    inherit_labels: [p0, p1] # create: diese Labels übernehmen, sofern Issue `number` sie trägt
-    append: true             # edit: body an bestehenden Body anhängen
-    unless_contains: marker  # edit+append: No-Op, wenn der Body den Marker schon enthält
-    only_if: {label: [a, b]} # nur ausführen, wenn JEDE Variable einen der Werte hat (sonst No-Op)
-    skip_if_empty: [var, ...] # No-Op, wenn alle genannten Variablen leer sind
-    # list (ADR 0031): andere Issues als Prompt-Kontext (Duplikat-/Blocker-Erkennung)
-    state: open | closed     # list: welche Issues (Default open)
-    limit: 100               # list: max. Anzahl, zuletzt aktualisierte zuerst
-    emit: open_issues        # list: Zielvariable (Default issues); eine Zeile pro Issue
-    # block (ADR 0031): native "blocked by"-Dependencies an Issue `number` setzen
-    blocked_by: "#12, #14"   # Referenzen (#N oder N, Komma/Leerzeichen); Fremdtext wird ignoriert
-Alle String-Felder sind {vars}-substituiert. `create` setzt `issue_number`
-(+ `issue_url`; mit `emit` nur die Nummer in `emit`) im Variable-Store, `list` die `emit`-Variable, `block` `blockers`
-(tatsächlich verknüpfte Blocker, z. B. "#12, #14").
+    comment: ...             # close: reason as a comment before closing
+    state_reason: ...        # close: completed | not_planned | duplicate (empty = host default)
+    duplicate_of: "#12"      # close: close as duplicate + re-hang blocker relations to #12 (ADR 0031, GitHub)
+    emit: var                # create: target variable of the new number (default issue_number)
+    inherit_labels: [p0, p1] # create: take over these labels if issue `number` carries them
+    append: true             # edit: append body to the existing body
+    unless_contains: marker  # edit+append: no-op if the body already contains the marker
+    only_if: {label: [a, b]} # run only if EVERY variable has one of the values (otherwise no-op)
+    skip_if_empty: [var, ...] # no-op if all named variables are empty
+    # list (ADR 0031): other issues as prompt context (duplicate/blocker detection)
+    state: open | closed     # list: which issues (default open)
+    limit: 100               # list: max. count, most recently updated first
+    emit: open_issues        # list: target variable (default issues); one line per issue
+    # block (ADR 0031): set native "blocked by" dependencies on issue `number`
+    blocked_by: "#12, #14"   # references (#N or N, comma/space); foreign text is ignored
+All string fields are {vars}-substituted. `create` sets `issue_number`
+(+ `issue_url`; with `emit` only the number in `emit`) in the variable store, `list` the `emit` variable, `block` `blockers`
+(actually linked blockers, e.g. "#12, #14").
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ from collections.abc import Iterable, Mapping
 from ..context import _cond_matches, _substitute
 from ..failures import ConfigError, Failure, classify_http, failed
 from ..hosting import Provider, get_provider
+from ..i18n import t
 from ..runmodel import FailureKind
 from .pr import _normalize_labels
 
@@ -60,20 +61,20 @@ ACTIONS = ("create", "edit", "label", "close", "list", "block")
 _NUMBERLESS = ("create", "list")  # Actions ohne Pflicht-`number`
 _STATES = ("open", "closed")
 _CLOSE_REASONS = ("completed", "not_planned", "duplicate")
-_PER_PAGE = 100  # Host-Maximum für Listen-Endpoints
-LIST_LIMIT = 100  # list: Default-Obergrenze (Prompt-Größe bleibt bounded)
+_PER_PAGE = 100  # host maximum for list endpoints
+LIST_LIMIT = 100  # list: default upper bound (prompt size stays bounded)
 LIST_MAX_PAGES = 5  # list: harte Obergrenze der Pagination (≤ 500 Issues)
 LIST_BODY_CHARS = 200  # list: Body-Auszug pro Issue
-# block: höchstens 5 blocked_by (dependencies-Prompt, ADR 0031); mehr ist LLM-Rauschen.
-# Die Voraussetzung (`prerequisite`) kommt separat dazu und fällt nie unter das Limit.
+# block: at most 5 blocked_by (dependencies prompt, ADR 0031); more is LLM noise.
+# The prerequisite (`prerequisite`) is added separately and never falls under the limit.
 MAX_BLOCKERS = 5
 _REF_RE = re.compile(r"#?(\d+)")
 
 
 def _labels(value: object, ctx: Mapping[str, object]) -> list[str]:
-    """Label-Liste aus YAML-Liste oder Komma-String (substituiert, ohne Leere, dedupliziert).
+    """Label list from a YAML list or comma string (substituted, without empties, deduplicated).
 
-    Skalare (z. B. `labels: 42`) gelten als ein Label statt zu crashen.
+    Scalars (e.g. `labels: 42`) count as one label instead of crashing.
     """
     if value is None:
         return []
@@ -87,16 +88,16 @@ def _labels(value: object, ctx: Mapping[str, object]) -> list[str]:
 
 
 def _fail(msg: str, failure: Failure | None = None) -> dict:
-    """Gescheiterte Issue-Action; ohne Angabe ``unknown`` — die meisten Werte (number, title, state, …)
-    kommen per Substitution aus dem Run-Kontext (oft LLM-Output), nicht aus der Spec selbst."""
+    """Failed issue action; without specification ``unknown`` — most values (number, title, state, …)
+    come by substitution from the run context (often LLM output), not from the spec itself."""
     return failed(f"issue: {msg}", failure or Failure())
 
 
 def _skip_reason(ctx: dict, step: dict) -> str:
-    """Grund für den No-Op (`only_if` unerfüllt / `skip_if_empty` alle leer) oder ''."""
+    """Reason for the no-op (`only_if` unmet / `skip_if_empty` all empty) or ''."""
     only_if = step.get("only_if")
     if only_if and not _cond_matches(only_if, ctx):
-        return "only_if nicht erfüllt"
+        return t("steps.issue.only_if_not_satisfied")
     names = step.get("skip_if_empty")
     if names:
         names = [names] if isinstance(names, str) else names
@@ -106,19 +107,22 @@ def _skip_reason(ctx: dict, step: dict) -> str:
 
 
 def _step_issue(ctx: dict, step: dict) -> dict:
-    """Führt eine Issue-Action aus; Fehler → ok=False (kein Token im Text)."""
+    """Executes an issue action; error → ok=False (no token in the text)."""
     skipped = _skip_reason(ctx, step)
     if skipped:
-        return {"ok": True, "summary": f"issue übersprungen ({skipped})"}
+        return {"ok": True, "summary": t("steps.issue.issue_skipped", skipped=skipped)}
     action = str(step.get("action") or "").strip().lower()
     if action not in ACTIONS:
-        return _fail(f"action '{action}' ungültig (erlaubt: {', '.join(ACTIONS)})", Failure(FailureKind.ENVIRONMENT))
+        return _fail(
+            t("steps.issue.action_invalid_allowed", action=action, v2=", ".join(ACTIONS)),
+            Failure(FailureKind.ENVIRONMENT),
+        )
     repo = _substitute(str(step.get("repo") or ""), ctx).strip()
     if not repo:
-        raise ConfigError("issue: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.issue.issue_repo_owner_name_missing"))
     number = _substitute(str(step.get("number") or ""), ctx).strip() or str(ctx.get("issue_number") or "").strip()
     if action not in _NUMBERLESS and not number.isdigit():
-        return _fail(f"number nicht auflösbar (number: {number!r})")
+        return _fail(t("steps.issue.number_cannot_be_resolved_number", number=number))
     provider = get_provider(repo)
     try:
         return _HANDLERS[action](ctx, step, repo, number, provider)
@@ -135,9 +139,9 @@ def _text(step: dict, key: str, ctx: dict) -> str | None:
 
 
 def _inherited_labels(step: dict, repo: str, number: str, provider: Provider, ctx: dict) -> list[str]:
-    """`inherit_labels`: die gelisteten Labels, die Issue `number` trägt (z. B. Priorität
-    für ein abgeleitetes Issue) — bewusst eine Whitelist, damit Status-Labels wie
-    `ready for development` nie mitwandern."""
+    """`inherit_labels`: the listed labels that issue `number` carries (e.g. priority
+    for a derived issue) — deliberately a whitelist, so status labels like
+    `ready for development` never migrate along."""
     wanted = _labels(step.get("inherit_labels"), ctx)
     if not wanted or not number.isdigit():
         return []
@@ -148,7 +152,7 @@ def _inherited_labels(step: dict, repo: str, number: str, provider: Provider, ct
 def _create(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     title = (_text(step, "title", ctx) or "").strip()
     if not title:
-        return _fail("create: 'title' fehlt")
+        return _fail(t("steps.issue.create_title_missing"))
     body = _text(step, "body", ctx) or ""
     labels = _labels(step.get("labels"), ctx) + _inherited_labels(step, repo, number, provider, ctx)
     issue = provider.create_issue(repo, title, body, list(dict.fromkeys(labels)) if labels else None)
@@ -165,27 +169,27 @@ def _edit(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> 
     if state is not None:
         state = state.strip().lower()
         if state not in _STATES:
-            return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
+            return _fail(t("steps.issue.state_invalid_allowed", state=state, v2=", ".join(_STATES)))
     body = _text(step, "body", ctx)
     if body is not None and step.get("append"):
         current = provider.get_issue(repo, int(number)).body
         marker = _text(step, "unless_contains", ctx)
         if marker and marker in current:
-            return {"ok": True, "summary": f"Issue #{number} unverändert (Marker bereits vorhanden)"}
+            return {"ok": True, "summary": t("steps.issue.issue_unchanged_marker_already_present", number=number)}
         body = f"{current}\n\n{body}" if current else body
     if title is None and body is None and state is None:
-        return _fail("edit: nichts zu ändern (title/body/state fehlen)")
+        return _fail(t("steps.issue.edit_nothing_to_change_title"))
     provider.edit_issue(repo, int(number), title=title, body=body, state=state)
     changed = [k for k, v in (("title", title), ("body", body), ("state", state)) if v is not None]
-    return {"ok": True, "summary": f"Issue #{number} geändert ({', '.join(changed)})"}
+    return {"ok": True, "summary": t("steps.issue.issue_changed", number=number, v2=", ".join(changed))}
 
 
 def _label(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     add = _labels(step.get("labels"), ctx)
     remove = _labels(step.get("remove_labels"), ctx)
     if not add and not remove:
-        return _fail("label: 'labels' oder 'remove_labels' fehlt")
-    if add:  # GitHub legt unbekannte Labels beim Hinzufügen automatisch an
+        return _fail(t("steps.issue.label_labels_or_remove_labels"))
+    if add:  # GitHub creates unknown labels automatically when adding them
         provider.add_labels(repo, int(number), add)
     for name in remove:
         provider.remove_label(repo, int(number), name)  # 404 → idempotent (Provider)
@@ -195,42 +199,42 @@ def _label(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
 def _close(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
     reason = (_text(step, "state_reason", ctx) or "").strip().lower()
     if reason and reason not in _CLOSE_REASONS:
-        return _fail(f"state_reason '{reason}' ungültig (erlaubt: {', '.join(_CLOSE_REASONS)})")
+        return _fail(t("steps.issue.state_reason_invalid_allowed", reason=reason, v2=", ".join(_CLOSE_REASONS)))
     originals = _refs(_text(step, "duplicate_of", ctx) or "", number)
     duplicate_id: int | None = None
     moved: list[str] = []
     if originals:
         original = provider.get_issue(repo, originals[0])
         if original.is_pr:
-            return _fail(f"close: duplicate_of #{originals[0]} ist ein PR")
+            return _fail(t("steps.issue.close_duplicate_of_is_a", v1=originals[0]))
         duplicate_id = int(original.raw["id"])
-        # Vor dem Schließen: schlägt das Umhängen fehl, bleibt das Issue offen.
+        # Before closing: if re-hanging fails, the issue stays open.
         moved = _move_dependents(provider, repo, number, original)
         reason = "duplicate"
     comment = (_text(step, "comment", ctx) or "").strip()
     if comment:
         provider.create_comment(repo, int(number), comment)
-    # GitHub: `duplicate_issue_id` setzt die native Duplikat-Relation (ADR 0031);
-    # GitLab ignoriert das Feld (kein Duplikat-Konzept, ADR 0062).
+    # GitHub: `duplicate_issue_id` sets the native duplicate relation (ADR 0031);
+    # GitLab ignores the field (no duplicate concept, ADR 0062).
     provider.edit_issue(repo, int(number), state="closed", state_reason=reason or None, duplicate_issue_id=duplicate_id)
     summary = f"Issue #{number} geschlossen" + (f" ({reason})" if reason else "")
     if moved:
-        summary += f"; Blocker umgehängt auf #{originals[0]}: {', '.join(moved)}"
+        summary += t("steps.issue.blockers_moved_to", v1=originals[0], v2=", ".join(moved))
     return {"ok": True, "summary": summary}
 
 
 def _move_dependents(provider: Provider, repo: str, number: str, original) -> list[str]:
-    """Issues, die `number` blockiert, werden stattdessen vom Original blockiert.
+    """Issues that `number` blocks are blocked by the original instead.
 
-    Sonst hingen sie an einem als `duplicate` geschlossenen Blocker fest (der zählt
-    nicht als erledigt, ADR 0031). Idempotent: bestehende Relationen bleiben.
+    Otherwise they would be stuck on a blocker closed as `duplicate` (which does not
+    count as done, ADR 0031). Idempotent: existing relations stay.
     """
     me = provider.get_issue(repo, int(number))
     moved = []
     for dep in provider.issue_dependencies(repo, int(number), kind="blocking"):
         dep_no = dep.number
-        # Hing das Original selbst am Duplikat, wird die Relation nur gelöst
-        # (keine Selbst-Blockade).
+        # If the original itself hung on the duplicate, the relation is only removed
+        # (no self-block).
         if dep_no != original.number:
             if original.number not in {b.number for b in provider.issue_dependencies(repo, dep_no)}:
                 provider.add_issue_dependency(repo, dep_no, blocker_id=original.raw["id"])
@@ -248,10 +252,10 @@ def _issue_line(it) -> str:
 
 
 def _list(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
-    """Andere Issues (ohne PRs und ohne Issue `number`) als Textliste in `emit`."""
+    """Other issues (without PRs and without issue `number`) as a text list in `emit`."""
     state = (_text(step, "state", ctx) or "open").strip().lower()
     if state not in _STATES:
-        return _fail(f"state '{state}' ungültig (erlaubt: {', '.join(_STATES)})")
+        return _fail(t("steps.issue.state_invalid_allowed", state=state, v2=", ".join(_STATES)))
     limit = max(1, int(step.get("limit", LIST_LIMIT)))
     labels = _labels(step.get("labels"), ctx)
     lines: list[str] = []
@@ -268,8 +272,8 @@ def _list(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> 
 
 
 def _refs(text: str, own: str) -> list[int]:
-    """Issue-Nummern aus `#12, 14 #15`; Tokens, die keine reine Referenz sind, und das
-    eigene Issue werden ignoriert (LLM-Text ist untrusted). Reihenfolge bleibt erhalten."""
+    """Issue numbers from `#12, 14 #15`; tokens that are not a pure reference and the
+    own issue are ignored (LLM text is untrusted). Order is preserved."""
     out: list[int] = []
     for tok in re.split(r"[\s,;]+", text):
         m = _REF_RE.fullmatch(tok)
@@ -279,22 +283,24 @@ def _refs(text: str, own: str) -> list[int]:
 
 
 def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
-    """Setzt native "blocked by"-Dependencies (ADR 0031), idempotent.
+    """Sets native "blocked by" dependencies (ADR 0031), idempotent.
 
-    `blocked_by` (LLM-Text) ist auf MAX_BLOCKERS begrenzt, `prerequisite` (die neu
-    angelegte Voraussetzung) kommt immer zusätzlich dazu.
-    Nicht existente Referenzen, PRs und geschlossene Issues werden übersprungen
-    (blockieren nichts). Andere API-Fehler (z. B. 422 bei Zyklen) brechen den Step
-    ab — fail closed: der Refine-Run labelt das Issue dann nicht.
+
+    `blocked_by` (LLM text) is limited to MAX_BLOCKERS, `prerequisite` (the newly
+    created prerequisite) is always added on top.
+    Non-existent references, PRs and closed issues are skipped
+    (block nothing). Other API errors (e.g. 422 on cycles) abort the step
+    — fail closed: the refine run then does not label the issue.
     """
     blocked_by = _refs(_text(step, "blocked_by", ctx) or "", number)
     dropped = blocked_by[MAX_BLOCKERS:]
     refs = blocked_by[:MAX_BLOCKERS]
     refs += [n for n in _refs(_text(step, "prerequisite", ctx) or "", number) if n not in refs]
     if not refs:
-        return {"ok": True, "summary": f"Issue #{number}: keine Blocker"}
+        return {"ok": True, "summary": t("steps.issue.issue_no_blockers", number=number)}
     existing = {b.number for b in provider.issue_dependencies(repo, int(number))}
-    linked, skipped = [], [f"#{n} (über Limit {MAX_BLOCKERS})" for n in dropped]
+    linked, skipped = [], [t("steps.issue.over_limit", n=n, v2=MAX_BLOCKERS) for n in dropped]
+
     for ref in refs:
         if ref in existing:
             linked.append(f"#{ref}")
@@ -302,9 +308,9 @@ def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
         try:
             blocker = provider.get_issue(repo, ref)
         except urllib.error.HTTPError as e:
-            if e.code not in (404, 410):  # gelöscht/nicht vorhanden → halluzinierte Referenz
+            if e.code not in (404, 410):  # deleted/not present → hallucinated reference
                 raise
-            skipped.append(f"#{ref} (nicht gefunden)")
+            skipped.append(t("steps.issue.not_found", ref=ref))
             continue
         if blocker.is_pr or blocker.state != "open":
             skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'geschlossen'})")
@@ -314,7 +320,7 @@ def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
     ctx["blockers"] = ", ".join(linked)
     summary = f"Issue #{number} blocked by: {', '.join(linked) or '—'}"
     if skipped:
-        summary += f"; übersprungen: {', '.join(skipped)}"
+        summary += t("steps.issue.skipped", v1=", ".join(skipped))
     return {"ok": True, "summary": summary}
 
 

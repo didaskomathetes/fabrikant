@@ -1,30 +1,29 @@
-"""Step: pr (PR anlegen) — über den Hosting-Provider (ADR 0062).
+"""Step: pr (create a PR) — via the hosting provider (ADR 0062).
 
-Idempotent (Duplikat-Schutz): existiert für den Head-Branch bereits ein
-offener PR, wird er wiederverwendet — GitHub erlaubt ohnehin nur einen
-offenen PR pro Head-Branch, der Create-Call würde also fehlschlagen.
-Wichtig für Re-Runs/Resumes desselben Issues.
+Idempotent (duplicate protection): if an open PR already exists for the head
+branch, it is reused — GitHub allows only one open PR per head branch
+anyway, so the create call would fail. Important for re-runs/resumes of the same issue.
 
-Leerer Head: hat `head` keine Commits vor `base` (z. B. Agent fand nichts zu
-tun, `ship` war ein No-Op), lehnt der Host den Create mit 422 ab. Der Step
-prüft das vorher über die Compare-API und beendet den Run dann erfolgreich
-(`done`) statt mit Fehler — Folge-Steps (Review, Merge) hätten keinen PR.
+Empty head: if `head` has no commits ahead of `base` (e.g. the agent found nothing to
+do, `ship` was a no-op), the host rejects the create with 422. The step checks
+this beforehand via the compare API and then ends the run successfully (`done`)
+instead of with an error — subsequent steps (review, merge) would have no PR.
 
-Labels: `POST /pulls` kennt keinen labels-Parameter (GitHub ignoriert ihn
-stillschweigend) — sie werden danach über den Issues-Endpunkt gesetzt, auch
-für wiederverwendete PRs (additiv, idempotent; heilt PRs ohne Label).
+Labels: `POST /pulls` has no labels parameter (GitHub silently
+ignores it) — they are set afterwards via the issues endpoint, also
+for reused PRs (additive, idempotent; heals PRs without labels).
 
-Der Step spricht den Hosting-Provider (ADR 0062), nicht die GitHub-API direkt:
-GitHub und GitLab laufen über denselben Pfad.
+The step talks to the hosting provider (ADR 0062), not the GitHub API directly:
+GitHub and GitLab use the same path.
 
-Step-Def:
+Step def:
     type: pr
-    repo: <Pflicht, "owner/name">
-    base: <optional, Default: main>
-    head: <optional, Default: aktueller Branch>
-    title: <optional, {vars}-substituiert>
-    body: <optional, {vars}-substituiert>
-    labels: <optional, Liste; z. B. [fabrik] — Review-Loops filtern oft nach Label>
+    repo: <required, "owner/name">
+    base: <optional, default: main>
+    head: <optional, default: current branch>
+    title: <optional, {vars}-substituted>
+    body: <optional, {vars}-substituted>
+    labels: <optional, list; e.g. [fabrik] — review loops often filter by label>
 """
 
 from __future__ import annotations
@@ -36,6 +35,7 @@ from typing import Any
 from ..context import _substitute
 from ..failures import ConfigError
 from ..hosting import Provider, PullRequest, get_provider
+from ..i18n import t
 from ..validation import validate_branch_name
 from .git import _git
 
@@ -43,7 +43,7 @@ from .git import _git
 def _step_pr(ctx: dict, step: dict) -> dict:
     repo_cfg = step.get("repo")  # "owner/name"
     if not repo_cfg:
-        raise ConfigError("pr-step: 'repo: owner/name' fehlt")
+        raise ConfigError(t("steps.pr.pr_step_repo_owner_name"))
     provider = get_provider(repo_cfg)
     base_branch = _substitute(step.get("base", "main"), ctx)
     head_branch = (
@@ -53,8 +53,8 @@ def _step_pr(ctx: dict, step: dict) -> dict:
     )
     validate_branch_name(base_branch)
     validate_branch_name(head_branch)
-    # Duplikat-Check vor dem Create: offener PR mit gleichem Head-Branch →
-    # wiederverwenden (Re-Runs/Resumes legen keinen zweiten PR an).
+    # Duplicate check before create: open PR with the same head branch →
+    # reuse (re-runs/resumes do not create a second PR).
     labels = _normalize_labels(step.get("labels") or [])
     existing = _find_open_pr(provider, repo_cfg, head_branch)
     if existing is not None:
@@ -62,16 +62,16 @@ def _step_pr(ctx: dict, step: dict) -> dict:
         provider.add_labels(repo_cfg, existing.number, labels)
         return {
             "ok": True,
-            "summary": f"PR #{existing.number} existiert bereits (head {head_branch}) — wiederverwendet",
+            "summary": t("steps.pr.pr_already_exists_head_reused", v1=existing.number, head_branch=head_branch),
         }
     if _commits_ahead(provider, repo_cfg, base_branch, head_branch) == 0:
         return {
             "ok": True,
             "done": True,
-            "summary": f"keine Commits auf {head_branch} gegenüber {base_branch} — kein PR",
+            "summary": t("steps.pr.no_commits_on_compared_to", head_branch=head_branch, base_branch=base_branch),
         }
     title = _substitute(step.get("title", "fabrik: {loop} {run_id}"), ctx)
-    body = _substitute(step.get("body", "Erzeugt von **fabrik** (Loop `{loop}`, Trigger `{trigger}`)."), ctx)
+    body = _substitute(step.get("body", t("steps.pr.created_by_fabrik_loop_trigger")), ctx)
     pr = provider.create_pr(repo_cfg, title=title, head=head_branch, base=base_branch, body=body)
     _export_pr(ctx, pr)
     provider.add_labels(repo_cfg, pr.number, labels)
@@ -79,8 +79,8 @@ def _step_pr(ctx: dict, step: dict) -> dict:
 
 
 def _export_pr(ctx: dict, pr: PullRequest) -> None:
-    """PR-Daten für Folge-Steps (pr_review, pr_merge, human_gate) in den ctx:
-    ``pr_number``, ``pr_url`` und ``pr_title`` (Approval-Kontext, ADR 0011)."""
+    """PR data for subsequent steps (pr_review, pr_merge, human_gate) into the ctx:
+    ``pr_number``, ``pr_url`` and ``pr_title`` (approval context, ADR 0011)."""
     ctx["pr_number"] = str(pr.number)
     if pr.url:
         ctx["pr_url"] = pr.url
@@ -89,10 +89,10 @@ def _export_pr(ctx: dict, pr: PullRequest) -> None:
 
 
 def _find_open_pr(provider: Provider, repo_cfg: str, head_branch: str) -> PullRequest | None:
-    """Ersten offenen PR mit Head-Branch `<owner>:<head_branch>` suchen.
+    """Find the first open PR with head branch `<owner>:<head_branch>`.
 
-    Deterministischer Duplikat-Check vor dem Create (GitHub erlaubt genau
-    einen offenen PR pro Head-Branch). None, wenn keiner existiert.
+    Deterministic duplicate check before create (GitHub allows exactly
+    one open PR per head branch). None if none exists.
     """
     owner = repo_cfg.split("/", 1)[0]
     prs = provider.list_prs(repo_cfg, head=f"{owner}:{head_branch}", state="open")
@@ -100,10 +100,11 @@ def _find_open_pr(provider: Provider, repo_cfg: str, head_branch: str) -> PullRe
 
 
 def _commits_ahead(provider: Provider, repo_cfg: str, base_branch: str, head_branch: str) -> int | None:
-    """Anzahl Commits von `head_branch` vor `base_branch` (Compare-API), None wenn unbekannt.
+    """Number of commits of `head_branch` ahead of `base_branch` (compare API), None if unknown.
 
-    HTTP-Fehler (z. B. 404, weil der Head-Branch auf dem Remote nicht existiert)
-    → None: der Create-Pfad liefert dann die klarere Host-Fehlermeldung."""
+    HTTP errors (e.g. 404 because the head branch does not exist on the remote)
+    → None: the create path then delivers the clearer host error message."""
+
     try:
         return provider.compare(repo_cfg, base_branch, head_branch).ahead_by
     except Exception:  # noqa: BLE001 — Provider-Fehler → Create-Pfad entscheidet
@@ -111,11 +112,11 @@ def _commits_ahead(provider: Provider, repo_cfg: str, base_branch: str, head_bra
 
 
 def _normalize_labels(labels: Iterable[Any]) -> list[str]:
-    """labels-Config → API-Liste: als Strings, leer gefiltert, dedupliziert.
+    """labels config → API list: as strings, empties filtered, deduplicated.
 
-    Reihenfolge bleibt erhalten; nicht-String-Werte (z. B. Zahlen, None,
-    Dicts aus YAML) werden per `str()` coerced. Leere Liste → kein
-    Labels-Call.
+    Order is preserved; non-string values (e.g. numbers, None,
+    dicts from YAML) are coerced via `str()`. Empty list → no
+    labels call.
     """
     seen: set[str] = set()
     out: list[str] = []

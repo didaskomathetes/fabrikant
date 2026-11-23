@@ -1,9 +1,9 @@
-"""Filter einer Run-Suche (Issue #163, ADR 0034) — gemeinsam für JSON- und SQL-Store.
+"""Filter of a run search (issue #163, ADR 0034) — shared for JSON and SQL store.
 
-:class:`RunQuery` ist die geprüfte, backend-neutrale Form der Suchparameter aus
-:func:`fabrik.runsearch.search_runs`. Der JSON-Store filtert damit im Speicher
-(:meth:`RunQuery.matches`), der SQL-Store übersetzt sie in ein indiziertes ``SELECT``.
-Beide sortieren nach :func:`sort_key` absteigend (neueste zuerst).
+:class:`RunQuery` is the validated, backend-neutral form of the search parameters from
+:func:`fabrik.runsearch.search_runs`. The JSON store filters in memory with it
+(:meth:`RunQuery.matches`), the SQL store translates it into an indexed ``SELECT``.
+Both sort by :func:`sort_key` descending (newest first).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
+from .i18n import t
 from .runmodel import Run
 
 SortKey = tuple[str, str, str]
@@ -21,7 +22,7 @@ UTC_SORT_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
 
 def to_utc(value: str) -> datetime:
-    """ISO-Datum/-Zeit → aware UTC-datetime; ohne Offset gilt UTC. ValueError bei ungültigem Wert."""
+    """ISO date/time → aware UTC datetime; without offset UTC applies. ValueError on an invalid value."""
     dt = datetime.fromisoformat(value)
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
@@ -38,7 +39,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$"
 
 
 def _check_date(name: str, value: str) -> str:
-    """Strikte ISO-Prüfung: Datum allein oder Datum+Zeit (inkl. optionalem Offset)."""
+    """Strict ISO check: date alone or date+time (incl. optional offset)."""
     try:
         if not _DATE_RE.match(value):
             raise ValueError(value)
@@ -47,7 +48,7 @@ def _check_date(name: str, value: str) -> str:
         else:
             datetime.fromisoformat(value)
     except ValueError as e:
-        raise ValueError(f"ungültiges Datum für '{name}': {value!r} (erwartet YYYY-MM-DD[THH:MM:SS])") from e
+        raise ValueError(t("runquery.invalid_date_for_expected_yyyy", name=name, value=value)) from e
     return value
 
 
@@ -62,19 +63,19 @@ def date_bounds(date_from: str, date_to: str) -> tuple[datetime | None, datetime
 
 
 def sort_key(run: Run) -> SortKey:
-    """Sortier- und Cursor-Schlüssel eines Runs: (started, project, id)."""
+    """Sort and cursor key of a run: (started, project, id)."""
     return (run.started, run.project, run.id)
 
 
 @dataclass(frozen=True)
 class RunQuery:
-    """Geprüfte Suchfilter. Leere Felder filtern nicht.
+    """Validated search filters. Empty fields do not filter.
 
-    words: kleingeschriebene Suchwörter; jedes muss als Teilstring in Id, Loop, Trigger,
-    Status, Notiz oder einer Step-Summary vorkommen. lower/upper: UTC-Grenzen auf ``started``
-    (``upper_exclusive``: ``<`` statt ``<=``); ein Run ohne parsebares ``started`` fällt dann raus.
-    failure_kinds trifft nur gescheiterte Runs. after: Cursor — nur Runs mit kleinerem :func:`sort_key`.
-    limit: Seitengröße; Stores liefern bis zu ``limit + 1`` Runs (der letzte zeigt eine Folgeseite an)."""
+    words: lowercase search words; each must occur as a substring in id, loop, trigger,
+    status, note or a step summary. lower/upper: UTC bounds on ``started``
+    (``upper_exclusive``: ``<`` instead of ``<=``); a run without parseable ``started`` then drops out.
+    failure_kinds hits only failed runs. after: cursor — only runs with smaller :func:`sort_key`.
+    limit: page size; stores return up to ``limit + 1`` runs (the last one indicates a next page)."""
 
     project: str | None = None
     words: tuple[str, ...] = ()
@@ -109,7 +110,7 @@ class RunQuery:
         return "\n".join(parts).lower()
 
     def matches(self, run: Run) -> bool:
-        """True, wenn ``run`` alle Filter erfüllt (Referenz-Semantik für jedes Backend)."""
+        """True if ``run`` satisfies all filters (reference semantics for every backend)."""
         if self.project and run.project != self.project:
             return False
         if self.loop and run.loop != self.loop:

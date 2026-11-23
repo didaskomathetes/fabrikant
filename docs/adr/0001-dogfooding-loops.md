@@ -1,130 +1,132 @@
-# ADR 0001: Fabrik-Dogfooding — Fabrik entwickelt Fabrik
+# ADR 0001: Fabrik dogfooding — Fabrik develops Fabrik
 
-**Status:** Akzeptiert (2026-10-16)
-**Entscheider:** Dominic
-**Änderung:** 2026-10-17 — Modell-Zuordnung entkoppelt: die Invariante ist
-Reviewer ≠ Builder; konkrete Modelle sind Deployment-Details (ändern sich schnell).
-**Änderung:** 2026-10-19 — Modellwahl ist Konfiguration (**ADR 0022**); ersetzt
-die Spalte „Modell“ und §3 Absatz 2.
-**Änderung:** 2026-10-19 — `review-pr` auf den nativen `on_pr`-Trigger umgestellt
-(§4): der Cron + Agent + State-Datei-Workaround ist entfernt; Dedup und
-Re-Review-Triggering übernimmt die Engine.
-**Kontext:** PR #10 (P0) und PR #11 (P1) sind gemerged. Die Fabrik ist produktionsreif genug,
-sich selbst zu entwickeln. `kyudo-neandertal.fabrik.yaml` dient als Vorlage (Triage →
-Human-Gate → Develop → Checks → PR).
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Entscheidung
+**Status:** Accepted (2026-10-16)
+**Decided by:** Dominic
+**Amendment:** 2026-10-17 — model assignment decoupled: the invariant is
+reviewer ≠ builder; concrete models are deployment details (they change quickly).
+**Amendment:** 2026-10-19 — model choice is configuration (**ADR 0022**); replaces
+the "Model" column and §3 paragraph 2.
+**Amendment:** 2026-10-19 — `review-pr` switched to the native `on_pr` trigger
+(§4): the cron + agent + state-file workaround is removed; dedup and
+re-review triggering are handled by the engine.
+**Context:** PR #10 (P0) and PR #11 (P1) are merged. The factory is production-ready enough
+to develop itself. `kyudo-neandertal.fabrik.yaml` serves as the template (triage →
+human gate → develop → checks → PR).
 
-Neues Projekt `projects/fabrik.fabrik.yaml` mit sechs Loops:
+## Decision
 
-> Spalte „Modell“: Rollen, keine Bindungen — Modelle stehen in der Spec (ADR 0022).
+New project `projects/fabrik.fabrik.yaml` with six loops:
 
-| Loop | Trigger | Tier | Modell | Gate |
+> "Model" column: roles, not bindings — models live in the spec (ADR 0022).
+
+| Loop | Trigger | Tier | Model | Gate |
 |---|---|---|---|---|
-| `triage` | on_issue (`fabrik`) | T1 | (llm-Step) | vor `apply-label` |
-| `develop` | on_issue (`ready to develop`) | T2 | Default (Builder) | vor `pr` |
-| `refactor` | manual (`--var target=…`) | T2 | Default (Builder) | vor `pr` |
-| `refactor-sweep` | manual | T2 | Default (Builder) | End-of-Run |
-| `review-pr` | on_pr (`fabrik`) | T1 | Reviewer (≠ Builder, Leitprinzip 4) | — |
-| `pr-reply` | cron `*/15` | T1 | Builder (wie `develop`) | — |
+| `triage` | on_issue (`fabrik`) | T1 | (llm step) | before `apply-label` |
+| `develop` | on_issue (`ready to develop`) | T2 | default (builder) | before `pr` |
+| `refactor` | manual (`--var target=…`) | T2 | default (builder) | before `pr` |
+| `refactor-sweep` | manual | T2 | default (builder) | end of run |
+| `review-pr` | on_pr (`fabrik`) | T1 | reviewer (≠ builder, guiding principle 4) | — |
+| `pr-reply` | cron `*/15` | T1 | builder (as `develop`) | — |
 
-## Begründung der Details
+## Rationale for the details
 
-### 1. Triage als T1 + Step-Approval statt T2
-> **Ersetzt** (für den refine-Loop) durch ADR 0006 und für das Gate durch
-> **ADR 0017**: Human-Gate nur bei `needs approval`/`close`.
+### 1. Triage as T1 + step approval instead of T2
+> **Replaced** (for the refine loop) by ADR 0006 and, for the gate, by
+> **ADR 0017**: human gate only on `needs approval`/`close`.
 
-T2 würde das Tier-Gate am **Ende** des Runs setzen — nach der Label-Anwendung. Das nützt
-nichts. Daher: T1 (kein End-Gate) + `approval: true` am `apply-label`-Step → der Run pausiert
-**vor** der Label-Änderung. Der Mensch sieht die Klassifizierung (Run-Record) und entscheidet.
-Das ist genau "Issues refinieren nach Creation, dann Human Change".
+T2 would put the tier gate at the **end** of the run — after the label is applied. That is
+useless. Hence: T1 (no end gate) + `approval: true` on the `apply-label` step → the run pauses
+**before** the label change. The human sees the classification (run record) and decides.
+This is exactly "refine issues after creation, then human change".
 
-### 2. Develop startet automatisch nach Triage
-> **Ersetzt durch ADR 0017:** Das Refine-Gate ist nicht mehr das Human-Gate für
-> `develop`; `develop` sichert sich über `human_gate` + PR-Review ab (ADR 0010).
+### 2. Develop starts automatically after triage
+> **Replaced by ADR 0017:** the refine gate is no longer the human gate for
+> `develop`; `develop` is secured through `human_gate` + PR review (ADR 0010).
 
-`develop` triggert auf das Label `ready to develop`, das Triage anlegt (nach Approval).
-Kein extra Human-Step nötig — das Triage-Gate ist das Human-Gate. Direktes Loslegen ohne
-Human wäre `tier: 1` ohne Step-Approval; wir behalten T2 + PR-Approval, weil AGENTS.md
-kritische Entscheidungen beim Menschen belässt. Labels sind self-healing: Triages
-`ensure-labels`-Step legt `needs approval` + `ready to develop` an (`gh label create
---force`), beide sind zusätzlich vorangelegt im Repo. Ein develop-Run vor dem ersten
-triage-Run ist ein stummer No-op (erwartet, kein Defekt).
+`develop` triggers on the label `ready to develop`, which triage creates (after approval).
+No extra human step is needed — the triage gate is the human gate. Starting right away
+without a human would be `tier: 1` without step approval; we keep T2 + PR approval because
+AGENTS.md leaves critical decisions to the human. Labels are self-healing: triage's
+`ensure-labels` step creates `needs approval` + `ready to develop` (`gh label create
+--force`); both are also pre-created in the repo. A develop run before the first
+triage run is a silent no-op (expected, not a defect).
 
-### 2b. Git-Workflow: branch vorher, commit+push nach den Checks
-Der Worktree liegt **detached** auf `origin/<branch>`. Daher: `git branch` (vor dem
-Agenten) → Agent editiert → lint/test → `git commit` + `push` (`ship`-Step) → `pr`-Step
-mit explizitem `head:`. Ein `action:`-Feld im git-Step ist Phantom (wird stumm ignoriert —
-der Step kennt nur fetch/branch/commit/push), und ein detached HEAD würde
-`head: HEAD` in die PR-Request erzeugen (GitHub lehnt ab). Commit `add: ["."]` respektiert
-`.gitignore` (state/, runs/ landen nicht im Commit).
+### 2b. Git workflow: branch beforehand, commit + push after the checks
+The worktree is **detached** on `origin/<branch>`. Hence: `git branch` (before the
+agent) → agent edits → lint/test → `git commit` + `push` (`ship` step) → `pr` step
+with an explicit `head:`. An `action:` field in the git step is a phantom (silently ignored —
+the step only knows fetch/branch/commit/push), and a detached HEAD would produce
+`head: HEAD` in the PR request (GitHub rejects it). Commit `add: ["."]` respects
+`.gitignore` (state/, runs/ do not end up in the commit).
 
-### 3. Cross-Model-Review (Leitprinzip 4: Builder ≠ Reviewer)
-Die **invariante Regel**: Reviewer und Builder müssen unterschiedliche Modelle nutzen.
-Der Reviewer hat frischen Kontext und eine andere Modell-Familie — Defekte, die beide
-verpassen, sind die einzigen, die durchkommen. Konkrete Modell-Namen sind
-Deployment-Details und ändern sich schnell mit dem Feld — sie stehen in der Spec
-(`projects/fabrik.fabrik.yaml`), nicht hier.
+### 3. Cross-model review (guiding principle 4: builder ≠ reviewer)
+The **invariant rule**: reviewer and builder must use different models.
+The reviewer has fresh context and a different model family — defects that both
+miss are the only ones that get through. Concrete model names are
+deployment details and change quickly with the field — they live in the spec
+(`projects/fabrik.fabrik.yaml`), not here.
 
-> **Ersetzt durch ADR 0022:** Modell/Backend pro Step sind Spec-Konfiguration;
-> `develop` und `pr-reply` teilen das Builder-Modell über YAML-Anker
-> (`builder_model`), nicht über `FABRIK_AGENT_MODEL`.
+> **Replaced by ADR 0022:** model/backend per step is spec configuration;
+> `develop` and `pr-reply` share the builder model via a YAML anchor
+> (`builder_model`), not via `FABRIK_AGENT_MODEL`.
 
-`pr-reply` läuft bewusst mit dem **Builder-Modell** (wie `develop`, Env
-`FABRIK_AGENT_MODEL`): der Replyer fixt Code auf dem PR-Branch und braucht daher
-Builder-Kapazität. `review-pr` läuft mit einem günstigen, starken Modell via Copilot CLI
-(konkretes Modell: Spec, YAML-Anker `reviewer_model`) — Review-Qualität bei kontrollierten Kosten.
+`pr-reply` deliberately runs with the **builder model** (as `develop`, env
+`FABRIK_AGENT_MODEL`): the replier fixes code on the PR branch and therefore needs
+builder capacity. `review-pr` runs with a cheap, strong model via the Copilot CLI
+(concrete model: spec, YAML anchor `reviewer_model`) — review quality at controlled cost.
 
-### 4. `on_pr`-Trigger (früher: Cron + Agent + State-Datei)
-**Ursprünglich (2026-10-16):** Ein `on_pr`-Trigger existierte nicht (→ Issue). Statt
-Engine-Code zu schreiben, delegierten wir das Polling an den Agenten selbst: Cron startete
-die Session, der Agent prüfte `gh pr list` gegen eine State-Datei
-(`state/reviewed-prs.json`) und endete mit `nichts zu tun`, wenn nichts neues war.
-Das war die Squid-konforme Version: kein neues Substrat, nur ein Prompt.
+### 4. `on_pr` trigger (formerly: cron + agent + state file)
+**Originally (2026-10-16):** an `on_pr` trigger did not exist (→ issue). Instead of
+writing engine code, we delegated the polling to the agent itself: cron started
+the session, the agent checked `gh pr list` against a state file
+(`state/reviewed-prs.json`) and ended with `nothing to do` if nothing was new.
+That was the Squid-compliant version: no new substrate, just a prompt.
 
-**Seit 2026-10-19:** Der native `on_pr`-Trigger existiert (GitHub-API-Polling wie
-`on_issue`: `repo`, `labels`, `poll`, `states`). `review-pr` läuft jetzt auf
-`on_pr` (Label `fabrik`): die Engine feuert bei neuen/aktualisierten PRs und setzt
-`{pr_number}`/`{pr_title}`/`{pr_head_ref}`/`{pr_body}` als Variablen. Dedup
-(keine PR doppelt) und Re-Review-Triggering (Update → neuer Run) übernimmt die
-Engine — die State-Datei-Workaround-Logik ist aus dem Prompt entfernt.
-(`pr-reply` nutzt weiterhin `state/replied-comments.json` — Kommentar-Dedup ist
-eine andere Ebene als PR-Dedup und bleibt Agent-seitig.)
+**Since 2026-10-19:** the native `on_pr` trigger exists (GitHub API polling like
+`on_issue`: `repo`, `labels`, `poll`, `states`). `review-pr` now runs on
+`on_pr` (label `fabrik`): the engine fires on new/updated PRs and sets
+`{pr_number}`/`{pr_title}`/`{pr_head_ref}`/`{pr_body}` as variables. Dedup
+(no PR twice) and re-review triggering (update → new run) are handled by the
+engine — the state-file workaround logic has been removed from the prompt.
+(`pr-reply` still uses `state/replied-comments.json` — comment dedup is
+a different layer than PR dedup and stays on the agent side.)
 
-### 5. `gh`-CLI für Issue/PR-Operationen
-Ein natives `issue`-Step existiert nicht (→ Issue). `gh` ist bereits im kyudo-Spec im Einsatz
-und verfügbar. Bis der `issue`-Step da ist, bleibt `shell` + `gh` der Standardweg.
-**Token-Hinweis:** Shell-Steps laufen in der fabrik-Prozess-Env (`fabrik.env` →
-`GITHUB_TOKEN`). Agent-Steps laufen in der **opencode-serve**-Prozess-Env —
-`GITHUB_TOKEN` muss beim Start von `serve` exportiert sein (Deployment-Voraussetzung,
-siehe Folgen). Die Engine injiziert keine Env in Agent-Sessions (`create_task` hat kein
-Env-Feld).
+### 5. `gh` CLI for issue/PR operations
+A native `issue` step does not exist (→ issue). `gh` is already used in the kyudo spec
+and available. Until the `issue` step exists, `shell` + `gh` remains the standard way.
+**Token note:** shell steps run in the fabrik process env (`fabrik.env` →
+`GITHUB_TOKEN`). Agent steps run in the **opencode-serve** process env —
+`GITHUB_TOKEN` must be exported when `serve` starts (deployment prerequisite,
+see Consequences). The engine does not inject env into agent sessions (`create_task` has no
+env field).
 
-### 6. Base-Branch `fabrik/v0.3`
-Aktuelle Entwicklungs-Hauptlinie (main steht noch bei v0.2). Wenn main die Trunk-Linie
-wird, ändern wir `base:` in `develop`/`refactor`.
+### 6. Base branch `fabrik/v0.3`
+Current main line of development (main is still at v0.2). When main becomes the
+trunk line, we change `base:` in `develop`/`refactor`.
 
-### 7. Refactoring als eigene Loops
-`refactor` (gezielt, manuell mit `--var target=…`) + `refactor-sweep` (findet Code-Smells,
-gießt Issues → füttert `refactor`). Boy-Scout-Regel aus AGENTS.md wird so systematisch:
-kleine Verbesserungen inline, größere als Issues.
+### 7. Refactoring as separate loops
+`refactor` (targeted, manual with `--var target=…`) + `refactor-sweep` (finds code smells,
+turns them into issues → feeds `refactor`). The boy-scout rule from AGENTS.md thus becomes
+systematic: small improvements inline, larger ones as issues.
 
-## Abgelehnte Alternativen
-- **`on_pr`-Trigger sofort bauen:** P2-Mechanik (Intake-Queue), Overbuild für den
-  Homelab-Beweis. Cron + Agent reicht.
-- **Review-Step in der Engine (P1-Draft `review`-Step):** Wäre der saubere Weg, ist aber
-  selbst ein unimplemented Feature (→ Issue). Das Prompt-basierte Review löst denselben
-  Use Case ohne Engine-Änderung.
-- **Ein Loop für alles:** Ein "super-Loop" (Triage + Dev + Review + Reply) wäre
-  untestbar und unlesbar. Getrennte Loops = getrennte Runs, getrennte Audit-Trails.
+## Rejected alternatives
+- **Build the `on_pr` trigger right away:** P2 mechanics (intake queue), overbuilding for the
+  homelab proof. Cron + agent is enough.
+- **Review step in the engine (P1 draft `review` step):** would be the clean way, but is
+  itself an unimplemented feature (→ issue). The prompt-based review solves the same
+  use case without an engine change.
+- **One loop for everything:** a "super loop" (triage + dev + review + reply) would be
+  untestable and unreadable. Separate loops = separate runs, separate audit trails.
 
-## Folgen
-- Neue Prompts: `prompts/fabrik-{develop,refactor,refactor-sweep,review,pr-reply}.prompt.md`
-- Das Reviewer-Modell muss im Deployment verfügbar sein (Copilot CLI → `copilot` im PATH
-  + `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`). Copilot zieht Modelle regelmäßig
-  zurück — bei `Model "…" is not available` das Modell in der Spec tauschen.
-- `opencode serve` muss mit **`GITHUB_TOKEN` in der Env** gestartet werden (Agent-Steps
-  rufen `gh` auf; Engine injiziert keine Session-Env).
-- `state/` wird genutzt (bereits gitignored).
-- Der dogfooding-Loop selbst ist Teil der Pipeline → seine Änderungen laufen durch die
-  normalen Gates (T2/PR-Approval). Self-Improvement bleibt human-geprüft.
+## Consequences
+- New prompts: `prompts/fabrik-{develop,refactor,refactor-sweep,review,pr-reply}.prompt.md`
+- The reviewer model must be available in the deployment (Copilot CLI → `copilot` in PATH
+  + `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`). Copilot withdraws models regularly
+  — on `Model "…" is not available`, swap the model in the spec.
+- `opencode serve` must be started with **`GITHUB_TOKEN` in the env** (agent steps
+  call `gh`; the engine does not inject session env).
+- `state/` is used (already gitignored).
+- The dogfooding loop itself is part of the pipeline → its changes go through the
+  normal gates (T2/PR approval). Self-improvement stays human-reviewed.

@@ -1,35 +1,36 @@
-"""Step: alert_route — deterministisches Routing Triage-Kategorie → Hotfix-Loop (ADR 0045).
+"""Step: alert_route — deterministic routing triage category → hotfix loop (ADR 0045).
 
-Step-Def:
+Step def:
     type: alert_route
-    routes: {bug: hotfix}      # Kategorie → Loop desselben Projekts
-    fallback: <optional>       # Loop für ungemappte Kategorien; Default: kein Hotfix
+    routes: {bug: hotfix}      # category → loop of the same project
+    fallback: <optional>       # loop for unmapped categories; default: no hotfix
 
-Liest `{category}` (vom vorherigen `llm`-Step, enum-validiert), keine LLM-/Tool-Nutzung.
-Gleiche Kategorie → gleicher Loop. Der Hotfix läuft als eigener Run (eigener Record,
-eigene Tier-/Approval-Gates) und bekommt die `alert_*`-Variablen + `category`."""
+Reads `{category}` (from the previous `llm` step, enum-validated), no LLM/tool use.
+Same category → same loop. The hotfix runs as its own run (own record,
+own tier/approval gates) and gets the `alert_*` variables + `category`."""
 
 from __future__ import annotations
 
 from ..alerts import CATEGORY_UNKNOWN, ROUTE_NONE, VAR_PREFIX, route
+from ..i18n import t
 
-# Terminal-Status des Hotfix-Runs, die den Triage-Run nicht scheitern lassen
-# (needs_approval = Hotfix wartet auf Freigabe, das ist der gewollte Normalfall).
+# Terminal statuses of the hotfix run that do not make the triage run fail
+# (needs_approval = hotfix waits for approval, that is the intended normal case).
 _OK_STATUSES = ("pass", "needs_approval")
 
 
 def _step_alert_route(ctx: dict, step: dict, emit) -> dict:
-    # Lazy-Import: engine importiert steps bei Modul-Load (zirkulär).
+    # Lazy import: engine imports steps at module load (circular).
     from ..engine import run_loop
 
     category = str(ctx.get("category") or CATEGORY_UNKNOWN)
     target = route(category, step.get("routes"), str(step.get("fallback") or ROUTE_NONE))
     ctx["route"] = target
     if target == ROUTE_NONE:
-        emit(f"  alert_route: Kategorie '{category}' → kein Hotfix")
-        return {"ok": True, "summary": f"category={category}: kein Hotfix-Workflow"}
+        emit(t("steps.alert_route.alert_route_category_no_hotfix", category=category))
+        return {"ok": True, "summary": t("steps.alert_route.category_no_hotfix_workflow", category=category)}
     if target == ctx.get("loop"):
-        return {"ok": False, "summary": f"Route '{target}' zeigt auf den Triage-Loop selbst (Endlosschleife)"}
+        return {"ok": False, "summary": t("steps.alert_route.route_points_to_the_triage", target=target)}
     initial = {k: v for k, v in ctx.items() if k.startswith(VAR_PREFIX)} | {"category": category}
     emit(f"  alert_route: Kategorie '{category}' → Loop '{target}'")
     rec = run_loop(ctx["project"], target, trigger=f"alert:{ctx['run_id']}", initial_vars=initial)

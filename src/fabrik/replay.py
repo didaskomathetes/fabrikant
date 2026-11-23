@@ -20,6 +20,9 @@ from .runs import get_run
 from .secrets import REDACTED
 from .specs import load_projects
 
+TRIGGER_REPLAY = "replay"  # manual replay
+TRIGGER_EVAL = "eval"  # golden eval (Roadmap #130)
+
 # Engine-derived context keys (see `engine._build_ctx`) that must NOT be replayed:
 # they are re-derived for the new run (fresh workdir/run_id/branch/…) and would
 # otherwise clobber them, because `initial_vars` are applied last in `_build_ctx`.
@@ -67,6 +70,7 @@ def replay_run(
     actor: str | None = None,
     held_scope: str | None = None,
     original: dict | None = None,
+    trigger: str = TRIGGER_REPLAY,
 ) -> tuple[dict, dict]:
     """Re-execute a finished run with pinned inputs.
 
@@ -74,6 +78,10 @@ def replay_run(
     if the run is unknown, not in a terminal status, or its project/spec is gone.
     A spec-hash mismatch is *not* an error — it is reported by :func:`diff_runs`.
     Pass an already-loaded ``original`` record to skip the run lookup.
+
+    ``trigger`` labels the re-run (:data:`TRIGGER_REPLAY` = manual replay,
+    :data:`TRIGGER_EVAL` = golden eval, Roadmap #130) — it lands in the run record and the note but,
+    like replay, is purely informational (no reconcile trigger).
     """
     orig = original if original is not None else get_run(run_id, project)
     if orig is None:
@@ -92,8 +100,8 @@ def replay_run(
     rec = run_loop(
         proj,
         loop,
-        trigger="replay",
-        note=f"replay of {run_id}",
+        trigger=trigger,
+        note=f"{trigger} of {run_id}",
         initial_vars=_pinned_vars(orig, spec) or None,
         actor=actor,
         held_scope=held_scope,

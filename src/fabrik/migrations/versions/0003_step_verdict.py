@@ -1,7 +1,7 @@
-"""Fachliches Step-Ergebnis (Verdikt): Spalte ``steps.verdict``.
+"""Domain result of a step (verdict): column ``steps.verdict``.
 
-Ein Step kann technisch erfolgreich sein und ein `fail`-Verdikt melden (z. B. relay-audit);
-die UI zeigt es als Badge neben dem Run-Status.
+A step can be technically successful and report a `fail` verdict (e.g. relay-audit);
+the UI shows it as a badge next to the run status.
 
 Revision ID: 0003
 Revises: 0002
@@ -18,9 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Natives ADD COLUMN (nullable, ohne Constraint) statt Batch-Modus: Batch baut `steps` neu auf,
-    # und das DROP der alten Tabelle löste mit aktiven Fremdschlüsseln die CASCADE-Löschung der
-    # Kind-Tabellen (Usage, Review, Verify) aus.
+    # Native ADD COLUMN (nullable, without constraint) instead of batch mode: batch rebuilds `steps`,
+    # and the DROP of the old table with active foreign keys triggered the CASCADE deletion of the
+    # child tables (usage, review, verify).
     op.add_column("steps", sa.Column("verdict", sa.Text(), nullable=True))
 
 
