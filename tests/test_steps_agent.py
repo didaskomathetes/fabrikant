@@ -602,6 +602,21 @@ def test_agent_config_errors_are_environment(monkeypatch):
         agent_step._step_agent(ctx, {"backend": "gibtsnicht", "prompt": "p"}, lambda m: None)
 
 
+def test_opencode_sandbox_mode_needs_no_endpoint(monkeypatch):
+    """Sandbox (ADR 0054): Config aus der LLM-Verbindung — opencode braucht nur das Modell,
+    kein endpoint (wird ignoriert). Ohne Sandbox bleibt das endpoint Pflicht."""
+    fake = _FakeBackend([{"status": "done", "text": "ok", "tokens": {}, "cost": 0, "tools": []}])
+    monkeypatch.setattr(agent_step, "create_backend", lambda *a, **k: fake)
+    monkeypatch.setattr(agent_step.time, "sleep", lambda s: None)
+    ctx = {"project": "p", "run_id": "r", "workdir": "/tmp"}
+    step = {"name": "a", "backend": "opencode", "prompt": "p", "model": "lan/qwen"}
+    monkeypatch.setenv("FABRIK_SANDBOX", "1")
+    assert agent_step._step_agent(ctx, step, lambda m: None)["ok"] is True
+    monkeypatch.setenv("FABRIK_SANDBOX", "0")
+    res = agent_step._step_agent(ctx, step, lambda m: None)
+    assert res["ok"] is False and "endpoint/model fehlen" in res["summary"]
+
+
 def test_progress_one_shot_without_signal_is_unknown():
     p = agent_step._Progress(started=0.0)
     p.observe([], {"text": "", "tools": []})

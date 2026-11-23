@@ -1,6 +1,6 @@
 """Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container (ADR 0054, in Überarbeitung).
 
-One-Shot-CLI-Agenten (claude-code, codex, copilot) laufen standardmäßig als
+One-Shot-CLI-Agenten (claude-code, codex, copilot, opencode) laufen standardmäßig als
 bloßer Subprozess auf dem Host. Mit `FABRIK_SANDBOX=1` hüllt
 `OneShotCliBackend.send_prompt` den Agent-Befehl in `docker run` mit
 Hardening ein:

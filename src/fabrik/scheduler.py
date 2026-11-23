@@ -10,12 +10,11 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import cast
-from urllib.parse import quote
 
 from . import config, cron, metrics, pause, retry_chains, schedule, slack
 from .engine import _safe_run, start_priority_run
-from .gitops import GITHUB_API, _gh_api, _gh_dependencies, _gh_token_safe, project_github
+from .gitops import project_github
+from .hosting import Provider, get_provider
 from .runmodel import RunStatus
 from .runs import loop_run_triggers
 from .runstore import STORE, RunStoreError
@@ -33,55 +32,32 @@ START_GATE_MAX_S = 120
 DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. neue Runs pro Poll und Loop (ADR 0014)
 
 
-def _issues_url(repo: str, labels: list[str], direction: str, page: int = 1) -> str:
-    url = (
-        f"{GITHUB_API}/repos/{repo}/issues?state=open&per_page={GH_PER_PAGE}"
-        f"&sort=created&direction={direction}&page={page}"
-    )
-    if labels:
-        # quote: Labels mit Leerzeichen ("ready to develop") wären sonst
-        # ein ungültiger URL (urllib wirft "control characters").
-        url += "&labels=" + ",".join(quote(x) for x in labels)
-    return url
+def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[str]):
+    """Offene Issues, älteste zuerst, lazy über bis zu RECONCILE_MAX_PAGES Seiten.
 
-
-def _gh_get_list(url: str, tok: str) -> list[dict]:
-    """GET auf einen GitHub-Listen-Endpoint (JSON-Array)."""
-    return cast(list[dict], _gh_api("GET", url, tok))
-
-
-def _only_issues(items: list[dict]) -> list[dict]:
-    """Die Issues-API liefert auch PRs — die werden herausgefiltert."""
-    return [it for it in items if "pull_request" not in it]
-
-
-def _iter_open_issues_oldest_first(repo: str, tok: str, labels: list[str]):
-    """Offene Issues, älteste zuerst, lazy über bis zu RECONCILE_MAX_PAGES Seiten."""
+    Liefert die rohen Provider-Payloads (``Issue.raw``) — die übrigen Helfer
+    (`issue_vars`, `_priority_rank`, …) arbeiten auf den Dictionaries. PRs, die die
+    Issues-API mitliefert, werden über ``is_pr`` herausgefiltert (ADR 0062)."""
     for page in range(1, RECONCILE_MAX_PAGES + 1):
-        res = _gh_get_list(_issues_url(repo, labels, "asc", page), tok)
-        yield from _only_issues(res)
-        if len(res) < GH_PER_PAGE:
+        issues = provider.list_issues(
+            repo, state="open", labels=labels, sort="created", direction="asc", page=page, per_page=GH_PER_PAGE
+        )
+        yield from [it.raw for it in issues if not it.is_pr]
+        if len(issues) < GH_PER_PAGE:
             return
 
 
-def _pulls_url(repo: str, state: str, labels: list[str], page: int = 1) -> str:
-    url = (
-        f"{GITHUB_API}/repos/{repo}/pulls?state={state}&per_page={GH_PER_PAGE}&sort=updated&direction=desc&page={page}"
-    )
-    if labels:
-        # Server-Filter ist OR-Semantik (nur Payload-Reduktion); die
-        # AND-Semantik (PR hat ALLE Labels) wird client-seitig erzwungen.
-        url += "&labels=" + ",".join(quote(x) for x in labels)
-    return url
+def _list_pulls(repo: str, provider: Provider, state: str, labels: list[str]) -> list[dict]:
+    """PRs eines States, paginiert bis zu RECONCILE_MAX_PAGES Seiten (≤ 500 PRs).
 
-
-def _list_pulls(repo: str, tok: str, state: str, labels: list[str]) -> list[dict]:
-    """PRs eines States, paginiert bis zu RECONCILE_MAX_PAGES Seiten (≤ 500 PRs)."""
+    Liefert die rohen Provider-Payloads (``PullRequest.raw``). Der Label-Filter ist
+    Server-seitig OR-Semantik (nur Payload-Reduktion); die AND-Semantik (PR hat ALLE
+    Labels) wird client-seitig in `_check_pr` erzwungen."""
     out: list[dict] = []
     for page in range(1, RECONCILE_MAX_PAGES + 1):
-        res = _gh_get_list(_pulls_url(repo, state, labels, page), tok)
-        out.extend(res)
-        if len(res) < GH_PER_PAGE:
+        prs = provider.list_prs(repo, state=state, labels=labels, page=page, per_page=GH_PER_PAGE)
+        out.extend(pr.raw for pr in prs)
+        if len(prs) < GH_PER_PAGE:
             break
     return out
 
@@ -171,7 +147,7 @@ def _by_priority(issues: list[dict], priority_labels: list[str]) -> list[dict]:
 RESOLVED_STATE_REASONS = (None, "completed")
 
 
-def _unresolved_blockers(repo: str, tok: str, issue: dict) -> list[str]:
+def _unresolved_blockers(repo: str, provider: Provider, issue: dict) -> list[str]:
     """Blocker von `issue`, die nicht erledigt sind (native Dependencies, ADR 0031):
     `["#9", "#12 (not_planned)"]`.
 
@@ -180,27 +156,43 @@ def _unresolved_blockers(repo: str, tok: str, issue: dict) -> list[str]:
     (oder der Duplikat-Close mit `duplicate_of`, der die Relation umhängt) muss
     entscheiden. `issue_dependencies_summary` aus der Listen-Antwort spart den Call
     für Issues ohne Blocker. API-Fehler propagieren (fail closed).
+
+    Native Dependencies sind ein GitHub-Feature; auf GitLab wirft der Provider
+    `HostingNotSupported` (dokumentierte Lücke, ADR 0062) — wird vom Poll gefangen.
     """
     summary = issue.get("issue_dependencies_summary") or {}
     if not summary.get("total_blocked_by"):
         return []
     out = []
-    for b in _gh_dependencies(repo, issue["number"], tok):
-        if b.get("state") == "open":
-            out.append(f"#{b['number']}")
-        elif b.get("state_reason") not in RESOLVED_STATE_REASONS:
-            out.append(f"#{b['number']} ({b['state_reason']})")
+    for b in provider.issue_dependencies(repo, issue["number"]):
+        if b.state == "open":
+            out.append(f"#{b.number}")
+        elif b.raw.get("state_reason") not in RESOLVED_STATE_REASONS:
+            out.append(f"#{b.number} ({b.raw.get('state_reason')})")
     return out
+
+
+def _label_names(item: dict) -> set[str]:
+    """Label-Namen eines Issues/PRs aus der REST-Antwort."""
+    return {str(lbl.get("name", "")) for lbl in item.get("labels") or [] if isinstance(lbl, dict)}
+
+
+def _without_excluded(items: list[dict], exclude: list[str]) -> list[dict]:
+    """Items ohne eines der `exclude_labels` (z. B. `needs human`, ADR 0059)."""
+    if not exclude:
+        return items
+    return [it for it in items if not _label_names(it) & set(exclude)]
 
 
 def _unprocessed_issues(
     repo: str,
-    tok: str,
+    provider: Provider,
     labels: list[str],
     done: set[str],
     limit: int,
     priority_labels: list[str] | None = None,
     blocked: dict[int, list[str]] | None = None,
+    exclude: list[str] | None = None,
 ) -> list[dict]:
     """Reconcile-Modus: bis zu `limit` offene Issues, deren Trigger nicht in `done`
     (Trigger-Strings bisheriger Runs, s. `loop_run_triggers`) steht — höchste
@@ -213,13 +205,16 @@ def _unprocessed_issues(
     `blocked` (dict, `skip_blocked`, ADR 0031): Issues mit unerledigten Blockern
     werden übersprungen und mit ihren Blockern dort eingetragen. Sie belegen
     kein `limit`-Kontingent und feuern, sobald alle Blocker erledigt sind.
+
+    `exclude` (`exclude_labels`): Issues mit einem dieser Labels werden übersprungen, ohne
+    Kontingent zu belegen; sie feuern, sobald das Label entfernt ist.
     """
     todo: list[dict] = []
-    for it in _iter_open_issues_oldest_first(repo, tok, labels):
-        if f"on_issue:#{it['number']}" in done:
+    for it in _iter_open_issues_oldest_first(repo, provider, labels):
+        if f"on_issue:#{it['number']}" in done or not _without_excluded([it], exclude or []):
             continue
         if blocked is not None:
-            blockers = _unresolved_blockers(repo, tok, it)
+            blockers = _unresolved_blockers(repo, provider, it)
             if blockers:
                 blocked[it["number"]] = blockers
                 continue
@@ -505,6 +500,10 @@ class Scheduler(threading.Thread):
         "blocked by"-Dependencies starten nicht; sie bleiben ohne Run-Record und
         feuern beim ersten Poll, nachdem ihr letzter Blocker als `completed`
         geschlossen wurde.
+
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): Issues mit einem dieser Labels
+        starten nicht. Im Reconcile-Modus feuern sie, sobald das Label weg ist; im Event-Modus
+        gelten sie als gesehen.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -517,19 +516,25 @@ class Scheduler(threading.Thread):
         st["ts"] = time.time()
         labels = [str(x) for x in (trig.get("labels") or [])]
         priority_labels = [str(x) for x in (trig.get("priority_labels") or [])]
+        exclude = [str(x) for x in (trig.get("exclude_labels") or [])]
         try:
-            tok = _gh_token_safe()
-            if not tok:
+            provider = get_provider(repo, spec=spec)
+            if not provider.has_credentials():
                 return
             if trig.get("reconcile"):
                 max_per_poll = max(1, int(trig.get("max_per_poll", DEFAULT_MAX_PER_POLL)))
                 blocked: dict[int, list[str]] | None = {} if trig.get("skip_blocked") else None
                 done = loop_run_triggers(name, lname)
-                todo = _unprocessed_issues(repo, tok, labels, done, max_per_poll, priority_labels, blocked)
+                todo = _unprocessed_issues(
+                    repo, provider, labels, done, max_per_poll, priority_labels, blocked, exclude
+                )
                 _log_blocked(st, repo, blocked)
             else:
-                new = _new_issues(st, _only_issues(_gh_get_list(_issues_url(repo, labels, "desc"), tok)))
-                todo = _by_priority(new, priority_labels)
+                issues = provider.list_issues(
+                    repo, state="open", labels=labels, sort="created", direction="desc", per_page=GH_PER_PAGE
+                )
+                new = _new_issues(st, [it.raw for it in issues if not it.is_pr])
+                todo = _by_priority(_without_excluded(new, exclude), priority_labels)
         except Exception as e:
             print(f"[fabrik] on_issue Poll {repo} fehlgeschlagen: {e}")
             return
@@ -616,6 +621,9 @@ class Scheduler(threading.Thread):
         Die Fire-Entscheidung pro PR rechnet der reine Helfer `_pr_fire_kind`
         (ohne I/O); hier bleiben nur Polling/Throttling, Label-Filter,
         Dedup-State (`seen`/`floor`) und das Run-Starten via `_safe_run`.
+
+        `exclude_labels` (ADR 0059, z. B. `[needs human]`): PRs mit einem dieser Labels feuern
+        nicht; das Entfernen des Labels ist selbst eine Änderung und feuert danach wieder.
         """
         repo = trig.get("repo") or spec.get("github")
         if not repo:
@@ -634,11 +642,11 @@ class Scheduler(threading.Thread):
         states = list(dict.fromkeys(str(s) for s in (trig.get("states") or ["open"])))
         prs: list[dict] = []
         try:
-            tok = _gh_token_safe()
-            if not tok:
+            provider = get_provider(repo, spec=spec)
+            if not provider.has_credentials():
                 return
             for state in states:
-                prs.extend(_list_pulls(repo, tok, state, required_labels))
+                prs.extend(_list_pulls(repo, provider, state, required_labels))
         except Exception as e:
             print(f"[fabrik] on_pr Poll {repo} fehlgeschlagen: {e}")
             return
@@ -646,9 +654,8 @@ class Scheduler(threading.Thread):
         # filtert nur OR. Ohne dies würde z. B. 'needs approval' auch
         # Nicht-fabrik-PRs treffen (ADR 0011).
         if required_labels:
-            prs = [
-                pr for pr in prs if set(required_labels) <= {str(lbl.get("name", "")) for lbl in pr.get("labels", [])}
-            ]
+            prs = [pr for pr in prs if set(required_labels) <= _label_names(pr)]
+        prs = _without_excluded(prs, [str(x) for x in (trig.get("exclude_labels") or [])])
         # State + updated_at pro PR tracken: State-Wechsel (z. B. open→closed)
         # ist ein eigenes Feuer-Ereignis, Update (gleicher State, neues
         # updated_at) ebenfalls; unverändert → kein Fire (Dedup).

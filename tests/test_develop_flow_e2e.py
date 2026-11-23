@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import json
 
-from fabrik import scheduler
+from fabrik import gitops, scheduler
 from fabrik.engine import run_loop
-from fabrik.steps import human_gate, pr, pr_merge, pr_review
+from fabrik.steps import human_gate, pr_review
 
 REPO = "o/r"
 PR_NUMBER = 7
@@ -134,12 +134,12 @@ def _patch_externals(monkeypatch, verdicts, files):
         ctx.update(gate_critical=False, gate_reason="nicht kritisch")
         return {"ok": True, "summary": "gate_critical=False", "usage": {"total_tokens": 1}}
 
-    # Die Steps importieren die Helfer per `from ..gitops import …` — jeder
-    # Step-Modul hat seine eigene Referenz, also in allen vier patchen.
-    for mod in (pr, pr_review, human_gate, pr_merge):
-        monkeypatch.setattr(mod, "_gh_api", _api)
-        monkeypatch.setattr(mod, "_gh_token", _token)
-    monkeypatch.setattr(pr_review, "_gh_diff", _diff)
+    # Die Steps laufen über den Hosting-Provider, der die `gitops`-Helfer aufruft —
+    # an der `gitops`-Naht patchen (ein einziger Ort für alle Steps).
+    monkeypatch.setattr(gitops, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_token", _token)
+    monkeypatch.setattr(gitops, "_gh_token_safe", _token)
+    monkeypatch.setattr(gitops, "_gh_diff", _diff)
     monkeypatch.setattr(pr_review, "_step_agent_backend", _agent)
     monkeypatch.setattr(pr_review, "_HEAD_SYNC_INTERVAL_S", 0)
     monkeypatch.setattr(pr_review, "_git", _git)
@@ -260,17 +260,18 @@ def test_on_pr_fires_on_develop_labeled_pr(monkeypatch):
     kein Human-Gate-Bypass über pr-reply)."""
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr(scheduler, "_gh_token_safe", lambda: "tok")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     trig = {"repo": "o/r", "poll": 0, "labels": ["fabrik"], "reconcile": "head"}
 
     # PR mit Label `fabrik` → review-pr feuert (vor dem Split: auch develop-PRs → Doppel-Review)
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: [_pr(7, ["fabrik"])])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrik"])])
     _FakeSched()._check_pr("p", "review-pr", {"github": "o/r"}, trig)
     assert fired == ["on_pr:#7@abc123"]
 
     # Label-Split: develop-PR mit `fabrik-develop` → review-pr (Label `fabrik`) feuert NICHT
     fired2 = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired2.append(t))
-    monkeypatch.setattr(scheduler, "_gh_api", lambda m, u, t: [_pr(7, ["fabrik-develop"])])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrik-develop"])])
     _FakeSched()._check_pr("p", "review-pr", {"github": "o/r"}, trig)
     assert fired2 == []

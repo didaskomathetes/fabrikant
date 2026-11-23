@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from fabrik import gitops
 from fabrik.steps import pr_review
 
 APPROVED = json.dumps({"verdict": "approved", "findings": [], "summary": "ok"})
@@ -28,14 +29,14 @@ def _patch(monkeypatch, verdicts, git_status="M f.txt", heads=None):
     (letzter Wert bleibt stehen); Default: sofort der gepushte Commit."""
     calls = {"reviews": [], "llm_reviews": 0, "fixes": 0, "git": [], "head_polls": 0, "diffs": 0}
     heads = list(heads or [PUSHED_SHA])
-    monkeypatch.setattr(pr_review, "_gh_token", lambda role="dev": f"tok-{role}")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": f"tok-{role}")
     monkeypatch.setattr(pr_review, "_HEAD_SYNC_INTERVAL_S", 0)
 
     def _diff(repo, n, tok):
         calls["diffs"] += 1
         return "diff --git a/f b/f"
 
-    monkeypatch.setattr(pr_review, "_gh_diff", _diff)
+    monkeypatch.setattr(gitops, "_gh_diff", _diff)
 
     def _api(method, url, token, payload=None, accept=None):
         if url.endswith("/reviews"):
@@ -46,7 +47,7 @@ def _patch(monkeypatch, verdicts, git_status="M f.txt", heads=None):
             return {"head": {"sha": heads.pop(0) if len(heads) > 1 else heads[0]}}
         return {}
 
-    monkeypatch.setattr(pr_review, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_api", _api)
 
     def _agent(ctx, step, emit, backend, prompt):
         if "You are the developer" in prompt:  # Fix-Runde
@@ -178,6 +179,17 @@ def test_rounds_exhausted_fails(monkeypatch, tmp_path):
     assert len(calls["reviews"]) == 2  # beide REQUEST_CHANGES
 
 
+def test_granted_rounds_extend_budget(monkeypatch, tmp_path):
+    """ADR 0059: Eskalations-Freigabe gewährt frische Runden — pr_review addiert sie zum Budget."""
+    calls = _patch(monkeypatch, [CHANGES])
+    ctx = {**_ctx(tmp_path), pr_review.GRANT_ROUNDS_CTX: 2}
+    res = pr_review._step_pr_review(ctx, {"repo": "o/r", "model": "m2", "max_rounds": 1}, lambda m: None)
+    # max_rounds=1 + 2 gewährt = 3 → 4 Review-Runden bis zur Erschöpfung
+    assert res["ok"] is False
+    assert len(calls["reviews"]) == 4
+    assert calls["fixes"] == 3
+
+
 def test_fix_round_without_changes_fails(monkeypatch, tmp_path):
     _patch(monkeypatch, [CHANGES], git_status="")
     res = pr_review._step_pr_review(_ctx(tmp_path), {"repo": "o/r", "model": "m2"}, lambda m: None)
@@ -213,8 +225,8 @@ def test_unparseable_verdict_exhausts_retries(monkeypatch, tmp_path):
 
 
 def test_backend_error_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(pr_review, "_gh_token", lambda role="dev": "tok")
-    monkeypatch.setattr(pr_review, "_gh_diff", lambda repo, n, tok: "diff")
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
+    monkeypatch.setattr(gitops, "_gh_diff", lambda repo, n, tok: "diff")
     monkeypatch.setattr(pr_review, "_step_agent_backend", lambda *a, **k: {"ok": False, "summary": "backend down"})
     res = pr_review._step_pr_review(_ctx(tmp_path), {"repo": "o/r", "model": "m2"}, lambda m: None)
     assert res["ok"] is False
@@ -344,11 +356,11 @@ def test_pr_number_from_api_lookup(monkeypatch, tmp_path):
 
     def _api(method, url, token, payload=None, accept=None):
         if method == "GET":
-            assert "head=o:dev" in url
+            assert "head=o%3Adev" in url  # owner:branch, URL-encoded
             return [{"number": 12}]
         return {}
 
-    monkeypatch.setattr(pr_review, "_gh_api", _api)
+    monkeypatch.setattr(gitops, "_gh_api", _api)
     ctx = _ctx(tmp_path)
     ctx.pop("pr_number")
     res = pr_review._step_pr_review(ctx, {"repo": "o/r", "model": "m2"}, lambda m: None)

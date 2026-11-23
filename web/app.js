@@ -2227,7 +2227,7 @@ function formatApproval(ctx) {
   if (!ctx) return "";
   const row = (k, vHtml) => `<div class="appr-row"><span class="appr-k">${k}</span><span class="appr-v">${vHtml}</span></div>`;
   const rows = [];
-  for (const key of ["condition", "why", "what"]) {
+  for (const key of ["kind", "condition", "why", "what"]) {
     if (ctx[key]) rows.push(row(t(`approval.${key}`), esc(ctx[key])));
   }
   for (const p of ctx.permissions || []) rows.push(row(t("approval.permissions"), esc(p)));
@@ -2253,12 +2253,29 @@ function formatRunMeta(meta) {
   return rows.length ? `<div class="runmetabox">${rows.join("")}</div>` : "";
 }
 
-// Kosten/Tokens kompakt ("$0.0123 · 4.5k tok"); "" ohne Verbrauch (Run ohne LLM-Steps).
+// Token-Zahl kompakt: 950, 12.3k, 1.30M.
+function fmtTokens(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+// Kosten/Tokens kompakt ("$0.0123 · 1.30M tok (1.28M cached)"); "" ohne Verbrauch (Run ohne LLM-Steps).
+// Cache-Reads sind in total_tokens enthalten: ein Agent liest seinen Kontext jeden Turn neu.
+// Abo-Steps (billing=subscription) kosten kein Geld pro Token, sondern Limits: "≈ $x" + Hinweis.
+function fmtUsd(c) {
+  const sub = c.subscription_cost_usd || 0;
+  const billed = c.cost_usd - sub;
+  const parts = [];
+  if (billed > 0 || !sub) parts.push(`${c.unpriced_steps ? "≥ " : ""}$${billed.toFixed(4)}`);
+  if (sub) parts.push(`≈ $${sub.toFixed(4)} ${t("run.apiEquiv")}`);
+  return parts.join(" + ");
+}
+
 function fmtCost(c) {
   if (!c || !c.total_tokens) return "";
-  const tok = c.total_tokens >= 1000 ? `${(c.total_tokens / 1000).toFixed(1)}k` : String(c.total_tokens);
-  const usd = c.unpriced_steps ? `≥ $${c.cost_usd.toFixed(4)}` : `$${c.cost_usd.toFixed(4)}`;
-  return `${usd} · ${tok} ${t("run.tokens")}`;
+  const usd = fmtUsd(c);
+  const cached = c.cache_read_tokens ? ` (${fmtTokens(c.cache_read_tokens)} ${t("run.cached")})` : "";
+  return `${usd} · ${fmtTokens(c.total_tokens)} ${t("run.tokens")}${cached}`;
 }
 
 function formatRunCost(cost) {
@@ -2340,12 +2357,15 @@ function stopRunStream() {
 function showRunTab(tab) {
   stopRunStream();
   runTab = tab;
-  document.querySelectorAll("#runtabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll("#runtabs button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  });
   $("#runfollowlabel").classList.toggle("hidden", tab !== "log");
   const box = $("#runlog");
   if (!runPanelRec) return;
   if (tab === "overview") box.innerHTML = formatRun(runPanelRec);
   else if (tab === "log") startRunLog(box);
+  else if (tab === "trace") loadTrace(box);
   else loadTranscript(box);
 }
 
@@ -2438,7 +2458,9 @@ class RunLogView {
         `<span class="rsicon">${s.prelude ? "" : icon}</span>${esc(s.name)}</button>`);
     });
     this.bar.innerHTML = chips.join("");
-    this.segs.forEach((s, i) => s.pre.classList.toggle("hidden", this.filter !== null && this.filter !== i));
+    this.segs.forEach((s, i) => {
+      s.pre.classList.toggle("hidden", this.filter !== null && this.filter !== i);
+    });
     followRunLog();
   }
 }
@@ -2541,6 +2563,148 @@ function transcriptEntry(e) {
   const tool = typeof e.tool === "string" ? e.tool : JSON.stringify(e.tool, null, 2);
   const body = e.role === "tool" ? `<pre>${esc(tool)}</pre>` : `<pre>${esc(e.text)}</pre>`;
   return `<div class="turn turn-${esc(e.role)}"><div class="turnhead">${esc(e.role)} · ${esc(e.step)} · ${esc(e.ts)}</div>${body}</div>`;
+}
+
+// ---- Trace view (Issue #128) ----
+// Chronological step trace from the full session log (GET /api/run/<id>/events):
+// each step shows status, duration, verdict and usage (tokens/cost); agent events
+// (prompt / tool_call / message) are drill-down items; artifacts are listed at the end.
+// Works for legacy JSON runs and SQL runs — the endpoint abstracts the backend.
+
+// Parse an event's `data` field (a redacted JSON string) into an object; bad JSON → {}.
+function parseEventData(data) {
+  if (!data) return {};
+  if (typeof data === "object") return data;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+// Fold the flat, chronological event list into ordered render blocks. Steps are
+// sequential, so agent events attach to the currently open step; run_start /
+// run_end / approval / warning become standalone timeline entries.
+function buildTraceBlocks(events) {
+  const blocks = [];
+  let cur = null; // currently open step block
+  const openStep = (name, type) => {
+    cur = { type: "step", name, stepType: type || "", status: "running", durationS: null, usage: null, events: [] };
+    blocks.push(cur);
+    return cur;
+  };
+  for (const ev of events) {
+    const d = parseEventData(ev.data);
+    const kind = ev.kind;
+    if (kind === "run_start") {
+      blocks.push({ type: "run_start", loop: d.loop, trigger: d.trigger, ts: ev.ts });
+      cur = null;
+    } else if (kind === "step_start") {
+      openStep(ev.step_name, ev.step_type);
+    } else if (kind === "step_done") {
+      const b = cur && cur.name === ev.step_name ? cur : openStep(ev.step_name, ev.step_type);
+      b.status = ev.status || "pass";
+      b.durationS = d.duration_s ?? null;
+      b.usage = d.usage ?? null;
+    } else if (kind === "prompt" || kind === "tool_call" || kind === "message") {
+      if (!cur || cur.name !== ev.step_name) openStep(ev.step_name, ev.step_type || "agent");
+      cur.events.push({ role: kind, ts: ev.ts, text: d.text ?? "", tool: d.tool ?? null });
+    } else if (kind === "approval") {
+      blocks.push({ type: "approval", ts: ev.ts, data: d });
+      cur = null;
+    } else if (kind === "warning") {
+      blocks.push({ type: "warning", ts: ev.ts, data: d });
+    } else if (kind === "run_end") {
+      blocks.push({ type: "run_end", status: ev.status, ts: ev.ts });
+      cur = null;
+    }
+    // unknown kinds are ignored
+  }
+  return blocks;
+}
+
+// Compact per-step usage line: "model · 1.3M tok · $0.0123".
+function fmtStepUsage(u) {
+  const parts = [];
+  if (u.model) parts.push(u.model);
+  if (u.total_tokens) parts.push(`${fmtTokens(u.total_tokens)} ${t("run.tokens")}`);
+  if (u.cost_usd) parts.push(`$${Number(u.cost_usd).toFixed(4)}`);
+  return parts.join(" · ");
+}
+
+function traceAgentEvent(e) {
+  const icon = e.role === "prompt" ? "👤" : e.role === "tool_call" ? "🔧" : "💬";
+  const body =
+    e.role === "tool_call"
+      ? `<pre class="trace-tool">${esc(typeof e.tool === "string" ? e.tool : JSON.stringify(e.tool, null, 2))}</pre>`
+      : `<pre class="trace-text">${esc(e.text)}</pre>`;
+  return `<details class="trace-event trace-event-${esc(e.role)}">
+    <summary><span class="trace-icon">${icon}</span> ${esc(t(`run.trace.${e.role}`))} · ${esc(e.ts || "")}</summary>
+    ${body}
+  </details>`;
+}
+
+function traceBlock(b, verdicts = {}) {
+  if (b.type === "run_start")
+    return `<div class="trace-entry trace-runstart"><span class="trace-icon">▶</span> ${esc(t("run.trace.started"))} · ${esc(t("run.trace.loop"))}: ${esc(b.loop || "")} · ${esc(t("run.trace.trigger"))}: ${esc(b.trigger || "")}</div>`;
+  if (b.type === "run_end")
+    return `<div class="trace-entry trace-runend"><span class="trace-icon">■</span> ${esc(t("run.trace.ended"))} · ${badge(statusLabel(b.status), b.status)}</div>`;
+  if (b.type === "approval")
+    return `<div class="trace-entry trace-approval"><span class="trace-icon">⏸</span> ${esc(t("run.trace.approval"))}</div>`;
+  if (b.type === "warning") {
+    const msg = (b.data && (b.data.message || b.data.text || b.data.warning)) || "";
+    return `<div class="trace-entry trace-warning"><span class="trace-icon">⚠</span> ${esc(t("run.trace.warning"))}${msg ? `: ${esc(msg)}` : ""}</div>`;
+  }
+  // step block
+  const icon = STEP_ICONS[b.status] || "✖";
+  const dur = b.durationS != null ? `<span class="trace-dur">${fmtDur(Math.round(b.durationS))}</span>` : "";
+  const usage = b.usage ? `<span class="trace-usage">${esc(fmtStepUsage(b.usage))}</span>` : "";
+  const verdict = verdicts[b.name] ? verdictBadge({ verdict: verdicts[b.name] }) : "";
+  const count = b.events.length ? `<span class="trace-count">${b.events.length} ${esc(t("run.trace.events"))}</span>` : "";
+  const events = b.events.map(traceAgentEvent).join("");
+  return `<div class="trace-step ${esc(b.status)}">
+    <div class="trace-stephead">
+      <span class="trace-icon">${icon}</span>
+      <span class="trace-stepname">${esc(b.name)}</span>
+      <span class="trace-steptype">[${esc(b.stepType || "")}]</span>
+      ${verdict}${dur}${usage}${count}
+    </div>
+    ${events ? `<div class="trace-events">${events}</div>` : ""}
+  </div>`;
+}
+
+function traceArtifacts(artifacts) {
+  const rows = artifacts
+    .map(
+      (a) =>
+        `<div class="trace-artifact"><span class="trace-icon">📎</span> ${esc(a.path)} <span class="trace-artifactmeta">[${esc(a.kind || "")}] · ${esc(a.step_name || "")}</span></div>`,
+    )
+    .join("");
+  return `<div class="trace-artifacts"><div class="trace-artifacts-title">${esc(t("run.trace.artifacts"))}</div>${rows}</div>`;
+}
+
+async function loadTrace(box) {
+  box.innerHTML = '<div class="runtrace"></div>';
+  const list = box.firstChild;
+  const id = runPanelRec.id;
+  let data;
+  try {
+    data = await api(`${runApiPath("events")}?project=${encodeURIComponent(runPanelRec.project || "")}`);
+  } catch (e) {
+    list.innerHTML = `<div class="runerr">${esc(t("run.traceFailed", { error: e.message }))}</div>`;
+    return;
+  }
+  if (runTab !== "trace" || !runPanelRec || runPanelRec.id !== id) return; // Tab/Run changed
+  const blocks = buildTraceBlocks(data.events || []);
+  const artifacts = data.artifacts || [];
+  if (!blocks.length && !artifacts.length) {
+    list.innerHTML = `<div style="color:var(--dim)">${esc(t("run.noTrace"))}</div>`;
+    return;
+  }
+  // Verdicts live in the run record (not the session log): map step name → verdict.
+  const verdicts = {};
+  for (const s of runPanelRec.steps || []) if (s && s.verdict) verdicts[s.name] = s.verdict;
+  list.innerHTML = blocks.map((b) => traceBlock(b, verdicts)).join("") + (artifacts.length ? traceArtifacts(artifacts) : "");
 }
 
 // Status-Badge im Run-Panel: roher Status in data-status (die Polling-Logik
@@ -2950,6 +3114,52 @@ async function refreshSchedule() {
   if (state.schedOpen) renderSchedule();
 }
 
+// KPI-Panel (Issue #127): Factory-KPIs je Projekt aus GET /api/kpis.
+function fmtKpiRate(r) {
+  return r === null || r === undefined ? "—" : `${Math.round(r * 100)} %`;
+}
+
+function renderKpiRow(name, k) {
+  const ct = k.cycle_time_s || {};
+  const cycle = ct.avg === null || ct.avg === undefined ? "—" : fmtDur(Math.round(ct.avg));
+  const rt = k.runtime_s || {};
+  const runtime = rt.count ? `${fmtDur(Math.round(rt.avg))} / ${fmtDur(Math.round(rt.total))}` : "—";
+  return `<div class="schedrow">
+    <div class="schedrow-main"><span class="schedname">${esc(name)}</span></div>
+    <span title="${esc(t("kpis.runsTitle"))}">${esc(t("kpis.runs"))}: ${k.passed || 0} ✔ / ${k.failed || 0} ✖ (${k.runs || 0})</span>
+    <span title="${esc(t("kpis.runtimeTitle"))}">${esc(t("kpis.runtime"))}: ${esc(runtime)}</span>
+    <span title="${esc(t("kpis.costTitle"))}">${esc(t("kpis.cost"))}: ${esc(fmtCost(k.cost) || "—")}</span>
+    <span title="${esc(t("kpis.cycleTitle"))}">${esc(t("kpis.cycle"))}: ${esc(cycle)} (${ct.count || 0})</span>
+    <span title="${esc(t("kpis.vetoTitle"))}">${esc(t("kpis.veto"))}: ${esc(fmtKpiRate(k.judge_veto_rate))}</span>
+    <span title="${esc(t("kpis.escapeTitle"))}">${esc(t("kpis.escape"))}: ${esc(fmtKpiRate(k.defect_escape_rate))}
+      (${k.defects_caught}/${k.defects_escaped})</span>
+  </div>`;
+}
+
+async function refreshKpis() {
+  let data;
+  try {
+    data = await api("/api/kpis");
+  } catch (e) {
+    $("#kpibody").innerHTML = `<div class="sched-err">${esc(t("kpis.loadFailed", { error: e.message }))}</div>`;
+    return;
+  }
+  const names = Object.keys(data.projects || {});
+  const rows = names.flatMap((p) => [
+    renderKpiRow(p, data.projects[p]),
+    ...Object.entries(data.projects[p].loops || {}).map(([l, k]) => renderKpiRow(`${p}/${l}`, k)),
+  ]);
+  $("#kpibody").innerHTML = names.length
+    ? renderKpiRow(t("kpis.total"), data.total) + rows.join("")
+    : `<div class="sched-empty">${esc(t("kpis.empty"))}</div>`;
+}
+
+function setKpis(open) {
+  $("#kpipanel").classList.toggle("hidden", !open);
+  $("#kpitoggle").classList.toggle("active", open);
+  if (open) refreshKpis();
+}
+
 // One-time-Formular (⏱-Button einer Zeile). Nur beim Öffnen/Schließen neu
 // aufgebaut — nicht beim 5-s-Refresh, sonst gingen Eingabe und Fokus verloren.
 function renderSchedForm() {
@@ -3049,13 +3259,17 @@ $("#chattoggle").addEventListener("click", () => setChat($("#chatpanel").classLi
 $("#chatclose").addEventListener("click", () => setChat(false));
 $("#schattoggle").addEventListener("click", () => setSchedule($("#schedpanel").classList.contains("hidden")));
 $("#schedclose").addEventListener("click", () => setSchedule(false));
+$("#kpitoggle").addEventListener("click", () => setKpis($("#kpipanel").classList.contains("hidden")));
+$("#kpiclose").addEventListener("click", () => setKpis(false));
 $("#chatform").addEventListener("submit", chatSend);
 $("#llmselect").addEventListener("change", (e) => setLlm(e.target.value));
 $("#langtoggle").addEventListener("click", toggleLang);
 
 setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString(i18nLocale()); }, 1000);
 $("#runclose").addEventListener("click", closeRun);
-document.querySelectorAll("#runtabs button").forEach((b) => b.addEventListener("click", () => showRunTab(b.dataset.tab)));
+document.querySelectorAll("#runtabs button").forEach((b) => {
+  b.addEventListener("click", () => showRunTab(b.dataset.tab));
+});
 $("#runbackdrop").addEventListener("click", closeRun);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#settingspanel").classList.contains("hidden")) closeSettings();

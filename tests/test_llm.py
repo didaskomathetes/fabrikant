@@ -208,7 +208,7 @@ def test_complete_tolerates_overflowing_usage(chat_endpoint):
     assert out["usage"]["total_tokens"] == 0
 
 
-_ZERO = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+_ZERO = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
 
 
 @pytest.mark.parametrize(
@@ -224,6 +224,8 @@ def test_usage_valid():
         "prompt_tokens": 2,
         "completion_tokens": 0,
         "total_tokens": 5,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
 
 
@@ -233,9 +235,29 @@ def test_usage_truncates_fractions_regardless_of_type():
         "prompt_tokens": 5,
         "completion_tokens": 0,
         "total_tokens": 5,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
 
 
 def test_usage_keeps_valid_fields_when_one_is_malformed():
     raw = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": "n/a"}
-    assert llm._usage(raw) == {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 0}
+    assert llm._usage(raw) == {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+        "total_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
+
+
+def test_usage_reports_cached_prompt_tokens():
+    """OpenAI: gecachte Tokens stehen in prompt_tokens_details und sind Teil von prompt_tokens."""
+    raw = {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+        "total_tokens": 150,
+        "prompt_tokens_details": {"cached_tokens": 100},
+    }
+    assert llm._usage(raw)["cache_read_tokens"] == 100
+    assert llm._usage({**raw, "prompt_tokens_details": "kaputt"})["cache_read_tokens"] == 0

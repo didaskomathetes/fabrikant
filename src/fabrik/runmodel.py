@@ -52,12 +52,13 @@ class ApprovalStatus(StrEnum):
 
 class ApprovalReason(StrEnum):
     """Warum der Run pausiert: Step-Gate, dynamisches Gate (ADR 0010), Tier-Freigabe (T2+) oder
-    Kritikalität (``human_gate``)."""
+    Kritikalität (``human_gate``) oder Eskalation an einen Menschen (ADR 0059)."""
 
     STEP = "step"
     GATE = "gate"
     TIER = "tier"
     CRITICALITY = "criticality"
+    ESCALATION = "escalation"
 
 
 class FailureKind(StrEnum):
@@ -129,7 +130,10 @@ def check_transition(table: Mapping[_E, frozenset[_E]], current: _E, target: _E)
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """Token-/Kosten-Verbrauch eines Steps (LLM/Agent). ``cost_usd`` ist None, wenn unbekannt."""
+    """Token-/Kosten-Verbrauch eines Steps (LLM/Agent). ``cost_usd`` ist None, wenn unbekannt.
+
+    ``prompt_tokens`` enthält den Cache-Anteil; ``cache_read_tokens``/``cache_write_tokens`` schlüsseln
+    ihn auf (0 = nicht gemeldet, z. B. ältere Runs) — siehe :mod:`fabrik.tokens`."""
 
     model: str = ""
     provider: str = ""
@@ -137,6 +141,9 @@ class Usage:
     completion_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float | None = None
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    billing: str = ""  # api | subscription | unknown (fabrik.billing); "" = Altbestand
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +221,7 @@ class Approval:
 
     status: ApprovalStatus
     reason: ApprovalReason
+    kind: str = ""  # Eskalationsart (ADR 0059), sonst leer
     what: str = ""
     step: str = ""
     issue: str = ""
@@ -247,6 +255,7 @@ class Run:
     failure_kind: FailureKind | None = None  # nur bei fail/error gesetzt (ADR 0035)
     retry_after: str = ""  # ISO-Zeitpunkt (UTC), nur bei transient
     retry_of: str = ""  # Run-Id des vorherigen Versuchs (ADR 0036); "" = kein Retry
+    replay_of: str = ""  # Run-Id des Originals, wenn dies ein Replay ist (ADR 0061); "" = kein Replay
     attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
     worktree_cleanup_error: str = ""
     # Schreibgeschützt (MappingProxyType): der Run ist frozen, ``vars`` auch —
