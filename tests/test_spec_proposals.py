@@ -141,17 +141,11 @@ def test_reject_keeps_the_record(proj):
         sp.apply(pr.id, "cli:me")
 
 
-def test_propose_and_apply(proj):
-    pr = sp.propose_and_apply("p", {"description": "direct"}, _hash(proj), "mcp")
-    assert pr.status is sp.ProposalStatus.APPLIED and "description: direct" in proj.read_text()
-
-
 # ---------------------------------------------------------------------- MCP tools
 _call = call
 
 
 WRITE = mcp.McpOptions(allow_spec_write=True)
-DIRECT = mcp.McpOptions(allow_spec_write=True, spec_write_direct=True)
 
 
 def test_propose_tool_flow_and_no_secret_echo(proj):
@@ -179,11 +173,10 @@ def test_propose_tool_refuses_stale_and_invalid(proj):
     assert extra.is_error  # patch schema forbids unknown fields (name/root stay untouchable)
 
 
-def test_write_tool_applies_directly_when_enabled(proj):
-    res = _call(DIRECT, "write_spec_change", {"project": "p", "base_hash": _hash(proj), "patch": {"description": "d"}})
-    assert not res.is_error and res.structured_content["status"] == "applied"
-    assert "description: d" in proj.read_text() and (proj.parent / "p.fabrikant.yaml.bak").is_file()
-    assert sp.list_proposals()[0].decided_by == "mcp"
+def test_no_direct_write_tool_exists(proj):
+    res = _call(WRITE, "write_spec_change", {"project": "p", "base_hash": _hash(proj), "patch": {"description": "d"}})
+    assert res.is_error and "Unknown tool" in text(res)
+    assert "description: old" in proj.read_text()
 
 
 def test_read_only_hides_spec_write_tools(proj):
@@ -225,7 +218,5 @@ def test_cli_mcp_passes_flags_and_env_to_the_server(monkeypatch):
     seen = {}
     monkeypatch.setattr(mcp, "serve_stdio", lambda options=None: seen.update(options=options))
     monkeypatch.setenv(mcp.ALLOW_APPROVALS_ENV, "1")
-    cli.main(["mcp", "--read-only", "--allow-spec-write", "--spec-write-direct"])
-    assert seen["options"] == mcp.McpOptions(
-        read_only=True, allow_approvals=True, allow_spec_write=True, spec_write_direct=True
-    )
+    cli.main(["mcp", "--read-only", "--allow-spec-write"])
+    assert seen["options"] == mcp.McpOptions(read_only=True, allow_approvals=True, allow_spec_write=True)

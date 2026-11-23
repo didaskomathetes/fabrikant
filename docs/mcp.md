@@ -20,7 +20,6 @@ Risky tools are opt-in (not even listed otherwise); `--read-only` wins over all 
 | `--read-only` (`FABRIKANT_MCP_READONLY=1`) | removes `start_run` and every opt-in tool |
 | `--allow-approvals` (`FABRIKANT_MCP_ALLOW_APPROVALS=1`) | `approve_run`, `reject_run` |
 | `--allow-spec-write` (`FABRIKANT_MCP_ALLOW_SPEC_WRITE=1`) | `propose_spec_change`, `list_spec_proposals` |
-| `--spec-write-direct` (`FABRIKANT_MCP_SPEC_WRITE_DIRECT=1`, needs spec write) | `write_spec_change` (no human approval) |
 
 Spec changes are **propose-and-approve**: the agent sends a patch (`loops`, `remove_loops`, `description`,
 `max_parallel`) plus the `_hash` from `get_spec`; fabrikant validates it against the schema, refuses stale

@@ -14,7 +14,7 @@ if the client kills it, the next fabrikant server start reaps the orphaned runs.
 
 Tools are *registered* only when their gate is open, so a hidden tool is also refused at call
 time (unknown tool). Gates: ``--read-only`` hides everything that changes state and wins over
-the opt-ins ``--allow-approvals`` and ``--allow-spec-write`` (+ ``--spec-write-direct``).
+the opt-ins ``--allow-approvals`` and ``--allow-spec-write``.
 
 Run it with ``fabrikant mcp`` or the ``fabrikant-mcp`` console script.
 """
@@ -60,7 +60,6 @@ MCP_ACTOR = "mcp"  # audit actor for actions taken through the MCP endpoint
 READ_ONLY_ENV = "FABRIKANT_MCP_READONLY"  # truthy → mutating tools are hidden and refused
 ALLOW_APPROVALS_ENV = "FABRIKANT_MCP_ALLOW_APPROVALS"  # truthy → approve_run/reject_run are offered (opt-in)
 ALLOW_SPEC_WRITE_ENV = "FABRIKANT_MCP_ALLOW_SPEC_WRITE"  # truthy → propose_spec_change & co. are offered (opt-in)
-SPEC_WRITE_DIRECT_ENV = "FABRIKANT_MCP_SPEC_WRITE_DIRECT"  # truthy (+ spec write) → write_spec_change applies directly
 _TRUTHY = ("1", "true", "yes", "on")
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 1000
@@ -85,7 +84,6 @@ class McpOptions:
     read_only: bool = False
     allow_approvals: bool = False
     allow_spec_write: bool = False
-    spec_write_direct: bool = False
 
     @classmethod
     def from_env(
@@ -94,14 +92,12 @@ class McpOptions:
         read_only: bool = False,
         allow_approvals: bool = False,
         allow_spec_write: bool = False,
-        spec_write_direct: bool = False,
     ) -> McpOptions:
         """Options from the environment; a ``True`` argument (CLI flag) switches the option on."""
         return cls(
             read_only=read_only or _env_flag(READ_ONLY_ENV),
             allow_approvals=allow_approvals or _env_flag(ALLOW_APPROVALS_ENV),
             allow_spec_write=allow_spec_write or _env_flag(ALLOW_SPEC_WRITE_ENV),
-            spec_write_direct=spec_write_direct or _env_flag(SPEC_WRITE_DIRECT_ENV),
         )
 
     def offers(self, gate: Gate) -> bool:
@@ -115,7 +111,6 @@ class McpOptions:
             # Approve/reject are the human gate; a prompt-injected agent must not get them by default.
             Gate.APPROVAL: self.allow_approvals,
             Gate.SPEC_WRITE: self.allow_spec_write,
-            Gate.SPEC_DIRECT: self.allow_spec_write and self.spec_write_direct,
         }[gate]
 
 
@@ -126,7 +121,6 @@ class Gate(StrEnum):
     MUTATING = "mutating"
     APPROVAL = "approval"
     SPEC_WRITE = "spec_write"
-    SPEC_DIRECT = "spec_direct"
 
 
 # --------------------------------------------------------------------------- #
@@ -518,14 +512,6 @@ def propose_spec_change(project: _Project, base_hash: _BaseHash, patch: SpecPatc
         raise ToolError(str(e)) from e
 
 
-def write_spec_change(project: _Project, base_hash: _BaseHash, patch: SpecPatch) -> ProposalInfo:
-    """Apply a spec change directly, without human approval (atomic, previous file kept as .bak)."""
-    try:
-        return _proposal_info(spec_proposals.propose_and_apply(project, patch.to_payload(), base_hash, MCP_ACTOR))
-    except spec_proposals.ProposalError as e:
-        raise ToolError(str(e)) from e
-
-
 def list_spec_proposals(
     status: Annotated[spec_proposals.ProposalStatus | None, Field(description="Only this status")] = None,
 ) -> ProposalList:
@@ -584,7 +570,6 @@ TOOLS: tuple[ToolDef, ...] = (
     ToolDef("reject_run", reject_run, Gate.APPROVAL, _hints(destructive=True)),
     ToolDef("propose_spec_change", propose_spec_change, Gate.SPEC_WRITE, _hints()),
     ToolDef("list_spec_proposals", list_spec_proposals, Gate.SPEC_WRITE, _READ),
-    ToolDef("write_spec_change", write_spec_change, Gate.SPEC_DIRECT, _hints(destructive=True)),
 )
 
 

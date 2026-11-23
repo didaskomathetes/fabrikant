@@ -73,7 +73,7 @@ def test_initialize_and_tool_list_with_annotations(env):
     tools = _run(_params(env), go)
     names = {t.name for t in tools}
     assert {"list_projects", "get_spec", "validate_spec", "start_run", "list_runs"} <= names
-    assert not names & {"approve_run", "reject_run", "propose_spec_change", "write_spec_change"}
+    assert not names & {"approve_run", "reject_run", "propose_spec_change"}
     for t in tools:
         assert t.annotations is not None and t.annotations.open_world_hint is False
         assert t.annotations.read_only_hint is not None and t.annotations.destructive_hint is not None
@@ -84,9 +84,7 @@ def test_flags_reveal_and_hide_tools(env):
     approvals = _run(_params(env, "--allow-approvals"), _names)
     assert {"approve_run", "reject_run"} <= approvals and "propose_spec_change" not in approvals
     spec_write = _run(_params(env, "--allow-spec-write"), _names)
-    assert {"propose_spec_change", "list_spec_proposals"} <= spec_write and "write_spec_change" not in spec_write
-    direct = _run(_params(env, "--allow-spec-write", "--spec-write-direct"), _names)
-    assert "write_spec_change" in direct
+    assert {"propose_spec_change", "list_spec_proposals"} <= spec_write
     read_only = _run(_params(env, "--read-only", "--allow-approvals", "--allow-spec-write"), _names)
     assert "start_run" not in read_only and not read_only & {"approve_run", "propose_spec_change"}
     via_env = _run(_params({**env, "FABRIKANT_MCP_ALLOW_SPEC_WRITE": "1"}), _names)

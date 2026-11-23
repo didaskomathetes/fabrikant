@@ -173,11 +173,6 @@ def apply(proposal_id: str, actor: str) -> SpecProposal:
     return _decide(proposal, ProposalStatus.APPLIED, actor)
 
 
-def propose_and_apply(project: str, patch: dict, base_hash: str, actor: str) -> SpecProposal:
-    """Direct write (explicit opt-in): same checks and audit record as propose + apply."""
-    return apply(propose(project, patch, base_hash, actor).id, actor)
-
-
 def reject(proposal_id: str, actor: str) -> SpecProposal:
     """Reject a pending proposal (kept as an audit record)."""
     proposal = get_proposal(proposal_id)

@@ -116,7 +116,6 @@ MESSAGES: dict[str, str] = {
     "cli.help.mcp_read_only": "Hide and block start_run, approvals and spec-write tools",
     "cli.help.mcp_allow_approvals": "Offer approve_run/reject_run (opt-in: otherwise an agent could bypass human approval)",
     "cli.help.mcp_allow_spec_write": "Offer propose_spec_change and list_spec_proposals (opt-in; a human applies via `fabrikant proposals apply`)",
-    "cli.help.mcp_spec_write_direct": "Also offer write_spec_change: apply directly, no human approval (needs --allow-spec-write)",
     "cli.help.proposals": "Review spec-change proposals made by agents (list/show/apply/reject)",
     "cli.proposal_applied": "✔ proposal {id} applied to {project}",
     "cli.proposal_rejected": "⊘ proposal {id} for {project} rejected",

@@ -322,7 +322,6 @@ def cmd_mcp(args):
         read_only=args.read_only,
         allow_approvals=args.allow_approvals,
         allow_spec_write=args.allow_spec_write,
-        spec_write_direct=args.spec_write_direct,
     )
     mcp_server.serve_stdio(options)
 
@@ -651,7 +650,6 @@ def main(argv=None):
     p.add_argument("--read-only", action="store_true", help=t("cli.help.mcp_read_only"))
     p.add_argument("--allow-approvals", action="store_true", help=t("cli.help.mcp_allow_approvals"))
     p.add_argument("--allow-spec-write", action="store_true", help=t("cli.help.mcp_allow_spec_write"))
-    p.add_argument("--spec-write-direct", action="store_true", help=t("cli.help.mcp_spec_write_direct"))
     p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("proposals", help=t("cli.help.proposals"))

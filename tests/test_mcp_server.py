@@ -65,7 +65,6 @@ READ_TOOLS = {
 DEFAULT_TOOLS = READ_TOOLS | {"start_run"}
 APPROVAL_TOOLS = {"approve_run", "reject_run"}
 SPEC_WRITE_TOOLS = {"propose_spec_change", "list_spec_proposals"}
-DIRECT_TOOLS = {"write_spec_change"}
 
 
 # ------------------------------------------------------------------- registry
@@ -77,21 +76,15 @@ def test_opt_in_groups_add_their_tools():
     assert {t.name for t in list_tools(mcp.McpOptions(allow_approvals=True))} == DEFAULT_TOOLS | APPROVAL_TOOLS
     spec_write = mcp.McpOptions(allow_spec_write=True)
     assert {t.name for t in list_tools(spec_write)} == DEFAULT_TOOLS | SPEC_WRITE_TOOLS
-    direct = mcp.McpOptions(allow_spec_write=True, spec_write_direct=True)
-    assert {t.name for t in list_tools(direct)} == DEFAULT_TOOLS | SPEC_WRITE_TOOLS | DIRECT_TOOLS
-
-
-def test_direct_write_needs_spec_write():
-    assert {t.name for t in list_tools(mcp.McpOptions(spec_write_direct=True))} == DEFAULT_TOOLS
 
 
 def test_read_only_wins_over_every_opt_in():
-    everything = mcp.McpOptions(read_only=True, allow_approvals=True, allow_spec_write=True, spec_write_direct=True)
+    everything = mcp.McpOptions(read_only=True, allow_approvals=True, allow_spec_write=True)
     assert {t.name for t in list_tools(everything)} == READ_TOOLS
 
 
 def test_hidden_tools_are_refused_at_call_time():
-    for name in ("approve_run", "propose_spec_change", "write_spec_change"):
+    for name in ("approve_run", "propose_spec_change"):
         res = call(mcp.McpOptions(), name, {"project": "p", "run_id": "r"})
         assert res.is_error and "Unknown tool" in text(res)
     res = call(mcp.McpOptions(read_only=True), "start_run", {"project": "p", "loop": "l"})
@@ -99,7 +92,7 @@ def test_hidden_tools_are_refused_at_call_time():
 
 
 def test_every_tool_has_annotations_description_and_object_schema():
-    everything = mcp.McpOptions(allow_approvals=True, allow_spec_write=True, spec_write_direct=True)
+    everything = mcp.McpOptions(allow_approvals=True, allow_spec_write=True)
     tools = list_tools(everything)
     assert {t.name for t in tools} == {t.name for t in mcp.TOOLS}
     for t in tools:
@@ -110,7 +103,7 @@ def test_every_tool_has_annotations_description_and_object_schema():
     by_name = {t.name: t.annotations for t in tools}
     assert by_name["get_spec"].read_only_hint is True
     assert by_name["start_run"].read_only_hint is False and by_name["start_run"].destructive_hint is False
-    assert by_name["reject_run"].destructive_hint is True and by_name["write_spec_change"].destructive_hint is True
+    assert by_name["reject_run"].destructive_hint is True
 
 
 def test_env_flags_and_cli_flags_are_or_ed(monkeypatch):
