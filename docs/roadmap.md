@@ -119,8 +119,8 @@ its mechanics one by one, mostly on the homelab profile.
 | Named connections (LLM providers, agent backends in the UI) | shipped | ADR 0052 |
 | Run launcher port/adapter (execution substrate, `FABRIK_LAUNCHER`) (beyond draft) | shipped | ADR 0057, PR #147 |
 | Hosting provider port/adapter (GitHub, GitLab) + extensible registry (beyond draft) | shipped; GitLab write-flow verification open | ADR 0062, ADR 0063, PR #172; issue #171 |
-| Research fetcher + access profiles per loop/run, one-time grants (beyond draft) | in-flight | ADR 0060; stages 1–2: PR #181 (issue #180), amendment draft PR #184; stages 3–5 open: #138, #139, #140 (also #119) |
-| Threat model (beyond draft) | in-flight | PR #182 (draft threat model) |
+| Research fetcher + access profiles per loop/run, one-time grants (beyond draft) | partial | ADR 0060; stages 1–2 shipped (PR #181, issue #180), amendment draft PR #184; stages 3–5 open: #138, #139, #140 (also #119) |
+| Threat model (beyond draft) | shipped (draft) | PR #182 |
 | Usage: cached-token split + billing mode (beyond draft) | shipped | PR #167 |
 | CI quality gates: coverage gate, Biome JS lint, `pip-audit` (beyond draft) | shipped | PR #175 |
 
@@ -150,7 +150,9 @@ The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-23.
 
 - Replay: deterministic re-execution of a run from pinned inputs — issue #129 (shipped, #170, ADR 0061)
 - Golden runs + eval harness ("this pipeline change did not regress my
-  loops" as a provable statement) — issue #130 (in PR #177; gaps: CI job, docs, run-store storage)
+  loops" as a provable statement) — issue #130 (core shipped, #177, ADR 0065; gaps: goldens are sidecar files
+  instead of run-store marks, CLI is `fabrik eval <project> <loop>`, opt-in CI
+  workflow still in `docs/ci/golden-eval.yml`, no user-facing docs)
 
 **3. Spec as a standard**
 
@@ -193,9 +195,10 @@ ADR 0049 and ADR 0051 have since been accepted and dropped from this list):
   the shipped interface is implicit and different — see
   [backends.md](backends.md).
 - Issue #134 tracks the language migration (docs/ADRs/issues → English);
-  in flight: PRs #162, #163 (ADRs), #164 (backend message catalogs), #165
-  (source comments/docstrings). Until it is done, this roadmap and any new
-  content stay in English.
+  ADR translations (#162, #163), backend message catalogs (#164) and source
+  comments/docstrings (#165) are merged; newer modules (hosting, MCP server,
+  replay, golden) still contain German strings and comments. Until it is
+  done, this roadmap and any new content stay in English.
 
 ## Backlog highlights
 
@@ -210,8 +213,8 @@ tracker):
 - **UI:** graph view for loops (#73), visual loop editor (#72),
   chat sessions (#77), project export/import (#71)
 - **Language:** output language per project (#25), UI i18n follow-ups
-  (#24, #74), English README (#23), full migration (#134, PRs #162–#165)
+  (#24, #74), English README (#23), full migration (#134; remainder after PRs #162–#165)
 - **Self-optimization:** falsifiable improvement proposals — design
-  proposal PR #174, issue #176
+  proposal merged (#174), implementation tracked in issue #176
 - **Refactors:** typed `AgentPollResult` (#19), typed run model
   continuation (#18), server dispatch table (#54)
