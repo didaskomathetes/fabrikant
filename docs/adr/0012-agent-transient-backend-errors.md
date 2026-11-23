@@ -1,66 +1,68 @@
-# ADR 0012: Agent-Step resilient gegen transiente Backend-Fehler
+# ADR 0012: Agent step resilient to transient backend errors
 
-**Status:** Akzeptiert (2026-10-18)
-**Entscheider:** Fabrik (dogfooding, Issue `pr-reply FAILED 20261018T141501Z`)
-**Kontext:** Der `pr-reply`-Loop (cron `*/15`, agent-Step über `opencode serve`)
-lief am 2026-10-18 in einen 6h-Hang und wurde erst vom Dead-Man's-Switch als
-`error` (`stale: >6h in 'running'`) markiert. Der agent-Step hat ein Step-Timeout
-(1800s), das eine hängende *Session* fängt — aber **nicht** einen
-Backend-/Transport-Fehler: warf `be.poll()`/`be.transcript()` eine Exception
-(z. B. `opencode serve` down/Restart mitten im Run), propagierte sie aus dem
-Polling-Loop und killte den gesamten Run. Für einen cron-Agent-Loop, der alle
-15 min feuert, ist ein transienter Backend-Ausfall kein Run-Fehler — der nächste
-Run 15 min später würde ohnehin neu starten.
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Entscheidung
+**Status:** Accepted (2026-10-18)
+**Decided by:** Fabrik (dogfooding, issue `pr-reply FAILED 20261018T141501Z`)
+**Context:** The `pr-reply` loop (cron `*/15`, agent step via `opencode serve`)
+ran into a 6h hang on 2026-10-18 and was only marked by the dead-man's switch as
+`error` (`stale: >6h in 'running'`). The agent step has a step timeout
+(1800s) that catches a hanging *session* — but **not** a
+backend/transport error: if `be.poll()`/`be.transcript()` threw an exception
+(e.g. `opencode serve` down/restarting mid-run), it propagated out of the
+polling loop and killed the entire run. For a cron agent loop that fires every
+15 min, a transient backend outage is not a run failure — the next
+run 15 min later would start fresh anyway.
 
-Der agent-Step (`src/fabrik/steps/agent.py`, `_step_agent_backend`) behandelt
-**Transport-Fehler während des Pollings** als transient:
+## Decision
 
-- `be.poll()`/`be.transcript()` werfen → der Step killt den Run **nicht**,
-  sondern loggt den Fehler, wartet mit Backoff (`5s, 10s, …`, Cap 30s) und
-  pollt weiter — **innerhalb des Step-Timeouts**.
-- Erholt sich das Backend vor dem Timeout → der Step läuft normal zu Ende
-  (`done`).
-- Ist das Timeout erreicht, während das Backend weiter fehlerhaft ist → der
-  Step meldet `agent timeout nach <X>s … · Backend-Fehler: <ursache>` (die
-  Ursache ist damit im Run-Log/Record, statt nur "timeout nach 1800s").
-- Die Session wird **nicht** vorzeitig gecancelt (Cancel bleibt beim Timeout /
-  bei `failed`).
+The agent step (`src/fabrik/steps/agent.py`, `_step_agent_backend`) treats
+**transport errors during polling** as transient:
 
-**Unverändert:** Status-basierte Fehler (`poll()` → `failed` + `retryable`)
-starten die Session neu (`step.retries`, Default 2 → max. 3 Versuche). Das ist
-ein anderer Pfad (Session-Neustart) und bleibt so.
+- `be.poll()`/`be.transcript()` throw → the step does **not** kill the run,
+  but logs the error, waits with backoff (`5s, 10s, …`, cap 30s) and
+  keeps polling — **within the step timeout**.
+- If the backend recovers before the timeout → the step runs to completion
+  normally (`done`).
+- If the timeout is reached while the backend keeps failing → the
+  step reports `agent timeout after <X>s … · backend error: <cause>` (the
+  cause is thus in the run log/record instead of just "timeout after 1800s").
+- The session is **not** cancelled prematurely (cancel stays with the timeout /
+  with `failed`).
 
-## Begründung
-- **Cron-Loops sind idempotent:** `pr-reply`/`review-pr` laufen periodisch und
-  sind state-basiert dedupliziert (`state/replied-comments.json`,
-  `state/reviewed-prs.json`). Ein transienter Backend-Ausfall kostet keinen
-  Fortschritt — der nächste Run holt es ein. Den Run zu killen ist reine
-  Reibung (Alert + Issue + manueller Nachlauf).
-- **Symmetrie zum bestehenden Retry:** Der Step retryt bereits transiente
-  *Status*-Fehler. Transport-Fehler sind derselbe Fehlerklassen-Typ (Backend
-  kurz nicht erreichbar) — es fehlt nur die Exception-Variante.
-- **Bounded:** Das Verhalten ist durch das Step-Timeout begrenzt (kein
-  endloser Retry-Loop); im Worst Case endet der Step mit demselben Timeout wie
-  zuvor, nur mit besserer Diagnose.
+**Unchanged:** status-based errors (`poll()` → `failed` + `retryable`)
+restart the session (`step.retries`, default 2 → max. 3 attempts). That is
+a different path (session restart) and stays as it is.
 
-## Abgelehnte Alternativen
-- **Exception sofort als Step-Fehler weiterleiten (Status quo):** Killt cron-Runs
-  bei jedem Backend-Blip → Alert-Flut, genau das beobachtete Problem.
-- **Session bei Transport-Fehler neu starten (wie `failed`+`retryable`):**
-  Würde den Prompt neu senden und bereits erledigte Arbeit (Commits, Replies)
-  doppelt ausführen. Bei einem kurzen Ausfall ist Weiterpollen (Session bleibt
-  server-seitig) der sicherere Pfad.
-- **Dead-Man's-Switch-Threshold senken:** Fängt nur *Prozess*-Tod, nicht
-  Backend-Blips; und ein global kürzeres Fenster würde lange `develop`-Runs
-  (3600s) falsch als stale markieren.
+## Rationale
+- **Cron loops are idempotent:** `pr-reply`/`review-pr` run periodically and
+  are state-based deduplicated (`state/replied-comments.json`,
+  `state/reviewed-prs.json`). A transient backend outage costs no
+  progress — the next run catches up. Killing the run is pure
+  friction (alert + issue + manual follow-up).
+- **Symmetry with the existing retry:** the step already retries transient
+  *status* errors. Transport errors are the same error class (backend
+  briefly unreachable) — only the exception variant is missing.
+- **Bounded:** the behavior is limited by the step timeout (no
+  endless retry loop); in the worst case the step ends with the same timeout as
+  before, just with better diagnostics.
 
-## Folgen
-- agent-Steps (alle Backends) sind robust gegen transiente
-  Backend-/Transport-Fehler innerhalb des Step-Timeouts.
-- Regression-Tests in `tests/test_steps_agent.py`
+## Rejected alternatives
+- **Forward the exception immediately as a step failure (status quo):** kills cron runs
+  on every backend blip → alert flood, exactly the observed problem.
+- **Restart the session on a transport error (like `failed`+`retryable`):**
+  would resend the prompt and execute already completed work (commits, replies)
+  twice. For a short outage, continuing to poll (the session stays
+  server-side) is the safer path.
+- **Lower the dead-man's-switch threshold:** only catches *process* death, not
+  backend blips; and a globally shorter window would wrongly mark long `develop` runs
+  (3600s) as stale.
+
+## Consequences
+- Agent steps (all backends) are robust against transient
+  backend/transport errors within the step timeout.
+- Regression tests in `tests/test_steps_agent.py`
   (`test_agent_transient_transport_error_then_success`,
   `test_agent_persistent_transport_error_times_out`,
   `test_agent_transport_error_does_not_cancel_prematurely`).
-- Der Dead-Man's-Switch bleibt der Backstop für *Prozess*-Tod (unverändert).
+- The dead-man's switch remains the backstop for *process* death (unchanged).

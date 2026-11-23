@@ -26,11 +26,11 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04) |
 | [0005](0005-opencode-dual-version.md) | opencode backend — dual support 1.x/2.x | Accepted |
 | [0006](0006-issue-refine-loop.md) | Issue refine loop (replaces triage) | Accepted |
-| [0008](0008-shell-untrusted-input-env.md) | Shell-Steps mit untrusted Input — `env:` statt Inline-Substitution | Akzeptiert (geändert 2026-11-03: Trust-Default `extra_context`) |
-| [0009](0009-run-id-response.md) | `run_id` vor Worker-Start + `resumed`-Flag in der API | Draft |
-| [0010](0010-dual-identity-pr-pipeline.md) | Dual-Identity PR-Pipeline (Builder ≠ Reviewer, Mensch nur bei kritisch) | Akzeptiert; Amendment 2026-10-27: konkrete Identitäten = Config; Amendment 2026-11-03: Identitäten pro Projekt, signierte API-Commits |
-| [0011](0011-approval-request-protocol.md) | Approval-Request-Protokoll (ADR-PR gestapelt auf Original-PR) | Akzeptiert |
-| [0012](0012-agent-transient-backend-errors.md) | Agent-Step resilient gegen transiente Backend-Fehler | Akzeptiert |
+| [0008](0008-shell-untrusted-input-env.md) | Shell steps with untrusted input — `env:` instead of inline substitution | Accepted (amended 2026-11-03: trust default `extra_context`) |
+| [0009](0009-run-id-response.md) | `run_id` before worker start + `resumed` flag in the API | Draft |
+| [0010](0010-dual-identity-pr-pipeline.md) | Dual-identity PR pipeline (builder ≠ reviewer, human only when critical) | Accepted; amendment 2026-10-27: concrete identities = config; amendment 2026-11-03: per-project identities, signed API commits |
+| [0011](0011-approval-request-protocol.md) | Approval request protocol (ADR PR stacked on the original PR) | Accepted |
+| [0012](0012-agent-transient-backend-errors.md) | Agent step resilient to transient backend errors | Accepted |
 | [0013](0013-issue-closing-ac-verification.md) | Issue-Abschluss + Verifikation der Acceptance Criteria | Akzeptiert (Stufen 0–2; Stufe 3 optional) |
 | [0014](0014-on-issue-reconcile.md) | Reconcile-Modus für den `on_issue`-Trigger | Akzeptiert; Amendment 2026-10-28: Auto-Retry via ADR 0036 |
 | [0015](0015-queued-approval.md) | Freigaben bei belegtem Projekt-Lock einreihen | Akzeptiert |

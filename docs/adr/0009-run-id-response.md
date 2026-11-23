@@ -1,55 +1,57 @@
-# ADR 0009: `run_id` vor Worker-Start + `resumed`-Flag in der API
+# ADR 0009: `run_id` before worker start + `resumed` flag in the API
 
-**Status:** Draft (2026-10-19) — erfordert Freigabe (PR #76)
+> Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-## Kontext
+**Status:** Draft (2026-10-19) — requires approval (PR #76)
 
-Die Web-UI (`web/app.js`) startete einen Run per `POST /api/runs` und pollte
-danach die Run-Historie (`GET /api/runs?project=…`), um den neuen Run zu
-finden. Das war ein **Start-Race**: Der Worker-Thread schreibt den Run-Record
-asynchron; kurz nach dem POST ist der neue Run noch nicht in der Historie
-sichtbar → die UI pollte gegen den leeren/alten Stand.
+## Context
 
-Analoges Problem am Approval-Gate: `POST /api/approve`/`/api/reject` lieferten
-nur einen Reply-String. Die UI wusste nicht, ob tatsächlich ein Resume-Worker
-gestartet wurde (z. B. schlägt fehl, wenn das Projekt-Lock belegt ist) → sie
-konnte nicht entscheiden, ob sie den Run weiter verfolgen soll.
+The web UI (`web/app.js`) started a run via `POST /api/runs` and then polled
+the run history (`GET /api/runs?project=…`) to find the new run. That was a
+**start race**: the worker thread writes the run record
+asynchronously; shortly after the POST the new run is not yet visible in the
+history → the UI polled against the empty/old state.
 
-## Entscheidung
+An analogous problem at the approval gate: `POST /api/approve`/`/api/reject` only
+returned a reply string. The UI did not know whether a resume worker had actually
+been started (e.g. it fails if the project lock is held) → it
+could not decide whether to keep following the run.
 
-Zwei **additive** API-Erweiterungen (keine Breaking-Change):
+## Decision
 
-1. **`run_id` vor Worker-Start:** `POST /api/runs` erzeugt die `run_id`
-   (`config.now_id()`) **bevor** der Worker-Thread startet und liefert sie im
-   Response zurück. Die UI pollt danach gezielt per `GET /api/run/<id>`
-   (`pollRunById`) — kein Suchen in der Historie, kein Start-Race.
-2. **`resumed`-Flag:** `POST /api/approve`/`/api/reject` liefern zusätzlich
-   `resumed` (bool). `true` nur, wenn für den Run tatsächlich ein
-   Resume-Worker gestartet wurde; `false`, wenn der Run bereits läuft,
-   abgeschlossen ist oder das Projekt-Lock belegt ist. Die UI verfolgt den
-   Run nur, wenn `resumed` true ist.
-3. **Interne Contract:** `_chat_resume()` (chat.py) liefert das Tupel
-   `(reply, resumed)`; der Server leitet `resumed` an die UI weiter.
+Two **additive** API extensions (no breaking change):
 
-## Begründung
+1. **`run_id` before worker start:** `POST /api/runs` generates the `run_id`
+   (`config.now_id()`) **before** the worker thread starts and returns it in the
+   response. The UI then polls specifically via `GET /api/run/<id>`
+   (`pollRunById`) — no searching in the history, no start race.
+2. **`resumed` flag:** `POST /api/approve`/`/api/reject` additionally return
+   `resumed` (bool). `true` only if a resume worker was actually started for
+   the run; `false` if the run is already running, finished
+   or the project lock is held. The UI follows the
+   run only if `resumed` is true.
+3. **Internal contract:** `_chat_resume()` (chat.py) returns the tuple
+   `(reply, resumed)`; the server passes `resumed` on to the UI.
 
-- **Warum `run_id` vor dem Start?** Die ID ist deterministisch erzeugbar
-  (`config.now_id()`), ohne den Run auszuführen. Sie als Handle zurückzugeben
-  macht den Run sofort adressierbar — das Race verschwindet strukturell,
-  statt per Polling-Heuristik umgangen zu werden.
-- **Warum `resumed` als bool und nicht nur Reply-Text?** Ein maschinenlesbares
-  Flag ist deterministisch auswertbar; ein Reply-String wäre Parsing-Heuristik
-  in der UI.
-- **Warum additive statt Breaking?** Bestehende Clients, die nur `reply`
-  lesen, bleiben kompatibel (additives JSON-Feld). Abgedeckt durch
+## Rationale
+
+- **Why `run_id` before the start?** The ID can be generated deterministically
+  (`config.now_id()`) without executing the run. Returning it as a handle
+  makes the run addressable immediately — the race disappears structurally
+  instead of being worked around with a polling heuristic.
+- **Why `resumed` as a bool and not just reply text?** A machine-readable
+  flag can be evaluated deterministically; a reply string would be parsing heuristics
+  in the UI.
+- **Why additive instead of breaking?** Existing clients that only
+  read `reply` remain compatible (additive JSON field). Covered by
   `test_post_approve_legacy_client`.
 
-## Konsequenzen
+## Consequences
 
-- UI (`web/app.js`) nutzt `pollRunById` und `r.resumed` — defensive
-  (`if (r && r.resumed)`), damit ältere Clients ohne das Feld nicht brechen.
-- `run_id`-Uniqueness hängt an `config.now_id()` (Zeitstempel-basiert);
-  Kollisionen unter hoher Parallelität sind unwahrscheinlich, aber nicht
-  ausgeschlossen — bei Bedarf stärkere ID-Generierung (Follow-up).
-- README-API-Tabelle + `chat.py`-Modul-Docstring dokumentieren das neue
-  Contract für Integratoren.
+- The UI (`web/app.js`) uses `pollRunById` and `r.resumed` — defensively
+  (`if (r && r.resumed)`) so that older clients without the field do not break.
+- `run_id` uniqueness depends on `config.now_id()` (timestamp-based);
+  collisions under high parallelism are unlikely but not
+  ruled out — stronger ID generation if needed (follow-up).
+- The README API table + the `chat.py` module docstring document the new
+  contract for integrators.
