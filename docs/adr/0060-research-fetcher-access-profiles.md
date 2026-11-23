@@ -162,7 +162,7 @@ Ob eine beantragte URL abgerufen wird, entscheidet der Fetcher so:
    weiter und vermerkt das.
 
 *Nachtrag 2026-11-22:* **Redirects are re-checked.** A redirect target must pass the SSRF guard
-*and* be approved itself (§3.1), otherwise the fetch fails; an approved host cannot launder an
+*and* be approved itself (§3), otherwise the fetch fails; an approved host cannot launder an
 unapproved URL. The SSRF guard also verifies the *connected peer address* before any request
 data is sent, which closes the DNS-rebinding window between resolution and connect, and it
 blocks every non-globally-routable address (including CGNAT, NAT64, 6to4 and IPv4-mapped forms).
