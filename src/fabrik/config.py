@@ -164,6 +164,7 @@ STEP_TYPES = (
     "issue",
     "human_gate",
     "alert_route",
+    "escalation",
 )
 TRIGGER_TYPES = ("manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook", "on_alert", "on_slack")
 # Polling-Trigger mit `poll`-Intervall (Sekunden, endliche Zahl >= 0).
@@ -215,8 +216,14 @@ def runs_archive_dir() -> Path:
     return STATE_DIR / "runs-archive"
 
 
+# Escalation to a human (ADR 0059). Same values as in scripts/pr-status.py
+# (host script without package import; tests/test_escalation.py checks they match).
+HUMAN_LABEL = "needs human"
+ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
+
 # human_gate defaults (ADR 0010): diff heuristics for the criticality check.
 # ADR paths: touch → always human approval (critical decision).
+
 HUMAN_GATE_ADR_PATHS = ["docs/adr"]
 HUMAN_GATE_MAX_FILES = 40  # more changed files → critical (large refactoring)
 HUMAN_GATE_MAX_LINES = 1500  # mehr +/- Zeilen → kritisch

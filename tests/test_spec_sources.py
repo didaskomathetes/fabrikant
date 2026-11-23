@@ -408,7 +408,8 @@ def test_second_project_in_few_lines_uses_bundled_templates(tmp_path, monkeypatc
     assert dev["steps"][1]["model"] == "test-builder"
     assert "acme/app" not in rev["steps"][0]["prompt_file"]
     assert rev["triggers"][0] == {
-        "type": "on_pr", "repo": "acme/app", "labels": ["fabrik"], "poll": 300, "reconcile": "head",
+        "type": "on_pr", "repo": "acme/app", "labels": ["fabrik"], "exclude_labels": ["needs human"],
+        "poll": 300, "reconcile": "head",
     }  # fmt: skip
 
 

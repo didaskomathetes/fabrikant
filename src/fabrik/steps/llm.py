@@ -6,10 +6,12 @@ import json
 import re
 
 from .. import llm as llm_registry
+from ..billing import for_step as billing_for_step
 from ..context import _cap, _substitute, untrusted_blocks
 from ..failures import classify_exception, failed
 from ..i18n import t as _t
 from ..runmodel import FailureKind
+from ..tokens import TokenCounts
 from .extra_context import render_extra_context
 
 # finish_reason=length → one retry with max_tokens × factor. Reasoning models
@@ -202,7 +204,12 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
         text = (res["text"] or "").strip()
     except Exception as e:
         return failed(f"LLM-Call fehlgeschlagen: {e}", classify_exception(e), output="")
-    usage = {"model": model, "provider": prov.get("name") or step.get("provider") or "active", **res["usage"]}
+    usage = {
+        "model": model,
+        "provider": prov.get("name") or step.get("provider") or "active",
+        **res["usage"],
+        "billing": billing_for_step(step).value,
+    }
     text, parsed = _extract_json(text)
     if parsed is None:
         summary = _t("steps.llm.llm_returned_no_json_object")
@@ -215,9 +222,7 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
     if errs:
         return {"ok": False, "output": _cap(text), "summary": "Schema-Validierung: " + "; ".join(errs)}
     injected = _inject_schema_keys(parsed, schema, ctx, emit)
-    emit(
-        f"  LLM usage: {usage['total_tokens']} tokens ({usage['prompt_tokens']} in / {usage['completion_tokens']} out)"
-    )
+    emit(f"  LLM usage: {TokenCounts.from_usage(usage).summary()}")
     return {
         "ok": True,
         "output": _cap(text),

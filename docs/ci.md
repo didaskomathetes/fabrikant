@@ -9,7 +9,9 @@ Die Jobs laufen direkt im Repository-Root (Standalone-Layout, kein
 ## Jobs
 
 - `test`: `uv sync --frozen`, `scripts/lint.sh` (ruff check + format, pyright, bandit ab Severity medium), `fabrik validate --offline projects/*.fabrik.yaml` (Specs inkl. vars/Templates; ohne host-abhängige root-Prüfung), `pytest -m "not browser and not perf" -n auto`
-  (parallel via pytest-xdist), danach `pytest -m perf` seriell (Wall-Clock-Budgets
+  (parallel via pytest-xdist, mit `--cov=fabrik`: Coverage-Gate `fail_under = 90` in `pyproject.toml`),
+  davor JS-Lint (Biome, `biome.json`, nur `web/app.js`; Fehler blockieren, Warnungen nicht) und
+  Dependency-Audit (`pip-audit` gegen die Lock-Umgebung); danach `pytest -m perf` seriell (Wall-Clock-Budgets
   vertragen keine CPU-Konkurrenz durch parallele Worker).
 - `browser`: `playwright install --with-deps chromium` (Browser **und**
   System-Libs), dann `pytest -m browser`. Blockierend (kein `continue-on-error`).

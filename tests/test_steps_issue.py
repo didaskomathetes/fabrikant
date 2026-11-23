@@ -9,12 +9,16 @@ import pytest
 import yaml
 from helpers import http_error
 
-from fabrik import secrets
+from fabrik import gitops, secrets
 from fabrik.engine import _dispatch_step
 from fabrik.secrets import _redact_record
 from fabrik.steps import issue
 
 PROJECTS = Path(__file__).resolve().parent.parent / "projects"
+
+# Default-Antwort für unkonfigurierte Calls: gültiges Issue-Objekt, damit der
+# Hosting-Provider (der jede Antwort in ein Dataclass parst) nicht an {} scheitert.
+_DEFAULT_ISSUE = {"number": 1, "title": "t", "body": "b", "state": "open", "html_url": "https://gh/o/r/issues/1"}
 
 
 class _Api:
@@ -31,14 +35,14 @@ class _Api:
         for (m, suffix), code in self.errors.items():
             if m == method and url.endswith(suffix):
                 raise http_error(code, url, "err", body=b"boom")
-        return self.responses.get(method, {})
+        return self.responses.get(method, _DEFAULT_ISSUE)
 
 
 @pytest.fixture
 def api(monkeypatch):
     fake = _Api()
-    monkeypatch.setattr(issue, "_gh_token", lambda role="dev": "tok-dev")
-    monkeypatch.setattr(issue, "_gh_api", fake)
+    monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok-dev")
+    monkeypatch.setattr(gitops, "_gh_api", fake)
     return fake
 
 
@@ -211,7 +215,7 @@ def test_dispatch_and_token_never_in_result(monkeypatch):
         return {"number": 1, "html_url": "https://gh/1"}
 
     monkeypatch.setenv("GITHUB_TOKEN", secret)
-    monkeypatch.setattr(issue, "_gh_api", fake_api)
+    monkeypatch.setattr(gitops, "_gh_api", fake_api)
     res = _dispatch_step({}, {"type": "issue", "action": "create", "repo": "o/r", "title": "t"}, lambda m: None)
     assert seen["token"] == secret
     assert secret not in json.dumps(res)
@@ -261,7 +265,7 @@ class _RoutedApi:
                 if isinstance(res, int):
                     raise http_error(res, url, "err", body=b"boom")
                 return res(url) if callable(res) else res
-        return {}
+        return _DEFAULT_ISSUE
 
 
 @pytest.fixture
@@ -269,14 +273,14 @@ def routed(monkeypatch):
     def _install(routes, blocked_by=(), deps=None):
         """`blocked_by`: Blocker von jedem Issue; `deps`: {(nummer, kind): [nummern]} (Vorrang)."""
         fake = _RoutedApi(routes)
-        monkeypatch.setattr(issue, "_gh_token", lambda role="dev": "tok-dev")
-        monkeypatch.setattr(issue, "_gh_api", fake)
+        monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok-dev")
+        monkeypatch.setattr(gitops, "_gh_api", fake)
 
         def _deps(repo, n, tok, kind="blocked_by"):
             nums = (deps or {}).get((int(n), kind), blocked_by if kind == "blocked_by" else ())
             return [{"number": b} for b in nums]
 
-        monkeypatch.setattr(issue, "_gh_dependencies", _deps)
+        monkeypatch.setattr(gitops, "_gh_dependencies", _deps)
         return fake
 
     return _install

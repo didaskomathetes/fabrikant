@@ -27,7 +27,9 @@ import json
 import os
 
 from ..agentenv import COPILOT_AUTH_VARS, passthrough
+from ..billing import Billing
 from ..i18n import t as _t
+from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend
 
 # JSONL event types of the Copilot CLI schema (read defensively — the schema is
@@ -71,6 +73,10 @@ class CopilotBackend(OneShotCliBackend):
             cmd += ["--allow-all-tools"]
         return cmd
 
+    def billing(self) -> Billing:
+        """Copilot rechnet Premium Requests des GitHub-Plans ab — nie pro Token."""
+        return Billing.SUBSCRIPTION
+
     def _env(self) -> dict:
         """Adapter addition on the agent env allowlist (ADR 0050) — no `os.environ` clone.
 
@@ -80,7 +86,7 @@ class CopilotBackend(OneShotCliBackend):
         return {"COPILOT_AUTO_UPDATE": "false", **passthrough(COPILOT_AUTH_VARS)}
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
-        base = {"tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+        base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}
         premium = self._premium_requests(out)
         if premium is not None:
             base["premium_requests"] = premium

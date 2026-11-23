@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import agent_state, config, connections, pause, retry_chains
+from . import agent_state, config, connections, hosting, pause, retry_chains
 from .approval import ApprovalRequest
 from .context import _PLACEHOLDER_RE, _cap, _cond_matches, _substitute, tier_policy
 from .failures import Failure, FailureKind, SetupError, classify_exception, failed, from_result, run_failure
@@ -57,6 +57,7 @@ from .steps import (
     _notify,
     _step_agent,
     _step_alert_route,
+    _step_escalation,
     _step_git,
     _step_http,
     _step_human_gate,
@@ -177,6 +178,8 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
         intent = _issue_intent(step)
     elif t == "human_gate":
         intent = _t("engine.criticality_check_human_approval_if")
+    elif t == "escalation":
+        intent = "Eskalation an einen Menschen (ADR 0059): warten, dann fortsetzen"
     elif t == "report":
         intent = f"Report: {step.get('write', '(nur Log)')}"
     elif t == "notify":
@@ -350,6 +353,7 @@ def _init_record(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> tuple[dict, str, int]:
     """Load the record (resume) or create a new one; returns (record, run_id, start_i).
 
@@ -358,7 +362,8 @@ def _init_record(
     ``trigger_key`` is the canonical chain key: for retry attempts the key of
     the claiming chain (``chain_key``), otherwise computed from the trigger string
     — the run end books the chain via the record field, not via the (meanwhile
-    changed) spec."""
+    changed) spec.
+    ``replay_of`` (ADR 0061) links a replay run to the original."""
     start_i = 0
     if resume_id:
         record = get_run(resume_id, project_name)
@@ -398,6 +403,7 @@ def _init_record(
             "rejected_by": None,
             "attempt": attempt,
             "retry_of": retry_of,
+            "replay_of": replay_of,
             "trigger_key": chain_key or retry_chains.trigger_key(spec, loop_name, trigger) or "",
         }
     # New: the file may be missing or a queued placeholder (which the start overwrites);
@@ -801,6 +807,7 @@ def run_loop(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> dict:
     """Runs a loop (synchronously). Returns the run record.
 
@@ -816,7 +823,9 @@ def run_loop(
     attempt: 0-based retry attempt number (ADR 0036); 0 = first run.
     retry_of: run id of the previous attempt (ADR 0036); "" = no retry.
     chain_key: key of the retry chain whose claim the attempt holds; ""
-    = compute from spec + trigger."""
+    = compute from spec + trigger.
+    replay_of: run id of the original if this is a replay (ADR 0061);
+    "" = no replay."""
     spec = load_projects().get(project_name)
     if not spec:
         raise SetupError(_t("engine.unknown_project", project_name=project_name))
@@ -826,7 +835,7 @@ def run_loop(
     if not loop:
         raise SetupError(_t("engine.unknown_loop_available", loop_name=loop_name, v2=list(spec["loops"])))
 
-    with project_github(spec):  # GitHub identities of the project (github_env_file)
+    with project_github(spec), hosting.spec_context(spec):  # GitHub identities + hosting provider (ADR 0062)
         return _run_loop(
             spec,
             loop,
@@ -843,6 +852,7 @@ def run_loop(
             attempt,
             retry_of,
             chain_key,
+            replay_of,
         )
 
 
@@ -862,6 +872,7 @@ def _run_loop(
     attempt: int = 0,
     retry_of: str = "",
     chain_key: str = "",
+    replay_of: str = "",
 ) -> dict:
     """Body of :func:`run_loop` with an already resolved spec snapshot."""
     run_dir = runs_dir_for(project_name)
@@ -879,6 +890,7 @@ def _run_loop(
         attempt,
         retry_of,
         chain_key,
+        replay_of,
     )
     log = SessionLog(run_id, project_name, loop_name, trigger, record.get("spec_hash", ""))
     log.start()  # INSERT OR IGNORE — on resume the session already exists
@@ -963,6 +975,8 @@ def _dispatch_step(ctx: dict, step: dict, emit) -> dict:
         return _step_issue(ctx, step)
     if t == "human_gate":
         return _step_human_gate(ctx, step, emit)
+    if t == "escalation":
+        return _step_escalation(ctx, step, emit)
     if t == "report":
         text = _substitute(step.get("text", ""), ctx)
         w = step.get("write")

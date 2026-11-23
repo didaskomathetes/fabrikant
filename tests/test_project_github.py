@@ -201,3 +201,22 @@ def test_run_loop_applies_project_token_file(runs_dir, projects_dir, tmp_path):
     rec = fabrik.run_loop("ptok", "t")
     assert rec["steps"][0]["summary"] == str(tokens)
     assert gitops.subprocess_env() == {}  # nach dem Run zurückgesetzt
+
+
+def test_sandboxed_agent_without_identity_gets_no_token(files, monkeypatch):
+    """Sandbox (ADR 0054): ohne `github_identity` kein (Builder-)Token im Container."""
+    from fabrik import sandbox
+    from fabrik.backends.claude_code import ClaudeCodeBackend
+    from fabrik.steps.agent import _apply_github_identity
+
+    _, proj = files
+    monkeypatch.setenv(sandbox.ENABLE_VAR, "1")
+    monkeypatch.setenv("GH_TOKEN", "global-gh")
+    be = ClaudeCodeBackend.__new__(ClaudeCodeBackend)
+    be.extra_env = {}
+    with gitops.project_github({gitops.SPEC_ENV_FILE_KEY: str(proj)}):
+        assert _apply_github_identity(be, {}) is None
+    assert be.extra_env == {"GH_TOKEN": "", "GITHUB_TOKEN": "", "GITHUB_REVIEWER_TOKEN": ""}
+    with gitops.project_github({gitops.SPEC_ENV_FILE_KEY: str(proj)}):
+        assert _apply_github_identity(be, {"github_identity": "dev"}) is None
+    assert be.extra_env["GITHUB_TOKEN"] == "proj-dev"  # explizite Identität bleibt

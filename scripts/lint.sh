@@ -57,6 +57,8 @@ check "ruff check" uv run ruff check "${RUFF_PATHS[@]}"
 check "ruff format" uv run ruff format --check "${RUFF_PATHS[@]}"
 check "pyright" uv run pyright
 check "bandit" "${BANDIT[@]}" --severity-level medium
+# Spec-Referenz muss zum Schema passen (Issue #131): scripts/generate-spec-reference.py --check
+check "spec-reference aktuell" uv run python scripts/generate-spec-reference.py --check
 if [ "${#failed[@]}" -gt 0 ]; then
   log "ROT: ${failed[*]}"
   exit "$EX_FINDINGS"

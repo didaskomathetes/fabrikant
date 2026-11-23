@@ -75,7 +75,7 @@ def test_validate_bad_tier(tmp_path):
 
 
 def test_validate_bad_step_type(tmp_path):
-    with pytest.raises(ValueError, match="type muss einer von"):
+    with pytest.raises(ValueError, match="steps/0/type: .* is not (one of|of type)"):
         specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "bogus"}))
 
 
@@ -83,7 +83,7 @@ def test_validate_bad_step_type(tmp_path):
 def test_validate_unhashable_step_type_reports_error_not_crash(tmp_path, bad_type):
     """Unhashable/ungewöhnliche `type`-Werte (z. B. `type: [shell]` in YAML)
     dürfen ValueError liefern, nicht TypeError."""
-    with pytest.raises(ValueError, match="type muss einer von"):
+    with pytest.raises(ValueError, match="steps/0/type"):
         specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": bad_type}))
 
 
@@ -470,7 +470,7 @@ def test_validate_on_start_only_bool_on_cron(tmp_path):
 
 
 def test_validate_unknown_trigger_type(tmp_path):
-    with pytest.raises(ValueError, match="type muss einer von"):
+    with pytest.raises(ValueError, match="triggers/0/type: .* is not one of"):
         specs._validate_spec(_trigger_spec(str(tmp_path), {"type": "bogus"}))
 
 

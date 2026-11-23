@@ -16,6 +16,7 @@
     <button id="settingstoggle" class="ghost" title="Einstellungen" data-i18n-title="header.settings">⚙</button>
     <button id="chattoggle" class="ghost" data-i18n="header.chat">✉ chat</button>
     <button id="schattoggle" class="ghost" data-i18n="header.schedule">📅 plan</button>
+    <button id="kpitoggle" class="ghost" data-i18n="header.kpis">📊 KPIs</button>
   </div>
 </header>
 <div id="loginview" class="hidden">
@@ -48,6 +49,7 @@
   <div class="runtabbar">
     <span id="runtabs" role="tablist">
       <button data-tab="overview" class="ghost active" role="tab" data-i18n="run.tab.overview">Übersicht</button>
+      <button data-tab="trace" class="ghost" role="tab" data-i18n="run.tab.trace">Trace</button>
       <button data-tab="log" class="ghost" role="tab" data-i18n="run.tab.log">Log</button>
       <button data-tab="transcript" class="ghost" role="tab" data-i18n="run.tab.transcript">Transkript</button>
     </span>
@@ -87,6 +89,13 @@
   </div>
   <div id="schedform"></div>
   <div id="schedbody" class="schedbody"></div>
+</div>
+<div id="kpipanel" class="schedpanel hidden">
+  <div class="chatbar">
+    <span data-i18n="kpis.title">Factory KPIs</span>
+    <span class="chatbar-right"><button id="kpiclose" class="ghost">✕</button></span>
+  </div>
+  <div id="kpibody" class="schedbody"></div>
 </div>
 <footer>
   <span id="clock"></span> · 127.0.0.1 · <a href="/api/health" id="foothealth" data-i18n="footer.api">api</a>

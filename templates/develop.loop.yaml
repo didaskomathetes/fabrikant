@@ -27,6 +27,7 @@ params:
   priority_labels: [p0, p1, p2, p3]
   builder_context: []  # extra_context des Builder-Steps (changes)
   review_context: []  # extra_context des Review-Steps (pr_review: Review- und Fix-Prompt)
+  human_label: needs human  # eskalierte Issues nicht (neu) aufgreifen (ADR 0059)
 loop:
   description: "Issue-Entwicklung (dual-identity, ADR 0010): Issue → PR → LLM-Review → Merge (Mensch nur bei kritisch)"
   tier: 2
@@ -38,6 +39,7 @@ loop:
       reconcile: true  # Bestand nach Restart abarbeiten (ADR 0014)
       max_per_poll: 2
       priority_labels: "{priority_labels}"  # ADR 0021
+      exclude_labels: ["{human_label}"]
       # Nie mit unerledigten "blocked by"-Dependencies starten (ADR 0031).
       skip_blocked: true
   steps:

@@ -105,6 +105,7 @@ runs = Table(
     Column("failure_kind", Text),
     Column("retry_after", Text),
     Column("retry_of", Text),
+    Column("replay_of", Text),
     Column("attempt", Integer),
     Column("trigger_key", Text),
     Column("worktree_cleanup_error", Text),
@@ -160,6 +161,9 @@ step_usage = Table(
     Column("completion_tokens", Integer),
     Column("total_tokens", Integer),
     Column("cost_usd", Float),
+    Column("cache_read_tokens", Integer),
+    Column("cache_write_tokens", Integer),
+    Column("billing", Text),
     _step_fk(),
 )
 
@@ -210,6 +214,7 @@ approvals = Table(
     # Abgeleiteter Zustand (ADR 0034 Nr. 2): pending | queued | approved | rejected.
     Column("status", Text, nullable=False),
     Column("reason", Text),
+    Column("kind", Text),  # Eskalationsart bei reason = escalation (ADR 0059)
     Column("step", Text),
     Column("condition", Text),
     Column("why", Text),

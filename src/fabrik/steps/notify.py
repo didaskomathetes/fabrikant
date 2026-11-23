@@ -7,12 +7,12 @@ import json
 import logging
 import re
 import urllib.error
-import urllib.parse
 
 from .. import config
 from ..context import _substitute
 from ..failures import parse_kind
-from ..gitops import _gh_api, _gh_token, _http_post
+from ..gitops import _http_post
+from ..hosting import HostingError, Provider, get_provider
 from ..i18n import t as _t
 from ..runmodel import FAILED_RUN_STATUSES, FAILED_STEP_STATUSES, FailureKind
 from ..secrets import redact_log_tail
@@ -36,10 +36,11 @@ _VOLATILE = re.compile(
 # Replacement token for normalized IDs in the fingerprint (more distinctive than "#",
 # so the normalization can be traced unambiguously in code/docs).
 _VOLATILE_REPLACEMENT = "<id>"
-# Errors the GitHub call layer can raise in the alert flow and that we
+# Errors the hosting provider can raise in the alert flow and that we
 # catch deliberately (fail-safe: an alert error must not kill the run):
-# HTTP 4xx/5xx, network flakes, timeouts, broken JSON answers as well as
-# RuntimeError from _gh_token (token not available). Programming errors
+# HTTP 4xx/5xx, network flakes, timeouts, broken JSON answers,
+# HostingError (token not available, ADR 0062) as well as RuntimeError from
+# _gh_token (GitHub, token not available). Programming errors
 # (TypeError, AttributeError, …) do NOT fall in here — they propagate
 # upward and are logged there with a stack trace (no silent swallowing).
 _GH_API_ERRORS = (
@@ -49,6 +50,7 @@ _GH_API_ERRORS = (
     TimeoutError,
     json.JSONDecodeError,
     RuntimeError,
+    HostingError,
 )
 
 
@@ -129,7 +131,7 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
         if gh:
             try:
                 labels = [str(x) for x in (cfg.get("issue_labels") or ["fabrik"])]
-                sent.append(_alert_issue(str(gh), labels, record, tail))
+                sent.append(_alert_issue(get_provider(str(gh), spec=spec), str(gh), labels, record, tail))
             except _GH_API_ERRORS as e:
                 # Fail-safe boundary: only API/token/network errors (the
                 # _GH_API_ERRORS contract) are translated into a channel entry
@@ -174,7 +176,7 @@ def _alert_fingerprint(record: dict) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[: config.ALERT_FP_LEN]
 
 
-def _find_open_alert(gh: str, labels: list[str], marker: str, tok: str) -> int | None:
+def _find_open_alert(provider: Provider, gh: str, labels: list[str], marker: str) -> int | None:
     """Number of the open alert issue with `marker` in the body (or None).
 
     Paginates over ALL open alert issues (until a page is incomplete),
@@ -184,33 +186,19 @@ def _find_open_alert(gh: str, labels: list[str], marker: str, tok: str) -> int |
     The page size is capped at `GH_MAX_PER_PAGE` — GitHub never returns
     more, and a larger target size would treat every page as "last".
 
-    Query via `urlencode`: the comma in `labels` is percent-encoded
-    (labels=a%2Cb) — the GitHub API accepts that (test:
-    test_alert_dedup_comments_on_open_issue). Labels are AND-combined:
-    after a change of `issue_labels` old issues no longer match.
+    Labels are AND-combined: after a change of `issue_labels` old issues no
+    longer match. The provider normalizes the response (non-list → empty list,
+    broken elements are skipped, ADR 0062).
     """
     per_page = min(config.ALERT_OPEN_ISSUES_PAGE, config.GH_MAX_PER_PAGE)
     page = 1
     while True:
-        q = urllib.parse.urlencode({"state": "open", "labels": ",".join(labels), "per_page": per_page, "page": page})
-        issues: object = _gh_api("GET", f"https://api.github.com/repos/{gh}/issues?{q}", tok)
-        if not isinstance(issues, list):  # `_gh_api` is typed to dict, the list API returns list
-            log.warning(
-                _t("steps.notify.alert_lookup_unexpected_api_response"),
-                type(issues).__name__,
-            )
-            return None
+        issues = provider.list_issues(gh, state="open", labels=labels, page=page, per_page=per_page)
         for it in issues:
-            if not isinstance(it, dict):  # unexpected element (shape change) → skip
-                log.warning(
-                    _t("steps.notify.alert_lookup_unexpected_list_item"),
-                    type(it).__name__,
-                )
+            if it.is_pr:  # GitHub list also contains PRs → exclude
                 continue
-            if "pull_request" in it:  # GitHub list also contains PRs → exclude
-                continue
-            if marker in (it.get("body") or ""):
-                return it.get("number")
+            if marker in it.body:
+                return it.number
         if len(issues) < per_page:  # letzte Seite → kein Match
             return None
         if page >= config.ALERT_LOOKUP_MAX_PAGES:  # Rate-Limit-Schutz: Lookup abbrechen
@@ -231,13 +219,12 @@ def _sanitize_title(text: str, cap: int = 80) -> str:
     return t[:cap].rstrip()
 
 
-def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
+def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, tail: str) -> str:
     """Alert issue with dedup: if an issue is already open for the same fingerprint,
     the run is commented there instead of creating a new issue
     (otherwise: one issue per failed cron run). Closed issues
     do not count — if the error occurs again after closing, there is a
     new issue. → channel entry `issue#N` or `issue#N(+)` (commented)."""
-    tok = _gh_token()
     step, reason = _failure_reason(record)
     marker = _ALERT_MARKER.format(fp=_alert_fingerprint(record))
     kind = parse_kind(record.get("failure_kind"))
@@ -246,7 +233,7 @@ def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
         f"Fehlerklasse: **{_kind_label(kind)}**\n\n```\n{tail}\n```"
     )
     try:
-        existing = _find_open_alert(gh, labels, marker, tok)
+        existing = _find_open_alert(provider, gh, labels, marker)
     except _GH_API_ERRORS:
         # Fail-safe: lookup broken (API error) → better a duplicate than a
         # lost alert (stack trace is logged, exception not
@@ -255,44 +242,28 @@ def _alert_issue(gh: str, labels: list[str], record: dict, tail: str) -> str:
         existing = None
     if existing is not None:
         try:
-            _gh_api(
-                "POST",
-                f"https://api.github.com/repos/{gh}/issues/{existing}/comments",
-                tok,
-                {"body": f"Erneut fehlgeschlagen — {run_info}"},
-            )
+            provider.create_comment(gh, existing, f"Erneut fehlgeschlagen — {run_info}")
         except _GH_API_ERRORS as e:
             log.exception("Alert-Kommentar fehlgeschlagen (Issue #%s, Run %s)", existing, record["id"])
             return f"issue:{existing}(+):error({e})"
         return f"issue#{existing}(+)"
     try:
-        res = _gh_api(
-            "POST",
-            f"https://api.github.com/repos/{gh}/issues",
-            tok,
-            {
-                "title": (
-                    f"[fabrik] {record['project']}/{record['loop']} FAILED [{kind.value}] — "
-                    f"{step}: {_sanitize_title(reason)}"
-                ),
-                "body": (
-                    _t(
-                        "steps.notify.further_runs_with_the_same",
-                        run_info=run_info,
-                        v2=record["project"],
-                        marker=marker,
-                    )
-                ),
-                "labels": labels,
-            },
+        issue = provider.create_issue(
+            gh,
+            title=(
+                f"[fabrik] {record['project']}/{record['loop']} FAILED [{kind.value}] — "
+                f"{step}: {_sanitize_title(reason)}"
+            ),
+            body=_t("steps.notify.further_runs_with_the_same", run_info=run_info, v2=record["project"], marker=marker),
+            labels=labels,
         )
     except _GH_API_ERRORS as e:
         log.exception("Alert-Issue-Anlage fehlgeschlagen (Repo %s, Run %s)", gh, record["id"])
         return f"issue:error({e})"
-    num = res.get("number") if isinstance(res, dict) else None
-    if num is None:  # API response without issue number (shape change, error body)
+    if not issue.number:  # API response without issue number (shape change, error body)
         return _t("steps.notify.issue_error_no_issue_number")
-    return f"issue#{num}"
+
+    return f"issue#{issue.number}"
 
 
 def _step_notify(ctx: dict, step: dict, emit) -> dict:

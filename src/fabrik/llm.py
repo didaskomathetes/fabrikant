@@ -40,6 +40,7 @@ from typing import Any
 
 from . import config, connections, httpsafe, llm_cli
 from .i18n import t
+from .tokens import TokenCounts
 
 log = logging.getLogger("fabrik.llm")
 _ACTIVE_FILE = config.STATE_DIR / "active_llm"
@@ -190,19 +191,14 @@ def complete(
     """One chat-completion call against ``prov`` (HTTP or CLI).
 
     → ``{"text": str | None, "finish_reason": str, "usage": {prompt_tokens,
-    completion_tokens, total_tokens}}``. ``text`` None/empty = empty answer
+    completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens}}``. ``text`` None/empty = empty answer
     (caller decides). Transport errors raise. CLI providers ignore
     ``temperature``/``max_tokens``; ``cancel_event`` kills the CLI there.
     """
     model = model or prov["model"]
     if prov.get("cli"):
         text, tokens = llm_cli.complete(prov["cli"], model, system, user, timeout, cancel_event)
-        tin, tout = int(tokens.get("input") or 0), int(tokens.get("output") or 0)
-        return {
-            "text": text,
-            "finish_reason": "stop",
-            "usage": {"prompt_tokens": tin, "completion_tokens": tout, "total_tokens": tin + tout},
-        }
+        return {"text": text, "finish_reason": "stop", "usage": TokenCounts.from_poll(tokens).usage_fields()}
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -223,15 +219,24 @@ def complete(
     }
 
 
-_USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
-
-
 def _usage(u: object) -> dict[str, int]:
-    """OpenAI usage block → token counters; malformed → zeros (third-party APIs
-    must not turn a successful call into a failure)."""
+    """OpenAI usage block → step usage token fields; malformed → zeros (third-party APIs
+    must not turn a successful call into a failure).
+
+    Cached prompt tokens are in ``prompt_tokens_details.cached_tokens`` (included in
+    ``prompt_tokens``); the Chat Completions API does not report cache writes."""
+
     if not isinstance(u, Mapping):
-        return dict.fromkeys(_USAGE_KEYS, 0)
-    return {k: _token_count(u.get(k)) for k in _USAGE_KEYS}
+        return TokenCounts().usage_fields()
+    details = u.get("prompt_tokens_details")
+    cached = _token_count(details.get("cached_tokens")) if isinstance(details, Mapping) else 0
+    fields = TokenCounts(
+        _token_count(u.get("prompt_tokens")), _token_count(u.get("completion_tokens")), cached
+    ).usage_fields()
+    # A reported total_tokens takes precedence (some providers count e.g. reasoning separately).
+
+    fields["total_tokens"] = _token_count(u.get("total_tokens"))
+    return fields
 
 
 def _token_count(v: Any) -> int:

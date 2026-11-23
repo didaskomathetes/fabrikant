@@ -7,16 +7,19 @@ import json
 import os
 import time
 
-from .. import config
+from .. import config, sandbox
 from ..backends import AgentBackend, create_backend, known_backends
 from ..backends._oneshot import OneShotCliBackend
+from ..billing import Billing
+from ..billing import for_step as billing_for_step
 from ..context import _cap, _substitute, step_workdir
 from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
-from ..gitops import github_env, subprocess_env, token_overrides
+from ..gitops import cleared_tokens, github_env, subprocess_env, token_overrides
 from ..i18n import t as _t
 from ..runmodel import FailureKind
 from ..secrets import _redact
 from ..spec_sources import resolve_relative
+from ..tokens import TokenCounts
 from .extra_context import render_extra_context
 from .shell import _step_shell
 
@@ -194,12 +197,16 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
     """`github_identity: dev|reviewer` → `gh` in the agent process runs as this identity (ADR 0010).
 
     One-shot CLI backends only: `opencode serve` is a foreign process whose env
-    the step cannot set. Without an identity, one-shot agents still get the
-    project settings (token file, `commit_via` for `python -m fabrik.push`).
-    Returns an error message or None."""
+    the step cannot set. Without an identity, one-shot agents on the host still get the
+    project settings (token file, `commit_via` for `python -m fabrik.push`). In the
+    sandbox (ADR 0054), by contrast, NO token: without `github_identity` all token variables are empty —
+    otherwise every container would silently carry the project's builder token (GitHub is reachable
+    via the egress proxy). Returns an error message or None."""
     role = str(step.get("github_identity") or "").strip()
     if not role:
-        if isinstance(be, OneShotCliBackend):
+        if isinstance(be, OneShotCliBackend) and sandbox.sandbox_enabled():
+            be.extra_env = cleared_tokens()
+        elif isinstance(be, OneShotCliBackend):
             # Override inherited global tokens (empty = `gh` ignores them), otherwise `gh` runs as the wrong identity.
             be.extra_env = {**token_overrides(), **subprocess_env()}
         return None
@@ -212,21 +219,27 @@ def _apply_github_identity(be: AgentBackend, step: dict) -> str | None:
     return None
 
 
-def _agent_usage(last: dict, backend_name: str, model: str, carry: dict | None = None) -> dict:
+def _detected_billing(be: AgentBackend) -> Billing:
+    """Billing mode the backend derives from its auth (optional part of the port)."""
+    detect = getattr(be, "billing", None)
+    detected = detect() if callable(detect) else None
+    return detected if isinstance(detected, Billing) else Billing.UNKNOWN
+
+
+def _agent_usage(
+    last: dict, backend_name: str, model: str, carry: dict | None = None, billing: Billing = Billing.UNKNOWN
+) -> dict:
     """Usage dict (tokens, costs) from the last poll result.
 
     ``carry`` = consumption of earlier, restarted attempts — failed
     and aborted sessions also cost tokens and belong in the sums."""
-    tok = last.get("tokens") or {}
     carry = carry or {}
-    t_in = int(tok.get("input", 0) or 0) + int(carry.get("prompt_tokens", 0))
-    t_out = int(tok.get("output", 0) or 0) + int(carry.get("completion_tokens", 0))
+    tokens = TokenCounts.from_poll(last.get("tokens")) + TokenCounts.from_usage(carry)
     usage: dict = {
         "model": model or "-",
         "provider": backend_name,
-        "prompt_tokens": t_in,
-        "completion_tokens": t_out,
-        "total_tokens": t_in + t_out,
+        **tokens.usage_fields(),
+        "billing": billing.value,
     }
     cost = float(last.get("cost") or 0) + float(carry.get("cost_usd", 0.0))
     if cost:
@@ -276,7 +289,9 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     endpoint = (step.get("endpoint") or os.environ.get("FABRIK_AGENT_ENDPOINT", "")).strip()
     model = (step.get("model") or os.environ.get("FABRIK_AGENT_MODEL", "")).strip()
     if backend_name == "opencode":
-        if not endpoint or not model:
+        # In the sandbox (ADR 0054) the config comes from the LLM connection — the endpoint
+        # is ignored, only the model (<connection>/<model>) is needed.
+        if not model or (not endpoint and not sandbox.sandbox_enabled()):
             return failed(
                 _t("steps.agent.opencode_backend_endpoint_model_missing"),
                 FailureKind.ENVIRONMENT,
@@ -289,6 +304,8 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
         )
     be: AgentBackend = create_backend(backend_name, step, endpoint, model, stale_after)
     identity_err = _apply_github_identity(be, step)
+    # Billing mode: spec `billing:` takes precedence over detection from the auth (backends without detection: unknown).
+    billing = billing_for_step(step, _detected_billing(be))
     if identity_err:
         return failed(identity_err, FailureKind.ENVIRONMENT)
     if not be.health():
@@ -382,10 +399,10 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                                 v5=max_retries + 1,
                             )
                         )
-                        carry = _agent_usage(last, backend_name, model, carry)
+                        carry = _agent_usage(last, backend_name, model, carry, billing)
                         time.sleep(wait)
                         break  # → next for iteration (new session)
-                    usage = _agent_usage(last, backend_name, model, carry)
+                    usage = _agent_usage(last, backend_name, model, carry, billing)
                     _record_cost(lg, sname, usage, last)
                     return _session_failed(last, sid, usage, emit)
                 time.sleep(15)
@@ -406,7 +423,8 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 # so one sees WHAT the session was waiting for (instead of just
                 # "timeout after 1800s"). On a persistent backend error name
                 # the cause (ADR 0012).
-                usage = _agent_usage(last, backend_name, model, carry)
+
+                usage = _agent_usage(last, backend_name, model, carry, billing)
                 _record_cost(lg, sname, usage, last)
                 if last_err:
                     return failed(
@@ -444,11 +462,12 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 emit(f"  agent final: {final_txt[:cap]}{'…' if len(final_txt) > cap else ''}")
             dur = round(time.time() - t0, 1)
             tools = last.get("tools") or []
-            usage = _agent_usage(last, backend_name, model, carry)
-            t_in, t_out = usage["prompt_tokens"], usage["completion_tokens"]
+            usage = _agent_usage(last, backend_name, model, carry, billing)
             premium = last.get("premium_requests")
+            cost = usage.get("cost_usd")
             summary = (
-                f"{dur}s · {t_in} in / {t_out} out tokens"
+                f"{dur}s · {TokenCounts.from_usage(usage).summary()}"
+                + (f" · ${cost:.2f}" if cost else "")
                 + (f" · {premium} premium requests" if premium is not None else "")
                 + (f" · tools: {', '.join(tools[:5])}" if tools else "")
             )

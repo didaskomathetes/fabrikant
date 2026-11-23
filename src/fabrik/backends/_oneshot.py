@@ -39,8 +39,10 @@ import uuid
 
 from .. import procs, sandbox
 from ..agentenv import build_agent_env
+from ..billing import Billing
 from ..i18n import t
 from ..runmodel import FailureKind
+from ..tokens import TokenCounts
 
 # Tail of stderr carried by a `failed` result — large enough for a crash banner including
 # stack (Bun panic, Python traceback), small enough for run record and run log.
@@ -102,6 +104,10 @@ class OneShotCliBackend:
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
         raise NotImplementedError
+
+    def billing(self) -> Billing:
+        """Abrechnungsart aus der übergebenen Auth (``fabrik.billing``); Default: nicht ableitbar."""
+        return Billing.UNKNOWN
 
     def _env(self) -> dict | None:
         """Additional env variables for the subprocess (overlay on the agent env allowlist,
@@ -176,7 +182,7 @@ class OneShotCliBackend:
         """
         s = self._sessions[session_id]
         proc = s["proc"]
-        base = {"tokens": {"input": 0, "output": 0}, "cost": 0.0, "tools": []}
+        base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}
         if proc is None:
             return {**base, "status": "running", "text": ""}
         rc = proc.poll()

@@ -53,13 +53,14 @@ class ApprovalStatus(StrEnum):
 
 
 class ApprovalReason(StrEnum):
-    """Why the run pauses: step gate, dynamic gate (ADR 0010), tier approval (T2+) or
-    criticality (``human_gate``)."""
+    """Why the run pauses: step gate, dynamic gate (ADR 0010), tier approval (T2+),
+    criticality (``human_gate``) or escalation to a human (ADR 0059)."""
 
     STEP = "step"
     GATE = "gate"
     TIER = "tier"
     CRITICALITY = "criticality"
+    ESCALATION = "escalation"
 
 
 class FailureKind(StrEnum):
@@ -131,7 +132,10 @@ def check_transition(table: Mapping[_E, frozenset[_E]], current: _E, target: _E)
 
 @dataclass(frozen=True, slots=True)
 class Usage:
-    """Token/cost consumption of a step (LLM/agent). ``cost_usd`` is None if unknown."""
+    """Token/cost consumption of a step (LLM/agent). ``cost_usd`` is None if unknown.
+
+    ``prompt_tokens`` includes the cache share; ``cache_read_tokens``/``cache_write_tokens`` break
+    it down (0 = not reported, e.g. older runs) — see :mod:`fabrik.tokens`."""
 
     model: str = ""
     provider: str = ""
@@ -139,6 +143,9 @@ class Usage:
     completion_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float | None = None
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    billing: str = ""  # api | subscription | unknown (fabrik.billing); "" = Altbestand
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +223,8 @@ class Approval:
 
     status: ApprovalStatus
     reason: ApprovalReason
+    kind: str = ""  # escalation kind (ADR 0059), otherwise empty
+
     what: str = ""
     step: str = ""
     issue: str = ""
@@ -249,6 +258,8 @@ class Run:
     failure_kind: FailureKind | None = None  # set only on fail/error (ADR 0035)
     retry_after: str = ""  # ISO timestamp (UTC), only for transient
     retry_of: str = ""  # Run id of the previous attempt (ADR 0036); "" = no retry
+    replay_of: str = ""  # Run id of the original if this is a replay (ADR 0061); "" = no replay
+
     attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
     worktree_cleanup_error: str = ""
     # Read-only (MappingProxyType): the run is frozen, ``vars`` too —

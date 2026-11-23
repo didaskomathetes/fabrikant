@@ -15,9 +15,9 @@ from .i18n import t
 
 # Fields in fixed order — shared by run log, chat and CLI
 # (the UI in web/app.js formatApproval keeps the same order). Labels: i18n `approval.<field>`.
-_TEXT_FIELDS = ("condition", "why", "what")
+_TEXT_FIELDS = ("kind", "condition", "why", "what")
 
-_STR_FIELDS = ("reason", "step", "condition", "why", "what", "issue", "pr", "pr_title")
+_STR_FIELDS = ("reason", "kind", "step", "condition", "why", "what", "issue", "pr", "pr_title")
 
 
 @dataclass(frozen=True)
@@ -26,7 +26,8 @@ class ApprovalRequest:
 
     reason:      trigger — "step" (approval/approval_when), "gate" (step reports
                  needs_approval at runtime), "tier" (tier gate at loop end),
-                 "criticality" (human_gate).
+                 "criticality" (human_gate), "escalation" (escalated to a human, ADR 0059).
+    kind:        escalation kind for reason "escalation" (config.ESCALATION_KINDS), otherwise empty.
     step:        name of the waiting step ("" for the tier gate).
     condition:   satisfied `approval_when` condition, e.g. "label = needs approval".
     why:         domain rationale (step field `approval_reason`, e.g. LLM reasoning).
@@ -36,9 +37,11 @@ class ApprovalRequest:
     pr:          link to the run's PR (on_pr trigger or `pr_url` from the pr step).
     pr_title:    title of this PR — tells the approver WHAT it is about (e.g. which ADR).
     tier:        tier of the loop at the tier gate.
+
     """
 
     reason: str
+    kind: str = ""
     step: str = ""
     condition: str = ""
     why: str = ""

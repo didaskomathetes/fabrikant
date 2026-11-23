@@ -630,3 +630,134 @@ def test_post_review_idempotent_for_bot_reviewer(mod, fake_gh, monkeypatch):
     responses["pr diff"] = DIFF
     assert mod.post_review(REPO, 124, {"body": _marker("approved")})["posted"] is False
     assert not any("POST" in args for args, _ in calls)
+
+
+# ── Eskalation an einen Menschen (ADR 0059) ──
+
+C1, C2, C3 = "c" * 40, "d" * 40, "e" * 40
+
+
+def _commit(sha: str, *, merge: bool = False, message: str = "feat: x") -> dict:
+    """`GET pulls/{n}/commits`-Eintrag; Merge-Commits (Base-Sync) haben zwei Parents."""
+    return {
+        "sha": sha,
+        "parents": [{"sha": "p1"}, {"sha": "p2"}] if merge else [{"sha": "p1"}],
+        "commit": {"message": message},
+    }
+
+
+def _cr(sha: str) -> dict:
+    return _review(_marker("changes_requested", sha))
+
+
+def test_merge_decision_human_label_blocks_merge(mod):
+    pr = _pr(reviews=[_review(_marker("approved"))], labels=("needs human",))
+    result = mod.merge_decision(pr, REVIEWER, 0)
+    assert result["action"] == "wait" and "ADR 0059" in result["reason"]
+    assert mod.merge_decision(pr, REVIEWER, 0, human_label="")["action"] == "merge"  # abschaltbar
+
+
+@pytest.mark.parametrize(
+    ("reviews", "commits", "kind"),
+    [
+        # #1282: zwei changes_requested, dazwischen nur ein Base-Sync (Merge-Commit) → stalled
+        ([_cr(C1), _cr(C2)], [_commit(C1), _commit(C2, merge=True)], "stalled"),
+        # derselbe SHA zweimal reviewt → stalled
+        ([_cr(C1), _cr(C1)], [_commit(C1)], "stalled"),
+        # Builder hat dazwischen committet → kein Stillstand
+        ([_cr(C1), _cr(C2)], [_commit(C1), _commit(C2)], None),
+        # Builder hat NACH dem letzten changes_requested gepusht (Review ausstehend) → kein Stillstand
+        ([_cr(C1), _cr(C2)], [_commit(C1), _commit(C2, merge=True), _commit(C3)], None),
+        # Force-Push (alter SHA unbekannt) → nie stalled
+        ([_cr(C1), _cr(C2)], [_commit(C2, merge=True)], None),
+        # nur eine Runde → zu früh
+        ([_cr(C1)], [_commit(C1)], None),
+        # letzte Runde approved → nichts zu tun
+        ([_cr(C1), _review(_marker("approved", C2))], [_commit(C1), _commit(C2, merge=True)], None),
+        # Marker eines anderen Autors zählen nicht
+        (
+            [_cr(C1), _review(_marker("changes_requested", C2), author="mallory")],
+            [_commit(C1), _commit(C2, merge=True)],
+            None,
+        ),
+    ],
+)
+def test_escalation_decision_stalled(mod, reviews, commits, kind):
+    result = mod.escalation_decision(reviews, commits, reviewer=REVIEWER, head=commits[-1]["sha"])
+    assert result.get("kind") == kind
+    assert result["action"] == ("escalate" if kind else "continue")
+
+
+def test_escalation_decision_stall_rounds_and_exhausted(mod):
+    fix = "fabrik: address review comments (PR #7)"
+    commits = [_commit(C1), _commit(C2, message=fix), _commit(C3, message=fix)]
+    reviews = [_cr(C1), _cr(C2), _cr(C3)]
+    assert mod.escalation_decision(reviews, commits, reviewer=REVIEWER, head=C3)["action"] == "continue"
+    exhausted = mod.escalation_decision(reviews, commits, reviewer=REVIEWER, head=C3, max_rounds=2)
+    assert exhausted["kind"] == "exhausted" and "2 Fix-Runden" in exhausted["reason"]
+    # Verdikt für alten SHA: neuer Head ist noch nicht reviewt → nicht exhausted
+    assert (
+        mod.escalation_decision(reviews[:2], commits, reviewer=REVIEWER, head=C3, max_rounds=2)["action"] == "continue"
+    )
+    # stall_rounds=3: drei Runden ohne Builder-Commit nötig
+    merges = [_commit(C1), _commit(C2, merge=True), _commit(C3, merge=True)]
+    assert (
+        mod.escalation_decision(reviews[:2], merges, reviewer=REVIEWER, head=C2, stall_rounds=3)["action"] == "continue"
+    )
+    assert mod.escalation_decision(reviews, merges, reviewer=REVIEWER, head=C3, stall_rounds=3)["kind"] == "stalled"
+
+
+def test_cli_escalation_check_escalates_once(mod, fake_gh, capsys, monkeypatch):
+    responses, calls = fake_gh
+    monkeypatch.setenv(mod.REVIEWER_LOGIN_ENV, REVIEWER)
+    responses["pr view"] = {"headRefOid": C2, "reviews": [_cr(C1), _cr(C2)], "labels": []}
+    responses["pulls/7/commits?"] = [_commit(C1), _commit(C2, merge=True)]
+    responses["repos/o/r/issues/7/comments"] = {"html_url": "https://gh/esc"}
+    responses["repos/o/r/issues/7/labels"] = ""
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    assert mod.main(["escalation-check", "7", "--repo", REPO, "--escalate"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["kind"] == "stalled" and result["escalated"] is True and result["url"] == "https://gh/esc"
+    body = next(json.loads(stdin)["body"] for a, stdin in calls if stdin)
+    assert body.endswith("<!-- fabrik-escalate kind=stalled -->") and "Runden changes_requested" in body
+
+    calls.clear()
+    responses["pr view"] = {"headRefOid": C2, "reviews": [_cr(C1), _cr(C2)], "labels": [{"name": "needs human"}]}
+    assert mod.main(["escalation-check", "7", "--repo", REPO, "--escalate"]) == 0
+    assert json.loads(capsys.readouterr().out)["action"] == "continue" and len(calls) == 1
+
+
+def test_escalate_is_idempotent_and_validates_kind(mod, fake_gh):
+    responses, calls = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": [{"name": "needs human"}]}
+    assert mod.escalate(REPO, 7, "blocked", "x")["escalated"] is False and len(calls) == 1
+    with pytest.raises(ValueError, match="unbekannte Eskalationsart"):
+        mod.escalate(REPO, 7, "panic", "x")
+
+
+def test_escalate_builder_rejects_non_builder_kind(mod, fake_gh):
+    """ADR 0059 §3: Builder darf nur blocked/scope eskalieren, nicht stalled/exhausted/access."""
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    for kind in ("stalled", "exhausted", "access"):
+        with pytest.raises(ValueError, match="unbekannte Eskalationsart"):
+            mod.escalate(REPO, 7, kind, "x", builder=True)
+
+
+@pytest.mark.parametrize("kind", ["blocked", "scope"])
+def test_escalate_builder_allows_builder_kinds(mod, fake_gh, kind):
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    responses["repos/o/r/issues/7/comments"] = {"html_url": "https://gh/esc"}
+    responses["repos/o/r/issues/7/labels"] = ""
+    assert mod.escalate(REPO, 7, kind, "x", builder=True)["escalated"] is True
+
+
+@pytest.mark.parametrize("kind", ["blocked", "stalled", "exhausted", "scope", "access"])
+def test_escalate_host_allows_all_kinds(mod, fake_gh, kind):
+    """Ohne --builder (Host) sind alle Eskalationsarten erlaubt."""
+    responses, _ = fake_gh
+    responses["repos/o/r/issues/7"] = {"labels": []}
+    responses["repos/o/r/issues/7/comments"] = {"html_url": "https://gh/esc"}
+    responses["repos/o/r/issues/7/labels"] = ""
+    assert mod.escalate(REPO, 7, kind, "x")["escalated"] is True

@@ -154,6 +154,9 @@ def _parse_usage(d: Any) -> Usage | None:
         completion_tokens=_int(d.get("completion_tokens")),
         total_tokens=_int(d.get("total_tokens")),
         cost_usd=_num(d.get("cost_usd")),
+        cache_read_tokens=_int(d.get("cache_read_tokens")),
+        cache_write_tokens=_int(d.get("cache_write_tokens")),
+        billing=_text(d.get("billing")),
     )
 
 
@@ -228,6 +231,7 @@ def _parse_approval(d: Any, run_status: RunStatus, rec: Mapping[str, Any]) -> Ap
     return Approval(
         status=_approval_status(run_status, rec),
         reason=reason,
+        kind=_text(d.get("kind")),
         what=_text(d.get("what")),
         step=_text(d.get("step")),
         issue=_text(d.get("issue")),
@@ -292,6 +296,7 @@ def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
         failure_kind=_failure_kind(rec, status in FAILED_RUN_STATUSES),
         retry_after=_text(rec.get("retry_after")),
         retry_of=_text(rec.get("retry_of")),
+        replay_of=_text(rec.get("replay_of")),
         attempt=attempt_of(rec),
         worktree_cleanup_error=_text(rec.get("worktree_cleanup_error")),
         vars=run_vars,

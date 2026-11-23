@@ -1,9 +1,10 @@
 """Per-run agent sandbox — one-shot CLI agents in a Docker container (ADR 0054, under revision).
 
-One-shot CLI agents (claude-code, codex, copilot) by default run as a
+One-shot CLI agents (claude-code, codex, copilot, opencode) by default run as a
 plain subprocess on the host. With `FABRIK_SANDBOX=1`,
 `OneShotCliBackend.send_prompt` wraps the agent command in `docker run` with
 hardening:
+
 
   - own container per run (name `fabrik-agent-<sid>`, `--rm`, `--init`),
   - `--network fabrik-sandbox` (ADR 0051: `internal` — no direct

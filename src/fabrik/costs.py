@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TypedDict
 
+from .billing import Billing
 from .runmodel import Run, Usage
 from .runquery import RunQuery, date_bounds
 from .runstore import STORE
@@ -24,18 +25,28 @@ class CostSummary(TypedDict):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
     cost_usd: float
+    subscription_cost_usd: float
     unpriced_steps: int
 
 
 @dataclass(slots=True)
 class CostTotals:
-    """Sum of token/cost values. ``cost_usd`` counts only known costs."""
+    """Sum of token/cost values. ``cost_usd`` counts only known costs.
+
+    ``cache_read_tokens``/``cache_write_tokens`` are included in ``prompt_tokens``.
+    ``subscription_cost_usd`` is the part of ``cost_usd`` from subscription steps — only the API list-price
+    equivalent, not an invoice (``fabrik.billing``)."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
+    subscription_cost_usd: float = 0.0
     unpriced_steps: int = 0
 
     def add(self, usage: Usage) -> None:
@@ -43,17 +54,24 @@ class CostTotals:
         self.prompt_tokens += usage.prompt_tokens
         self.completion_tokens += usage.completion_tokens
         self.total_tokens += usage.total_tokens or usage.prompt_tokens + usage.completion_tokens
+        self.cache_read_tokens += usage.cache_read_tokens
+        self.cache_write_tokens += usage.cache_write_tokens
         if usage.cost_usd is None:
             self.unpriced_steps += 1
         else:
             self.cost_usd += usage.cost_usd
+            if usage.billing == Billing.SUBSCRIPTION:
+                self.subscription_cost_usd += usage.cost_usd
 
     def merge(self, other: CostTotals) -> None:
         """Addiert eine andere Summe."""
         self.prompt_tokens += other.prompt_tokens
         self.completion_tokens += other.completion_tokens
         self.total_tokens += other.total_tokens
+        self.cache_read_tokens += other.cache_read_tokens
+        self.cache_write_tokens += other.cache_write_tokens
         self.cost_usd += other.cost_usd
+        self.subscription_cost_usd += other.subscription_cost_usd
         self.unpriced_steps += other.unpriced_steps
 
     def as_dict(self) -> CostSummary:
@@ -62,7 +80,10 @@ class CostTotals:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
+            "cache_read_tokens": self.cache_read_tokens,
+            "cache_write_tokens": self.cache_write_tokens,
             "cost_usd": round(self.cost_usd, 6),
+            "subscription_cost_usd": round(self.subscription_cost_usd, 6),
             "unpriced_steps": self.unpriced_steps,
         }
 
@@ -125,10 +146,17 @@ def kpi_costs(runs: Iterable[Run]) -> dict:
     }
 
 
-def costs_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
-    """``GET /api/kpis/costs``: costs per project in the period (``from``/``to`` as in the run search).
+def runs_in_range(project: str | None, date_from: str, date_to: str) -> Iterable[Run]:
+    """Runs of a project (or all) in the period (``from``/``to`` as in the run search).
+
 
     ValueError on an invalid date."""
     lower, upper, upper_exclusive = date_bounds(date_from, date_to)
     query = RunQuery(project=project, lower=lower, upper=upper, upper_exclusive=upper_exclusive)
-    return kpi_costs(r for r in STORE.load_all(project) if query.matches(r))
+    return (r for r in STORE.load_all(project) if query.matches(r))
+
+
+def costs_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
+    """``GET /api/kpis/costs``: costs per project in the period. ValueError on an invalid date."""
+
+    return kpi_costs(runs_in_range(project, date_from, date_to))

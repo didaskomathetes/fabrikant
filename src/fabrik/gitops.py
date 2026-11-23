@@ -117,6 +117,11 @@ def subprocess_env() -> dict[str, str]:
     return _current().env()
 
 
+def cleared_tokens() -> dict[str, str]:
+    """Alle GitHub-Token-Variablen leer — Subprozess ohne GitHub-Identität (`gh` ignoriert leere Werte)."""
+    return dict.fromkeys((GH_CLI_TOKEN_VAR, *GH_TOKEN_ENV.values()), "")
+
+
 def token_overrides() -> dict[str, str]:
     """Token variables a subprocess with a project token file gets (empty value: remove/clear).
 
@@ -124,7 +129,7 @@ def token_overrides() -> dict[str, str]:
     (GITHUB_REVIEWER_TOKEN) empty — inherited global values belong to a different identity."""
     if not _current().env_file:
         return {}
-    overrides = dict.fromkeys((GH_CLI_TOKEN_VAR, *GH_TOKEN_ENV.values()), "")
+    overrides = cleared_tokens()
     dev = _gh_token_safe("dev")
     if dev:
         overrides[GH_CLI_TOKEN_VAR] = overrides[GH_TOKEN_ENV["dev"]] = dev

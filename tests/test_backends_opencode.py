@@ -431,7 +431,7 @@ def test_poll_no_messages_is_running(monkeypatch):
     r = _poll_v1(monkeypatch, [])
     assert r["status"] == "running"
     assert r["text"] == ""
-    assert r["tokens"] == {"input": 0, "output": 0}
+    assert r["tokens"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     assert r["tools"] == []
 
 
@@ -505,7 +505,7 @@ def test_poll_aggregates_tokens_cost_tools_across_messages(monkeypatch):
     ]
     r = _poll_v1(monkeypatch, msgs)
     assert r["status"] == "done"
-    assert r["tokens"] == {"input": 30, "output": 6}
+    assert r["tokens"] == {"input": 30, "output": 6, "cache_read": 0, "cache_write": 0}
     assert r["cost"] == pytest.approx(0.03)
     assert r["tools"] == ["read"]
 
@@ -547,7 +547,7 @@ def test_poll_v2_normalized_messages_done(monkeypatch):
     r = be.poll("s2", "/tmp/wd")
     assert r["status"] == "done"
     assert r["text"] == "v2 fertig"
-    assert r["tokens"] == {"input": 3, "output": 1}
+    assert r["tokens"] == {"input": 3, "output": 1, "cache_read": 0, "cache_write": 0}
 
 
 def test_poll_v2_newest_first_api_order_is_done_not_running(monkeypatch):

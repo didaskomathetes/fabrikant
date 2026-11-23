@@ -24,10 +24,12 @@ try:
 except ImportError:
     yaml = None
 
-from . import alerts, branches, config, slack, spec_sources, webhook
+from . import alerts, billing, branches, config, slack, spec_sources, specschema, webhook
 from .backends import known_backends
 from .failures import SPEC_FAILURE_KINDS
-from .gitops import COMMIT_VIA_MODES, GH_TOKEN_ENV, SPEC_COMMIT_VIA_KEY, SPEC_ENV_FILE_KEY
+from .gitops import GH_TOKEN_ENV, SPEC_ENV_FILE_KEY
+from .hosting import registered_providers
+from .hosting.select import HOSTING_KEY
 from .relay.config import expand_loops as expand_relay_loops
 from .runs import LOCK_KEY_SEP
 from .spec_expand import expand_spec
@@ -378,7 +380,7 @@ def _validate_step_http(st: dict, where: str, spec: dict) -> list[str]:
 def _validate_step_llm(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("prompt"):
         return [_t("specs.llm_without_prompt", where=where)]
-    return []
+    return billing.validate(st, where)
 
 
 def _validate_step_state(st: dict, where: str, spec: dict) -> list[str]:
@@ -411,6 +413,7 @@ def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     if not (st.get("prompt") or st.get("prompt_file")):
         errs.append(_t("specs.agent_without_prompt_prompt_file", where=where))
     errs += _validate_backend(st, "backend", where, "agent backend")
+    errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
         errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
     gid = st.get("github_identity")
@@ -474,20 +477,28 @@ _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
 
 def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     errs = []
+    # Structural schema (issue #131): types/enums/required fields from
+    # src/fabrik/fabrik-spec.schema.json; semantic checks follow below.
+    errs += specschema.validate_spec(spec)
     # Lock key "project::loop" (ADR 0020) stays unique only if the separator is absent from names.
+
     for what, value in [("name", spec.get("name"))] + [("loop", ln) for ln in (spec.get("loops") or {})]:
         if isinstance(value, str) and LOCK_KEY_SEP in value:
             errs.append(_t("specs.must_not_contain_lock_key", what=what, value=value, v3=LOCK_KEY_SEP))
     if not spec.get("root") or (check_root and not Path(spec["root"]).is_dir()):
         errs.append(_t("specs.root_missing_or_does_not", v1=spec.get("root")))
     gef = spec.get(SPEC_ENV_FILE_KEY)
-    if gef is not None and (not isinstance(gef, str) or not gef.strip()):
+    # The schema checks the type (string); only the empty/absolute check here, so errors are not reported twice.
+    if isinstance(gef, str) and not gef.strip():
         errs.append(_t("specs.must_be_a_path_string", v1=SPEC_ENV_FILE_KEY, gef=gef))
-    elif gef is not None and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
+    elif isinstance(gef, str) and not Path(os.path.expandvars(gef)).expanduser().is_absolute():
         errs.append(_t("specs.must_be_an_absolute_path", v1=SPEC_ENV_FILE_KEY, gef=gef))
-    cvia = spec.get(SPEC_COMMIT_VIA_KEY)
-    if cvia is not None and cvia not in COMMIT_VIA_MODES:
-        errs.append(_t("specs.must_be_one_of_is", v1=SPEC_COMMIT_VIA_KEY, v2=COMMIT_VIA_MODES, cvia=cvia))
+    hosting_name = spec.get(HOSTING_KEY)
+    # The schema type-checks non-strings; only here: a string must be a registered provider.
+    if isinstance(hosting_name, str) and hosting_name.strip().lower() not in registered_providers():
+        errs.append(
+            _t("specs.must_be_registered_provider", v1=HOSTING_KEY, v2=registered_providers(), name=hosting_name)
+        )
     if extra_context.KEY in spec:
         errs += extra_context.validate(spec[extra_context.KEY], "projekt", allow_false=False)
     mp = spec.get("max_parallel")
@@ -510,9 +521,6 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
             for ti, trig in enumerate(ldef.get("triggers") or []):
                 if isinstance(trig, dict) and trig.get("type") == "on_webhook":
                     errs += webhook.validate_trigger(trig, f"loop {lname} trigger {ti}")
-            tier = ldef.get("tier")
-            if tier is not None and (not isinstance(tier, int) or not 1 <= tier <= 4):
-                errs.append(_t("specs.loop_tier_must_be_int", lname=lname, tier=tier))
             for i, trig in enumerate(ldef.get("triggers") or []):
                 if not isinstance(trig, dict):
                     errs.append(_t("specs.loop_trigger_mapping_expected", lname=lname, i=i))
@@ -523,8 +531,7 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                 errs += _validate_retry_block(ldef["retry"], f"loop {lname}.retry")
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
-                if not isinstance(st, dict) or st.get("type") not in config.STEP_TYPES:
-                    errs.append(_t("specs.loop_step_type_must_be", lname=lname, i=i, v3=config.STEP_TYPES))
+                # The schema checks the step type enum (no duplicate here).
                 if isinstance(st, dict):
                     where = f"loop {lname} step {i}"
                     errs += _validate_approval_when(st, where)
@@ -585,8 +592,8 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
     errs = []
     ttype = trig.get("type")
     if ttype not in config.TRIGGER_TYPES:
-        errs.append(_t("specs.loop_trigger_type_must_be", lname=lname, i=i, v3=config.TRIGGER_TYPES, ttype=ttype))
-        return errs
+        return errs  # unknown type: reported by the schema (enum), no duplicate here
+
     if ttype == "on_slack":
         errs += slack.validate_trigger(trig, f"loop {lname} trigger {i}")
         for key in ("max_pages", "max_alert_chars"):
@@ -601,6 +608,13 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
         # Event mode fires each issue only once — a blocked issue would be
         # lost instead of starting after the blocker is closed (ADR 0031).
         errs.append(_t("specs.loop_trigger_skip_blocked_only", lname=lname, i=i))
+    exclude = trig.get("exclude_labels")
+    if exclude is not None and (
+        ttype not in ("on_issue", "on_pr")
+        or not isinstance(exclude, list)
+        or not all(isinstance(x, str) and x for x in exclude)
+    ):
+        errs.append(_t("specs.loop_trigger_exclude_labels", lname=lname, i=i, exclude=exclude))
     on_start = trig.get("on_start")
     if on_start is not None and (ttype != "cron" or not isinstance(on_start, bool)):
         errs.append(_t("specs.loop_trigger_on_start_only", lname=lname, i=i, on_start=on_start))

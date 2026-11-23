@@ -125,6 +125,7 @@ _RUN_FIELDS: Mapping[str, str] = {
     "failure_kind": _TEXT,
     "retry_after": _TEXT,
     "retry_of": _TEXT,
+    "replay_of": _TEXT,
     "attempt": _INT,
     "trigger_key": _TEXT,
     "worktree_cleanup_error": _TEXT,
@@ -155,11 +156,15 @@ _USAGE_FIELDS: Mapping[str, str] = {
     "completion_tokens": _INT,
     "total_tokens": _INT,
     "cost_usd": _NUM,
+    "cache_read_tokens": _INT,
+    "cache_write_tokens": _INT,
+    "billing": _TEXT,
 }
 _REVIEW_FIELDS: Mapping[str, str] = {"verdict": _TEXT, "model": _TEXT, "summary": _TEXT, "round": _INT}
 _FINDING_FIELDS = ("severity", "text", "suggestion")  # Modellfelder eines Findings (Rest: LLM-Fremdfelder)
 _APPROVAL_FIELDS: Mapping[str, str] = {
     "reason": _TEXT,
+    "kind": _TEXT,
     "step": _TEXT,
     "condition": _TEXT,
     "why": _TEXT,

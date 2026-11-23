@@ -150,7 +150,7 @@ The current priorities, ahead of the open P2/P3 items.
 - JSON schema for `*.fabrik.yaml`, single source of truth for validation
   and docs — issue #131
 - fabrik as an MCP server (runs, specs, approvals reachable from any
-  MCP-capable agent) — issue #132
+  MCP-capable agent) — issue #132, ADR 0064
 - Grow the template library (≥5 documented, versioned templates) — issue #133
 
 ## Known contradictions & stale ADRs
