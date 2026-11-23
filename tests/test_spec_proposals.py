@@ -108,6 +108,20 @@ def test_unknown_proposal(proj):
     assert sp.list_proposals() == []
 
 
+def test_corrupted_status_raises_proposal_error_not_crash(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    path = sp.proposals_dir() / f"{pr.id}.json"
+    data = json.loads(path.read_text())
+    data["status"] = "bogus"
+    path.write_text(json.dumps(data))
+    with pytest.raises(sp.ProposalError, match="unknown status"):
+        sp.get_proposal(pr.id)
+    # one bad record must not crash the listing of the healthy ones
+    ok = sp.propose("p", {"description": "other"}, _hash(proj), "mcp")
+    listed = sp.list_proposals()
+    assert [p.id for p in listed] == [ok.id]
+
+
 # ------------------------------------------------------------------ apply/reject
 def test_apply_writes_with_backup_and_audit(proj):
     before = proj.read_bytes()

@@ -377,10 +377,15 @@ def list_runs_tool(
     status: Annotated[str | None, Field(description="Only runs with this status")] = None,
     limit: _Limit | None = None,
 ) -> RunList:
-    """Run records, newest first; optional project / status / limit filters."""
-    runs = list_runs(project or None, limit or DEFAULT_LIST_LIMIT)
+    """Run records, newest first; optional project / status / limit filters.
+
+    The status filter is applied *before* the limit, so ``status`` + ``limit`` return up to
+    ``limit`` runs of that status (not the first ``limit`` runs, of which some may match).
+    """
+    limit = limit or DEFAULT_LIST_LIMIT
+    runs = list_runs(project or None, None if status else limit)
     if status:
-        runs = [r for r in runs if r.get("status") == status]
+        runs = [r for r in runs if r.get("status") == status][:limit]
     return RunList(runs=runs, count=len(runs))
 
 
@@ -459,10 +464,17 @@ def start_run(
     return StartedRun(started=not queued, queued=queued, project=project, loop=loop, run_id=run_id)
 
 
+# Failure markers of _chat_resume replies: every failure message in the chat.* catalog
+# (run_not_found, not_needs_approval, cannot_approve, cannot_reject) starts with one of
+# these; success replies (approved, rejected, already approved) never do. If the catalog
+# changes, this check must change with it.
+_RESUME_FAILURE_MARKERS = ("✖", "⚠")
+
+
 def _resume(project: str, run_id: str, *, approve: bool) -> ResumeResult:
     """Shared approve/reject: failures (unknown run, wrong status, ...) become tool errors."""
     reply, resumed = _chat_resume(project, run_id, approve, actor=MCP_ACTOR)
-    if reply.lstrip().startswith(("✖", "⚠")):
+    if reply.lstrip().startswith(_RESUME_FAILURE_MARKERS):
         raise ToolError(reply)
     return ResumeResult(ok=resumed if approve else True, reply=reply, run_id=run_id)
 

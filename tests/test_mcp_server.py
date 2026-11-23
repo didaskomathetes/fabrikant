@@ -225,9 +225,12 @@ def test_list_runs_filters(projects_dir, runs_dir):
     for i in range(5):
         _write_run(runs_dir, "p", f"r{i}", status="pass")
     _write_run(runs_dir, "p", "ra", status="needs_approval")
+    _write_run(runs_dir, "p", "rb", status="needs_approval")
     assert mcp.list_runs_tool("p", limit=2).count == 2
-    assert [r["id"] for r in mcp.list_runs_tool("p", status="needs_approval").runs] == ["ra"]
-    assert mcp.list_runs_tool("p", limit=10).count == 6
+    assert [r["id"] for r in mcp.list_runs_tool("p", status="needs_approval").runs] == ["ra", "rb"]
+    # status is filtered before the limit: up to `limit` runs *of that status*
+    assert mcp.list_runs_tool("p", status="needs_approval", limit=1).count == 1
+    assert mcp.list_runs_tool("p", limit=10).count == 7
 
 
 def test_get_run(projects_dir, runs_dir):

@@ -59,9 +59,16 @@ class SpecProposal:
 
     @classmethod
     def from_dict(cls, data: dict) -> SpecProposal:
-        """Parse a stored record; unknown keys are ignored (forward compatible)."""
+        """Parse a stored record; unknown keys are ignored (forward compatible).
+
+        A record with an unknown status (corruption, newer fabrikant version) raises
+        :class:`ProposalError` so one bad file cannot crash ``list_proposals``.
+        """
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        known["status"] = ProposalStatus(known.get("status", ProposalStatus.PENDING))
+        try:
+            known["status"] = ProposalStatus(known.get("status", ProposalStatus.PENDING))
+        except ValueError as e:
+            raise ProposalError(f"corrupted proposal record: unknown status {known.get('status')!r}") from e
         return cls(**known)
 
     def to_dict(self) -> dict:
@@ -130,13 +137,20 @@ def get_proposal(proposal_id: str) -> SpecProposal:
 
 
 def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
-    """All proposals, newest first; optionally only those in ``status``."""
+    """All proposals, newest first; optionally only those in ``status``.
+
+    Records that cannot be parsed (corruption, unknown status) are skipped: one bad
+    file must not make the whole listing unusable. ``get_proposal`` still surfaces
+    the error for a specific id.
+    """
     if not proposals_dir().is_dir():
         return []
-    found = [
-        SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8")))
-        for p in proposals_dir().glob(f"*{PROPOSAL_SUFFIX}")
-    ]
+    found = []
+    for p in proposals_dir().glob(f"*{PROPOSAL_SUFFIX}"):
+        try:
+            found.append(SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8"))))
+        except (ProposalError, ValueError):
+            continue
     return sorted((p for p in found if status in (None, p.status)), key=lambda p: p.created, reverse=True)
 
 
