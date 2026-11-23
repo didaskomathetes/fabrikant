@@ -7,22 +7,34 @@ import getpass
 import json
 import os
 import sys
+import traceback
 from pathlib import Path
 
 from . import auth, config, pause, profiles, retry_chains, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
+from .golden import GoldenError, capture_golden, eval_report, get_golden, load_goldens, run_eval, save_golden
 from .i18n import t
 from .mcp_server import ALLOW_APPROVALS_ENV as MCP_ALLOW_APPROVALS_ENV
 from .mcp_server import READ_ONLY_ENV as MCP_READ_ONLY_ENV
 from .mcp_server import serve_stdio
-from .replay import diff_runs, replay_run
-from .runmodel import FAILED_RUN_STATUSES
+from .replay import ReplayError, diff_runs, replay_run
+from .runmodel import FAILED_RUN_STATUSES, RunStatus
 from .runs import STEP_MARKS, claim_run, export_run, get_run, list_runs, show_run
 from .runstore import STORE, PreconditionError
 from .server import serve
 from .specs import collect_projects, load_projects
+
+# Exit codes of `golden` / `eval`: a real regression must be distinguishable from infrastructure errors.
+EXIT_OK = 0
+EXIT_REGRESSION = 1
+EXIT_ERROR = 2
+EXIT_CODES_HELP = (
+    "Exit codes: 0 = ok / no regression, 1 = regression, 2 = error or inconclusive (usage, infra, waiting)."
+)
+# Non-terminal eval outcomes: the run has not finished, so it proves nothing either way.
+INCONCLUSIVE_RUN_STATUSES = frozenset({RunStatus.NEEDS_APPROVAL, RunStatus.QUEUED, RunStatus.RUNNING})
 
 
 def cmd_list(_args):
@@ -176,6 +188,92 @@ def cmd_replay(args):
     print()
     print(diff_runs(orig, rec))
     sys.exit(0 if rec["status"] == "pass" else 1)
+
+
+def cmd_golden(args):
+    """Golden runs (roadmap #130): ``capture`` pins a golden, ``show`` lists them.
+
+    Exit codes: ``EXIT_OK`` on success, ``EXIT_ERROR`` on usage/infrastructure errors."""
+    try:
+        if args.golden_cmd == "capture":
+            g = capture_golden(args.project, args.loop, args.run_id)
+            p = save_golden(args.project, args.name or args.loop, g)
+            print(f"✔ golden '{args.name or args.loop}' for {args.project}/{args.loop} from run {args.run_id} → {p}")
+            return
+        goldens = {args.name: get_golden(args.project, args.name)} if args.name else load_goldens(args.project)
+    except GoldenError as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
+    if not goldens:
+        print(f"(no goldens for {args.project})")
+        return
+    for n, g in goldens.items():
+        exp = g.get("expect", {})
+        print(f"{n}  loop={g.get('loop')}  baseline={g.get('baseline_run')}  spec={str(g.get('spec_hash', ''))[:12]}")
+        for s in exp.get("steps", []):
+            print(f"    - {s.get('name')} [{s.get('status')}]  verdict={s.get('verdict') or '—'}")
+        print(f"    status={exp.get('status')}")
+
+
+def _confirm_eval(args) -> bool:
+    """Confirm before the real eval re-run: ``--yes`` skips; without a TTY and without ``--yes`` it aborts."""
+    if getattr(args, "yes", False):
+        return True
+    if not sys.stdin.isatty():
+        print("Aborted: no interactive input — confirm explicitly with --yes/-y.")
+        return False
+    return input(f"Re-run loop {args.project}/{args.loop} for real now (eval)? [y/N] ").strip().lower() in (
+        "y",
+        "yes",
+        "j",
+        "ja",
+    )
+
+
+def cmd_eval(args):
+    """Eval (roadmap #130): compare a loop re-run against its golden baseline.
+
+    Exit codes: ``EXIT_OK`` no regression, ``EXIT_REGRESSION`` real diffs against the golden,
+    ``EXIT_ERROR`` infrastructure/usage problem or inconclusive run (e.g. waiting for approval)."""
+    try:
+        g = get_golden(args.project, args.name or args.loop)
+        loop = g["loop"]
+    except (GoldenError, KeyError) as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
+    blocked = pause.manual_block_reason(args.project, loop)
+    if blocked:
+        print(f"Error: {blocked}")
+        sys.exit(EXIT_ERROR)
+    print(REPLAY_SIDE_EFFECT_NOTICE)
+    if not _confirm_eval(args):
+        print("Aborted.")
+        sys.exit(EXIT_ERROR)
+    claim = claim_run(args.project, loop, None)
+    if claim is None:
+        print(f"⚠ {args.project}: parallel run limit reached or {loop} is already running.")
+        sys.exit(EXIT_ERROR)
+    try:
+        golden, baseline, record, diffs = run_eval(
+            args.project, loop, args.name, actor=_cli_actor(), held_scope=claim.scope
+        )
+    except (GoldenError, ReplayError) as e:
+        print(f"Error: {e}")
+        sys.exit(EXIT_ERROR)
+    except Exception:
+        # Keep the traceback visible, but never let a crash look like a regression (exit 1).
+        traceback.print_exc()
+        sys.exit(EXIT_ERROR)
+    finally:
+        claim.release()
+    print(f"eval  {record['project']}/{record['loop']}  ({record['id']})  [golden {args.name or loop}]")
+    _print_steps(record)
+    print()
+    print(eval_report(golden, baseline, record, diffs))
+    if record.get("status") in INCONCLUSIVE_RUN_STATUSES:
+        print(f"inconclusive: eval run is waiting for approval (status {record.get('status')})")
+        sys.exit(EXIT_ERROR)
+    sys.exit(EXIT_REGRESSION if diffs else EXIT_OK)
 
 
 def cmd_runs(args):
@@ -347,6 +445,65 @@ def cmd_egress(args):
         sys.exit(1)
 
 
+def cmd_fetch(args):
+    """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
+    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Auto-Freigaben; Profile
+    via ``--spec``/``--loop`` (Stufe 3)."""
+    from .fetch import DetectorUnavailable, Fetcher, build_detectors, fetcher_config_for, resolve_profiles
+    from .specs import load_spec_raw
+
+    domains = [d.strip() for d in (args.approved_domains or "").split(",") if d.strip()]
+    urls = [u.strip() for u in (args.approved_urls or "").split(",") if u.strip()]
+    loop_note = None
+    if args.spec:
+        spec = load_spec_raw(Path(args.spec))
+        loop = args.loop or "relay"
+        profs = resolve_profiles(spec, loop)
+        for d in fetcher_config_for(profs)["approved_domains"]:
+            if d not in domains:
+                domains.append(d)
+        loop_note = f"loop={loop} profile={[p.name for p in profs]}"
+    try:
+        detectors = build_detectors(
+            [n.strip() for n in args.detectors.split(",") if n.strip()] if args.detectors else None
+        )
+    except (ValueError, DetectorUnavailable) as e:
+        print(f"Fehler: {e}")
+        sys.exit(1)
+    fetcher = Fetcher(
+        approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger, detectors=detectors
+    )
+    res = fetcher.fetch(args.url, requested_by=_cli_actor())
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "url": res.url,
+                    "status": res.status,
+                    "reason": res.reason,
+                    "content_type": res.content_type,
+                    "fetched_at": res.fetched_at,
+                    "source_path": str(res.source_path) if res.source_path else None,
+                    "findings": [{"rule": f.rule, "severity": f.severity, "snippet": f.snippet} for f in res.findings],
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(f"{res.status.upper():<14} {res.url}")
+        if loop_note:
+            print(f"  {loop_note}")
+        if res.reason:
+            print(f"  reason: {res.reason}")
+        if res.findings:
+            print(f"  findings: {len(res.findings)}")
+            for f in res.findings:
+                print(f"    {f.severity:<11} {f.rule}: {f.snippet}")
+        if res.source_path:
+            print(f"  -> {res.source_path}")
+    sys.exit(0 if res.status == "clean" else 1)
+
+
 def cmd_import_runs(_args):
     from .sessionlog import import_runs
 
@@ -414,6 +571,25 @@ def main(argv=None):
     p.add_argument("--project", default=None, help=t("cli.help.replay_project"))
     p.add_argument("--yes", "-y", action="store_true", help=t("cli.help.replay_yes"))
     p.set_defaults(func=cmd_replay)
+
+    p = sub.add_parser("golden", help="Golden Runs: Baseline pinnen & anzeigen (Roadmap #130)", epilog=EXIT_CODES_HELP)
+    g = p.add_subparsers(dest="golden_cmd", required=True)
+    gc = g.add_parser("capture", help="Golden aus abgeschlossenen Run pinnen")
+    gc.add_argument("project")
+    gc.add_argument("loop")
+    gc.add_argument("run_id", help="Id des abgeschlossenen Baseline-Runs")
+    gc.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
+    gs = g.add_parser("show", help="Goldens anzeigen")
+    gs.add_argument("project")
+    gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
+    p.set_defaults(func=cmd_golden)
+
+    p = sub.add_parser("eval", help="Loop mit Golden-Baseline vergleichen (Roadmap #130)", epilog=EXIT_CODES_HELP)
+    p.add_argument("project")
+    p.add_argument("loop")
+    p.add_argument("--name", default=None, help="Golden-Name (Default: Loop-Name)")
+    p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
+    p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("runs", help=t("cli.help.runs"))
     p.add_argument("--project", default=None)
@@ -503,6 +679,23 @@ def main(argv=None):
     p = sub.add_parser("egress", help=t("cli.help.egress"))
     p.add_argument("action", choices=("start", "stop", "status"))
     p.set_defaults(func=cmd_egress)
+
+    p = sub.add_parser("fetch", help="Research-Fetcher: Seite holen, bereinigen, Injection-Scan (ADR 0060)")
+    p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
+    p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
+    p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
+    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
+    p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
+    p.add_argument("--spec", default=None, help="Projekt-Spec (YAML) mit access-Profilen")
+    p.add_argument("--loop", default=None, help="Loop/Run-Name für Profil-Resolution (Default: relay)")
+    p.add_argument(
+        "--detectors",
+        default=None,
+        help="Kommagetrennte Injection-Detektoren: regex (Default), llm-guard (Extra injection-llm-guard); "
+        "sonst FABRIK_FETCH_DETECTORS",
+    )
+    p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
+    p.set_defaults(func=cmd_fetch)
 
     args = ap.parse_args(argv)
     try:
