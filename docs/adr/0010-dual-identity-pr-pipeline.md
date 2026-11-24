@@ -47,7 +47,7 @@ the principle (two different identities, review separate from the
 author) stays the same.
 
 *Historical bindings (configuration, not part of the decision):*
-- 2026-10-18: agent-host app (builder) + personal PAT (reviewer).
+- 2026-10-18: GitHub-App (builder) + personal PAT (reviewer).
 - 2026-10-27 (PR #364): two GitHub apps — `fabrik-builder` (builder) +
   `fabrik-reviewer` (reviewer), both with 1h installation tokens.
 
@@ -56,7 +56,7 @@ A concrete example of how the two identities are mapped in the project
 config:
 - `GITHUB_TOKEN` = builder installation token (developer). Renewed externally via
   `scripts/gh-token-refresh.py` (cron) every ~30 min and written to
-  `FABRIK_ENV_FILE` (default `/root/.hermes/.env`) — the file
+  `FABRIK_ENV_FILE` (default `~/.config/fabrik/fabrik.env`) — the file
   is re-read per API call, no restart needed.
 - `GITHUB_REVIEWER_TOKEN` = reviewer installation token (QA). Also valid
   for 1h, renewed via `scripts/gh-token-refresh.py --role reviewer` (cron).

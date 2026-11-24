@@ -4,7 +4,7 @@
 Aufruf durch `scripts/sonar-scan.sh --pr <n>` nach erfolgreicher Analyse unter dem
 PR-eigenen Project-Key (Community Edition: keine native PR-Analyse):
 
-    sonar-pr-report.py --pr 12 --project-key quark-playground:fabrik:pr-12 \
+    sonar-pr-report.py --pr 12 --project-key fabrik:fabrik:pr-12 \
         [--base main] [--coverage coverage.xml] [--repo owner/name] [--post]
 
 - Issues (`api/issues/search`) nur auf den im PR geänderten Zeilen

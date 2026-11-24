@@ -22,6 +22,9 @@ from .i18n import t
 PACKAGE_DIR = Path(__file__).resolve().parent
 _CHECKOUT_ROOT = PACKAGE_DIR.parent.parent
 APP_DIR_NAME = "fabrik"
+ENV_FILE_NAME = "fabrik.env"
+# Default location of the operator's env file (tokens); overridable via FABRIK_ENV_FILE.
+DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrik" / ENV_FILE_NAME)
 
 
 def is_source_checkout(root: Path) -> bool:
@@ -29,14 +32,18 @@ def is_source_checkout(root: Path) -> bool:
     return (root / "pyproject.toml").is_file() and (root / "src" / APP_DIR_NAME).is_dir()
 
 
-def default_home(env: Mapping[str, str], checkout_root: Path = _CHECKOUT_ROOT) -> Path:
+def default_home(env: Mapping[str, str], checkout_root: Path = _CHECKOUT_ROOT, cwd: Path | None = None) -> Path:
     """Writable installation home (runs, state, sessionlog, `fabrik.env`), ADR 0069.
 
-    `FABRIK_HOME` wins; a source checkout uses its own root (legacy/dev mode); an installed
-    wheel falls back to `$XDG_DATA_HOME/fabrik` (default `~/.local/share/fabrik`)."""
+    `FABRIK_HOME` wins; then a directory scaffolded by `fabrik init` (the cwd holds a `fabrik.env`);
+    a source checkout uses its own root (legacy/dev mode); an installed wheel falls back to
+    `$XDG_DATA_HOME/fabrik` (default `~/.local/share/fabrik`)."""
     explicit = env.get("FABRIK_HOME", "").strip()
     if explicit:
         return Path(explicit).expanduser()
+    here = cwd or Path.cwd()
+    if (here / ENV_FILE_NAME).is_file():
+        return here
     if is_source_checkout(checkout_root):
         return checkout_root
     data_home = env.get("XDG_DATA_HOME", "").strip()

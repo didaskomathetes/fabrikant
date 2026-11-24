@@ -1,4 +1,4 @@
-Du entwickelst ein Issue im Projekt `fabrik` (Repo `didaskomathetes/quark-playground`, Unterverzeichnis `fabrik/`).
+Du entwickelst ein Issue im Projekt `fabrik` (Repo `didaskomathetes/fabrik`).
 
 ## Vorbereitung (Pflicht, in dieser Reihenfolge)
 1. Halte dich an ALLE Regeln aus `AGENTS.md` (liegt bereits im Kontext): Linting,

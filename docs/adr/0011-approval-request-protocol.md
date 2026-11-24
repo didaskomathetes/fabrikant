@@ -74,14 +74,14 @@ approval:
   tier: 1
   triggers:
     - type: on_pr
-      repo: didaskomathetes/quark-playground
+      repo: acme/my-app
       labels: [fabrik, needs approval]   # AND semantics (client-side)
       reconcile: true
       poll: 300
   steps:
     - name: merge-adr-pr
       type: pr_merge
-      repo: didaskomathetes/quark-playground
+      repo: acme/my-app
       method: squash
       approval: true        # gate directly on the merge → run pauses (needs_approval)
       approval_reason: "{pr_title}"  # PR title/link appear in the approval context
@@ -106,7 +106,7 @@ to be approved. Resume compatibility: runs already paused with the old
   with **AND semantics** (client-side): the PR must have *all* required labels.
   The GitHub API only filters server-side with OR — without the client-side
   AND filter, `needs approval` alone would also hit non-fabrik PRs
-  (the repo `quark-playground` hosts several projects; field finding 2026-10-19:
+  (the repo hosts several projects; field finding 2026-10-19:
   the loop fired on PRs #3/#4/#7 without any label).
 
 **Why `tier: 1`:** the loop does near-T4 work (merging an ADR PR). The

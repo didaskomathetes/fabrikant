@@ -3,7 +3,7 @@
 # SPIKE: opencode serve als Agent-Backend (P1)
 
 **Datum:** 2026-10-15
-**Setup:** opencode 1.19.0 (`serve --port 8945 --hostname 127.0.0.1`), Ollama 0.33.2 (127.0.0.1:11434), `llama3.2:3b` (CPU-only, ~13,7 tok/s prompt-processing), Hermes-VM (kein GPU-Zugriff auf die 3090).
+**Setup:** opencode 1.19.0 (`serve --port 8945 --hostname 127.0.0.1`), Ollama 0.33.2 (127.0.0.1:11434), `llama3.2:3b` (CPU-only, ~13,7 tok/s prompt-processing), Test-VM (kein GPU-Zugriff auf die 3090).
 **Fazit:** ✅ **Tauglich als P1-Backend.** Vollständiger Agent-Loop (Planung → Tool-Call → Datei-Write) headless über HTTP-API. **P1-Integration verifiziert (2026-10-15):** `agent-smoke`-Loop grün (346 s, 9201 in / 43 out tokens, `smoke.txt` = "fabrik agent ok.", T2-Gate + Approval).
 
 ## Was funktioniert

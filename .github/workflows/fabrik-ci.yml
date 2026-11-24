@@ -35,6 +35,20 @@ jobs:
       - name: Perf-Budget-Tests (seriell, sonst Wall-Clock-Rauschen)
         run: uv run pytest -m perf
 
+  package:
+    # The built wheel works from a clean virtualenv outside the checkout (ADR 0069).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+      - name: Wheel smoke test (init, validate, run, serve)
+        run: bash scripts/smoke-wheel.sh
+      - name: Docker image builds
+        run: docker build -t fabrik:ci .
+
   browser:
     # Playwright/Chromium-Tests. Blockierend: Fehler lassen den Job fehlschlagen.
     runs-on: ubuntu-latest

@@ -49,7 +49,7 @@
   "chat.helpHint": "· `help` für Befehle",
   "chat.llm": "LLM",
   "chat.llmTitle": "Chat-Modell (aktiver LLM-Provider)",
-  "chat.inputPlaceholder": "z. B.  lauf kyudo-neandertal lint  — oder einfach fragen …",
+  "chat.inputPlaceholder": "z. B.  lauf my-app lint  — oder einfach fragen …",
   "chat.greeting": "Hey — ich bin der fabrik-Copilot. `help` zeigt die Befehle; alles andere frage mich einfach.",
   "chat.me": "du",
   "chat.fabrik": "fabrik",

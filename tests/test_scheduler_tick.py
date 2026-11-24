@@ -101,7 +101,7 @@ def _tick_at(monkeypatch, s, minute: int) -> None:
 
 
 def test_tick_cron_on_start_fires_once_outside_schedule(projects_dir, tmp_path, monkeypatch):
-    """Regression (ai-lab 2026-11-03): Server startet 14:26 mit abgelaufenem Token; token-refresh
+    """Regression (2026-11-03): Server startet 14:26 mit abgelaufenem Token; token-refresh
     feuert erst 14:30 — gleichzeitig mit relay-dispatch, der noch das alte Token las (401)."""
     _cron_spec(projects_dir, tmp_path, '{type: cron, cron: "*/30 * * * *", on_start: true}')
     fired = []
@@ -180,7 +180,7 @@ def _gated_sched(monkeypatch):
 
 
 def test_tick_on_start_runs_before_other_triggers_and_gates_them(projects_dir, tmp_path, monkeypatch):
-    """Regression (ai-lab 2026-11-09): Start-Tick pollte PRs parallel zum token-refresh mit dem
+    """Regression (2026-11-09): Start-Tick pollte PRs parallel zum token-refresh mit dem
     abgelaufenen Token (HTTP 401). Jetzt: erst on_start, übrige Trigger warten, bis er fertig ist."""
     _start_gate_spec(projects_dir, tmp_path)
     s, fired, polled, start_done = _gated_sched(monkeypatch)

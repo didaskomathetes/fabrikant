@@ -146,7 +146,7 @@ def attr_tools(mod, monkeypatch):
 
 
 def test_write_token_lifts_and_restores_immutable_flag(mod, tmp_path, attr_tools):
-    """Immutable .env (hermes-VM): -i vor dem Rename, +i danach."""
+    """Immutable .env (chattr +i): -i vor dem Rename, +i danach."""
     f = tmp_path / ".env"
     f.write_text("GITHUB_REVIEWER_TOKEN=old\n")
     fake = attr_tools(immutable=True)

@@ -1,0 +1,14 @@
+.git
+.venv
+.idea
+.claude
+.ruff_cache
+**/__pycache__
+runs
+state
+sessionlog.db*
+fabrik.env
+.coverage
+tests
+docs
+projects

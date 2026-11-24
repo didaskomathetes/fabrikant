@@ -1,7 +1,7 @@
 # ADR 0026: Redaction des Alert-`log_tail`
 
 **Status:** Akzeptiert (2026-10-20, Merge #187; vorgeschlagen 2026-10-20). Folge-Issue
-[#132](https://github.com/didaskomathetes/quark-playground/issues/132) zu ADR 0025
+#132 zu ADR 0025
 (dort bleibt der Ist-Stand „ohne Redaction“ als historischer Kontext stehen).
 
 ## Entscheidung

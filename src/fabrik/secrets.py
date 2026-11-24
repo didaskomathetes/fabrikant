@@ -17,7 +17,7 @@ log = logging.getLogger("fabrik.secrets")
 _SECRET_NAME_RE = re.compile(r"(TOKEN|KEY|SECRET|PASS|CREDENTIAL)", re.I)
 _EXTRA_SECRET_FILES = [
     config.FABRIK_HOME / "fabrik.env",
-    Path(os.environ.get("FABRIK_ENV_FILE", "/root/.hermes/.env")),
+    Path(os.environ.get("FABRIK_ENV_FILE", config.DEFAULT_ENV_FILE)),
 ]
 # Shorter values are not masked (otherwise the masking would hit arbitrary short words in the log).
 MIN_SECRET_LEN = 8

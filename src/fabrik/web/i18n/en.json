@@ -49,7 +49,7 @@
   "chat.helpHint": "· `help` for commands",
   "chat.llm": "LLM",
   "chat.llmTitle": "Chat model (active LLM provider)",
-  "chat.inputPlaceholder": "e.g.  run kyudo-neandertal lint  — or just ask …",
+  "chat.inputPlaceholder": "e.g.  run my-app lint  — or just ask …",
   "chat.greeting": "Hey — I'm the fabrik copilot. `help` shows the commands; anything else, just ask me.",
   "chat.me": "you",
   "chat.fabrik": "fabrik",

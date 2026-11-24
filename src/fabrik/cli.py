@@ -10,7 +10,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import auth, config, pause, profiles, retry_chains, spec_sources
+from . import auth, config, pause, profiles, retry_chains, scaffold, spec_sources
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
@@ -35,6 +35,17 @@ EXIT_CODES_HELP = (
 )
 # Non-terminal eval outcomes: the run has not finished, so it proves nothing either way.
 INCONCLUSIVE_RUN_STATUSES = frozenset({RunStatus.NEEDS_APPROVAL, RunStatus.QUEUED, RunStatus.RUNNING})
+
+
+def cmd_init(args):
+    """Scaffold a user project directory (ADR 0069)."""
+    dest = Path(args.dir)
+    created = scaffold.init_project(dest)
+    for path in created:
+        print(t("cli.init_created", path=path))
+    if not created:
+        print(t("cli.init_nothing", dir=dest.resolve()))
+    print(t("cli.init_next", dir=dest.resolve()))
 
 
 def cmd_list(_args):
@@ -548,6 +559,9 @@ def main(argv=None):
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
+    p = sub.add_parser("init", help=t("cli.help.init"))
+    p.add_argument("dir", nargs="?", default=".", help=t("cli.help.init_dir"))
+    p.set_defaults(func=cmd_init)
     sub.add_parser("list", help=t("cli.help.list")).set_defaults(func=cmd_list)
     p = sub.add_parser("validate", help=t("cli.help.validate"))
     p.add_argument("specs", nargs="*", help=t("cli.help.validate_specs"))

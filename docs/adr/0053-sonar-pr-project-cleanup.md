@@ -7,7 +7,7 @@
 
 Bis zur nativen PR-Analyse (Community-Branch-Plugin, PR #524) legte
 `scripts/sonar-scan.sh --pr <n>` pro PR ein eigenes SonarQube-Projekt
-`quark-playground:fabrik:pr-<n>` an, weil die Community Edition damals keine
+`<org>:fabrik:pr-<n>` an, weil die Community Edition damals keine
 PR-Analyse konnte. Nach Merge oder Close des PRs wurde das Projekt nie entfernt
 und sammelte sich in SonarQube an (ein Projekt pro historischer PR). Seit #524
 entstehen **keine** `:pr-<n>`-Projekte mehr — der Bestand an Legacy-Projekten

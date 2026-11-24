@@ -1,5 +1,4 @@
-Du führst ein gezieltes Refactoring im Projekt `fabrik` (Repo `didaskomathetes/quark-playground`,
-Unterverzeichnis `fabrik/`) durch.
+Du führst ein gezieltes Refactoring im Projekt `fabrik` (Repo `didaskomathetes/fabrik`) durch.
 
 ## Vorbereitung (Pflicht)
 1. Halte dich an ALLE Regeln aus `AGENTS.md` (liegt bereits im Kontext), v. a.

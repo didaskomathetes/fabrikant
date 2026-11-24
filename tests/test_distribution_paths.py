@@ -15,22 +15,22 @@ def _checkout(root: Path) -> Path:
 
 def test_explicit_home_wins(tmp_path):
     env = {"FABRIK_HOME": str(tmp_path / "h")}
-    assert config.default_home(env, _checkout(tmp_path / "co")) == tmp_path / "h"
+    assert config.default_home(env, _checkout(tmp_path / "co"), tmp_path) == tmp_path / "h"
 
 
 def test_source_checkout_is_its_own_home(tmp_path):
     co = _checkout(tmp_path / "co")
-    assert config.default_home({}, co) == co
+    assert config.default_home({}, co, tmp_path) == co
 
 
 def test_installed_wheel_uses_xdg_data_home(tmp_path):
     env = {"XDG_DATA_HOME": str(tmp_path / "xdg")}
-    assert config.default_home(env, tmp_path / "site-packages") == tmp_path / "xdg" / "fabrik"
+    assert config.default_home(env, tmp_path / "site-packages", tmp_path) == tmp_path / "xdg" / "fabrik"
 
 
 def test_installed_wheel_default_is_local_share(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    assert config.default_home({}, tmp_path / "site-packages") == tmp_path / ".local" / "share" / "fabrik"
+    assert config.default_home({}, tmp_path / "site-packages", tmp_path) == tmp_path / ".local" / "share" / "fabrik"
 
 
 def test_bundled_assets_live_inside_the_package():
@@ -56,3 +56,11 @@ def test_relative_prompt_prefers_data_dir_over_package(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "FABRIK_HOME", tmp_path / "empty-home")
     monkeypatch.setattr(config, "DATA_DIR", data)
     assert spec_sources.resolve_relative("prompts/relay/session.prompt.md", None) == mine
+
+
+def test_cwd_with_fabrik_env_is_the_home(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "fabrik.env").write_text("")
+    assert config.default_home({}, tmp_path / "site-packages", work) == work
+    assert config.default_home({"FABRIK_HOME": str(tmp_path / "h")}, tmp_path / "site-packages", work) == tmp_path / "h"

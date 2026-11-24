@@ -12,7 +12,7 @@ def secret_env(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
     monkeypatch.setenv("GITHUB_REVIEWER_TOKEN", "ghs_reviewer")
     monkeypatch.setenv("FABRIK_LLM_KEY", "sk-llm")
-    monkeypatch.setenv("FABRIK_ENV_FILE", "/root/.hermes/.env")
+    monkeypatch.setenv("FABRIK_ENV_FILE", "/root/.config/fabrik/fabrik.env")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("HOME", "/root")
 

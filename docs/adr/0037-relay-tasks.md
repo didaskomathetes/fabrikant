@@ -205,7 +205,7 @@ der Erfolg wird unabhängig geprüft.
 **Kontext.** Der Trail (`.fabrik/relay/<N>/`: Handoff, Skripte, Session-Logs, `AUDIT.md`,
 `audit/`) liegt nach Entscheidung 1 auf dem Branch `fabrik/relay/<N>`. Entsteht dabei Code mit PR,
 landet der Trail im PR-Diff und mit dem Merge auf `main`. Bei den ersten produktiven Tasks
-(example-org/example-repo#1159 → PR #1160, example-org/example-repo#312 → PR #313)
+(zwei Produktionsspecs, je Issue → PR)
 waren 42 bzw. 41 von 48 Dateien Trail. Die PR-Beschreibungen versprachen „wird vor dem Merge
 entfernt“, einen Mechanismus dafür gab es nicht; ein Squash-Merge übernimmt alle Dateien. Zugleich
 muss der Trail erhalten bleiben: Er ist die Evidenz, auf die sich das Audit-Verdikt bezieht, und ein
@@ -265,8 +265,8 @@ Abfrageergebnisse und Stichproben aus Produktivdaten enthalten, die nicht in ein
      auditierten Commit, angelegt über `POST /git/refs`. Erscheint nicht in Tag- oder Branch-Listen,
      wird von `git clone`/`git fetch` ohne expliziten Refspec nicht geholt, löst keine
      Tag-Workflows aus und hält den Commit auch nach dem Löschen des Branches erreichbar. `uri` ist
-     der Commit-Link (`…/tree/<sha>`). Am 2026-11-03 auf `didaskomathetes/quark-playground` per
-     API und `git push` getestet; in der `example-org`-Org vor dem ersten Einsatz einmal zu prüfen.
+     der Commit-Link (`…/tree/<sha>`). Am 2026-11-03 per
+     API und `git push` getestet; in der Ziel-Organisation vor dem ersten Einsatz einmal zu prüfen.
    - `local` (erste Umsetzung, Entwicklung/Tests): Archiv als Verzeichnis unter
      `FABRIK_DATA/relay-archive/<projekt>/<N>/audit-<k>/`. Nicht für Teams geeignet: nur auf diesem
      Rechner.

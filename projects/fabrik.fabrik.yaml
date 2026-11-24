@@ -1,21 +1,20 @@
 # Fabrik-Dogfooding: die Fabrik entwickelt die Fabrik.
-# Repo: didaskomathetes/quark-playground, Unterverzeichnis fabrik/.
+# Repo: didaskomathetes/fabrik.
 # ADR: docs/adr/0001-dogfooding-loops.md
 #
-# root = Git-Repo-Root; subpath: fabrik → Worktree-Basis ist <worktree>/fabrik.
+# root = Git-Repo-Root.
 # Branch-Wechsel zur Laufzeit (UI): ADR 0004 (state/branch-overrides.json).
 name: fabrik
-description: "Fabrik-Dogfooding: Fabrik entwickelt Fabrik — {repo} (fabrik/)"
-root: ~/PycharmProjects/quark-playground
+description: "Fabrik-Dogfooding: Fabrik entwickelt Fabrik — {repo}"
+root: ~/PycharmProjects/fabrik
 repo:
   branch: main
-  subpath: fabrik
 github: "{repo}"
 
 # Variablen (ADR 0047): `{name}` gilt überall in der Spec und in den Loop-Vorlagen.
 # Ein Fork/zweite Instanz ändert nur diesen Block.
 vars:
-  repo: didaskomathetes/quark-playground
+  repo: didaskomathetes/fabrik
   # 2026-10-24: claude_code/claude-sonnet-5-5 → opencode/hetzner/qwen3.8-27b (Hetzner Inference).
   # 2026-11-03: → lokaler llama.cpp-Server (Hetzner-Run #490: Session-Hang, Kosten, Latenz).
   builder_backend: opencode
@@ -79,7 +78,7 @@ x-shared-steps:
     provider: claude  # gepinnt wie classify (#80)
     prompt: |
       Du prüfst die Abhängigkeiten von Issue #{issue_number} im Fabrik-Projekt
-      ({repo}, Unterverzeichnis fabrik/).
+      ({repo}).
       Die Entwicklung startet ein Issue erst, wenn alle seine Blocker erledigt sind.
       Ein falscher Blocker hält das Issue unnötig auf; ein fehlender lässt es auf einer
       Grundlage starten, die es noch nicht gibt.
@@ -180,7 +179,7 @@ loops:
         # kaputtes JSON (#80, unescapte Zeichen in acceptance_criteria).
         provider: claude
         prompt: |
-          Du bist der Refine-Agent für das Fabrik-Projekt ({repo}, Unterverzeichnis fabrik/).
+          Du bist der Refine-Agent für das Fabrik-Projekt ({repo}).
           Lies das Issue und refine es: schreibe Acceptance Criteria und einen kurzen
           Hintergrund zum Issue (Ursache/Kontext — bei Feature Requests: Motivation und
           erwartetes Verhalten).
@@ -203,7 +202,7 @@ loops:
           - "needs approval": NUR wenn mindestens einer dieser Gründe zutrifft
             (Grund in reasoning nennen):
             1. Architektur: braucht eine neue ADR, ändert/ersetzt eine bestehende ADR
-               oder widerspricht einer (fabrik/docs/adr/*.md).
+               oder widerspricht einer (docs/adr/*.md).
             2. Sehr groß: mehrere unabhängige Teilsysteme oder eher Epic als Issue,
                sollte vor der Umsetzung geschnitten werden.
             3. Kritisch: Security-Modell (Auth, Secrets, Rechte, Signaturen),
@@ -367,7 +366,7 @@ loops:
       lint_cmd: "{lint_cmd}"
       # coverage.xml für den Quality-Report im review-Step (sonar-scan.sh --pr nutzt ihn wieder)
       test_cmd: uv run pytest -m "not browser" --cov=src --cov-report=xml:coverage.xml
-      adr_paths: [fabrik/docs/adr]  # PR-Pfade sind repo-relativ (Monorepo)
+      adr_paths: [docs/adr]  # PR-Pfade sind repo-relativ
       builder_context: [*agents_md]
       # Review + Fix-Runde (Builder). quality: Sonar-Scan des PR-Heads unter eigenem Key,
       # Report (Sonar-Issues + Lint via ruff/mypy auf geänderten Zeilen, Diff-Coverage)
@@ -463,7 +462,7 @@ loops:
       - name: ship
         type: git
         commit:
-          add: [":/"]  # Repo-Wurzel — workdir ist der Subpfad fabrik/
+          add: [":/"]  # Repo-Wurzel
           message: "refactor(fabrik): {target} (auto)"
         push: true
       - name: pr
@@ -591,7 +590,7 @@ loops:
         failure_kind: outcome  # Quality Gate/Tests rot (ADR 0035); Skript meldet Server-/Setup-Fehler per Exit 75/78/127
       - name: report
         type: report
-        text: "SonarQube-Scan {run_id}: Quality Gate OK (projectKey=quark-playground:fabrik)"
+        text: "SonarQube-Scan {run_id}: Quality Gate OK (projectKey=fabrik:fabrik)"
 
   # ── 7b. SonarQube-PR-Analyse (Community-Branch-Plugin, compose.yaml) → Ergebnis als PR-Kommentar ──
   # Ohne GitHub-Checks-Permission und ohne LLM: das Skript rendert den Kommentar aus den Scan-Ergebnissen

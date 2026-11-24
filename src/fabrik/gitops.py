@@ -32,7 +32,7 @@ from .secrets import _redact
 # Dual identity (ADR 0010): "dev" = builder app (creates/merges PRs),
 # "reviewer" = reviewer app (approves PRs). GitHub forbids self-approval —
 # so the roles must always be different identities.
-DEFAULT_ENV_FILE = "/root/.hermes/.env"
+DEFAULT_ENV_FILE = config.DEFAULT_ENV_FILE
 GH_TOKEN_ENV = {"dev": "GITHUB_TOKEN", "reviewer": "GITHUB_REVIEWER_TOKEN"}
 GITHUB_API = "https://api.github.com"
 GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` bevorzugt GH_TOKEN vor GITHUB_TOKEN  # nosec B105

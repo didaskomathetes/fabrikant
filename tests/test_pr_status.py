@@ -356,7 +356,7 @@ def _setup_post(responses, reviews=(), author=REVIEWER, head=HEAD):
 
 def test_post_review_posts_once(mod, fake_gh):
     responses, calls = fake_gh
-    _setup_post(responses, author="agent-host[bot]")
+    _setup_post(responses, author="fabrik-agent[bot]")
     responses["--method POST"] = {"html_url": "https://x/r1"}
     out = mod.post_review(REPO, 124, {"body": _marker("approved"), "comments": [_inline(1)]})
     assert out == {"posted": True, "url": "https://x/r1", "inline": 1}
@@ -550,7 +550,7 @@ def test_adr_collision_accepts_new_free_number(mod, fake_gh):
 
 def test_adr_collision_ignores_other_adr_dirs(mod, fake_gh):
     """Andere Projekte im Monorepo haben eigene Nummernkreise."""
-    assert _collision(mod, fake_gh, _adr_added("0005-x.md", "echochamber/docs/adr")) is None
+    assert _collision(mod, fake_gh, _adr_added("0005-x.md", "my-app/docs/adr")) is None
 
 
 def test_adr_collision_flags_duplicate_new_numbers(mod, fake_gh):

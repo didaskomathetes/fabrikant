@@ -420,8 +420,8 @@ def test_bundled_templates_missing_required_params_fail(tmp_path, monkeypatch):
 def test_fabrik_spec_has_no_hardcoded_repo_outside_vars():
     raw = yaml.safe_load((ROOT / "projects" / "fabrik.fabrik.yaml").read_text())
     body = {k: v for k, v in raw.items() if k != "vars"}
-    assert "didaskomathetes/quark-playground" not in json.dumps(body)
-    assert raw["vars"]["repo"] == "didaskomathetes/quark-playground"
+    assert "didaskomathetes/fabrik" not in json.dumps(body)
+    assert raw["vars"]["repo"] == "didaskomathetes/fabrik"
 
 
 def test_fabrik_spec_expands_with_bundled_templates(monkeypatch):

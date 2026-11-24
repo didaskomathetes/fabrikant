@@ -24,8 +24,8 @@ Script endet immer mit Exit 0, damit der aufrufende main-Scan
 
 Env: SONAR_HOST_URL (Default http://127.0.0.1:9000), SONAR_TOKEN (sonst
 Token-File SONAR_TOKEN_FILE / state/sonar-token.txt), SONAR_PROJECT_KEY
-(Default quark-playground:fabrik), GITHUB_REPOSITORY (Default
-didaskomathetes/quark-playground).
+(Default fabrik:fabrik), GITHUB_REPOSITORY (Default
+didaskomathetes/fabrik).
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_REPO = "didaskomathetes/quark-playground"
+DEFAULT_REPO = "didaskomathetes/fabrik"
 DEFAULT_HOST_URL = "http://127.0.0.1:9000"
-DEFAULT_BASE_KEY = "quark-playground:fabrik"
+DEFAULT_BASE_KEY = "fabrik:fabrik"
 PAGE_SIZE = 500  # api/projects/search: max. 500 pro Seite
 HTTP_TIMEOUT = 10  # Sekunden pro Sonar-Request
 FABRIK_DIR = Path(__file__).resolve().parent.parent

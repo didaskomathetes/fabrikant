@@ -20,14 +20,14 @@
 #   SONAR_HOST_URL           (Default: http://127.0.0.1:9000)
 #   SONAR_ADMIN_USER         (Default: admin)
 #   SONAR_ADMIN_PASSWORD     (Default: admin)
-#   SONAR_PROJECT_KEY        (Default: quark-playground:fabrik)
+#   SONAR_PROJECT_KEY        (Default: fabrik:fabrik)
 #   SONAR_GH_REPO            owner/repo (Default: aus `gh repo view`)
 #   SONAR_GH_ALM_KEY         Name der Konfiguration in SonarQube (Default: github)
 set -euo pipefail
 
 HOST_URL="${SONAR_HOST_URL:-http://127.0.0.1:9000}"
 AUTH="${SONAR_ADMIN_USER:-admin}:${SONAR_ADMIN_PASSWORD:-admin}"
-PROJECT_KEY="${SONAR_PROJECT_KEY:-quark-playground:fabrik}"
+PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrik:fabrik}"
 ALM_KEY="${SONAR_GH_ALM_KEY:-github}"
 GITHUB_API_URL="https://api.github.com/"
 

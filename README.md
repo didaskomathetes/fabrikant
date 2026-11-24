@@ -19,9 +19,21 @@ projects, loops, runs, live logs and a chat interface.
   explicitly marked critical steps (`approval: true`) pause the run
   until a human approves
 
+## Install
+
+```bash
+pip install fabrik                 # Python 3.11+; or: docker run -p 8321:8321 -v fabrik-data:/data <image>
+mkdir my-factory && cd my-factory && fabrik init
+fabrik serve                       # your specs live in ./projects, custom steps in ./plugins
+```
+
+Your own work is only specs (`projects/*.fabrik.yaml`) and optional custom step packages registered via the
+`fabrik.steps` entry point — see [docs/plugins.md](docs/plugins.md) and ADR 0069.
+
 ## Getting started
 
 ```bash
+fabrik init [DIR]       # scaffold a project directory (specs, fabrik.env, plugin skeleton)
 fabrik serve            # engine + UI + scheduler, 127.0.0.1:8321
 fabrik list             # projects + loops
 fabrik validate         # check specs (--offline [SPEC…]: without root check, e.g. CI)
@@ -63,7 +75,7 @@ fix rounds of `pr_review` and relay pushes. Agents that push themselves call
 Without installation: `python -m fabrik …` (from the project root).
 
 Environment variables: `GITHUB_TOKEN` (GitHub API), `FABRIK_ENV_FILE` (path to the
-`.env` file with `GITHUB_TOKEN`, default `/root/.hermes/.env`), `FABRIK_TOKEN`
+`.env` file with `GITHUB_TOKEN`, default `~/.config/fabrik/fabrik.env`), `FABRIK_TOKEN`
 (optional: bearer token for the API `POST` routes), `FABRIK_WORKERS`
 (worker pool size, default 4), `FABRIK_LLM_PROVIDERS` +
 `FABRIK_LLM_<NAME>_{URL,MODEL,KEY}` (LLM providers, see below).
@@ -85,7 +97,7 @@ variables in `WorkingDirectory=`). If the variable is missing, the unit aborts w
 # ~/.config/fabrik/deploy.env — create once per machine
 mkdir -p ~/.config/fabrik
 echo "FABRIK_HOME=$PWD/fabrik" > ~/.config/fabrik/deploy.env   # from the repo root
-# example content: FABRIK_HOME=/home/<user>/quark-playground/fabrik
+# example content: FABRIK_HOME=/home/<user>/src/fabrik
 ```
 
 ```bash
@@ -170,14 +182,14 @@ True parallelism needs `FABRIK_WORKERS` > 1.
 `fabrik validate` prüft dagegen).
 
 ```yaml
-name: kyudo-neandertal
+name: my-app
 description: "Drupal 7→11 migration"
-root: /root/kyudo-neandertal
+root: ~/src/my-app
 max_parallel: 3                             # concurrent runs (default 3)
 repo:
   branch: master
   subpath: drupal11
-github: didaskomathetes/kyudo-neandertal   # for on_issue + github_issue alerts
+github: acme/my-app                         # for on_issue + github_issue alerts
 
 notify:                                     # alert channels on (default: run_failed)
   slack: https://hooks.slack.com/services/…
@@ -235,28 +247,13 @@ loops:
 If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to it (`.fabrik/develop.prompt.md`).
 `projects/fabrik.fabrik.yaml` is itself an instance (repo name only in `vars`).
 
-**Migrating private specs:** `kyudo-neandertal`, `gods-last-garden` and `ai-lab-merchant-assistant` (including
-`prompts/kyudo-*`, `prompts/ailab-*`) are no longer in the repo. Fetch them from the history and put them into `FABRIK_DATA`
-(or into the target repo as `.fabrik/fabrik.yaml`):
-
-```bash
-mkdir -p "$FABRIK_DATA/projects/prompts"
-for f in kyudo-neandertal gods-last-garden ai-lab-merchant-assistant; do
-  git show 5ab9351:fabrik/projects/$f.fabrik.yaml > "$FABRIK_DATA/projects/$f.fabrik.yaml"
-done
-for f in ailab-address ailab-develop ailab-pr-reply ailab-review kyudo-develop; do
-  git show 5ab9351:fabrik/prompts/$f.prompt.md > "$FABRIK_DATA/projects/prompts/$f.prompt.md"
-done
-fabrik validate
-```
-
 ### Step types
 
 | Type     | Fields                                                        | Behavior |
 |----------|---------------------------------------------------------------|----------|
 | `shell`  | `cmd`, `workdir`, `env`, `timeout` (default 600 s), `name`, `failure_kind` | Run `sh -c`; exit ≠ 0 aborts the loop. `failure_kind` (`outcome`\|`transient`\|`environment`) names the [failure class](#failure-classes-adr-0035) for exit ≠ 0, e.g. `outcome` for test/lint steps. Fixed exit codes take precedence: 126/127 and 78 (`EX_CONFIG`) → `environment`, 75 (`EX_TEMPFAIL`) → `transient` — this is how a script reports the class itself; death by signal (OOM kill, SIGTERM; exit > 128) stays `unknown`. Allowed on shell steps only |
 | `git`    | `fetch`, `branch`, `track`, `commit: {add, message}`, `push` | Git op; `push` blocks on protected branches; `commit` on a clean tree is a no-op |
-| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIK_ENV_FILE` / `/root/.hermes/.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
+| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIK_ENV_FILE` / `~/.config/fabrik/fabrik.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
 | `agent`  | `backend` (e.g. `opencode`), `prompt`, `workdir`, `endpoint`, `model`, `variant` (`opencode` only: model variant from the opencode config, e.g. reasoning effort), `permissions`, `timeout`, `github_identity` — or legacy: `cmd`, `prompt` | Agent task via a pluggable backend (session + prompt + polling) or an agent CLI. Without `backend`/`cmd` = cleanly skipped. `github_identity: dev\|reviewer` (CLI backends only) sets the role's `GH_TOKEN`/`GITHUB_TOKEN` in the agent process — `gh` (and `git` with `gh` as credential helper) then runs as the builder or QA app instead of as the local user. A `gh` wrapper at the front of the PATH reads the token fresh from `FABRIK_ENV_FILE` on every call, so runs with `timeout` > 1h survive the 1h installation token |
 | `report` | `text`, `write` (optional: file path, relative to the project root) | Message to the run log and/or a report file |
 | `http`   | `url`, `method`, `headers`, `body`, `expect: {status}`, `emit: {var: body\|status}` | HTTP request; the response/status becomes available as a variable for following steps |
@@ -987,7 +984,7 @@ win). Log errors never fail a run (best effort).
 loop `sonar-pr`). The daily main scan additionally cleans up orphaned
 legacy PR projects (`scripts/sonar-pr-cleanup.py`, ADR 0053): before native
 PR analysis (#524), a separate project
-`quark-playground:fabrik:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
+`<org>:fabrik:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
 is no longer open on GitHub are listed and deleted. Fail-safe:
 undeterminable PR status → the project stays; a cleanup failure is
 only a warning and doesn't change the scan's exit code.
@@ -1042,10 +1039,23 @@ gh label delete "ready to develop" --repo OWNER/REPO --yes   # optional, afterwa
 
 ## Projects in use
 
-- `kyudo-neandertal` (private, `FABRIK_DATA`) — Drupal 7→11 migration (lint=CI checks, migrate=issue→PR
-  with approval gate, `github_issue` alerts on failures)
-- `echochamber` — meeting pipeline (lint/smoke, worktree on the M3 branch)
-- `gods-last-garden` (private, `FABRIK_DATA`) — Godot FPS (lint=import, test=headless battery)
+fabrik runs several private projects in production — e.g. a CMS migration
+(issue→PR loop with approval gate and failure alerts), a game project
+(lint/test loops) and a meeting pipeline. Their specs stay with each
+project (`FABRIK_DATA` or `.fabrik/fabrik.yaml` in the repo).
+
+## Licensing
+
+**Open core** (Dagster-style):
+
+- **Core — Apache 2.0** (this repo): engine, CLI, web UI, spec format and the
+  plugin contract. Free to use, modify and redistribute, including
+  commercially.
+- **Closed / enterprise features** — separate packages built on the
+  `fabrik.steps` plugin contract (ADR 0069), under a commercial license and
+  distributed outside this repo. The core never requires them.
+- **SaaS** — fabrik as a hosted service is a service offering and is not
+  covered by this repository's license.
 
 ## Roadmap
 
