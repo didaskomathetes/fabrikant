@@ -1,6 +1,6 @@
-# ADR 0064: MCP Server — fabrik as a stdio Endpoint for MCP-Capable Agents
+# ADR 0064: MCP Server — fabrikant as a stdio Endpoint for MCP-Capable Agents
 
-**Status:** Accepted (2026-11-21); proposed on the `feat/mcp-server` branch.
+**Status:** Accepted (2026-11-21); re-landed on main 2026-11-25.
 Amendment 2026-11-22: scope clarified as the *local* profile; hardening and opt-in approvals added;
 hosted profile deferred to a future ADR.
 Amendment 2026-11-23: the transport is the official MCP Python SDK instead of hand-rolled JSON-RPC
@@ -9,15 +9,15 @@ Amendment 2026-11-23: the transport is the official MCP Python SDK instead of ha
 
 ## Context
 
-Roadmap #132 ("Spec as a standard") wants fabrik's runs, specs and approvals to be
+Roadmap #132 ("Spec as a standard") wants fabrikant's runs, specs and approvals to be
 reachable from *any* MCP-capable agent (Claude Desktop, opencode, a coding agent, a
 custom orchestrator). Today those capabilities are only reachable through the HTTP
-API + web UI (ADR 0030) or the `fabrik` CLI. An external agent would have to speak
+API + web UI (ADR 0030) or the `fabrikant` CLI. An external agent would have to speak
 raw HTTP, handle sessions/CSRF, and parse HTML-free JSON — none of which is what an
 agent harness expects.
 
 The Model Context Protocol (MCP) is the de-facto stdio/JSON-RPC convention for
-exposing tools to agents. Giving fabrik a first-class MCP server means an agent can
+exposing tools to agents. Giving fabrikant a first-class MCP server means an agent can
 list projects, read a spec, inspect runs, and approve/reject a pending run using the
 same primitives the UI uses — no HTTP, no auth handshake, no scraping.
 
@@ -26,7 +26,7 @@ same primitives the UI uses — no HTTP, no auth handshake, no scraping.
 ### Transport: the official MCP Python SDK over stdio
 
 *Amendment 2026-11-23.* The first version hand-rolled MCP (protocol `2025-03-26`, newline-delimited
-JSON-RPC over stdio) to keep fabrik free of extra dependencies. That is reversed: the server is built
+JSON-RPC over stdio) to keep fabrikant free of extra dependencies. That is reversed: the server is built
 on the **official `mcp` Python SDK** (a normal, core dependency; the exact version range is pinned in
 `pyproject.toml`). Reasons:
 
@@ -37,15 +37,15 @@ on the **official `mcp` Python SDK** (a normal, core dependency; the exact versi
   results, protocol version negotiation, and the HTTP transports and OAuth integration needed by the
   hosted profile.
 - The cost is a heavier dependency tree (Pydantic, Starlette, uvicorn, httpx, ...). Accepted: MCP is a
-  headline feature of fabrik, and the dependency is the official, maintained one.
+  headline feature of fabrikant, and the dependency is the official, maintained one.
 
 The transport for the local profile is stdio.
 
-- Entry points: `fabrik mcp` (CLI subcommand) and the `fabrik-mcp` console script.
+- Entry points: `fabrikant mcp` (CLI subcommand) and the `fabrikant-mcp` console script.
 - The process is **long-lived**: the MCP client starts it and keeps the pipe open,
   exchanging messages. Run/approval actions spawn worker threads inside this process
   exactly like the HTTP server does, so the process must stay alive while a triggered
-  run executes. If the client kills it, the next fabrik server start reaps the
+  run executes. If the client kills it, the next fabrikant server start reaps the
   orphaned runs (`reap_orphaned_runs`).
 
 ### Profiles
@@ -55,8 +55,8 @@ A **hosted profile** needs a different transport (streamable HTTP), per-client
 authentication, an identity in the audit actor instead of the constant `mcp`, and RBAC
 reusing the ADR 0030 roles (`viewer` read tools, `operator` start/approve/reject, `admin`
 the rest). It must refuse to start without authentication, as `auth.check_bind` does for the
-HTTP server. The hosted profile is out of scope here; the official MCP SDK, now used for the local profile too, is the
-basis for it (it provides both transports and an OAuth 2.1 resource-server integration).
+HTTP server. The hosted profile is out of scope here. The official MCP SDK, now also used for the local profile,
+is the basis for it (it provides both transports and an OAuth 2.1 resource-server integration).
 See `docs/threat-model.md`.
 
 ### Protocol handling
@@ -68,7 +68,7 @@ default, +2 with `--allow-approvals`, +2 with `--allow-spec-write`.
 
 ### Tools (runs, specs, approvals)
 
-Each handler wraps an existing fabrik primitive — no new business logic, only a
+Each handler wraps an existing fabrikant primitive — no new business logic, only a
 thin adapter. Actions are audited with actor `mcp`.
 
 | Tool | Wraps | Category |
@@ -129,8 +129,8 @@ indistinguishable from UI approvals in the run record (except `actor=mcp`).
   `sys.stdout` points at stderr, so `print()` calls in the engine cannot corrupt the stream.
 - **Failures are contained.** A failing request or tool yields a protocol error or an
   `isError` result; it never ends the long-lived process.
-- **Conformance is the SDK's job**, and fabrik proves it with a contract test: the SDK's own client
-  spawns `fabrik mcp` over stdio, lists tools (annotations present; opt-in tools hidden by default)
+- **Conformance is the SDK's job**, and fabrikant proves it with a contract test: the SDK's own client
+  spawns `fabrikant mcp` over stdio, lists tools (annotations present; opt-in tools hidden by default)
   and calls a read tool. This runs in CI.
 - **Lifecycle:** orphaned runs are reaped at startup (like the HTTP server); on stdin EOF,
   in-flight run workers are drained for up to 10 minutes.
@@ -149,8 +149,8 @@ indistinguishable from UI approvals in the run record (except `actor=mcp`).
 
 ### Tool results
 
-Every `tools/call` returns both a human-readable `content[0].text` (pretty JSON) and a
-machine-readable `structuredContent` (the raw object), so agents can parse either.
+The SDK builds each `tools/call` result from the handler's return value: a text content block for
+humans and, where the return type allows it, `structuredContent` for machines, so agents can parse either.
 
 ## Consequences
 
@@ -158,7 +158,7 @@ machine-readable `structuredContent` (the raw object), so agents can parse eithe
   replaced); CLI subcommand `mcp` and console script `fabrikant-mcp` (existing, unchanged
   in name).
 - New core dependency: the official `mcp` SDK (see *Transport*); no change to the spec format, the engine, or the store.
-- Agents can drive fabrik end-to-end (read specs → start a run → approve it) without
+- Agents can drive fabrikant end-to-end (read specs → start a run → approve it) without
   HTTP.
 - The MCP endpoint is **unauthenticated by design in the local profile** (stdio, local
   trust boundary, same as the CLI). Residual risk: a prompt-injected agent that has the
