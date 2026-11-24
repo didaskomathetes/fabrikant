@@ -144,3 +144,55 @@ extrahiert), sonst `failed` (stderr). `cancel` killed die Prozessgruppe
   die Spec. `COPILOT_AUTO_UPDATE=false` wird pro Prozess gesetzt.
 - **Staleness:** wie codex — `stale_after` (Default 900s) als Backstop für
   hängende Prozesse.
+
+## Security layers for agent processes
+
+Can be enabled individually; see the ADRs.
+
+- **Agent env allowlist (ADR 0050):** agent subprocesses don't inherit `os.environ` — only the allowlist
+  (`agentenv.py`, extendable via `FABRIKANT_AGENT_ENV_EXTRA`) plus variables passed explicitly per step. For the
+  shared `opencode serve` process: `fabrikant agent-env` prints the scrubbed env (systemd `EnvironmentFile` /
+  Docker `--env-file`).
+- **Egress default-deny (ADR 0051):** agent containers attach to `fabrikant-sandbox` (no direct internet access);
+  all egress goes through a Tinyproxy with a domain allowlist (`fabrikant egress start`; allowlist: builtins +
+  optional `FABRIKANT_EGRESS_ALLOWLIST_FILE`/`FABRIKANT_EGRESS_ALLOWLIST`, validated; see
+  `deploy/egress-allowlist.txt`). Denied requests in the proxy log are an injection signal. Known limit: the
+  shared `opencode serve` process runs unsandboxed on the host with full network access and isn't covered by the
+  proxy (only agents in `fabrikant-sandbox`).
+- **Per-run agent sandbox (ADR 0054, under revision):** with `FABRIKANT_SANDBOX=1`, every one-shot CLI agent run
+  executes in a hardened Docker container (`--cap-drop ALL`, no-new-privileges, resource caps, read-only root fs,
+  egress only via the ADR 0051 proxy). The worktree is not mounted: the state goes in as a git bundle, the result
+  comes back as a bundle; fabrikant checks it and applies the diff to the worktree. The image needs the agent CLI
+  and git; template with claude-code, codex, copilot, gh, Python/uv:
+  `docker build -t fabrikant/agent-sandbox:latest deploy/agent-sandbox` (versions via `--build-arg`, base images
+  pinned by digest; fabrikant starts it with `--pull never`). A GitHub token only enters the container with
+  `github_identity`; without it all token variables are empty (also for projects with `github_env_file`).
+
+## opencode setup and behavior
+
+Host: `opencode serve --port 8945` + `fabrikant.env`: `FABRIKANT_AGENT_ENDPOINT`, `FABRIKANT_AGENT_MODEL` (format
+`provider/model`); 2.x additionally `FABRIKANT_AGENT_PASSWORD`. With `FABRIKANT_SANDBOX=1`: no `serve` — one
+`opencode run --standalone` per session inside the sandbox container, model as `<LLM connection>/<model>` (e.g.
+`llama-cpp/Qwen3.8-27B-GGUF`); the provider config is derived from the connection (http endpoint, secret only if
+set), whose host must be on the egress allowlist. Step `permissions` are restrictive: listed patterns apply, all
+others of the same permission are `deny`. Legacy agent steps can instead use `cmd:` with any agent CLI (e.g.
+`claude -p {prompt_file}`).
+
+- Supports opencode serve **1.x and 2.x** (ADR 0005) — the server version is detected automatically
+  (`/api/info` vs. `/api/health`). 2.x requires HTTP basic auth: `OPENCODE_SERVER_PASSWORD` on the server +
+  `FABRIKANT_AGENT_PASSWORD` in `fabrikant.env` (same value).
+- One session per step (workdir via `?directory=` (1.x) or `location` (2.x) → work happens in the step workdir,
+  one serve process serves many projects).
+- Prompt + polling of the message API (no SSE needed); done/failed detection via `finish` + substance check
+  (completed tool or final text) — empty/wrong messages (e.g. LLM 500) → step `fail`, no 30-minute hang.
+- Token/cost accounting per run (from the message API).
+- Health gate before dispatch; timeout → `abort`/`interrupt`; an exception mid-run aborts the session (no
+  orphaning).
+- Robust against transient backend/transport errors (ADR 0012): if `poll()`/`transcript()` throws (e.g.
+  `opencode serve` down/restart), the step keeps polling with backoff — **within the step timeout** — instead of
+  killing the run. A persistent error until the timeout → `fail` with the backend cause.
+- Containment: file tools (`edit`) are confined to the session workdir (`external_directory` = ask → deny when
+  headless); `bash "*"` is deliberately broad — real isolation (non-root user, container, VM) is a **deployment
+  prerequisite**, not a config option. Override: `step.permissions`.
+- Security: agent steps are T2+ — the conductor trusts only the deterministic step outcome, not agent prose;
+  untrusted inputs (issue bodies) are data in the prompt.

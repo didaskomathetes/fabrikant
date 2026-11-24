@@ -5,7 +5,7 @@
 # 2026-10-18, cron lief nicht, weil der Foreground-Prozess gestorben war).
 #
 # Install:
-#   cp fabrikant/deploy/fabrikant.service ~/.config/systemd/user/fabrikant.service
+#   cp deploy/fabrikant.service ~/.config/systemd/user/fabrikant.service
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now fabrikant
 #
@@ -21,7 +21,7 @@
 # keine Shell-Env-Variablen nötig.
 #
 # Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
+# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
 
 [Unit]
 Description=Fabrikant — Software-Fabrik (Engine + UI + Scheduler)

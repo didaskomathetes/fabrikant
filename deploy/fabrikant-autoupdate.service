@@ -5,7 +5,7 @@
 # sonst vertagt auf den nächsten Timer-Tick.
 #
 # Install (setzt fabrikant.service voraus):
-#   cp fabrikant/deploy/fabrikant-autoupdate.{service,timer} ~/.config/systemd/user/
+#   cp deploy/fabrikant-autoupdate.{service,timer} ~/.config/systemd/user/
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now fabrikant-autoupdate.timer
 #
@@ -14,7 +14,7 @@
 #   journalctl --user -u fabrikant-autoupdate.service -f
 #
 # Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
+# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
 
 [Unit]
 Description=Fabrikant — main nachziehen und fabrikant.service nach Merges neu starten
