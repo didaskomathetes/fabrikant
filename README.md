@@ -8,6 +8,49 @@ projects, loops, runs, live logs and a chat interface.
 projects run in isolated worktrees, results go out as a branch + PR (never a push to `main`), and loops run on
 their own — only steps you mark as critical (`approval: true`) pause until a human approves.
 
+## How it fits together
+
+Deployment-neutral view: every box is a replaceable component behind a port, so the same engine runs on a laptop,
+a server or (via a different run launcher) a cluster.
+
+```mermaid
+flowchart LR
+    subgraph In["Inputs"]
+        TR["Triggers<br/>cron · issue/PR · webhook · Slack"]
+        UI["Web UI · CLI · Chat · MCP"]
+    end
+    SP[("Specs<br/>YAML + plugins")]
+    subgraph Core["Engine"]
+        SCH["Scheduler"]
+        ENG["Conductor<br/>deterministic, gates"]
+        LCH["Run launcher<br/>port"]
+    end
+    subgraph Work["Execution"]
+        RUN["Runner<br/>steps · worktree"]
+        AG["Agent backend<br/>Claude · Codex · Copilot · opencode"]
+        SBX["Sandbox<br/>per-run container"]
+    end
+    EGR["Egress proxy<br/>default-deny allowlist"]
+    ST[("Run store<br/>+ session logs")]
+    HOST["Code host<br/>GitHub · GitLab"]
+    NET(("Internet<br/>LLM APIs"))
+
+    TR --> SCH --> ENG
+    UI <--> ENG
+    SP --> ENG
+    ENG --> LCH --> RUN
+    RUN --> AG
+    AG --- SBX
+    SBX --> EGR --> NET
+    RUN --> HOST
+    ENG <--> ST
+    RUN --> ST
+    ENG -. approval gate .-> UI
+```
+
+Agents never reach the internet directly: all egress goes through the allowlist proxy, and results leave as a
+branch + PR on the code host. Component details: [architecture](docs/architecture.md).
+
 ## Install
 
 Python 3.11+:

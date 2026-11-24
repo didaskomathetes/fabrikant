@@ -33,6 +33,23 @@ the [ADRs](adr/README.md); the plan is in the [roadmap](roadmap.md).
 | Authentication, roles, OIDC | [auth.md](auth.md) |
 | Security controls and threat model | [security.md](security.md), [threat-model.md](threat-model.md) |
 
+## Components
+
+The diagram in the [README](../README.md#how-it-fits-together) maps to code as follows. Each substrate-specific
+piece sits behind a port, so deployments (local, server, cluster) differ only in which adapter is registered.
+
+| Component | Role | Code |
+|---|---|---|
+| Scheduler | cron, file, issue/PR and Slack triggers | `scheduler.py`, `webhook.py` |
+| Conductor | deterministic loop engine, approval gates, retries | `engine.py`, `approval.py` |
+| Run launcher (port) | executes run work; in-process worker pool today, k8s/ECS later | `launcher/` |
+| Runner | steps in an isolated git worktree | `steps/`, `gitops.py` |
+| Agent backend (port) | replaceable CLI/server agents | `backends/` |
+| Sandbox | optional per-run agent container (`FABRIKANT_SANDBOX=1`) | `sandbox.py` |
+| Egress proxy | default-deny allowlist for agent traffic (ADR 0051) | `egress.py` |
+| Run store | JSON or SQL backend, session logs | `runstore.py`, `runstore_sql.py` |
+| Code host (port) | GitHub, GitLab or registered provider | `hosting/` |
+
 ## Usage in practice
 
 fabrikant runs several private projects in production, for example a CMS migration (issue-to-PR loop with
