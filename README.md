@@ -97,7 +97,7 @@ variables in `WorkingDirectory=`). If the variable is missing, the unit aborts w
 # ~/.config/fabrik/deploy.env — create once per machine
 mkdir -p ~/.config/fabrik
 echo "FABRIK_HOME=$PWD/fabrik" > ~/.config/fabrik/deploy.env   # from the repo root
-# example content: FABRIK_HOME=/home/<user>/quark-playground/fabrik
+# example content: FABRIK_HOME=/home/<user>/src/fabrik
 ```
 
 ```bash
@@ -182,14 +182,14 @@ True parallelism needs `FABRIK_WORKERS` > 1.
 `fabrik validate` prüft dagegen).
 
 ```yaml
-name: kyudo-neandertal
+name: my-app
 description: "Drupal 7→11 migration"
-root: /root/kyudo-neandertal
+root: ~/src/my-app
 max_parallel: 3                             # concurrent runs (default 3)
 repo:
   branch: master
   subpath: drupal11
-github: didaskomathetes/kyudo-neandertal   # for on_issue + github_issue alerts
+github: acme/my-app                         # for on_issue + github_issue alerts
 
 notify:                                     # alert channels on (default: run_failed)
   slack: https://hooks.slack.com/services/…
@@ -246,21 +246,6 @@ loops:
 
 If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to it (`.fabrik/develop.prompt.md`).
 `projects/fabrik.fabrik.yaml` is itself an instance (repo name only in `vars`).
-
-**Migrating private specs:** `kyudo-neandertal`, `gods-last-garden` and `ai-lab-merchant-assistant` (including
-`prompts/kyudo-*`, `prompts/ailab-*`) are no longer in the repo. Fetch them from the history and put them into `FABRIK_DATA`
-(or into the target repo as `.fabrik/fabrik.yaml`):
-
-```bash
-mkdir -p "$FABRIK_DATA/projects/prompts"
-for f in kyudo-neandertal gods-last-garden ai-lab-merchant-assistant; do
-  git show 5ab9351:fabrik/projects/$f.fabrik.yaml > "$FABRIK_DATA/projects/$f.fabrik.yaml"
-done
-for f in ailab-address ailab-develop ailab-pr-reply ailab-review kyudo-develop; do
-  git show 5ab9351:fabrik/prompts/$f.prompt.md > "$FABRIK_DATA/projects/prompts/$f.prompt.md"
-done
-fabrik validate
-```
 
 ### Step types
 
@@ -999,7 +984,7 @@ win). Log errors never fail a run (best effort).
 loop `sonar-pr`). The daily main scan additionally cleans up orphaned
 legacy PR projects (`scripts/sonar-pr-cleanup.py`, ADR 0053): before native
 PR analysis (#524), a separate project
-`quark-playground:fabrik:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
+`<org>:fabrik:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
 is no longer open on GitHub are listed and deleted. Fail-safe:
 undeterminable PR status → the project stays; a cleanup failure is
 only a warning and doesn't change the scan's exit code.
@@ -1054,10 +1039,10 @@ gh label delete "ready to develop" --repo OWNER/REPO --yes   # optional, afterwa
 
 ## Projects in use
 
-- `kyudo-neandertal` (private, `FABRIK_DATA`) — Drupal 7→11 migration (lint=CI checks, migrate=issue→PR
-  with approval gate, `github_issue` alerts on failures)
-- `echochamber` — meeting pipeline (lint/smoke, worktree on the M3 branch)
-- `gods-last-garden` (private, `FABRIK_DATA`) — Godot FPS (lint=import, test=headless battery)
+fabrik runs several private projects in production — e.g. a CMS migration
+(issue→PR loop with approval gate and failure alerts), a game project
+(lint/test loops) and a meeting pipeline. Their specs stay with each
+project (`FABRIK_DATA` or `.fabrik/fabrik.yaml` in the repo).
 
 ## Licensing
 
