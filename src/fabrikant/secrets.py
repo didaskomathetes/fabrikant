@@ -9,14 +9,14 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from . import config
+from . import config, legacy
 from .i18n import t
 
 log = logging.getLogger("fabrikant.secrets")
 
 _SECRET_NAME_RE = re.compile(r"(TOKEN|KEY|SECRET|PASS|CREDENTIAL)", re.I)
 _EXTRA_SECRET_FILES = [
-    config.FABRIKANT_HOME / "fabrikant.env",
+    legacy.existing_env_file(config.FABRIKANT_HOME, config.ENV_FILE_NAME),
     Path(os.environ.get("FABRIKANT_ENV_FILE", config.DEFAULT_ENV_FILE)),
 ]
 # Shorter values are not masked (otherwise the masking would hit arbitrary short words in the log).

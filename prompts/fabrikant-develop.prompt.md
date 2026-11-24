@@ -40,5 +40,5 @@ Body:
   — prüft `main` UND offene PRs; nie selbst hochzählen) + Zeile im ADR-Index
   `docs/adr/README.md` (Kollisionen benennt der `check-adr`-Step danach um, ADR 0032).
   Keine Architektur-Änderung ohne ADR.
-- Commit und Push übernimmt der Fabrik-`git`-Step — du musst NICHT committen oder pushen.
+- Commit und Push übernimmt des Fabrikant-`git`-Steps — du musst NICHT committen oder pushen.
 - Antworte am Ende in 2-3 Sätzen, was du geändert hast.

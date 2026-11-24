@@ -68,7 +68,7 @@ fi
 # Projekt muss existieren, bevor es gebunden werden kann (erster Scan legt es sonst erst an).
 if ! curl -sS -u "$AUTH" "$HOST_URL/api/projects/search?projects=$PROJECT_KEY" | grep -q "\"key\":\"$PROJECT_KEY\""; then
   log "Lege Projekt $PROJECT_KEY an"
-  api projects/create --data-urlencode "project=$PROJECT_KEY" --data-urlencode "name=Fabrik" \
+  api projects/create --data-urlencode "project=$PROJECT_KEY" --data-urlencode "name=Fabrikant" \
     --data-urlencode "mainBranch=main"
 fi
 

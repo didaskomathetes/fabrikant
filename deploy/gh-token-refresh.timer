@@ -2,7 +2,7 @@
 # RandomizedDelaySec: DNS/Netz-Flakes nicht synchron mit anderen Timern.
 
 [Unit]
-Description=Fabrik — gh-token-refresh every 30 min
+Description=Fabrikant — gh-token-refresh every 30 min
 
 [Timer]
 OnBootSec=1min

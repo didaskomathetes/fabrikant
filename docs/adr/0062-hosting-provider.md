@@ -6,7 +6,7 @@ trigger), ADR 0031 (native issue dependencies), ADR 0057 (port/adapter pattern).
 
 ## Context
 
-fabrikant has historically talked to code hosting **directly over the GitHub REST API**: steps and
+fabrik has historically talked to code hosting **directly over the GitHub REST API**: steps and
 triggers call `gitops._gh_api` / `_gh_token` / `_gh_diff` / `_gh_dependencies` with raw
 `api.github.com` URLs (`pr`, `issue`, `pr_merge`, `human_gate`, `notify`, `scheduler`,
 `retry_chains`, `apicommit`, `relay`). That is correct for GitHub, but:
@@ -23,7 +23,7 @@ the codebase and is adopted here for the hosting substrate.
 
 ## Decision
 
-1. **Port `Provider` (`fabrikant/hosting/base.py`).** The core defines the contract as the union of
+1. **Port `Provider` (`fabrik/hosting/base.py`).** The core defines the contract as the union of
    the operations steps and triggers need: issues (create/get/edit, labels, comments, list),
    PRs/MRs (create/get/list, merge, update-branch, files, diff, review, compare), native issue
    dependencies, API commits (`commit_via: api`), and webhook parsing. Structural (duck-typed)
@@ -37,11 +37,11 @@ the codebase and is adopted here for the hosting substrate.
      stays byte-for-byte the previous one (no behavioural regression).
    - `GitLabProvider` implements the contract over the GitLab REST API v4
      (`https://<host>/api/v4`, `PRIVATE-TOKEN`).
-4. **Selection + credentials (`fabrikant/hosting/select.py`).** `get_provider(repo, spec, role)`
+4. **Selection + credentials (`fabrik/hosting/select.py`).** `get_provider(repo, spec, role)`
    picks the adapter: explicit `hosting:` spec field → repo-URL host (`github.com` → GitHub,
    otherwise GitLab) → `github:` field → default GitHub (backwards compatible). GitHub identity
-   (dual identity, ADR 0010) via `role`; the GitLab token comes from `FABRIKANT_GITLAB_TOKEN` (env)
-   or `~/.config/gitlab/token` (file, `FABRIKANT_GITLAB_TOKEN_FILE`).
+   (dual identity, ADR 0010) via `role`; the GitLab token comes from `FABRIK_GITLAB_TOKEN` (env)
+   or `~/.config/gitlab/token` (file, `FABRIK_GITLAB_TOKEN_FILE`).
 5. **Spec binding per run.** The engine binds the active run spec via
    `hosting.spec_context(spec)` (a ContextVar) for the duration of a run — steps resolve the
    provider from it without the spec being threaded through every call (analogous to
@@ -53,7 +53,7 @@ the codebase and is adopted here for the hosting substrate.
 7. **Egress allowlist is deployment-scoped for GitLab.** The default-deny egress proxy
    (ADR 0051) ships `github.com` as a builtin. A self-hosted GitLab host is deployment-specific,
    so it is *not* a builtin: a deployment using GitLab adds its host to the egress allowlist
-   (`FABRIKANT_EGRESS_ALLOWLIST` / `FABRIKANT_EGRESS_ALLOWLIST_FILE`; template
+   (`FABRIK_EGRESS_ALLOWLIST` / `FABRIK_EGRESS_ALLOWLIST_FILE`; template
    `deploy/egress-allowlist.txt`), otherwise the proxy blocks agent access to it.
 
 ### Documented gaps (GitLab)

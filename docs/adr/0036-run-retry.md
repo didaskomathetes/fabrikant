@@ -81,7 +81,7 @@ Mit der Fehlerklassifikation lässt sich diese Gefahr gezielt ausschließen.
    **YAML-Falle:** PyYAML (YAML 1.1) liest den unquotierten Schlüssel `on` als Boolean `True`. Der
    Parser behandelt `True` als `on`, solange `on` nicht zusätzlich gesetzt ist; Beispiele und
    Projekt-Specs quoten `"on"`. Parsing und Semantik liegen in genau einem Modul
-   (`src/fabrikant/retry.py`, `RetryPolicy`), das auch der Relay-Entwurf (PR #293) nutzt.
+   (`src/fabrik/retry.py`, `RetryPolicy`), das auch der Relay-Entwurf (PR #293) nutzt.
 
 2. **Cron-Loops werden wie alle anderen wiederholt.** Der Retry folgt dem Backoff, nicht dem
    nächsten Tick; bei einem wöchentlichen Job ginge sonst eine Woche verloren. Damit Retry und Tick

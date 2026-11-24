@@ -54,7 +54,7 @@ class NoRoleError(OidcError):
 
 @dataclass(frozen=True)
 class OidcConfig:
-    """OIDC-Konfiguration (``from_env``). ``role_map`` bildet IdP-Gruppen auf Fabrik-Rollen ab."""
+    """OIDC-Konfiguration (``from_env``). ``role_map`` bildet IdP-Gruppen auf Fabrikant-Rollen ab."""
 
     issuer: str
     client_id: str

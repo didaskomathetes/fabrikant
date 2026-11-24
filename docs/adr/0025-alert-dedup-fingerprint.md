@@ -22,7 +22,7 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
   Zahlen („1 error(s)“, „port 8080“) bleiben erhalten, damit sich unterschiedliche
   Fehlerbilder nicht zusammenziehen.
 - Der Fingerprint liegt als unsichtbarer Marker im Issue-Body
-  (`<!-- fabrikant-alert:fp=… -->`).
+  (`<!-- fabrik-alert:fp=… -->`).
 - **Offenes Issue mit gleichem Fingerprint** → der Run wird dort kommentiert
   (Kanal-Eintrag `issue#N(+)`), es wird kein neues Issue angelegt.
 - **Geschlossene Issues zählen nicht:** Tritt der Fehler nach dem Schließen erneut
@@ -62,9 +62,9 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
   Problematisch nur, wenn Alerts nie geschlossen werden.
 - **Rollback:** PR #125 wird per Squash gemerged → Rollback =
   `git revert <squash-SHA>` (ein Commit). Betroffene Dateien:
-  `fabrikant/src/fabrikant/steps/notify.py`, `fabrikant/src/fabrikant/config.py`
-  (`ALERT_OPEN_ISSUES_PAGE`), `fabrikant/tests/test_steps_notify.py`,
-  `fabrikant/README.md`. Verifikation: `uv run pytest -m "not browser"` grün;
+  `fabrik/src/fabrik/steps/notify.py`, `fabrik/src/fabrik/config.py`
+  (`ALERT_OPEN_ISSUES_PAGE`), `fabrik/tests/test_steps_notify.py`,
+  `fabrik/README.md`. Verifikation: `uv run pytest -m "not browser"` grün;
   Alt-Issues ohne Marker werden einfach nicht gematcht — keine Datenmigration
   nötig.
 
@@ -88,7 +88,7 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
 - **Rollback-Test:** Revert des notify.py-Commits lässt Alt-Issues ohne Marker
   unverändert (kein Match, keine Migration).
 - **Coverage:** 91 % Gesamt (Ziel ≥ 80 %), `notify.py` 100 % — gemessen
-  2026-10-19 auf Branch `fabrikant/adr-125-alert-dedup` mit
+  2026-10-19 auf Branch `fabrik/adr-125-alert-dedup` mit
   `uv run pytest --cov -m "not browser"`.
 
 ## Folgen
@@ -101,7 +101,7 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
   nicht in diesem ADR-PR.
 - `ALERT_OPEN_ISSUES_PAGE` (Seitengröße des Lookups, Default 100) —
   Definition: `ALERT_OPEN_ISSUES_PAGE = 100` in
-  `fabrikant/src/fabrikant/config.py`, eingeführt in
+  `fabrik/src/fabrik/config.py`, eingeführt in
   PR #125
   (Commit 75c0cbf, auf dem PR-Branch vorhanden). Dieser ADR-PR (Base =
   PR-Branch #125) sieht sie nach dem Merge des Stapels.

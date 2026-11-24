@@ -1,4 +1,4 @@
-# Fabrik — Software-Fabrik (Engine + UI + Scheduler) als systemd-User-Service.
+# Fabrikant — Software-Fabrik (Engine + UI + Scheduler) als systemd-User-Service.
 #
 # Ohne diesen Service lebt der Scheduler NUR im `fabrikant serve`-Prozess —
 # Terminal zu / Reboot → keine cron-Trigger mehr (Regression: review-pr
@@ -24,7 +24,7 @@
 # ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
 
 [Unit]
-Description=Fabrik — Software-Fabrik (Engine + UI + Scheduler)
+Description=Fabrikant — Software-Fabrik (Engine + UI + Scheduler)
 After=network-online.target
 Wants=network-online.target
 

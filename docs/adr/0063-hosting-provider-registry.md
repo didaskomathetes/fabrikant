@@ -7,14 +7,14 @@ composition root), ADR 0057 (port/adapter pattern).
 ## Context
 
 ADR 0062 introduced the hosting **port** (`Provider`) and two **adapters**
-(`GitHubProvider`, `GitLabProvider`). Selection (`fabrikant/hosting/select.py`) resolved the
+(`GitHubProvider`, `GitLabProvider`). Selection (`fabrik/hosting/select.py`) resolved the
 provider with a hardcoded `if kind == "gitlab": … else: …` — it knows exactly two providers
 and cannot take a third without a core code change.
 
 Two gaps follow:
 
 1. **No extension point.** A user with a Codeberg, Gitea, or a heavily customized GitLab
-   instance cannot add an adapter without patching fabrikant core. There is no registry to
+   instance cannot add an adapter without patching fabrik core. There is no registry to
    register a name → adapter mapping, and no discovery mechanism for third-party packages.
 2. **High implementation bar.** The `Provider` ABC declares ~18 abstract methods, but a new
    host rarely supports all of them (labels, reviews, diffs, native dependencies, API commits
@@ -26,7 +26,7 @@ profiles; ADR 0057, `RunLauncher`). This ADR applies the same pattern to hosting
 
 ## Decision
 
-1. **Provider registry (`fabrikant/hosting/registry.py`).** A name → *factory* map. A **factory**
+1. **Provider registry (`fabrik/hosting/registry.py`).** A name → *factory* map. A **factory**
    has the signature `(repo, spec, role) -> Provider` and encapsulates all of that provider's
    construction (host resolution, credentials, …). Built-in adapters register themselves at
    import; `get_provider` collapses to *resolve a name, then call its factory*.
@@ -47,9 +47,9 @@ profiles; ADR 0057, `RunLauncher`). This ADR applies the same pattern to hosting
    provider**, not just `github`/`gitlab`. Host inference is unchanged (`github.com` → GitHub,
    any other host → GitLab), so existing specs are byte-for-byte unaffected.
 
-3. **Third-party discovery via entry points.** A `fabrikant-codeberg` package declares
-   `[project.entry-points."fabrikant.hosting_provider"] codeberg = "fabrikant_codeberg:factory"`;
-   `load_entry_points()` (called once at `fabrikant.hosting` import) discovers it via
+3. **Third-party discovery via entry points.** A `fabrik-codeberg` package declares
+   `[project.entry-points."fabrik.hosting_provider"] codeberg = "fabrik_codeberg:factory"`;
+   `load_entry_points()` (called once at `fabrik.hosting` import) discovers it via
    `importlib.metadata`. A broken entry point is skipped, never fatal — provider selection must
    not crash because an optional plugin failed to load. In-process users can also call
    `register_provider(name, factory)` directly.

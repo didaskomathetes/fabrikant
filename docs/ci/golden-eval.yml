@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: "Fabrik-Project (Name der *.fabrikant.yaml)"
+        description: "Fabrikant-Project (Name der *.fabrikant.yaml)"
         required: true
       loop:
         description: "Loop-Name"

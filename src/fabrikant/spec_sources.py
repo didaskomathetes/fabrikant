@@ -15,18 +15,20 @@ import os
 import re
 from pathlib import Path
 
-from . import config
+from . import config, legacy
 from .i18n import t
 
+TARGET_SPEC_DIR_NAMES = frozenset(p.parent.name for p in config.TARGET_SPEC_RELPATHS)
 _SCRIPT_PATH_RE = re.compile(r"(?<![\w./-])(?:\./)?scripts/[\w./-]+")
 
 
 def _dir_specs(d: Path) -> list[Path]:
     """Spec files of a folder (yaml before json, each sorted) or the target-repo spec."""
     found = [f for pattern in config.SPEC_GLOBS for f in sorted(d.glob(pattern))]
-    target = d / config.TARGET_SPEC_RELPATH
-    if target.is_file():
-        found.append(target)
+    for relpath in config.TARGET_SPEC_RELPATHS:
+        target = d / relpath
+        if target.is_file():
+            found.append(target)
     return found
 
 
@@ -44,7 +46,9 @@ def registered_targets() -> list[Path]:
 def register_target(path: str | Path) -> Path:
     """Register a target repo (idempotent); requires `.fabrikant/fabrikant.yaml`. Returns the spec file."""
     root = Path(path).expanduser().resolve()
-    spec = root / config.TARGET_SPEC_RELPATH
+    spec = next(
+        (root / r for r in config.TARGET_SPEC_RELPATHS if (root / r).is_file()), root / config.TARGET_SPEC_RELPATH
+    )
     if not spec.is_file():
         raise ValueError(t("spec_sources.no_spec_found", spec=spec))
     known = [str(p) for p in registered_targets()]
@@ -79,9 +83,9 @@ def spec_files() -> list[Path]:
 
 def default_name(path: Path) -> str:
     """Project name without `name:` — file name (`x.fabrikant.yaml` → x), for a target-repo spec the repo folder."""
-    if path.parent.name == config.TARGET_SPEC_RELPATH.parent.name:
+    if path.parent.name in TARGET_SPEC_DIR_NAMES:
         return path.parent.parent.name
-    return path.stem.replace(".fabrikant", "")
+    return path.stem.removesuffix(".fabrikant").removesuffix(legacy.LEGACY_SPEC_SUFFIX)
 
 
 def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:

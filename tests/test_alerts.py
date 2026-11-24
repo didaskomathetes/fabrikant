@@ -110,7 +110,7 @@ def test_authenticate_accepts_fabrikant_and_sentry_signature(monkeypatch):
     assert alerts.authenticate(TRIG, body, webhook.sign(SECRET, body)) is TRIG
     raw = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
     assert alerts.authenticate(TRIG, body, "", raw) is TRIG
-    # falsche Fabrik-Signatur, aber gültige Sentry-Signatur → akzeptiert
+    # falsche Fabrikant-Signatur, aber gültige Sentry-Signatur → akzeptiert
     assert alerts.authenticate(TRIG, body, "sha256=bad", raw) is TRIG
 
 
@@ -266,7 +266,7 @@ def incident(fabrikant_home, tmp_path, monkeypatch):  # noqa: F811
         rec = run_loop(name, lname, trigger=trigger, note=note, initial_vars=initial_vars, actor=actor)
         return {"started": True, "run_id": rec["id"]}, 200
 
-    monkeypatch.setattr(server.FabrikHandler, "_start_run", run_sync)
+    monkeypatch.setattr(server.FabrikantHandler, "_start_run", run_sync)
     return {"prs": prs, "answer": answer}
 
 

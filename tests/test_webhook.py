@@ -31,7 +31,7 @@ def hook(fabrikant_home, monkeypatch):  # noqa: F811
         started.append((name, lname, initial_vars, trigger))
         return {"started": True, "run_id": "rid"}, 200
 
-    monkeypatch.setattr(server.FabrikHandler, "_start_run", fake_start)
+    monkeypatch.setattr(server.FabrikantHandler, "_start_run", fake_start)
     return started
 
 

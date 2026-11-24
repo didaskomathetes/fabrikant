@@ -1,19 +1,19 @@
-# ADR 0064: MCP Server — fabrikant as a stdio Endpoint for MCP-Capable Agents
+# ADR 0064: MCP Server — fabrik as a stdio Endpoint for MCP-Capable Agents
 
 **Status:** Accepted (2026-11-21); proposed on the `feat/mcp-server` branch
 **Betrifft:** ADR 0034 (run store), ADR 0030 (auth/roles), ADR 0061 (replay)
 
 ## Context
 
-Roadmap #132 ("Spec as a standard") wants fabrikant's runs, specs and approvals to be
+Roadmap #132 ("Spec as a standard") wants fabrik's runs, specs and approvals to be
 reachable from *any* MCP-capable agent (Claude Desktop, opencode, a coding agent, a
 custom orchestrator). Today those capabilities are only reachable through the HTTP
-API + web UI (ADR 0030) or the `fabrikant` CLI. An external agent would have to speak
+API + web UI (ADR 0030) or the `fabrik` CLI. An external agent would have to speak
 raw HTTP, handle sessions/CSRF, and parse HTML-free JSON — none of which is what an
 agent harness expects.
 
 The Model Context Protocol (MCP) is the de-facto stdio/JSON-RPC convention for
-exposing tools to agents. Giving fabrikant a first-class MCP server means an agent can
+exposing tools to agents. Giving fabrik a first-class MCP server means an agent can
 list projects, read a spec, inspect runs, and approve/reject a pending run using the
 same primitives the UI uses — no HTTP, no auth handshake, no scraping.
 
@@ -23,15 +23,15 @@ same primitives the UI uses — no HTTP, no auth handshake, no scraping.
 
 The server speaks **MCP protocol `2025-03-26`** over **stdio** using
 newline-delimited **JSON-RPC 2.0** (one JSON object per line on stdin/stdout). It is
-implemented directly in `fabrikant/mcp_server.py` — **no `mcp` package, no new runtime
+implemented directly in `fabrik/mcp_server.py` — **no `mcp` package, no new runtime
 dependency** — to match the "local software factory" ethos (self-hosted, zero extra
 deps, always available). The only stdlib used is `json`/`sys`.
 
-- Entry points: `fabrikant mcp` (CLI subcommand) and the `fabrikant-mcp` console script.
+- Entry points: `fabrik mcp` (CLI subcommand) and the `fabrik-mcp` console script.
 - The process is **long-lived**: the MCP client starts it and keeps the pipe open,
   exchanging lines. Run/approval actions spawn worker threads inside this process
   exactly like the HTTP server does, so the process must stay alive while a triggered
-  run executes. If the client kills it, the next fabrikant server start reaps the
+  run executes. If the client kills it, the next fabrik server start reaps the
   orphaned runs (`reap_orphaned_runs`).
 
 ### Supported methods
@@ -52,7 +52,7 @@ sees the message in-band.
 
 ### Tools (runs, specs, approvals)
 
-Each handler wraps an existing fabrikant primitive — no new business logic, only a
+Each handler wraps an existing fabrik primitive — no new business logic, only a
 thin adapter. Actions are audited with actor `mcp`.
 
 | Tool | Wraps | Category |
@@ -81,10 +81,10 @@ machine-readable `structuredContent` (the raw object), so agents can parse eithe
 
 ## Consequences
 
-- New module `fabrikant/mcp_server.py`; new CLI subcommand `mcp`; new console script
-  `fabrikant-mcp`.
+- New module `fabrik/mcp_server.py`; new CLI subcommand `mcp`; new console script
+  `fabrik-mcp`.
 - No new runtime dependency; no change to the spec format, the engine, or the store.
-- Agents can drive fabrikant end-to-end (read specs → start a run → approve it) without
+- Agents can drive fabrik end-to-end (read specs → start a run → approve it) without
   HTTP.
 - The MCP endpoint is **unauthenticated by design** (stdio, local trust boundary,
   same as the CLI). Remote exposure is out of scope and would go through the HTTP

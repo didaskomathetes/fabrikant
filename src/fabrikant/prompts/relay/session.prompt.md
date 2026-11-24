@@ -46,13 +46,13 @@ time budget. Work in small, recorded, resumable units. Write in English.
 - `done`: the goal is reached **and** you checked every `## Verify` invariant yourself and wrote
   the results in `## State`. Also write a `## Result` section in the handoff (above `## Log`):
   3-6 sentences for the people following the issue (what was achieved, the key numbers,
-  the main deliverable paths relative to the repository root, known limitations). Fabrik shows
+  the main deliverable paths relative to the repository root, known limitations). Fabrikant shows
   it in the status comment on the issue. An independent audit follows. Do not claim done on
   hope.
 - `not_before: <ISO time UTC>`: optional, when the next session must not start earlier (rate
   limits, waiting for an external job, expired credentials renewed tomorrow).
 
-Fabrik owns `issue`, `session`, `stalled`, `last_session`, `verify_sha256`, `verify_result` and
+Fabrikant owns `issue`, `session`, `stalled`, `last_session`, `verify_sha256`, `verify_result` and
 the `## Audit` section. Do not edit them; fabrikant resets them. If two sessions in a row show no change in `progress` (or in
 the verify result), the task is blocked automatically. Report real progress honestly.
 

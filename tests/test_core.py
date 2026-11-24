@@ -240,7 +240,7 @@ def test_spec_verify_valid_check_accepted(projects_dir, tmp_path):
 
 # ---------------------------------------------------------------- HTTP auth
 def _handler(headers):
-    h: Any = object.__new__(fabrikant.FabrikHandler)  # Test-Doppel: Attribute werden ersetzt
+    h: Any = object.__new__(fabrikant.FabrikantHandler)  # Test-Doppel: Attribute werden ersetzt
     h.headers = headers
     h.path = "/api/runs"
     return h
@@ -287,7 +287,7 @@ class _CapturingWfile:
 
 def _static_handler(rel):
     """Handler-Doppel, der send_*-Aufrufe aufzeichnet (für _static-Tests)."""
-    h: Any = object.__new__(fabrikant.FabrikHandler)  # Test-Doppel: Attribute werden ersetzt
+    h: Any = object.__new__(fabrikant.FabrikantHandler)  # Test-Doppel: Attribute werden ersetzt
     h.headers = {}
     h.path = "/" + rel
     sent = {"code": None, "headers": []}

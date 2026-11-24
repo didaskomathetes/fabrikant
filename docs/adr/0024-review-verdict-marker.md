@@ -24,7 +24,7 @@ zeilengenaue Hinweise und übernehmbare Suggestions waren nicht möglich.
 **deterministisch** von `scripts/pr-status.py` (nicht vom Agent):
 
 - **Summary** = Review-Body, letzte Zeile ist der Verdikt-Marker
-  `<!-- fabrikant-review verdict=approved|changes_requested sha=<headRefOid> -->`.
+  `<!-- fabrik-review verdict=approved|changes_requested sha=<headRefOid> -->`.
 - **Inline-Kommentare** (optional, nach Urteil des Reviewers, max. 10) im selben
   Review, gern mit ```` ```suggestion ````-Blöcken.
 - `post-review`: Event `COMMENT` auf eigenen PRs, sonst `APPROVE` /
@@ -40,7 +40,7 @@ zeilengenaue Hinweise und übernehmbare Suggestions waren nicht möglich.
   Anliegen an der Zeile vollständig umgesetzt ist. Abgelehnte oder nur
   teilweise umgesetzte Punkte bleiben offen und blockieren den Merge, bis ein
   Mensch entscheidet.
-- `<!-- fabrikant-reply -->` — letzte Zeile jeder `pr-reply`-Antwort;
+- `<!-- fabrik-reply -->` — letzte Zeile jeder `pr-reply`-Antwort;
   `new-comments` liefert solche Kommentare nie als neu. Quellen: PR-Kommentare,
   Review-Summaries, Inline-Kommentare (State-Keys `<num>-<id>`,
   `<num>-review-<id>`, `<num>-inline-<id>`).
@@ -68,9 +68,9 @@ zeilengenaue Hinweise und übernehmbare Suggestions waren nicht möglich.
 
 ## Folgen
 
-- Mensch-PRs mit `fabrikant`-Label werden nach LLM-Freigabe (Marker, keine offenen
+- Mensch-PRs mit `fabrik`-Label werden nach LLM-Freigabe (Marker, keine offenen
   Threads) automatisch gemergt — wie Bot-PRs. Wer das nicht will, setzt kein
-  `fabrikant`-Label.
+  `fabrik`-Label.
 - Grenze: `pr-reply` nutzt denselben Account wie der Reviewer und *könnte*
   einen Review-Marker schreiben oder Threads ungerechtfertigt auflösen. Der
   Prompt verbietet Ersteres; Kommentare sind untrusted. Echte Trennung bräuchte

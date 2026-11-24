@@ -12,7 +12,7 @@ from helpers import not_none
 from test_server_api import RUN_ID, _req, fabrikant_home, fabrikant_url  # noqa: F401
 
 from fabrikant import auth, chat, cli, config, engine, runs
-from fabrikant.server import FabrikHandler
+from fabrikant.server import FabrikantHandler
 
 PASSWORD = "correct-horse"
 
@@ -457,5 +457,5 @@ def test_cli_user_errors(auth_state, monkeypatch, capsys):
 
 
 def test_handler_class_exposes_actor_none_by_default():
-    h = object.__new__(FabrikHandler)
+    h = object.__new__(FabrikantHandler)
     assert h._actor is None

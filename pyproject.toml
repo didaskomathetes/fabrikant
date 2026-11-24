@@ -60,7 +60,7 @@ dev = [
 # SonarQube-Projekt-Key (pysonar-Scanner, s. scripts/sonar-scan.sh + Loop `sonar-scan`).
 # sources/test sind KOMMA-getrennte Strings (SonarQube-Scanner-Format), keine Listen.
 projectKey = "fabrikant:fabrikant"
-projectName = "Fabrik"
+projectName = "Fabrikant"
 projectVersion = "0.1.0"
 sources = "src"
 test = "tests"
