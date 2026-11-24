@@ -15,6 +15,7 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [backends.md](backends.md) | Agent backends (`opencode`, `claude_code`, `codex`, `copilot`): interface, transports, models, permissions, auth. |
 | [ci.md](ci.md) | GitHub CI workflow (`test`, `package`, `browser` jobs; `release.yml` for tags), secrets handling, artifact-leak rules. |
 | [plugins.md](plugins.md) | Installing fabrikant (pip/Docker), `fabrikant init`, writing step plugins (ADR 0069). |
+| [releasing.md](releasing.md) | Release checklist: PyPI Trusted Publisher, GHCR image, tagging (ADR 0069/0070). |
 | [relay.md](relay.md) | Relay tasks: how to write a brief, the session/audit flow, and how to intervene. |
 | [sonarqube.md](sonarqube.md) | Local SonarQube setup, `sonar-scan.sh` usage, PR comments via fabrikant loops. |
 | [screenshots/](screenshots/) | UI screenshots. |
