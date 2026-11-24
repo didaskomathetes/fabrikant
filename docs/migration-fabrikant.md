@@ -13,3 +13,5 @@ with a deprecation warning); new names win when both exist.
 6. Webhook senders: send `X-Fabrikant-*` headers (the old `X-Fabrik-*` ones are still accepted).
 7. Target repos: relay refs moved from `refs/fabrik/relay/*` to `refs/fabrikant/relay/*`; finish or
    discard running relay tasks before upgrading.
+8. Per-user files outside the repo are not migrated automatically: move `~/.config/fabrik/` to
+   `~/.config/fabrikant/` (GitHub App keys, `deploy.env`) and update paths in your unit drop-ins.

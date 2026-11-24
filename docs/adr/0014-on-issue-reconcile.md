@@ -14,7 +14,7 @@ Refactor-Issues #63–#65 aus dem `refactor-sweep` und das Roadmap-Backlog
 ## Entscheidung
 
 `on_issue` bekommt — wie `on_pr` (ADR 0011) — die opt-in-Option
-`reconcile: true` (`src/fabrikant/scheduler.py`):
+`reconcile: true` (`src/fabrik/scheduler.py`):
 
 - **Persistente Quelle statt In-Memory-Set:** Der Trigger feuert für jedes
   passende offene Issue, für das der Loop **noch nie** einen Run hatte —
@@ -38,7 +38,7 @@ Refactor-Issues #63–#65 aus dem `refactor-sweep` und das Roadmap-Backlog
   (on_pr) nutzt ihn mit `ACTIVE_RUN_STATUSES`.
 - Ohne `reconcile` bleibt das Event-Verhalten unverändert.
 
-Aktiviert in `projects/fabrikant.fabrikant.yaml` für `refine` und `develop`.
+Aktiviert in `projects/fabrik.fabrik.yaml` für `refine` und `develop`.
 
 ## Konsequenzen
 

@@ -18,5 +18,5 @@ Du führst ein gezieltes Refactoring im Projekt `fabrikant` (Repo `didaskomathet
   - `bash scripts/lint.sh` (ruff, pyright, bandit)
 - Ziel: Komplexität reduzieren, Duplikat entfernen, Namesclarity, Doku ergänzen — so weit es
   den Target betrifft.
-- Commit und Push übernimmt der Fabrik-`git`-Step — du musst NICHT committen oder pushen.
+- Commit und Push übernimmt des Fabrikant-`git`-Steps — du musst NICHT committen oder pushen.
 - Antworte am Ende in 2-3 Sätzen, was refactored wurde und warum.

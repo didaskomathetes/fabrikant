@@ -17,7 +17,7 @@
 # ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
 
 [Unit]
-Description=Fabrik — main nachziehen und fabrikant.service nach Merges neu starten
+Description=Fabrikant — main nachziehen und fabrikant.service nach Merges neu starten
 After=network-online.target
 Wants=network-online.target
 

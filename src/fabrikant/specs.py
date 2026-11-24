@@ -229,7 +229,7 @@ def load_spec(path: Path, *, check_root: bool = True) -> dict:
     data = expand_spec(data, path)
     if not data.get("name"):
         data["name"] = spec_sources.default_name(path)
-    if not data.get("root") and path.parent.name == config.TARGET_SPEC_RELPATH.parent.name:
+    if not data.get("root") and path.parent.name in spec_sources.TARGET_SPEC_DIR_NAMES:
         data["root"] = str(path.parent.parent)  # Spec in the target repo: the repo is the project
     if data.get("root"):
         # Resolve `~` and env-var paths once here, so all consumers

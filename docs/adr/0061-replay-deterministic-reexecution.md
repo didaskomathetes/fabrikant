@@ -21,7 +21,7 @@ execute a new run, and diff the two.
 
 ## Decision
 
-### What "deterministic" means in fabrikant
+### What "deterministic" means in fabrik
 
 A replay pins the **inputs** of a run, not the outputs of non-deterministic components:
 
@@ -37,7 +37,7 @@ same steps execute in the same order with the same inputs. Where outputs diverge
 steps, external state) is exactly what the diff report surfaces — that is the point of the
 feature, not a defect.
 
-### `fabrikant replay <run-id>`
+### `fabrik replay <run-id>`
 
 - Loads the original run record; it must be in a **terminal** status
   (`pass`/`fail`/`error`/`rejected`). Replaying a `queued`, `running` or
@@ -56,7 +56,7 @@ feature, not a defect.
 
 ### Diff report
 
-`fabrikant replay` prints a diff of original vs. replay after the run finishes:
+`fabrik replay` prints a diff of original vs. replay after the run finishes:
 
 - Overall status (and `failure_kind` on failure)
 - Per step (matched by index, since step order is pinned by the spec): name, type, status,
@@ -64,7 +64,7 @@ feature, not a defect.
 - `spec_hash` match/mismatch
 
 The report is plain text on stdout; the structured data is already in both run records
-(`fabrikant runs export`), so tooling can diff records directly.
+(`fabrik runs export`), so tooling can diff records directly.
 
 ### Record field `replay_of`
 
@@ -73,7 +73,7 @@ The field is informational: it does not affect claims, retry chains, or scheduli
 
 ## Consequences
 
-- New module `fabrikant/replay.py` (`replay_run`, `diff_runs`); new CLI subcommand `replay`.
+- New module `fabrik/replay.py` (`replay_run`, `diff_runs`); new CLI subcommand `replay`.
 - `run_loop` gains a `replay_of` parameter (default `""` — no behavior change for all
   existing callers).
 - The eval harness (#130) builds on `replay_run` + `diff_runs` as its execution primitive.
@@ -87,6 +87,6 @@ The field is informational: it does not affect claims, retry chains, or scheduli
 - **A `resume`-like continuation of a finished run:** a finished run has no non-passing
   step to continue from; it would be a full re-execution with resume's bookkeeping
   (`resumed: true`, attempt inheritance) — the wrong semantics. Rejected.
-- **Pinning model versions/seeds:** fabrikant has no model registry or seed control for
+- **Pinning model versions/seeds:** fabrik has no model registry or seed control for
   agent/LLM backends; pinning would require backend cooperation that does not exist.
   Documented as out of scope; the diff report makes divergence visible instead.

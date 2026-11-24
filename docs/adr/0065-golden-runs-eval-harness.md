@@ -40,9 +40,9 @@ surface (new/missing step, flipped review verdict, status flip) forces a
 deliberate re-baseline (re-capture).
 
 CLI:
-- `fabrikant golden capture <project> <loop> <run-id> [--name N]` — pin a baseline
-- `fabrikant golden show <project> [--name N]` — list goldens
-- `fabrikant eval <project> <loop> [--name N] [--yes]` — run an eval; **Exit 0 =
+- `fabrik golden capture <project> <loop> <run-id> [--name N]` — pin a baseline
+- `fabrik golden show <project> [--name N]` — list goldens
+- `fabrik eval <project> <loop> [--name N] [--yes]` — run an eval; **Exit 0 =
   no regression** (the CI-gate contract)
 
 CI: the eval is **opt-in** via a dedicated `workflow_dispatch` workflow — it

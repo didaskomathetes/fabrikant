@@ -11,7 +11,7 @@ import urllib.request
 import pytest
 
 from fabrikant import auth, config, connections, engine, secrets
-from fabrikant.server import FabrikHandler
+from fabrikant.server import FabrikantHandler
 
 RUN_ID = "20260101T000000Z-t"
 APPROVAL_RUN_ID = "20260102T000000Z-t-appr"
@@ -751,13 +751,13 @@ def test_read_json_valid(fabrikant_url):
 
 
 def test_query_params_decodes_url_encoding():
-    h = FabrikHandler.__new__(FabrikHandler)
+    h = FabrikantHandler.__new__(FabrikantHandler)
     h.path = "/api/runs?project=my%20proj&limit=5&flag=&x=a%3Db"
     assert h._query_params() == {"project": "my proj", "limit": "5", "flag": "", "x": "a=b"}
 
 
 def test_query_params_without_query():
-    h = FabrikHandler.__new__(FabrikHandler)
+    h = FabrikantHandler.__new__(FabrikantHandler)
     h.path = "/api/runs"
     assert h._query_params() == {}
 

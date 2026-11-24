@@ -27,6 +27,7 @@ from . import (
     connections,
     costs,
     kpis,
+    legacy,
     metrics,
     oidc,
     pause,
@@ -91,7 +92,7 @@ class RunStartResult(NamedTuple):
     status: int
 
 
-class FabrikHandler(BaseHTTPRequestHandler):
+class FabrikantHandler(BaseHTTPRequestHandler):
     server_version = "fabrikant/0.3"
 
     def log_message(self, format: str, *args: object) -> None:  # quieter (name as in the base class)
@@ -172,7 +173,8 @@ class FabrikHandler(BaseHTTPRequestHandler):
         if path.startswith(webhook.WEBHOOK_PATH_PREFIX):
             self._cors_headers()
             self.send_header("Access-Control-Allow-Methods", "POST")
-            allow = (webhook.SIGNATURE_HEADER, webhook.TIMESTAMP_HEADER, webhook.NONCE_HEADER)
+            new = (webhook.SIGNATURE_HEADER, webhook.TIMESTAMP_HEADER, webhook.NONCE_HEADER)
+            allow = (*new, *(legacy.legacy_header(h) for h in new))
             self.send_header("Access-Control-Allow-Headers", ", ".join(("Content-Type", *allow)))
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -195,9 +197,9 @@ class FabrikHandler(BaseHTTPRequestHandler):
             trig = webhook.authenticate(
                 found,
                 body,
-                self.headers.get(webhook.SIGNATURE_HEADER, ""),
-                timestamp=self.headers.get(webhook.TIMESTAMP_HEADER, ""),
-                nonce=self.headers.get(webhook.NONCE_HEADER, ""),
+                webhook.header_value(self.headers, webhook.SIGNATURE_HEADER),
+                timestamp=webhook.header_value(self.headers, webhook.TIMESTAMP_HEADER),
+                nonce=webhook.header_value(self.headers, webhook.NONCE_HEADER),
             )
             vars_ = webhook.map_payload(body, trig.get("map") or {})
         except (webhook.WebhookError, ValueError) as e:
@@ -214,7 +216,7 @@ class FabrikHandler(BaseHTTPRequestHandler):
             trig = alerts.authenticate(
                 found,
                 body,
-                self.headers.get(webhook.SIGNATURE_HEADER, ""),
+                webhook.header_value(self.headers, webhook.SIGNATURE_HEADER),
                 self.headers.get(alerts.SENTRY_SIGNATURE_HEADER, ""),
             )
             alert = alerts.parse_alert(trig["source"], body)
@@ -1287,7 +1289,7 @@ def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
     auth.check_bind(host)
     if auth.mode() == auth.MODE_OIDC:
         oidc.check_ready()  # report a missing extra/config early instead of at the first login
-    server = ThreadingHTTPServer((host, port), FabrikHandler)
+    server = ThreadingHTTPServer((host, port), FabrikantHandler)
     if sandbox.sandbox_enabled() and (n := sandbox.sweep_stale_containers()):
         print(f"[fabrikant] {n} verwaiste Sandbox-Container entfernt")
     reap_orphaned_runs()  # before scheduler/worker: no 'running' corpses from the previous run

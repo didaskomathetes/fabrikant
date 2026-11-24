@@ -98,9 +98,9 @@ CREATE TABLE checkpoints (
 2. **Redaction on the write path:** all `data` blobs and `message` texts go
    through `secrets._redact` before they are persisted.
 3. **Raw data, no calculation:** `cost_usd` comes from the agent backend
-   (opencode `cost` field). No price table in fabrikant — an exporter computes
+   (opencode `cost` field). No price table in fabrik — an exporter computes
    prices from the raw data (tokens + model + provider).
-4. **P0 run JSONs remain importable:** `fabrikant import-runs` reads
+4. **P0 run JSONs remain importable:** `fabrik import-runs` reads
    `runs/*.json` and projects them (sessions + step_done events +
    checkpoints, `source='import'`, totals backfilled from step usage).
    The import is idempotent: existing sessions are not overwritten
@@ -112,7 +112,7 @@ CREATE TABLE checkpoints (
 
 ### Storage
 
-- Paths: `FABRIKANT_HOME/sessionlog.db` (override: `FABRIKANT_SESSIONLOG`)
+- Paths: `FABRIK_HOME/sessionlog.db` (override: `FABRIK_SESSIONLOG`)
 - WAL mode (parallel reads while runs write)
 - One global connection + lock (homelab scale: few runs, a lot of I/O
   would be oversized). P2: connection pool, then Postgres.
@@ -127,7 +127,7 @@ CREATE TABLE checkpoints (
   storage swap without a schema migration
 - A second persistence file next to the run JSONs (deliberate redundancy:
   projection vs. source of truth)
-- WAL files (`sessionlog.db-wal/-shm`) in `FABRIKANT_HOME` — backup scripts
+- WAL files (`sessionlog.db-wal/-shm`) in `FABRIK_HOME` — backup scripts
   should back up the DB file with `sqlite3 .backup`, not with `cp`
 
 ## Alternatives (rejected)

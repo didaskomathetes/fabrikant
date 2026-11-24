@@ -22,7 +22,7 @@ muss allein nützen und baut auf der vorigen auf. Ein altes p3-Issue
   hinter älteren unpriorisierten Issues verschwinden.
 - **Event-Modus:** Mehrere neue Issues eines Polls feuern in Prioritäts-Reihenfolge.
 - Die Labels stehen in der Spec, nicht im Code. In
-  `projects/fabrikant.fabrikant.yaml` nutzen `refine` und `develop`
+  `projects/fabrik.fabrik.yaml` nutzen `refine` und `develop`
   `[p0, p1, p2, p3]` (YAML-Anker `*priority_labels`).
 
 ## Konsequenzen

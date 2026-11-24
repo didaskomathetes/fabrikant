@@ -1,4 +1,4 @@
-# Fabrik-CI. Siehe docs/ci.md (Secrets, Playwright, Artefakt-Regeln).
+# Fabrikant-CI. Siehe docs/ci.md (Secrets, Playwright, Artefakt-Regeln).
 name: fabrikant-ci
 
 on:

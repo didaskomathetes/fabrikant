@@ -1,11 +1,11 @@
-# Fabrik-Dogfooding: die Fabrik entwickelt die Fabrik.
+# Fabrikant-Dogfooding: Fabrikant entwickelt Fabrikant.
 # Repo: didaskomathetes/fabrikant.
 # ADR: docs/adr/0001-dogfooding-loops.md
 #
 # root = Git-Repo-Root.
 # Branch-Wechsel zur Laufzeit (UI): ADR 0004 (state/branch-overrides.json).
 name: fabrikant
-description: "Fabrik-Dogfooding: Fabrik entwickelt Fabrik — {repo}"
+description: "Fabrikant-Dogfooding: Fabrikant entwickelt Fabrikant — {repo}"
 root: ~/PycharmProjects/fabrikant
 repo:
   branch: main
@@ -77,7 +77,7 @@ x-shared-steps:
     type: llm
     provider: claude  # gepinnt wie classify (#80)
     prompt: |
-      Du prüfst die Abhängigkeiten von Issue #{issue_number} im Fabrik-Projekt
+      Du prüfst die Abhängigkeiten von Issue #{issue_number} im Fabrikant-Projekt
       ({repo}).
       Die Entwicklung startet ein Issue erst, wenn alle seine Blocker erledigt sind.
       Ein falscher Blocker hält das Issue unnötig auf; ein fehlender lässt es auf einer
@@ -179,7 +179,7 @@ loops:
         # kaputtes JSON (#80, unescapte Zeichen in acceptance_criteria).
         provider: claude
         prompt: |
-          Du bist der Refine-Agent für das Fabrik-Projekt ({repo}).
+          Du bist der Refine-Agent für das Fabrikant-Projekt ({repo}).
           Lies das Issue und refine es: schreibe Acceptance Criteria und einen kurzen
           Hintergrund zum Issue (Ursache/Kontext — bei Feature Requests: Motivation und
           erwartetes Verhalten).

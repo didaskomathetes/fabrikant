@@ -20,7 +20,7 @@
 # ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
 
 [Unit]
-Description=Fabrik — GitHub-App-Installation-Token refresh (fabrikant-reviewer)
+Description=Fabrikant — GitHub-App-Installation-Token refresh (fabrikant-reviewer)
 After=network-online.target
 Wants=network-online.target
 

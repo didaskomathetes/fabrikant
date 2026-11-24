@@ -22,7 +22,7 @@ Module layout:
   cli       command line
 """
 
-from . import config, llm
+from . import _bootstrap, config, llm  # noqa: F401  (_bootstrap first: legacy env adoption, ADR 0070)
 from .backends import OpenCodeBackend
 from .chat import _chat, _chat_alert_test, _chat_resume, _chat_start_run
 from .config import now_id, utcnow
@@ -31,14 +31,14 @@ from .launcher import InProcessLauncher, RunLauncher, create_launcher
 from .runs import claim_run, get_run, get_run_log, list_runs, runs_dir_for
 from .scheduler import Scheduler, cron_matches
 from .secrets import _redact, _redact_record
-from .server import FabrikHandler, serve
+from .server import FabrikantHandler, serve
 from .specs import _validate_spec, load_projects, load_spec, spec_path
 from .steps import _SCHEMA_TYPES, _notify, _validate_schema
 
 __all__ = [
     "OpenCodeBackend",
     "Scheduler",
-    "FabrikHandler",
+    "FabrikantHandler",
     "config",
     "claim_run",
     "cron_matches",

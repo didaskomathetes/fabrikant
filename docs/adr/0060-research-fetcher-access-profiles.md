@@ -67,7 +67,7 @@ Der Agent verbindet sich nie selbst mit dem offenen Web. Er **beantragt** Suchen
 - Limits pro URL (Größe, Zeit, Redirects) und pro Session (Anzahl Abrufe, Suchen).
 - Erlaubte Content-Types: `text/html`, `text/plain`, `text/markdown`, `application/pdf`.
 - Der Fetcher läuft als eigener gehärteter Container im Egress-Netz (wie der Proxy, ADR 0051):
-  HTML- und PDF-Parser sind selbst Angriffsfläche und gehören nicht in den fabrikant-Prozess.
+  HTML- und PDF-Parser sind selbst Angriffsfläche und gehören nicht in den fabrik-Prozess.
 
 **Restkanal:** Eine Suchanfrage kann Daten an den Suchanbieter tragen. Das Ziel ist ein fester,
 bekannter Anbieter, nicht ein Server des Angreifers. Wir nehmen das hin und protokollieren alle
@@ -103,7 +103,7 @@ ein Signal.
 - Tool-Call- oder Funktionsaufruf-Syntax, Shell-Befehle in Fließtext.
 - Kodierte Blöcke (lange Base64-/Hex-Sequenzen), Anteil entfernter versteckter Inhalte aus Stufe A.
 
-Die Regeln liegen versioniert im Repo (`src/fabrikant/fetch/rules/`) und haben Tests mit echten
+Die Regeln liegen versioniert im Repo (`src/fabrik/fetch/rules/`) und haben Tests mit echten
 Beispielen.
 
 **Stufe C: Klassifikator (optional, pro Projekt).** Ein Klassifikationsmodell (kein
@@ -145,7 +145,7 @@ Ob eine beantragte URL abgerufen wird, entscheidet der Fetcher so:
 3. **Abgelehnte oder nicht beantwortete** URLs bleiben unabgerufen; die Session arbeitet ohne sie
    weiter und vermerkt das.
 
-**Gegen Ermüdung:** Freigaben gibt es pro Session gebündelt, nicht pro URL. fabrikant zählt
+**Gegen Ermüdung:** Freigaben gibt es pro Session gebündelt, nicht pro URL. fabrik zählt
 Entscheidungen pro Domain. Wird eine Domain wiederholt freigegeben, schlägt die UI vor, sie in die
 Freigabeliste des Profils aufzunehmen. Das ist eine Spec-Änderung durch einen Admin, kein
 automatischer Lerneffekt.
@@ -201,7 +201,7 @@ Jede Nutzung eines Grants wird im Run-Record protokolliert.
 
 ## Beispiel: Relay „Deep Research: Software Factories"
 
-1. **Brief** (Issue mit `fabrikant-relay`): Ziel, Gliederung des Berichts, `## Verify`: jede Aussage
+1. **Brief** (Issue mit `fabrik-relay`): Ziel, Gliederung des Berichts, `## Verify`: jede Aussage
    im Bericht hat mindestens eine Quelle aus `sources/`. Projekt-Relay hat Profil `research-web`.
 2. **Session 1** plant und beantragt 8 Suchanfragen. `waiting_fetch`.
 3. **Fetch:** 8 Suchen, 80 Ergebnisse im Herkunftsprotokoll.

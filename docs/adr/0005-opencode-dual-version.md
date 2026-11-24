@@ -36,7 +36,7 @@ a private `_ServeApi` class (dialect `1`/`2`); `poll()` stays
 version-agnostic because 2.x messages are normalized into the 1.x envelope
 (`{info, parts}`) (`_normalize_v2`).
 
-- **Auth:** `FABRIKANT_AGENT_PASSWORD` (optional `FABRIKANT_AGENT_USERNAME`,
+- **Auth:** `FABRIK_AGENT_PASSWORD` (optional `FABRIK_AGENT_USERNAME`,
   default `opencode`), also as step override `password:`/`username:`.
   1.x harmlessly ignores the header. 2.x without a password → unhealthy with
   a hint in the error message.
@@ -50,7 +50,7 @@ version-agnostic because 2.x messages are normalized into the 1.x envelope
 ## Consequences
 
 - Deployment on 2.x: set `OPENCODE_SERVER_PASSWORD` on the serve process
-  + `FABRIKANT_AGENT_PASSWORD` in `fabrikant.env` (same value).
+  + `FABRIK_AGENT_PASSWORD` in `fabrik.env` (same value).
 - 2.x binds the workdir to the session (`location`) — `?directory=` per
-  request no longer exists; irrelevant for fabrikant (session per step).
+  request no longer exists; irrelevant for fabrik (session per step).
 - When 1.x reaches EOL: remove dialect `1` + the related tests.

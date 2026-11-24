@@ -10,7 +10,7 @@ import pytest
 from fabrikant import config, connections, procs, sessionlog
 from fabrikant import llm as llm_registry
 from fabrikant.runstore import STORE
-from fabrikant.server import FabrikHandler
+from fabrikant.server import FabrikantHandler
 
 # Env-Präfixe echter externer Backends (LLM-Provider, Agent-Server), die config
 # lokal aus fabrikant.env lädt — in CI gibt es sie nicht.
@@ -129,7 +129,7 @@ def live_server():
     servers: list[ThreadingHTTPServer] = []
 
     def start() -> str:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), FabrikHandler)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FabrikantHandler)
         servers.append(server)
         threading.Thread(target=server.serve_forever, args=(SERVER_POLL_INTERVAL_S,), daemon=True).start()
         return f"http://127.0.0.1:{server.server_address[1]}"

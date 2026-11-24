@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import legacy
 from .i18n import t
 
 # Read-only assets (web UI, loop templates, relay prompts, example specs) ship inside the package (ADR 0069).
@@ -42,7 +43,7 @@ def default_home(env: Mapping[str, str], checkout_root: Path = _CHECKOUT_ROOT, c
     if explicit:
         return Path(explicit).expanduser()
     here = cwd or Path.cwd()
-    if (here / ENV_FILE_NAME).is_file():
+    if (here / ENV_FILE_NAME).is_file() or (here / legacy.LEGACY_ENV_FILE).is_file():
         return here
     if is_source_checkout(checkout_root):
         return checkout_root
@@ -72,7 +73,8 @@ def _load_env_file(p: Path):
 
 
 # Load before all env-dependent constants: e.g. FABRIKANT_DATA also takes effect from fabrikant.env.
-_load_env_file(FABRIKANT_HOME / "fabrikant.env")
+_load_env_file(legacy.existing_env_file(FABRIKANT_HOME, ENV_FILE_NAME))
+legacy.adopt_legacy_env()  # the env file may still define FABRIK_* variables
 
 # Data/config directory of the installation (own specs, templates). Default
 # FABRIKANT_HOME: without FABRIKANT_DATA the factory behaves as before (spec resolution: ADR 0047).
@@ -127,7 +129,8 @@ STATE_DIR = FABRIKANT_HOME / "state"
 # target repo, register of the target repos known via `fabrikant project add`.
 PROJECTS_PATH_ENV = "FABRIKANT_PROJECTS_PATH"
 TARGET_SPEC_RELPATH = Path(".fabrikant") / "fabrikant.yaml"
-SPEC_GLOBS = ("*.fabrikant.yaml", "*.fabrikant.json")
+SPEC_GLOBS = ("*.fabrikant.yaml", "*.fabrikant.json", *legacy.LEGACY_SPEC_GLOBS)
+TARGET_SPEC_RELPATHS = (TARGET_SPEC_RELPATH, legacy.LEGACY_TARGET_SPEC_RELPATH)
 REGISTRY_FILE = DATA_DIR / "state" / "registered-projects.json"
 TEMPLATE_SUFFIX = ".loop.yaml"
 # Worktree lease (ADR 0028): a live lease must never expire while its run is running.
@@ -242,7 +245,7 @@ def run_store_backend() -> str:
 
 def db_url() -> str:
     """SQLAlchemy URL of the SQL run store: ``FABRIKANT_DB_URL`` or SQLite in the state dir."""
-    return os.environ.get(DB_URL_ENV) or f"sqlite:///{STATE_DIR / DB_FILENAME}"
+    return os.environ.get(DB_URL_ENV) or f"sqlite:///{STATE_DIR / legacy.state_db_filename(STATE_DIR, DB_FILENAME)}"
 
 
 def runs_archive_dir() -> Path:

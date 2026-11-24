@@ -17,7 +17,7 @@ keinen Schalter außer Spec-Edit oder Server-Stopp.
   Nur `paused`/`disabled` werden gespeichert; `active` = kein Eintrag.
 - `until` wird zu jedem Scheduler-Tick geprüft (`resume_expired`); abgelaufene Einträge zählen sofort als `active`.
 - Audit-Log `state/run-state-changes.jsonl` (JSONL: ts, actor, project, loop, from, to, until) + stdout.
-- Schnittstellen: `POST /api/projects/<p>/state` (`{state, loop?, until?}`), CLI `fabrikant pause|resume|disable`, Chat, UI-Buttons.
+- Schnittstellen: `POST /api/projects/<p>/state` (`{state, loop?, until?}`), CLI `fabrik pause|resume|disable`, Chat, UI-Buttons.
 
 **Amendment (PR #326):** Die Prüfung von Pause/Disable erfolgt nicht nur beim
 Einreihen (Scheduler bzw. UI/CLI/Chat/API), sondern erneut zur Ausführungszeit:
@@ -38,7 +38,7 @@ erneuert und bei Run-Ende, Pause und Worktree-Entfernung gelöscht.
 `config.WORKTREE_LEASE_TIMEOUT_S` (300 s) ist. Fehlende/korrupte Lease, eigene PID, tote
 PID oder abgelaufener Heartbeat schützen nicht; `needs_approval` schützt weiterhin.
 
-Damit löscht ein zweiter Prozess (Server, `fabrikant run`/`approve`) keine Worktrees
+Damit löscht ein zweiter Prozess (Server, `fabrik run`/`approve`) keine Worktrees
 laufender Runs mehr. **Weiterhin offen** und nicht unterstützt: Slots (`max_parallel`),
 Dedup und Vorrang-Warter (`runs.claim_run`) sind prozesslokal; parallele Prozesse auf
 demselben Projekt können das Slot-Limit überschreiten und denselben Trigger doppelt
@@ -61,6 +61,6 @@ für repo-less Specs bleibt dort offen.
 
 - Während einer Pause verpasste Cron-Minuten werden nicht nachgeholt; `on_issue` im Event-Modus
   initialisiert beim ersten Poll nach Resume neu, `reconcile`-Trigger arbeiten den Bestand ab.
-- Rollen (`operator`, #159) existieren noch nicht: Zugriff = bestehende Origin-/`FABRIKANT_TOKEN`-Prüfung (admin-Fallback).
+- Rollen (`operator`, #159) existieren noch nicht: Zugriff = bestehende Origin-/`FABRIK_TOKEN`-Prüfung (admin-Fallback).
   Der `actor` im Audit-Log ist `api:<client-ip>`, `cli:<user>` bzw. `chat`.
 - Globaler Not-Aus und Circuit Breaker (Auto-Pause nach N Fehlschlägen) sind bewusst nicht Teil dieser Änderung.

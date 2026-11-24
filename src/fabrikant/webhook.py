@@ -13,9 +13,10 @@ import os
 import threading
 import time
 from collections.abc import Mapping
-from typing import Any, TypeAlias
+from typing import Any, Protocol, TypeAlias
 from urllib.parse import urlparse
 
+from . import legacy
 from .i18n import t
 
 SIGNATURE_HEADER = "X-Fabrikant-Signature"
@@ -25,6 +26,24 @@ MAX_BODY_BYTES = 1_000_000
 WEBHOOK_PATH_PREFIX = "/api/webhook/"
 TIMESTAMP_HEADER = "X-Fabrikant-Timestamp"
 NONCE_HEADER = "X-Fabrikant-Nonce"
+
+
+class HeaderSource(Protocol):
+    """Anything with a header-style ``get`` (``dict``, ``http.client.HTTPMessage``)."""
+
+    def get(self, name: str, failobj: Any = None, /) -> Any: ...
+
+
+def header_value(headers: HeaderSource, new_header: str) -> str:
+    """Webhook header value; falls back to the pre-rename `X-Fabrik-*` name (ADR 0070)."""
+    value = headers.get(new_header) or ""
+    if not value:
+        value = headers.get(legacy.legacy_header(new_header)) or ""
+        if value:
+            legacy.warn_once("webhook header", legacy.legacy_header(new_header))
+    return value
+
+
 REPLAY_FLAG = "replay_protection"  # opt-in per trigger (backward compatible)
 REPLAY_WINDOW_S = 300  # Tolerance for |now - timestamp|
 MAX_NONCE_LEN = 128

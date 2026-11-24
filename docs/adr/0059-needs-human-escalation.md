@@ -18,7 +18,7 @@ rounds:
   change in another repository or by another team, or an environment that is not reachable
   from the sandbox.
 - Every reply and every new head triggers the next review. The "needs a human" request exists
-  only as free text in a PR comment. Nobody is notified, and nothing is visible in the fabrikant
+  only as free text in a PR comment. Nobody is notified, and nothing is visible in the fabrik
   UI.
 
 This is the same failure ADR 0011 fixed for ADRs: the request for a human decision is buried
@@ -44,13 +44,13 @@ cannot proceed on its own:
 ### 1. One state, one label, one gate
 
 All five cases converge on **the same escalation state** (exception for the label: `access`,
-§5a). It feels like an approval: the human sees a waiting run with a reason in the fabrikant
+§5a). It feels like an approval: the human sees a waiting run with a reason in the fabrik
 UI/CLI and acts there.
 
 - **Durable state = label** `needs human` on the PR (or on the issue, if no PR exists). The
   label name is configurable per project (`human_label`, default `needs human`).
 - **Visibility = run in the gate:** an `escalation` loop (trigger `on_pr`/`on_issue`, labels
-  `[fabrikant, needs human]`, `reconcile: true`, analogous to the `approval` loop from ADR
+  `[fabrik, needs human]`, `reconcile: true`, analogous to the `approval` loop from ADR
   0011) starts a run per marked item that pauses in `needs_approval`. The `ApprovalRequest`
   gets the new `reason` `escalation` and carries: `kind` (see below), `why` (summary of the
   blocker), `what` (the options for the human), `pr`/`issue`, and links to the triggering
@@ -75,11 +75,11 @@ The builder escalates via a **structured marker** in its reply, not via the phra
 human":
 
 ```
-<!-- fabrikant-escalate kind=blocked re=<keys> -->
+<!-- fabrik-escalate kind=blocked re=<keys> -->
 ```
 
 - The agent posts the reply itself (as with every `pr-reply` answer, the last line is
-  exactly `<!-- fabrikant-reply -->`); the host validates the marker like the others: `kind`
+  exactly `<!-- fabrik-reply -->`); the host validates the marker like the others: `kind`
   only from the table, `re` only from the keys of this run. Only the host sets the label.
   The agent gains no additional rights for this.
 - The reviewer may set `out_of_scope: true` per finding (extension of the finding schema from
@@ -101,14 +101,14 @@ human":
   trigger (label exclusion) and additionally in the gate of `pr-status.py`
   (`merge-check` → `skip`), so a manual run does not slip through.
 - Stagnation detection (`stalled`) runs deterministically in `pr-status.py` from the existing
-  markers (`fabrikant-review verdict=… sha=…`, the bare `<!-- fabrikant-reply -->` reply marker) and
+  markers (`fabrik-review verdict=… sha=…`, the bare `<!-- fabrik-reply -->` reply marker) and
   the commit history of the PR branch. The reply marker carries no attributes, so "the builder
   changed nothing" is derived from the reply's content and the commit history, not from a
   marker attribute. It uses no LLM.
 
 ### 5. Human actions
 
-In the gate of the fabrikant UI/CLI, with the same operation as approvals:
+In the gate of the fabrik UI/CLI, with the same operation as approvals:
 
 | Action | Effect |
 |---|---|

@@ -55,7 +55,7 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
   Anything else is `unknown`. A step can pin it with `billing: api |
   subscription | unknown`; for `opencode` and `llm` steps that is the only
   source. The UI shows subscription cost as `≈ $x API-equiv. (subscription
-  limit)`. Fabrik cannot see how much of a plan limit is left. Codex reports a
+  limit)`. Fabrikant cannot see how much of a plan limit is left. Codex reports a
   reached workspace/member limit or depleted credits as an error, which is
   classified as `environment` (no announced reset).
 
