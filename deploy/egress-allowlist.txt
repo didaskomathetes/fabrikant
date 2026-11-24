@@ -10,7 +10,7 @@
 #
 # Typische Ergänzungen (Model-Provider):
 # huggingface.co
-# inference.hetzner.com
+# inference.example.com
 #
 # Self-hosted GitLab (ADR 0062): Host des GitLab-Instances, den das Projekt nutzt
 # (API + Clone). github.com ist Builtin; ein eigener GitLab-Host muss hier ergänzt

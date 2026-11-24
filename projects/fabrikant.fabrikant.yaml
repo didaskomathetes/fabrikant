@@ -6,7 +6,7 @@
 # Branch-Wechsel zur Laufzeit (UI): ADR 0004 (state/branch-overrides.json).
 name: fabrikant
 description: "Fabrikant-Dogfooding: Fabrikant entwickelt Fabrikant — {repo}"
-root: ~/PycharmProjects/fabrikant
+root: ~/src/fabrikant  # adjust to your local checkout
 repo:
   branch: main
 github: "{repo}"
