@@ -1,6 +1,6 @@
 # ADR 0070: Rename to fabrikant
 
-**Status:** Accepted (2026-11-24, merged to main)
+**Status:** Accepted (2026-11-24, merged to main). Amended 2026-11-24: the legacy compatibility layer (decision 2) was removed before the first public release; the project had no external users.
 **Affects:** ADR 0069 (distribution and plugin contract), ADR 0047 (spec sources), ADR 0063 (provider registry).
 
 ## Context
@@ -27,17 +27,12 @@ Nothing has been published to PyPI yet, so the plugin contract can still change 
    | Docs, UI, prompts | fabrik / Fabrik | fabrikant / Fabrikant |
 
    German prose that uses *Fabrik* as the common noun ("Software-Fabrik") is **not** renamed.
-2. **Legacy compatibility where data or deployments already exist** (read old, write new):
-   - `FABRIK_*` environment variables are honoured when the `FABRIKANT_*` twin is unset (one shim at
-     config load, logs a deprecation warning once).
-   - Spec discovery accepts `*.fabrik.yaml/json` and `.fabrik/fabrik.yaml` besides the new names.
-   - An existing `state/fabrik.db` is used when `state/fabrikant.db` does not exist.
-   - Webhook receivers accept `X-Fabrik-*` headers besides `X-Fabrikant-*`.
-   - `fabrik.env` is loaded when no `fabrikant.env` exists.
-3. **Clean break (no shim):** Python import path, CLI command, entry-point groups, Docker image
-   names, systemd unit names, `refs/fabrik/relay/*` and harness directories. Entry-point groups and
-   import path have no external users yet; deployments update unit files once (see
-   `docs/migration-fabrikant.md`).
+2. **No legacy compatibility.** The project had a single (private) user before the first public
+   release, so no `FABRIK_*` / `fabrik.env` / `*.fabrik.yaml` / `fabrik.db` / `X-Fabrik-*` shims are shipped.
+   (A compatibility layer was implemented first and removed again before release.)
+3. **Clean break:** all surfaces in the table above, including the Python import path, CLI command,
+   entry-point groups, Docker image names, systemd unit names, `refs/fabrik/relay/*` and harness
+   directories. Existing private deployments update their unit files and env file name once.
 4. **Execution** is a stacked, mechanically verifiable series (scripted rename + the full test
    suite, coverage gate, wheel smoke test), not a hand edit.
 5. **Repository rename** on GitHub (`fabrik` → `fabrikant`) is a manual step by the owner; GitHub
@@ -49,8 +44,7 @@ Nothing has been published to PyPI yet, so the plugin contract can still change 
 ## Consequences
 
 - (+) One name everywhere; `pip install fabrikant` works.
-- (+) Existing homelab installs keep running after upgrade (env, specs, state db), with warnings.
 - (−) Third-party code importing `fabrik` breaks (none published yet).
 - (−) Persisted artefacts that embed the old name (old run logs, `refs/fabrik/relay/*` in target
   repos) are not rewritten.
-- (−) Large mechanical diff; reviewers should read the script and the compat shims, not every line.
+- (−) Large mechanical diff; reviewers should read the script, not every line.

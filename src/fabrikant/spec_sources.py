@@ -15,7 +15,7 @@ import os
 import re
 from pathlib import Path
 
-from . import config, legacy
+from . import config
 from .i18n import t
 
 TARGET_SPEC_DIR_NAMES = frozenset(p.parent.name for p in config.TARGET_SPEC_RELPATHS)
@@ -85,7 +85,7 @@ def default_name(path: Path) -> str:
     """Project name without `name:` — file name (`x.fabrikant.yaml` → x), for a target-repo spec the repo folder."""
     if path.parent.name in TARGET_SPEC_DIR_NAMES:
         return path.parent.parent.name
-    return path.stem.removesuffix(".fabrikant").removesuffix(legacy.LEGACY_SPEC_SUFFIX)
+    return path.stem.removesuffix(".fabrikant")
 
 
 def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:

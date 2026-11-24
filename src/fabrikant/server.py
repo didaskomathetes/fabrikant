@@ -27,7 +27,6 @@ from . import (
     connections,
     costs,
     kpis,
-    legacy,
     metrics,
     oidc,
     pause,
@@ -173,8 +172,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         if path.startswith(webhook.WEBHOOK_PATH_PREFIX):
             self._cors_headers()
             self.send_header("Access-Control-Allow-Methods", "POST")
-            new = (webhook.SIGNATURE_HEADER, webhook.TIMESTAMP_HEADER, webhook.NONCE_HEADER)
-            allow = (*new, *(legacy.legacy_header(h) for h in new))
+            allow = (webhook.SIGNATURE_HEADER, webhook.TIMESTAMP_HEADER, webhook.NONCE_HEADER)
             self.send_header("Access-Control-Allow-Headers", ", ".join(("Content-Type", *allow)))
         self.send_header("Content-Length", "0")
         self.end_headers()
