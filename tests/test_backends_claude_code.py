@@ -7,8 +7,8 @@ import time
 
 import pytest
 
-from fabrik.backends import ClaudeCodeBackend
-from fabrik.steps.agent import _step_agent_backend
+from fabrikant.backends import ClaudeCodeBackend
+from fabrikant.steps.agent import _step_agent_backend
 
 _FAKE_EXIT_TIMEOUT_S = 2.0
 
@@ -240,15 +240,15 @@ def test_agent_backend_unknown_raises():
 
 
 def test_agent_backend_claude_code_requires_model(monkeypatch):
-    monkeypatch.delenv("FABRIK_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_MODEL", raising=False)
     r = _step_agent_backend({}, {}, lambda m: None, "claude_code", "p")
     assert r["ok"] is False
     assert "model" in r["summary"]
 
 
 def test_agent_backend_opencode_requires_endpoint(monkeypatch):
-    monkeypatch.delenv("FABRIK_AGENT_ENDPOINT", raising=False)
-    monkeypatch.delenv("FABRIK_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_ENDPOINT", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_MODEL", raising=False)
     r = _step_agent_backend({}, {}, lambda m: None, "opencode", "p")
     assert r["ok"] is False
     assert "endpoint" in r["summary"]

@@ -1,4 +1,4 @@
-# fabrik threat model
+# fabrikant threat model
 
 **Status:** DRAFT — not an ADR. A living document: update it when a trust boundary or
 a control changes, and link the ADR that made the change. Individual decisions stay in
@@ -22,7 +22,7 @@ derived from ADR text and not checked against the code.
 
 ## 2. Who attacks, and how
 
-fabrik's core premise: **an agent is a process that reads untrusted input and can act.**
+fabrikant's core premise: **an agent is a process that reads untrusted input and can act.**
 Design for the case where the model is fully controlled by an attacker.
 
 | Actor | Capability | Typical vector |
@@ -34,7 +34,7 @@ Design for the case where the model is fully controlled by an attacker.
 | The model itself (error, not malice) | Hallucinates a destructive step | Over-eager tool use |
 | An authorised but careless operator | Approves without reading | Approval fatigue |
 
-Out of scope: a compromised host kernel, a malicious fabrik maintainer, physical access.
+Out of scope: a compromised host kernel, a malicious fabrikant maintainer, physical access.
 
 ## 3. Trust boundaries
 
@@ -43,7 +43,7 @@ Out of scope: a compromised host kernel, a malicious fabrik maintainer, physical
  issues, PRs, web      scan = signal only        UNTRUSTED actor        effects happen here
  search results        (never grants)            ▲                      ▲
                                                  │ capability limits    │ human gate (approve)
- MCP client ──► [ fabrik server ] ───────────────┴──────────────────────┘
+ MCP client ──► [ fabrikant server ] ───────────────┴──────────────────────┘
  (stdio, local)   run store · specs · goldens · audit log
 ```
 

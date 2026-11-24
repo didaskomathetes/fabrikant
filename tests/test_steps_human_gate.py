@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import gitops
-from fabrik.steps import human_gate
+from fabrikant import gitops
+from fabrikant.steps import human_gate
 
 FILES_ADR = [{"filename": "docs/adr/0001-x.md", "additions": 1, "deletions": 1, "patch": "+x"}]
 FILES_SMALL = [{"filename": "src/a.py", "additions": 5, "deletions": 2, "patch": "+x"}]

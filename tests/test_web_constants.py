@@ -5,8 +5,8 @@ import re
 
 import pytest
 
-from fabrik import config
-from fabrik.runmodel import FAILED_RUN_STATUSES, FAILED_STEP_STATUSES
+from fabrikant import config
+from fabrikant.runmodel import FAILED_RUN_STATUSES, FAILED_STEP_STATUSES
 
 
 def _js_string_array(name: str) -> set[str]:

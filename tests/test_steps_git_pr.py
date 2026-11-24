@@ -7,9 +7,9 @@ import subprocess
 import pytest
 from helpers import http_error, not_none
 
-from fabrik import gitops, validation
-from fabrik.engine import run_loop
-from fabrik.steps import git, pr
+from fabrikant import gitops, validation
+from fabrikant.engine import run_loop
+from fabrikant.steps import git, pr
 
 
 def _make_repo(tmp_path):
@@ -74,24 +74,24 @@ def test_step_git_branch_and_commit(tmp_path):
 
 
 def test_step_git_branch_substitutes_variables(tmp_path):
-    # Regression (Issue #70): `branch: fabrik/auto/{issue_number}` wurde wörtlich
+    # Regression (Issue #70): `branch: fabrikant/auto/{issue_number}` wurde wörtlich
     # als Branch-Name angelegt — Variablen müssen substituiert werden.
     repo = _make_repo(tmp_path)
     ctx = {**_ctx(repo), "issue_number": "70"}
-    res = git._step_git(ctx, {"branch": "fabrik/auto/{issue_number}"})
+    res = git._step_git(ctx, {"branch": "fabrikant/auto/{issue_number}"})
     assert res["ok"] is True
-    assert "branch fabrik/auto/70" in res["summary"]
+    assert "branch fabrikant/auto/70" in res["summary"]
     cur = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
     ).stdout.strip()
-    assert cur == "fabrik/auto/70"
+    assert cur == "fabrikant/auto/70"
 
 
 def test_step_git_branch_names_missing_variable(tmp_path):
     # Manueller Run ohne --var issue_number: klare Meldung statt "unzulässige Zeichen".
     repo = _make_repo(tmp_path)
     with pytest.raises(ValueError, match=r"Variable\(n\) fehlen: issue_number \(manuell: --var issue_number=…\)"):
-        git._step_git(_ctx(repo), {"branch": "fabrik/relay/{issue_number}"})
+        git._step_git(_ctx(repo), {"branch": "fabrikant/relay/{issue_number}"})
 
 
 def _subdir_repo(tmp_path):
@@ -203,7 +203,7 @@ def test_run_loop_continues_after_clean_tree_commit(runs_dir, projects_dir, tmp_
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "c1"], check=True)
 
-    (projects_dir / "gitnoop.fabrik.yaml").write_text(
+    (projects_dir / "gitnoop.fabrikant.yaml").write_text(
         f"name: gitnoop\n"
         f"root: {root}\n"
         "loops:\n"
@@ -256,7 +256,7 @@ def test_pr_creates(monkeypatch, tmp_path):
 
 
 def test_pr_head_and_base_substitute_variables(monkeypatch, tmp_path):
-    # Regression (Issue #70): `head: fabrik/auto/{issue_number}` muss substituiert
+    # Regression (Issue #70): `head: fabrikant/auto/{issue_number}` muss substituiert
     # werden, sonst zeigt die PR auf einen nicht existierenden Branch.
     repo = _make_repo(tmp_path)
     seen = {}
@@ -268,9 +268,9 @@ def test_pr_head_and_base_substitute_variables(monkeypatch, tmp_path):
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _fake)
     ctx = {**_ctx(repo), "issue_number": "70"}
-    res = pr._step_pr(ctx, {"repo": "o/r", "head": "fabrik/auto/{issue_number}", "base": "main"})
+    res = pr._step_pr(ctx, {"repo": "o/r", "head": "fabrikant/auto/{issue_number}", "base": "main"})
     assert res["ok"] is True
-    assert seen["payload"]["head"] == "fabrik/auto/70"
+    assert seen["payload"]["head"] == "fabrikant/auto/70"
     assert seen["payload"]["base"] == "main"
 
 
@@ -359,14 +359,14 @@ def test_pr_without_commits_ends_run_instead_of_create(monkeypatch, tmp_path):
     """Head ohne Commits vor base (Agent hat nichts geändert) → kein Create (GitHub: 422), Run endet."""
     calls = _compare_fake(monkeypatch, {"ahead_by": 0, "behind_by": 3})
     ctx = {**_ctx(_make_repo(tmp_path)), "issue_number": "181"}
-    res = pr._step_pr(ctx, {"repo": "o/r", "base": "main", "head": "fabrik/auto/{issue_number}"})
+    res = pr._step_pr(ctx, {"repo": "o/r", "base": "main", "head": "fabrikant/auto/{issue_number}"})
     assert res == {
         "ok": True,
         "done": True,
-        "summary": "keine Commits auf fabrik/auto/181 gegenüber main — kein PR",
+        "summary": "keine Commits auf fabrikant/auto/181 gegenüber main — kein PR",
     }
     # Branch-Namen sind im Compare-Pfad vollständig percent-encoded (`safe=""`).
-    assert ("GET", "https://api.github.com/repos/o/r/compare/main...fabrik%2Fauto%2F181") in calls
+    assert ("GET", "https://api.github.com/repos/o/r/compare/main...fabrikant%2Fauto%2F181") in calls
     assert all(m == "GET" for m, _ in calls)
     assert "pr_number" not in ctx
 
@@ -438,19 +438,19 @@ def _labels_posted(calls) -> list[str] | None:
 
 
 def test_pr_labels_set_via_issues_api(monkeypatch, tmp_path):
-    """labels: [fabrik] → nach dem Create über issues/{n}/labels (POST /pulls ignoriert labels)."""
+    """labels: [fabrikant] → nach dem Create über issues/{n}/labels (POST /pulls ignoriert labels)."""
     calls = _label_calls(monkeypatch)
-    res = pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev", "labels": ["fabrik"]})
+    res = pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev", "labels": ["fabrikant"]})
     assert res["ok"] is True
     create = next(p for m, u, p in calls if u.endswith("/pulls") and m == "POST")
     assert "labels" not in not_none(create)
-    assert ("POST", "https://api.github.com/repos/o/r/issues/8/labels", {"labels": ["fabrik"]}) in calls
+    assert ("POST", "https://api.github.com/repos/o/r/issues/8/labels", {"labels": ["fabrikant"]}) in calls
 
 
 def test_pr_labels_added_to_reused_pr(monkeypatch, tmp_path):
     """Wiederverwendeter PR bekommt die Labels ebenfalls (heilt PRs ohne Label)."""
     calls = _label_calls(monkeypatch, existing={"number": 42, "html_url": "https://gh/pr/42"})
-    pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev", "labels": ["fabrik"]})
+    pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev", "labels": ["fabrikant"]})
     assert [m for m, _, _ in calls] == ["GET", "POST"]
     assert calls[1][1].endswith("/issues/42/labels")
 
@@ -464,9 +464,9 @@ def test_pr_labels_coerced_to_strings(monkeypatch, tmp_path):
 def test_pr_labels_filtered_deduped(monkeypatch, tmp_path):
     """Leere/Whitespace-Labels gefiltert, Duplikate entfernt, Reihenfolge bleibt."""
     calls = _label_calls(monkeypatch)
-    labels = ["fabrik", "fabrik", "", "  ", "ui"]
+    labels = ["fabrikant", "fabrikant", "", "  ", "ui"]
     pr._step_pr(_ctx(_make_repo(tmp_path)), {"repo": "o/r", "head": "dev", "labels": labels})
-    assert _labels_posted(calls) == ["fabrik", "ui"]
+    assert _labels_posted(calls) == ["fabrikant", "ui"]
 
 
 def test_pr_labels_all_empty_skips_call(monkeypatch, tmp_path):
@@ -484,7 +484,7 @@ def test_pr_labels_none_and_dict_coerced(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- validate_branch_name
-@pytest.mark.parametrize("name", ["main", "fabrik/auto/80", "feat/a_b-c.d", "a" * validation.MAX_BRANCH_NAME_LEN])
+@pytest.mark.parametrize("name", ["main", "fabrikant/auto/80", "feat/a_b-c.d", "a" * validation.MAX_BRANCH_NAME_LEN])
 def test_validate_branch_name_accepts_valid(name):
     assert validation.validate_branch_name(name) == name
 

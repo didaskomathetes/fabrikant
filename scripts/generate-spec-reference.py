@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generiert docs/spec-reference.md aus src/fabrik/fabrik-spec.schema.json (Issue #131).
+"""Generiert docs/spec-reference.md aus src/fabrikant/fabrikant-spec.schema.json (Issue #131).
 
 Das Schema ist die Single Source of Truth für das Spec-Format; die Referenz
 wird daraus abgeleitet, damit Doku und Validierung nicht auseinanderlaufen:
@@ -18,18 +18,18 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_PATH = REPO_ROOT / "src" / "fabrik" / "fabrik-spec.schema.json"
+SCHEMA_PATH = REPO_ROOT / "src" / "fabrikant" / "fabrikant-spec.schema.json"
 OUT_PATH = REPO_ROOT / "docs" / "spec-reference.md"
 
 HEADER = """# Spec-Referenz
 
-Maschinenlesbare Single Source of Truth: [`src/fabrik/fabrik-spec.schema.json`](../src/fabrik/fabrik-spec.schema.json).
+Maschinenlesbare Single Source of Truth: [`src/fabrikant/fabrikant-spec.schema.json`](../src/fabrikant/fabrikant-spec.schema.json).
 Diese Seite wird daraus generiert (`scripts/generate-spec-reference.py`) — nicht von Hand editieren.
 
 Das Schema prüft die **Struktur** (Typen, Enums, Pflichtfelder, Bereiche) der *expandierten* Spec
 (nach `vars:`/Template-/Relay-Expansion). Semantische Prüfungen (Backend-Registry,
 Cron-vs-Retry-Intervalle, Alert-Route-Zyklen, Template-Parameter) laufen zusätzlich in
-`src/fabrik/specs.py`. `fabrik validate` beides.
+`src/fabrikant/specs.py`. `fabrikant validate` beides.
 
 Legende: **Pflicht** = required, *kursiv* = optional. Typen in ``Code``.
 """
@@ -100,7 +100,7 @@ def generate() -> str:
         "Top-Level",
         schema,
         defs,
-        intro="Eine Projekt-Spec (`*.fabrik.yaml` / `*.fabrik.json`) definiert Loops, die auf dem "
+        intro="Eine Projekt-Spec (`*.fabrikant.yaml` / `*.fabrikant.json`) definiert Loops, die auf dem "
         "Projekt-`root` laufen. `loops` ist das einzige Pflichtfeld; alle anderen Felder sind optional.",
     )
 
@@ -137,7 +137,7 @@ def generate() -> str:
         out.append("")
 
     out.append(
-        "_Generiert aus `src/fabrik/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen "
+        "_Generiert aus `src/fabrikant/fabrikant-spec.schema.json` — Änderungen bitte am Schema vornehmen "
         "und dieses Skript neu laufen lassen._"
     )
     return "\n".join(out) + "\n"

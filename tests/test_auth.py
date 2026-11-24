@@ -9,10 +9,10 @@ import time
 
 import pytest
 from helpers import not_none
-from test_server_api import RUN_ID, _req, fabrik_home, fabrik_url  # noqa: F401
+from test_server_api import RUN_ID, _req, fabrikant_home, fabrikant_url  # noqa: F401
 
-from fabrik import auth, chat, cli, config, engine, runs
-from fabrik.server import FabrikHandler
+from fabrikant import auth, chat, cli, config, engine, runs
+from fabrikant.server import FabrikHandler
 
 PASSWORD = "correct-horse"
 
@@ -20,20 +20,20 @@ PASSWORD = "correct-horse"
 @pytest.fixture
 def auth_state(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STATE_DIR", tmp_path / "state")
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
-    monkeypatch.delenv("FABRIK_SESSION_TTL", raising=False)
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
+    monkeypatch.delenv("FABRIKANT_SESSION_TTL", raising=False)
     auth._sessions.clear()
     yield
     auth._sessions.clear()
 
 
 @pytest.fixture
-def local_url(fabrik_url, monkeypatch):
-    monkeypatch.setenv("FABRIK_AUTH", "local")
+def local_url(fabrikant_url, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_AUTH", "local")
     auth._sessions.clear()
     for role in auth.ROLES:
         auth.add_user(role, PASSWORD, role)
-    return fabrik_url
+    return fabrikant_url
 
 
 def _login(url, user):
@@ -123,7 +123,7 @@ def test_login_unknown_user_and_wrong_password(auth_state):
 
 def test_session_expires(auth_state, monkeypatch):
     auth.add_user("anna", PASSWORD)
-    monkeypatch.setenv("FABRIK_SESSION_TTL", "120")
+    monkeypatch.setenv("FABRIKANT_SESSION_TTL", "120")
     now = [1000.0]
     monkeypatch.setattr(auth.time, "time", lambda: now[0])
     sid, _ = not_none(auth.login("anna", PASSWORD))
@@ -162,9 +162,9 @@ def test_expired_sessions_are_pruned_on_login(auth_state, monkeypatch):
 
 
 def test_session_ttl_parsing(monkeypatch):
-    monkeypatch.setenv("FABRIK_SESSION_TTL", "abc")
+    monkeypatch.setenv("FABRIKANT_SESSION_TTL", "abc")
     assert auth.session_ttl() == auth.DEFAULT_SESSION_TTL_S
-    monkeypatch.setenv("FABRIK_SESSION_TTL", "5")
+    monkeypatch.setenv("FABRIKANT_SESSION_TTL", "5")
     assert auth.session_ttl() == 60
 
 
@@ -173,20 +173,20 @@ def test_cookie_helpers(monkeypatch):
     assert auth.cookie_value("a=b") is None
     c = auth.set_cookie_header("sid")
     assert "HttpOnly" in c and "SameSite=Strict" in c and "Secure" not in c
-    monkeypatch.setenv("FABRIK_COOKIE_SECURE", "1")
+    monkeypatch.setenv("FABRIKANT_COOKIE_SECURE", "1")
     assert "Secure" in auth.set_cookie_header("sid")
     assert "Max-Age=0" in auth.set_cookie_header("", clear=True)
 
 
 # ---------------------------------------------------------------- Modus / Bind
 def test_mode_default_and_invalid(monkeypatch):
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
     assert auth.mode() == "none"
-    monkeypatch.setenv("FABRIK_AUTH", "LOCAL")
+    monkeypatch.setenv("FABRIKANT_AUTH", "LOCAL")
     assert auth.mode() == "local"
-    monkeypatch.setenv("FABRIK_AUTH", "oidc")
+    monkeypatch.setenv("FABRIKANT_AUTH", "oidc")
     assert auth.mode() == "oidc"
-    monkeypatch.setenv("FABRIK_AUTH", "ldap")
+    monkeypatch.setenv("FABRIKANT_AUTH", "ldap")
     with pytest.raises(auth.AuthError):
         auth.mode()
 
@@ -202,24 +202,24 @@ def test_non_loopback_hosts(host):
 
 
 def test_bind_check(monkeypatch):
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
     auth.check_bind("127.0.0.1")
     with pytest.raises(auth.AuthError, match="verweigert"):
         auth.check_bind("0.0.0.0")
-    monkeypatch.setenv("FABRIK_AUTH", "local")
+    monkeypatch.setenv("FABRIKANT_AUTH", "local")
     auth.check_bind("0.0.0.0")
 
 
 def test_serve_refuses_non_loopback_without_auth(monkeypatch):
-    from fabrik import server
+    from fabrikant import server
 
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
     with pytest.raises(auth.AuthError):
         server.serve(0, "0.0.0.0")
 
 
 def test_cli_serve_reports_bind_refusal(monkeypatch, capsys):
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
     monkeypatch.setattr(cli, "serve", lambda port, host: auth.check_bind(host))
     with pytest.raises(SystemExit) as e:
         cli.main(["serve", "--host", "0.0.0.0"])
@@ -227,19 +227,19 @@ def test_cli_serve_reports_bind_refusal(monkeypatch, capsys):
 
 
 # ---------------------------------------------------------------- Modus none: rückwärtskompatibel
-def test_none_mode_open_get_and_post(fabrik_url, monkeypatch):
-    monkeypatch.delenv("FABRIK_AUTH", raising=False)
-    assert _req(f"{fabrik_url}/api/runs")[0] == 200
-    assert _req(f"{fabrik_url}/api/projects/uitest/state", "POST", {"state": "active"})[0] == 200
-    status, body, _ = _req(f"{fabrik_url}/api/session")
+def test_none_mode_open_get_and_post(fabrikant_url, monkeypatch):
+    monkeypatch.delenv("FABRIKANT_AUTH", raising=False)
+    assert _req(f"{fabrikant_url}/api/runs")[0] == 200
+    assert _req(f"{fabrikant_url}/api/projects/uitest/state", "POST", {"state": "active"})[0] == 200
+    status, body, _ = _req(f"{fabrikant_url}/api/session")
     assert status == 200 and json.loads(body)["mode"] == "none"
-    assert _req(f"{fabrik_url}/api/login", "POST", {"user": "x", "password": "y"})[0] == 400
+    assert _req(f"{fabrikant_url}/api/login", "POST", {"user": "x", "password": "y"})[0] == 400
 
 
-def test_none_mode_token_still_gates_posts_only(fabrik_url, monkeypatch):
-    monkeypatch.setenv("FABRIK_TOKEN", "sekret")
-    assert _req(f"{fabrik_url}/api/runs")[0] == 200
-    assert _req(f"{fabrik_url}/api/projects/uitest/state", "POST", {"state": "active"})[0] == 403
+def test_none_mode_token_still_gates_posts_only(fabrikant_url, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_TOKEN", "sekret")
+    assert _req(f"{fabrikant_url}/api/runs")[0] == 200
+    assert _req(f"{fabrikant_url}/api/projects/uitest/state", "POST", {"state": "active"})[0] == 403
 
 
 # ---------------------------------------------------------------- Rollenmatrix (Modus local)
@@ -334,7 +334,7 @@ def test_cross_origin_post_rejected_even_with_session(local_url):
 
 
 def test_api_token_is_admin_without_csrf(local_url, monkeypatch):
-    monkeypatch.setenv("FABRIK_TOKEN", "sekret")
+    monkeypatch.setenv("FABRIKANT_TOKEN", "sekret")
     bearer = {"Authorization": "Bearer sekret"}
     assert _req(local_url + "/api/runs", headers=bearer)[0] == 200
     assert _req(local_url + "/api/projects/uitest/state", "POST", {"state": "active"}, bearer)[0] == 200
@@ -343,7 +343,7 @@ def test_api_token_is_admin_without_csrf(local_url, monkeypatch):
 
 
 def test_api_token_skips_origin_check(local_url, monkeypatch):
-    monkeypatch.setenv("FABRIK_TOKEN", "sekret")
+    monkeypatch.setenv("FABRIKANT_TOKEN", "sekret")
     headers = {"Authorization": "Bearer sekret", "Origin": "http://automation.example"}
     assert _req(local_url + "/api/projects/uitest/state", "POST", {"state": "active"}, headers)[0] == 200
 

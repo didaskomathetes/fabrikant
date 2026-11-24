@@ -151,7 +151,7 @@ Suggested order is at the bottom.
 
 The newest and most directly on-point line: how do you make a self-improving
 runtime's safety *falsifiable* rather than self-graded? Two 2026 preprints
-formalize essentially the same envelope fabrik proposes; keep both close.
+formalize essentially the same envelope fabrikant proposes; keep both close.
 
 - **Falsifiable Release Gates for Self-Improving Systems: Standing Invariants
   at Scale** — Soni, 2026. [arXiv:2607.13070](https://arxiv.org/abs/2607.13070)
@@ -163,7 +163,7 @@ formalize essentially the same envelope fabrik proposes; keep both close.
   freshness, a **reward-hacking floor** (decide on external verified
   correctness, never self-reported confidence), and a residency invariant.
   Machine-checked (TLA+) and carried through six further releases without the
-  safety core weakening. This is fabrik's §7.1 (formal envelope) with a working
+  safety core weakening. This is fabrikant's §7.1 (formal envelope) with a working
   precedent — and the strongest citation for our "constrained objective"
   decision.
 - **The Unfireable Safety Kernel: Execution-Time AI Alignment for AI Agents and
@@ -187,7 +187,7 @@ formalize essentially the same envelope fabrik proposes; keep both close.
 conductor/evaluator* and *does a human approve each change* — prior art splits
 cleanly: the RSI research line (DGM, ADAS, SICA, STOP, Clune) self-modifies
 autonomously with no per-change human; the commercial factories (Factory.ai,
-Devin, Jules, Codex, §6) have a human gate but do not self-optimize. fabrik is
+Devin, Jules, Codex, §6) have a human gate but do not self-optimize. fabrikant is
 the intersection of both — data-only self-modification *and* a human approver
 of record *and* an immutable judge — and the two 2026 preprints above are the
 closest formal prior art to that intersection.
@@ -254,7 +254,7 @@ closest formal prior art to that intersection.
 - **Software Product Lines: Architecture and Process** — Clements & Northrop,
   2001 (Addison-Wesley).
   The academic origin of the term "software factory" (productivity via
-  reusable, configurable assets) — useful for positioning fabrik against the
+  reusable, configurable assets) — useful for positioning fabrikant against the
   pre-LLM meaning.
 
 ## 7. Feedback-loop stability (the oscillation angle)
@@ -265,7 +265,7 @@ closest formal prior art to that intersection.
   a closed loop with a stochastic actor oscillates without damping. Read for
   the vocabulary (hysteresis, deadband, gain) to name the knobs we'll tune.
 
-## 8. fabrik's own foundations (internal)
+## 8. fabrikant's own foundations (internal)
 
 - **ADR 0002 / 0034** — session log → typed run model + relational store.
   The telemetry the auditor reads.
@@ -281,7 +281,7 @@ closest formal prior art to that intersection.
 - **ADR 0030** — auth, roles, audit (who started/approved what).
   Why the *human*, not the agent, is the approver of record.
 - **ADR 0061** — replay, deterministic re-execution of a finished run
-  (`fabrik replay`, `replay_of`, diff report).
+  (`fabrikant replay`, `replay_of`, diff report).
   The attribution + paired-comparison mechanism: the same golden runs replayed
   under old vs. new spec, so a measured delta is the change, not time.
 - **#130 golden runs + evals · #131 spec schema · #126/#127 KPIs**
@@ -300,7 +300,7 @@ closest formal prior art to that intersection.
 5. **Open-endedness / Clune** (§5) — why the ratchet is an archive.
 6. **Factory.ai** + the commercial coding agents (§6) — the category + the
    human-gate precedent.
-7. **fabrik ADRs** (§8) — the invariants the design must respect.
+7. **fabrikant ADRs** (§8) — the invariants the design must respect.
 
 The two make-or-break decisions in `self-optimization.md` §8 map onto this
 list: the **constrained objective** is a §3 question (Goodhart) with a §4

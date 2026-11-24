@@ -12,19 +12,19 @@ from pathlib import Path
 import pytest
 from helpers import http_error, not_none
 
-from fabrik import runs
-from fabrik.config import HARNESS_LOCAL_FILE
-from fabrik.failures import EX_CONFIG, EX_TEMPFAIL, ConfigError
-from fabrik.relay import __main__ as relay_main
-from fabrik.relay import commands
-from fabrik.relay import workspace as workspace_mod
-from fabrik.relay.config import LOOP_AUDIT, LOOP_SESSION, RelayConfig
-from fabrik.relay.github import GitHubError
-from fabrik.relay.model import Brief, Handoff, Labels, Status, StatusState, Task
-from fabrik.relay.status import parse_state
-from fabrik.relay.workspace import PRIVATE_DIR, SESSION_DIR, Workspace, handoff_path
-from fabrik.retry import RetryPolicy
-from fabrik.runmodel import FailureKind
+from fabrikant import runs
+from fabrikant.config import HARNESS_LOCAL_FILE
+from fabrikant.failures import EX_CONFIG, EX_TEMPFAIL, ConfigError
+from fabrikant.relay import __main__ as relay_main
+from fabrikant.relay import commands
+from fabrikant.relay import workspace as workspace_mod
+from fabrikant.relay.config import LOOP_AUDIT, LOOP_SESSION, RelayConfig
+from fabrikant.relay.github import GitHubError
+from fabrikant.relay.model import Brief, Handoff, Labels, Status, StatusState, Task
+from fabrikant.relay.status import parse_state
+from fabrikant.relay.workspace import PRIVATE_DIR, SESSION_DIR, Workspace, handoff_path
+from fabrikant.retry import RetryPolicy
+from fabrikant.runmodel import FailureKind
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
 ISSUE = 7
@@ -58,7 +58,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def init_repo(tmp_path: Path) -> Path:
-    """Arbeitskopie auf `fabrik/relay/<ISSUE>` mit lokalem Bare-Origin (auch für andere Testmodule)."""
+    """Arbeitskopie auf `fabrikant/relay/<ISSUE>` mit lokalem Bare-Origin (auch für andere Testmodule)."""
     origin, wt = tmp_path / "origin.git", tmp_path / "wt"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     subprocess.run(["git", "init", "-q", "-b", "main", str(wt)], check=True)
@@ -70,7 +70,7 @@ def init_repo(tmp_path: Path) -> Path:
     git(wt, "remote", "add", "origin", str(origin))
     git(wt, "push", "-q", "origin", "main")
     git(wt, "fetch", "-q", "origin")
-    git(wt, "checkout", "-qb", f"fabrik/relay/{ISSUE}")
+    git(wt, "checkout", "-qb", f"fabrikant/relay/{ISSUE}")
     return wt
 
 
@@ -453,7 +453,7 @@ def test_merge_of_base_is_not_out_of_scope_and_commits_complete(behind_main):
     assert parents(repo)[1] == git(repo, "rev-parse", "origin/main").strip()
     # Nichts von main zurückgedreht: der Branch weicht von main nur im Scope ab.
     diff = git(repo, "diff", "--name-only", "origin/main", "HEAD").split()
-    assert all(p.startswith(("src/", ".fabrik/")) for p in diff), diff
+    assert all(p.startswith(("src/", ".fabrikant/")) for p in diff), diff
 
 
 def test_out_of_scope_edit_during_merge_falls_back_to_base_version(behind_main):
@@ -598,7 +598,7 @@ def test_audit_prepare_hides_branch_files_and_reveal_restores(repo):
     gh = finished(repo)
     ctx = make_ctx(repo, gh)
     summary = commands.audit_prepare(ctx, ISSUE)
-    script = repo / ".fabrik" / "relay" / str(ISSUE) / "scripts" / "s1-01.sql"
+    script = repo / ".fabrikant" / "relay" / str(ISSUE) / "scripts" / "s1-01.sql"
     assert not script.exists() and "ausgeblendet" in summary
     brief = (repo / SESSION_DIR / "AUDIT_BRIEF.md").read_text()
     assert "count matches" in brief and "db=staging" in brief
@@ -650,7 +650,7 @@ def test_audit_publish_pass_commits_report_and_labels_audited(repo):
     assert summary.startswith(f"relay #{ISSUE} audit: pass")
     assert isinstance(summary, commands.StepSummary) and summary.verdict == "pass"
     committed = git(repo, "show", "--name-only", "--format=", "HEAD")
-    assert f".fabrik/relay/{ISSUE}/AUDIT.md" in committed and "audit/blind/01-count.sql" in committed
+    assert f".fabrikant/relay/{ISSUE}/AUDIT.md" in committed and "audit/blind/01-count.sql" in committed
     assert {LABELS.done, LABELS.audited} <= gh.task(ISSUE, "").labels
     assert gh.states[ISSUE].audit == "pass"
 
@@ -714,7 +714,7 @@ def test_audit_publish_commits_only_top_level_evidence(repo, monkeypatch):
     (repo / SESSION_DIR / "audit" / "AUDIT.md").write_text("ok\n<!-- relay-audit verdict=pass -->\n")
     commands.audit_publish(ctx, ISSUE)
     committed = git(repo, "show", "--name-only", "--format=", "HEAD").split()
-    rel = f".fabrik/relay/{ISSUE}/audit/blind"
+    rel = f".fabrikant/relay/{ISSUE}/audit/blind"
     assert f"{rel}/01-count.sql" in committed and f"{rel}/{workspace_mod.SKIPPED_EVIDENCE_FILE}" in committed
     assert not [c for c in committed if "tree-main" in c or "02-dump" in c]
     skipped = (repo / rel / workspace_mod.SKIPPED_EVIDENCE_FILE).read_text()
@@ -768,7 +768,7 @@ def test_copy_evidence_skips_auditor_manifest_name(tmp_path):
     assert "auditor" not in (dest / workspace_mod.SKIPPED_EVIDENCE_FILE).read_text()
 
 
-LINT_REL = f".fabrik/relay/{ISSUE}/{workspace_mod.LINT_CONFIG_FILE}"
+LINT_REL = f".fabrikant/relay/{ISSUE}/{workspace_mod.LINT_CONFIG_FILE}"
 
 
 def test_session_commits_lint_exclusion_for_relay_dir(repo):
@@ -805,16 +805,16 @@ def test_audit_adds_lint_exclusion_to_tasks_from_before(repo):
 def test_lint_config_takes_relay_dir_out_of_ruff(tmp_path):
     """Echte ruff-Semantik: verschachtelte Config schließt das Relay-Verzeichnis aus, Rest bleibt geprüft."""
     (tmp_path / "pyproject.toml").write_text('[tool.ruff.lint]\nselect = ["E", "S"]\n')
-    relay = tmp_path / ".fabrik" / "relay" / "1" / "audit" / "blind"
+    relay = tmp_path / ".fabrikant" / "relay" / "1" / "audit" / "blind"
     relay.mkdir(parents=True)
     (relay / "08-sample.py").write_text("import os, random\nx = random.Random(1); y = 2\n")
-    (tmp_path / ".fabrik" / "relay" / "1" / workspace_mod.LINT_CONFIG_FILE).write_text(workspace_mod.LINT_CONFIG)
+    (tmp_path / ".fabrikant" / "relay" / "1" / workspace_mod.LINT_CONFIG_FILE).write_text(workspace_mod.LINT_CONFIG)
     (tmp_path / "app.py").write_text("import os, sys\nx = 1; y = 2\n")  # Lint- und Format-Befunde
     for cmd in (["check", "--no-cache", "."], ["format", "--check", "--no-cache", "."]):
         out = subprocess.run(["ruff", *cmd], cwd=tmp_path, capture_output=True, text=True)
         report = out.stdout + out.stderr
         assert out.returncode == 1 and "app.py" in report, (cmd, report)  # Produktcode wird weiter geprüft
-        assert ".fabrik" not in report, (cmd, report)
+        assert ".fabrikant" not in report, (cmd, report)
 
 
 def test_parse_verdict_takes_last_marker():
@@ -830,7 +830,7 @@ def remote_handoff(gh: FakeGitHub, issue: int, **kw) -> None:
     h = Handoff.new(issue, "t", Brief("t", BODY).verify_sha256)
     for k, v in kw.items():
         setattr(h, k, v)
-    gh.files[f"fabrik/relay/{issue}:{handoff_path(issue)}"] = h.render()
+    gh.files[f"fabrikant/relay/{issue}:{handoff_path(issue)}"] = h.render()
 
 
 def fake_history(monkeypatch, records: list[dict]) -> None:
@@ -878,7 +878,7 @@ def test_dispatch_prefers_new_tasks_and_starts_audits(repo, no_runs):
 def test_dispatch_applies_blocks_and_notes_without_starting(repo, no_runs):
     gh = FakeGitHub([make_task(1, body="## Goal\nx"), make_task(2, label_actor="mallory"), make_task(3)])
     remote_handoff(gh, 3, verify_sha256="old-pin")
-    gh.files[f"fabrik/relay/4:{handoff_path(4)}"] = "broken"
+    gh.files[f"fabrikant/relay/4:{handoff_path(4)}"] = "broken"
     gh._tasks[4] = make_task(4)
     calls: list = []
     out = commands.dispatch(make_ctx(repo, gh), start=starter(calls))
@@ -955,7 +955,7 @@ def test_start_run_posts_vars_and_bearer(monkeypatch):
         seen.update(url=req.full_url, body=json.loads(req.data), auth=req.get_header("Authorization"))
         return Resp(b'{"run_id": "20261021-x"}')
 
-    monkeypatch.setenv("FABRIK_TOKEN", "secret")
+    monkeypatch.setenv("FABRIKANT_TOKEN", "secret")
     monkeypatch.setattr(commands.urllib.request, "urlopen", fake_urlopen)
     assert commands.start_run("demo", LOOP_SESSION, 7, "relay #7 s1") == "20261021-x"
     assert seen["url"].endswith("/api/runs") and seen["auth"] == "Bearer secret"
@@ -1009,7 +1009,7 @@ def test_main_validates_issue_and_maps_errors(monkeypatch, capsys):
         relay_main._ISSUE_COMMANDS, "checkout", lambda ctx, issue: commands.StepSummary("relay #7 audit: fail", "fail")
     )
     assert relay_main.main(["checkout", "--project", "demo", "--issue", "7"]) == 0
-    assert capsys.readouterr().out == "::fabrik-verdict::fail\nrelay #7 audit: fail\n"  # Verdikt vor der Summary
+    assert capsys.readouterr().out == "::fabrikant-verdict::fail\nrelay #7 audit: fail\n"  # Verdikt vor der Summary
     monkeypatch.setattr(commands, "dispatch", lambda ctx: "relay: nichts fällig")
     assert relay_main.main(["dispatch", "--project", "demo"]) == 0
     assert "nichts fällig" in capsys.readouterr().out
@@ -1118,7 +1118,7 @@ def test_done_session_result_appears_in_status_comment(repo):
     ctx, ws = checked_out(repo, gh)
     agent_writes(ws, progress="3/3", status=Status.DONE)
     h = not_none(ws.read_handoff())
-    h.set_section("Result", "Imported 300 rows; report in `.fabrik/relay/7/report.md`.")
+    h.set_section("Result", "Imported 300 rows; report in `.fabrikant/relay/7/report.md`.")
     ws.write_handoff(h)
     commands.checkin(ctx, ISSUE, verify=fake_verify("3/3"))
     commands.publish(ctx, ISSUE)

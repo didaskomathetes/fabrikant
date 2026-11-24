@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik.fetch.scan import QUARANTINE, SUSPICIOUS, scan, verdict
+from fabrikant.fetch.scan import QUARANTINE, SUSPICIOUS, scan, verdict
 
 # rule_id -> (Trigger, erwarteter Schweregrad)
 TRIGGERS = {

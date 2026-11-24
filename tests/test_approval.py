@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik.approval import ApprovalRequest
+from fabrikant.approval import ApprovalRequest
 
 
 def test_to_dict_omits_empty_fields():
@@ -82,7 +82,7 @@ def test_from_dict_roundtrips_pr_fields():
     assert ApprovalRequest.from_dict(d).to_dict() == d
 
 
-def test_lines_follow_fabrik_lang(monkeypatch):
+def test_lines_follow_fabrikant_lang(monkeypatch):
     req = ApprovalRequest(reason="step", condition="c", why="w", what="x", permissions=["p"])
-    monkeypatch.setenv("FABRIK_LANG", "en")
+    monkeypatch.setenv("FABRIKANT_LANG", "en")
     assert req.lines() == ["condition: c", "why: w", "what: x", "permissions: p"]

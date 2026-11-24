@@ -4,7 +4,7 @@ Agent-Steps (`backend:` im Step) nutzen ein pluggables Backend-Interface
 (implizit, keine Base-Class): `name`, `health()`, `create_task(workdir, title, permissions) → session_id`,
 `send_prompt(session_id, prompt, directory)`, `poll(session_id, directory) → {status, text, tokens, cost, tools}`,
 `cancel(session_id, directory)`. Dispatch: `steps/agent.py` (`_step_agent_backend`) —
-`step.backend` (oder `FABRIK_AGENT_BACKEND`) wählt, `model`/`endpoint` kommen aus
+`step.backend` (oder `FABRIKANT_AGENT_BACKEND`) wählt, `model`/`endpoint` kommen aus
 Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
 (eigene CLI via Shell).
 
@@ -24,7 +24,7 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
   recovery is run-level (ADR 0036). See the [roadmap](roadmap.md) for the
   full reconciliation.
 - **Cost & usage.** `poll()` reports `tokens: {input, output, cache_read,
-  cache_write}` (`fabrik.tokens.TokenCounts`). `input` is the whole prompt
+  cache_write}` (`fabrikant.tokens.TokenCounts`). `input` is the whole prompt
   *including* the cache share. An agent re-reads its context every turn, so
   on long sessions most of `input` is cheap cache reads. A 1M-token run can
   cost about $0.50; check `cost_usd`, not the token count. What each backend
@@ -43,7 +43,7 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
 - **Billing (`usage.billing`).** `cost_usd` is computed from API list prices.
   It is only real money when the CLI runs on an API key. On a subscription
   login it is an API-equivalent estimate, and the run uses up plan limits or
-  credits instead (`fabrik.billing`):
+  credits instead (`fabrikant.billing`):
 
   | Backend | `api` when | `subscription` when |
   |---|---|---|
@@ -66,10 +66,10 @@ Rest des Streams (copilot: exit 0, JSONL ohne `result`-Event; #153).
 
 | Backend | Transport | Modell | Besonderes |
 |---|---|---|---|
-| `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIK_AGENT_MODEL` (provider/id) | `FABRIK_AGENT_ENDPOINT` nötig; Session-API, Polling; Containment via edit/bash-Permissions (relativ zur Workdir) |
-| `claude_code` | CLI (`claude -p`, One-Shot) | `step.model` / `FABRIK_AGENT_MODEL` (sonnet/opus) | CLI muss im PATH sein; Prompt über **Stdin**; JSON-Output mit Usage/Cost; `endpoint` wird ignoriert |
-| `codex` | CLI (`codex exec`, One-Shot) | `step.model` / `FABRIK_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--sandbox` Default `workspace-write`, Override `step.sandbox` / `FABRIK_CODEX_SANDBOX` |
-| `copilot` | CLI (`copilot -p`, One-Shot) | `step.model` / `FABRIK_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--allow-all-tools` Default, Override `step.tools` / `FABRIK_COPILOT_TOOLS`; Auth via `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` |
+| `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIKANT_AGENT_MODEL` (provider/id) | `FABRIKANT_AGENT_ENDPOINT` nötig; Session-API, Polling; Containment via edit/bash-Permissions (relativ zur Workdir) |
+| `claude_code` | CLI (`claude -p`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (sonnet/opus) | CLI muss im PATH sein; Prompt über **Stdin**; JSON-Output mit Usage/Cost; `endpoint` wird ignoriert |
+| `codex` | CLI (`codex exec`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--sandbox` Default `workspace-write`, Override `step.sandbox` / `FABRIKANT_CODEX_SANDBOX` |
+| `copilot` | CLI (`copilot -p`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--allow-all-tools` Default, Override `step.tools` / `FABRIKANT_COPILOT_TOOLS`; Auth via `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` |
 
 ## opencode (P1)
 
@@ -111,11 +111,11 @@ den Exit — Exit 0 = `done` (stdout als Text), sonst `failed` (stderr). `cancel
 killed die Prozessgruppe (killpg) — keine Orphans.
 
 - **Sandbox:** Default `workspace-write` (bubblewrap). In Gateway-/Service-Kontexten
-  ohne bubblewrap: `FABRIK_CODEX_SANDBOX=danger-full-access` — Containment dann über
+  ohne bubblewrap: `FABRIKANT_CODEX_SANDBOX=danger-full-access` — Containment dann über
   User/VM/Container, nicht über die Sandbox.
 - **Tokens ja, Kosten nein:** `codex exec --json` liefert Tokens je Turn (inkl.
   `cached_input_tokens`), aber keine USD-Kosten — der Step zählt als `unpriced`.
-- **Auth:** Codex-CLI-Login (ChatGPT-Plan oder `FABRIK…`/`OPENAI_API_KEY` via
+- **Auth:** Codex-CLI-Login (ChatGPT-Plan oder `FABRIKANT…`/`OPENAI_API_KEY` via
   `codex login`) — gehört in die Deployment-Umgebung, nicht in die Spec.
 
 ## copilot (GitHub Copilot CLI)
@@ -128,7 +128,7 @@ extrahiert), sonst `failed` (stderr). `cancel` killed die Prozessgruppe
 (killpg) — keine Orphans.
 
 - **Permissions:** Default `--allow-all-tools` (Agent editiert Dateien +
-  Shell). Override `step.tools` / `FABRIK_COPILOT_TOOLS` (z. B. `shell,write`)
+  Shell). Override `step.tools` / `FABRIKANT_COPILOT_TOOLS` (z. B. `shell,write`)
   → `--allow-tool=<list>`. Echte Isolation (non-root/Container/VM) ist
   Deployment-Voraussetzung, keine Config-Option.
 - **Model:** `--model <name>` (z. B. `gpt-5.3-codex`, `claude-haiku-4.5`);

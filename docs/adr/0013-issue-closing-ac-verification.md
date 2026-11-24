@@ -26,7 +26,7 @@ Kritische Prüfung des Vorschlags gegen die Leitprinzipien
   Reopen oder Revert. Die meisten AC lassen sich **vor** dem Merge prüfen.
 - **Fehlerpfad:** Ein QA-Fail, der ein *neues* Issue anlegt, startet
   refine → develop → QA → neues Issue. Das ist eine unbegrenzte
-  Feedback-Schleife, wie sie es mit Alert-Issues unter dem Label `fabrik`
+  Feedback-Schleife, wie sie es mit Alert-Issues unter dem Label `fabrikant`
   schon einmal gab.
 - **§1.4 / ADR 0008:** Ein QA-Block ist LLM-Text, der aus einem untrusted
   Issue-Body abgeleitet ist. Ein Agent, der „QA-Vorschläge“ *ausführt*, ist
@@ -95,7 +95,7 @@ neuen Loop und keinen `on_merge`-Trigger.
   (`on_issue` feuert nur bei neuen Issues). Ein Mensch entscheidet.
 - **Einführungs-Kriterium:** Stufe 3 kommt erst, wenn nach Stufe 2 Defekte
   nach dem Merge auffallen. Messbar als Defect Escape Rate (§5), z. B.
-  Bug-Issues, die auf gemergte fabrik-PRs zeigen.
+  Bug-Issues, die auf gemergte fabrikant-PRs zeigen.
 
 ## Abgelehnte Alternativen
 

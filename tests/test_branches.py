@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import branches, config, specs
+from fabrikant import branches, config, specs
 
 # ---------------------------------------------------------------- State-Datei
 
@@ -36,21 +36,21 @@ def test_load_overrides_filters_non_strings(state_dir):
 
 
 def test_save_and_load_override(state_dir):
-    branches.save_override("fabrik", "feature/x")
-    assert branches.load_overrides() == {"fabrik": "feature/x"}
+    branches.save_override("fabrikant", "feature/x")
+    assert branches.load_overrides() == {"fabrikant": "feature/x"}
     assert (state_dir / "branch-overrides.json").is_file()
 
 
 def test_save_override_updates_existing(state_dir):
-    branches.save_override("fabrik", "main")
-    branches.save_override("fabrik", "dev")
-    assert branches.load_overrides() == {"fabrik": "dev"}
+    branches.save_override("fabrikant", "main")
+    branches.save_override("fabrikant", "dev")
+    assert branches.load_overrides() == {"fabrikant": "dev"}
 
 
 def test_clear_override(state_dir):
-    branches.save_override("fabrik", "dev")
+    branches.save_override("fabrikant", "dev")
     branches.save_override("other", "main")
-    branches.clear_override("fabrik")
+    branches.clear_override("fabrikant")
     assert branches.load_overrides() == {"other": "main"}
     # Nicht existierendes Projekt löschen ist ein No-op.
     branches.clear_override("ghost")
@@ -62,13 +62,13 @@ def test_clear_override(state_dir):
 
 def _write_spec(
     projects_dir: Path,
-    name: str = "fabrik",
+    name: str = "fabrikant",
     branch: str = "main",
     with_repo: bool = True,
     root: Path | None = None,
 ):
     repo_yaml = f"repo:\n  branch: {branch}\n" if with_repo else ""
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root or projects_dir}\n{repo_yaml}"
         "loops:\n  l:\n    tier: 1\n    steps:\n      - name: s\n        type: shell\n        cmd: echo hi\n"
     )
@@ -79,9 +79,9 @@ def test_load_projects_applies_override(state_dir, tmp_path, monkeypatch):
     projects.mkdir()
     monkeypatch.setattr(config, "PROJECTS_DIR", projects)
     _write_spec(projects)
-    branches.save_override("fabrik", "feature/x")
+    branches.save_override("fabrikant", "feature/x")
     loaded = specs.load_projects()
-    assert loaded["fabrik"]["repo"]["branch"] == "feature/x"
+    assert loaded["fabrikant"]["repo"]["branch"] == "feature/x"
 
 
 def test_load_projects_without_override_keeps_default(state_dir, tmp_path, monkeypatch):
@@ -90,7 +90,7 @@ def test_load_projects_without_override_keeps_default(state_dir, tmp_path, monke
     monkeypatch.setattr(config, "PROJECTS_DIR", projects)
     _write_spec(projects)
     loaded = specs.load_projects()
-    assert loaded["fabrik"]["repo"]["branch"] == "main"
+    assert loaded["fabrikant"]["repo"]["branch"] == "main"
 
 
 def test_load_projects_skips_specs_without_repo(state_dir, tmp_path, monkeypatch):
@@ -98,16 +98,16 @@ def test_load_projects_skips_specs_without_repo(state_dir, tmp_path, monkeypatch
     projects.mkdir()
     monkeypatch.setattr(config, "PROJECTS_DIR", projects)
     _write_spec(projects, with_repo=False)
-    branches.save_override("fabrik", "feature/x")
+    branches.save_override("fabrikant", "feature/x")
     loaded = specs.load_projects()
-    assert "repo" not in loaded["fabrik"]
+    assert "repo" not in loaded["fabrikant"]
 
 
 def test_load_projects_skips_error_specs(state_dir, tmp_path, monkeypatch):
     projects = tmp_path / "projects"
     projects.mkdir()
     monkeypatch.setattr(config, "PROJECTS_DIR", projects)
-    (projects / "broken.fabrik.yaml").write_text(
+    (projects / "broken.fabrikant.yaml").write_text(
         "name: broken\nroot: /nonexistent/pfad\nloops:\n  l:\n    steps:\n      - name: s\n        type: shell\n        cmd: echo\n"
     )
     branches.save_override("broken", "feature/x")
@@ -158,9 +158,9 @@ def test_list_branches_non_repo(tmp_path):
 
 
 @pytest.fixture
-def fabrik_home(tmp_path, monkeypatch):
-    """Isolierte FABRIK_HOME mit Test-Spec (toucht echte Daten nicht)."""
-    home = tmp_path / "fabrik_home"
+def fabrikant_home(tmp_path, monkeypatch):
+    """Isolierte FABRIKANT_HOME mit Test-Spec (toucht echte Daten nicht)."""
+    home = tmp_path / "fabrikant_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs").mkdir(parents=True)
     (home / "state").mkdir(parents=True)
@@ -172,8 +172,8 @@ def fabrik_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def fabrik_url(fabrik_home, clean_token, live_server):
-    """fabrik-HTTP-Server auf einem freien Port (ohne Scheduler)."""
+def fabrikant_url(fabrikant_home, clean_token, live_server):
+    """fabrikant-HTTP-Server auf einem freien Port (ohne Scheduler)."""
     return live_server()
 
 
@@ -191,45 +191,45 @@ def _post(url: str, payload: dict):
         return e.code, json.loads(e.read().decode())
 
 
-def test_get_branches_returns_current(fabrik_url):
-    data = _get(f"{fabrik_url}/api/projects/uitest/branches")
+def test_get_branches_returns_current(fabrikant_url):
+    data = _get(f"{fabrikant_url}/api/projects/uitest/branches")
     assert data["current"] == "main"
     assert isinstance(data["branches"], list)
 
 
-def test_get_branches_unknown_project_404(fabrik_url):
+def test_get_branches_unknown_project_404(fabrikant_url):
     with pytest.raises(urllib.error.HTTPError) as ei:
-        _get(f"{fabrik_url}/api/projects/ghost/branches")
+        _get(f"{fabrikant_url}/api/projects/ghost/branches")
     assert ei.value.code == 404
 
 
-def test_post_branch_persists_override(fabrik_url, fabrik_home):
-    status, data = _post(f"{fabrik_url}/api/projects/uitest/branch", {"branch": "dev"})
+def test_post_branch_persists_override(fabrikant_url, fabrikant_home):
+    status, data = _post(f"{fabrikant_url}/api/projects/uitest/branch", {"branch": "dev"})
     assert status == 200 and data["ok"] is True
     # Override ist persistiert und in load_projects sichtbar.
     assert branches.load_overrides() == {"uitest": "dev"}
     assert specs.load_projects()["uitest"]["repo"]["branch"] == "dev"
     # GET zeigt den neuen aktuellen Branch.
-    assert _get(f"{fabrik_url}/api/projects/uitest/branches")["current"] == "dev"
+    assert _get(f"{fabrikant_url}/api/projects/uitest/branches")["current"] == "dev"
     # State-Datei liegt unter STATE_DIR.
-    assert (fabrik_home / "state" / "branch-overrides.json").is_file()
+    assert (fabrikant_home / "state" / "branch-overrides.json").is_file()
 
 
-def test_post_branch_unknown_project_404(fabrik_url):
-    status, data = _post(f"{fabrik_url}/api/projects/ghost/branch", {"branch": "dev"})
+def test_post_branch_unknown_project_404(fabrikant_url):
+    status, data = _post(f"{fabrikant_url}/api/projects/ghost/branch", {"branch": "dev"})
     assert status == 404
     assert "error" in data
 
 
-def test_post_branch_empty_400(fabrik_url):
-    status, data = _post(f"{fabrik_url}/api/projects/uitest/branch", {"branch": "  "})
+def test_post_branch_empty_400(fabrikant_url):
+    status, data = _post(f"{fabrikant_url}/api/projects/uitest/branch", {"branch": "  "})
     assert status == 400
     assert "error" in data
 
 
-def test_post_branch_rejects_nonexistent_branch(fabrik_url, fabrik_home):
+def test_post_branch_rejects_nonexistent_branch(fabrikant_url, fabrikant_home):
     # Repo mit genau einem Branch als Spec-Root → "dev" existiert nicht.
-    repo = fabrik_home / "repo"
+    repo = fabrikant_home / "repo"
     repo.mkdir()
     _git(["init", "-b", "main"], repo)
     _git(["config", "user.email", "t@example.com"], repo)
@@ -237,16 +237,16 @@ def test_post_branch_rejects_nonexistent_branch(fabrik_url, fabrik_home):
     (repo / "f.txt").write_text("x")
     _git(["add", "."], repo)
     _git(["commit", "-m", "init"], repo)
-    _write_spec(fabrik_home / "projects", name="uitest", branch="main", root=repo)
-    status, data = _post(f"{fabrik_url}/api/projects/uitest/branch", {"branch": "dev"})
+    _write_spec(fabrikant_home / "projects", name="uitest", branch="main", root=repo)
+    status, data = _post(f"{fabrikant_url}/api/projects/uitest/branch", {"branch": "dev"})
     assert status == 400
     assert "existiert nicht" in data["error"]
     assert branches.load_overrides() == {}
 
 
-def test_post_branch_invalid_json_400(fabrik_url):
+def test_post_branch_invalid_json_400(fabrikant_url):
     req = urllib.request.Request(
-        f"{fabrik_url}/api/projects/uitest/branch", data=b"{ kaputt", headers={"Content-Type": "application/json"}
+        f"{fabrikant_url}/api/projects/uitest/branch", data=b"{ kaputt", headers={"Content-Type": "application/json"}
     )
     with pytest.raises(urllib.error.HTTPError) as ei:
         urllib.request.urlopen(req)

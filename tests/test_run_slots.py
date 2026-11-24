@@ -8,12 +8,12 @@ import time
 
 import pytest
 
-from fabrik import config, engine, runs
+from fabrikant import config, engine, runs
 
 
 @pytest.fixture
 def limit(monkeypatch):
-    """max_parallel pro Test steuerbar (ohne Spec-Dateien); eigener Pool, unabhängig von FABRIK_WORKERS."""
+    """max_parallel pro Test steuerbar (ohne Spec-Dateien); eigener Pool, unabhängig von FABRIKANT_WORKERS."""
     box = {"n": 2}
     pool = engine._WorkerPool(8)
     monkeypatch.setattr(engine, "_run_pool", pool)
@@ -113,7 +113,7 @@ def _write_spec(projects_dir, tmp_path, name, extra):
     root = tmp_path / f"r-{name}"
     root.mkdir()
     body = "loops:\n  l:\n    steps:\n      - {type: report, text: x}\n"
-    (projects_dir / f"{name}.fabrik.yaml").write_text(f"name: {name}\nroot: {root}\n{extra}{body}")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(f"name: {name}\nroot: {root}\n{extra}{body}")
 
 
 def test_max_parallel_for_default_and_spec(projects_dir, tmp_path):
@@ -138,7 +138,7 @@ def test_repoless_spec_is_forced_to_one_parallel_run(projects_dir, tmp_path):
 
 
 def test_max_parallel_spec_validation(tmp_path):
-    from fabrik.specs import _validate_spec
+    from fabrikant.specs import _validate_spec
 
     spec = {"root": str(tmp_path), "loops": {"l": {"steps": [{"type": "report", "text": "x"}]}}}
     _validate_spec({**spec, "max_parallel": 2})
@@ -415,7 +415,7 @@ def test_safe_run_calls_on_rejected_over_limit(monkeypatch, limit):
 
 
 def test_safe_run_calls_on_rejected_when_paused(monkeypatch, limit):
-    from fabrik import pause
+    from fabrikant import pause
 
     events, cbs = _callbacks()
     monkeypatch.setattr(pause, "effective_state", lambda *_a: "paused")

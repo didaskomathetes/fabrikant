@@ -55,7 +55,7 @@ _REF_RE = re.compile(r"\bADR[ -]?(\d{4})((?:/\d{4})*)")
 # Wo ADR-Verweise stehen; runs/ und state/ sind Laufzeitdaten.
 _REF_SOURCES = (
     "README.md",
-    "fabrik.env.example",
+    "fabrikant.env.example",
     "deploy",
     "docs",
     "projects",

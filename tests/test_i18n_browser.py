@@ -13,7 +13,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from fabrik import config
+from fabrikant import config
 
 pytestmark = pytest.mark.browser
 
@@ -34,25 +34,25 @@ loops:
 
 
 @pytest.fixture
-def fabrik_home(tmp_path, monkeypatch):
-    """Isolierte FABRIK_HOME mit Test-Spec (toucht echte Daten nicht)."""
-    home = tmp_path / "fabrik_home"
+def fabrikant_home(tmp_path, monkeypatch):
+    """Isolierte FABRIKANT_HOME mit Test-Spec (toucht echte Daten nicht)."""
+    home = tmp_path / "fabrikant_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs" / "uitest").mkdir(parents=True)
-    (home / "projects" / "uitest.fabrik.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
+    (home / "projects" / "uitest.fabrikant.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "RUNS_DIR", home / "runs")
     return home
 
 
 @pytest.fixture
-def fabrik_url(fabrik_home, live_server):
-    """fabrik-HTTP-Server auf einem freien Port (ohne Scheduler)."""
+def fabrikant_url(fabrikant_home, live_server):
+    """fabrikant-HTTP-Server auf einem freien Port (ohne Scheduler)."""
     return live_server()
 
 
 @pytest.fixture
-def i18n_page(fabrik_url):
+def i18n_page(fabrikant_url):
     """Factory: Chromium-Seite mit vorgegebener Browser-Sprache (navigator.language)."""
     from playwright.sync_api import sync_playwright
 
@@ -62,7 +62,7 @@ def i18n_page(fabrik_url):
             browser = p.chromium.launch()
             pg = browser.new_page(viewport={"width": 1280, "height": 560})
             pg.add_init_script(f"Object.defineProperty(navigator, 'language', {{value: '{browser_lang}'}});")
-            pg.goto(fabrik_url)
+            pg.goto(fabrikant_url)
             pg.wait_for_selector("#projects .project")
             yield pg
             browser.close()
@@ -78,7 +78,7 @@ def test_german_browser_gets_german_ui(i18n_page):
         assert pg.inner_text("#placeholder") == "Projekt wählen"
         assert pg.inner_text("#langtoggle") == "DE"
         assert pg.inner_text("#chattoggle") == "✉ Chat"
-        assert pg.inner_text("#chatpanel .chatbar [data-i18n='chat.title']") == "fabrik-copilot"
+        assert pg.inner_text("#chatpanel .chatbar [data-i18n='chat.title']") == "fabrikant-copilot"
 
 
 def test_english_browser_gets_english_ui(i18n_page):
@@ -105,7 +105,7 @@ def test_toggle_switches_language_and_persists(i18n_page):
         pg.wait_for_function("document.documentElement.lang === 'en'")
         assert pg.inner_text("#placeholder") == "Select a project"
         assert pg.inner_text("#langtoggle") == "EN"
-        assert pg.evaluate("localStorage.getItem('fabrik.lang')") == "en"
+        assert pg.evaluate("localStorage.getItem('fabrikant.lang')") == "en"
         # Zweiter Klick zurück nach de.
         pg.click("#langtoggle")
         pg.wait_for_function("document.documentElement.lang === 'de'")
@@ -120,7 +120,7 @@ def test_stored_choice_wins_over_browser_language(i18n_page):
     """Gespeicherte Sprachwahl (localStorage) schlägt die Browser-Sprache."""
     with i18n_page("de-DE") as pg:
         pg.wait_for_function("document.documentElement.lang === 'de'")
-        pg.evaluate("localStorage.setItem('fabrik.lang', 'en')")
+        pg.evaluate("localStorage.setItem('fabrikant.lang', 'en')")
         pg.reload()
         pg.wait_for_function("document.documentElement.lang === 'en'")
         assert pg.inner_text("#placeholder") == "Select a project"

@@ -1,6 +1,6 @@
 """Browser-Test: Verdikt-Badge (fachliches Ergebnis) neben dem Run-Status.
 
-Ein echter Run, dessen Shell-Step grün endet und `::fabrik-verdict::fail` meldet (wie relay
+Ein echter Run, dessen Shell-Step grün endet und `::fabrikant-verdict::fail` meldet (wie relay
 audit-publish): Run-Status bleibt `pass`, die UI zeigt zusätzlich ein rotes Verdikt-Badge.
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import config, engine, runs
+from fabrikant import config, engine, runs
 
 pytestmark = pytest.mark.browser
 
@@ -20,16 +20,16 @@ loops:
     triggers:
       - {type: manual}
     steps:
-      - {type: shell, name: publish, cmd: "echo '::fabrik-verdict::fail'; echo 'relay #7 audit: fail'"}
+      - {type: shell, name: publish, cmd: "echo '::fabrikant-verdict::fail'; echo 'relay #7 audit: fail'"}
 """
 
 
 @pytest.fixture
-def fabrik_home(tmp_path, monkeypatch):
-    home = tmp_path / "fabrik_home"
+def fabrikant_home(tmp_path, monkeypatch):
+    home = tmp_path / "fabrikant_home"
     for d in ("projects", "runs", "state"):
         (home / d).mkdir(parents=True)
-    (home / "projects" / "uitest.fabrik.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
+    (home / "projects" / "uitest.fabrikant.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "RUNS_DIR", home / "runs")
     monkeypatch.setattr(config, "STATE_DIR", home / "state")
@@ -37,7 +37,7 @@ def fabrik_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def page(fabrik_home, live_server):
+def page(fabrikant_home, live_server):
     from playwright.sync_api import sync_playwright
 
     engine.run_loop("uitest", "audit", "manual")
@@ -51,10 +51,10 @@ def page(fabrik_home, live_server):
         browser.close()
 
 
-def test_green_run_with_fail_verdict_shows_red_verdict_badge(page, fabrik_home):
+def test_green_run_with_fail_verdict_shows_red_verdict_badge(page, fabrikant_home):
     (rec,) = runs.list_runs("uitest")
     assert rec["status"] == "pass" and rec["steps"][0]["verdict"] == "fail"
-    assert "fabrik-verdict" not in rec["steps"][0]["summary"]
+    assert "fabrikant-verdict" not in rec["steps"][0]["summary"]
     html = page.evaluate("(rec) => verdictBadge(rec)", rec)
     assert 'class="badge verdict bad"' in html and "verdict: fail" in html
     assert page.evaluate("(rec) => verdictBadge(rec)", {**rec, "steps": []}) == ""

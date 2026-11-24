@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fabrik.fetch.profiles import (
+from fabrikant.fetch.profiles import (
     AccessProfile,
     FetchProfile,
     Grant,

@@ -8,10 +8,10 @@ import urllib.request
 import pytest
 from helpers import http_error
 
-from fabrik.backends.opencode import OpenCodeBackend, _default_permissions, _ServeApi
+from fabrikant.backends.opencode import OpenCodeBackend, _default_permissions, _ServeApi
 
 # Test-only Dummy-Credentials (kein echtes Secret) — zentral gepflegt.
-TEST_AUTH_USER = "fabrik"
+TEST_AUTH_USER = "fabrikant"
 TEST_AUTH_PASS = "geheim"
 
 
@@ -314,12 +314,12 @@ def test_detect_caches_result(monkeypatch):
 
 def test_require_api_raises_with_password_hint(monkeypatch):
     be = _be(monkeypatch, [("GET", "/api/info", (401, {})), ("GET", "/api/health", (404, {}))])
-    with pytest.raises(RuntimeError, match="FABRIK_AGENT_PASSWORD"):
+    with pytest.raises(RuntimeError, match="FABRIKANT_AGENT_PASSWORD"):
         be.create_task("/tmp/wd", "t")
 
 
 def test_v2_without_password_is_unhealthy(monkeypatch):
-    # 2.x-Server mit (auto-generiertem) Passwort, fabrik kennt es nicht → 401
+    # 2.x-Server mit (auto-generiertem) Passwort, fabrikant kennt es nicht → 401
     be = _be(monkeypatch, [("GET", "/api/info", (401, {})), ("GET", "/api/health", (404, {}))])
     assert be.health() is False
 
@@ -355,26 +355,26 @@ def test_diagnose_401_mentions_password(monkeypatch):
     d = be.diagnose()
     assert d is not None
     assert "401" in d
-    assert "FABRIK_AGENT_PASSWORD" in d
+    assert "FABRIKANT_AGENT_PASSWORD" in d
 
 
 # ---------------------------------------------------------------- create() / Model
 def test_create_reads_env_password_and_username(monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_PASSWORD", "pw-env")
-    monkeypatch.setenv("FABRIK_AGENT_USERNAME", "user-env")
+    monkeypatch.setenv("FABRIKANT_AGENT_PASSWORD", "pw-env")
+    monkeypatch.setenv("FABRIKANT_AGENT_USERNAME", "user-env")
     be = OpenCodeBackend.create({}, "http://e", "m", 900)
     assert be.password == "pw-env"
     assert be.username == "user-env"
 
 
 def test_create_step_overrides_env(monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_PASSWORD", "pw-env")
+    monkeypatch.setenv("FABRIKANT_AGENT_PASSWORD", "pw-env")
     be = OpenCodeBackend.create({"password": "pw-step"}, "http://e", "m", 900)
     assert be.password == "pw-step"
 
 
 def test_create_without_password_is_none(monkeypatch):
-    monkeypatch.delenv("FABRIK_AGENT_PASSWORD", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_PASSWORD", raising=False)
     be = OpenCodeBackend.create({}, "http://e", "m", 900)
     assert be.password is None
     assert be.username == "opencode"

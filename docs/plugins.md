@@ -1,20 +1,20 @@
-# Installing fabrik and writing step plugins
+# Installing fabrikant and writing step plugins
 
 See [ADR 0069](adr/0069-distribution-and-plugin-contract.md) for the design.
 
 ## Install
 
 ```bash
-pip install fabrik            # or: docker run -v fabrik-data:/data -p 8321:8321 ghcr.io/<owner>/fabrik
+pip install fabrikant            # or: docker run -v fabrikant-data:/data -p 8321:8321 ghcr.io/<owner>/fabrikant
 mkdir my-factory && cd my-factory
-fabrik init                   # projects/hello.fabrik.yaml, fabrik.env, plugins/ skeleton
-fabrik validate projects/hello.fabrik.yaml
-fabrik serve                  # UI on http://127.0.0.1:8321
+fabrikant init                   # projects/hello.fabrikant.yaml, fabrikant.env, plugins/ skeleton
+fabrikant validate projects/hello.fabrikant.yaml
+fabrikant serve                  # UI on http://127.0.0.1:8321
 ```
 
-The directory containing `fabrik.env` is the fabrik *home* (runs, state, session log) whenever you start
-fabrik from it; elsewhere set `FABRIK_HOME`. Without either, an installed fabrik uses
-`~/.local/share/fabrik`. Specs: `<home>/projects/*.fabrik.yaml` (plus `FABRIK_PROJECTS_PATH`).
+The directory containing `fabrikant.env` is the fabrikant *home* (runs, state, session log) whenever you start
+fabrikant from it; elsewhere set `FABRIKANT_HOME`. Without either, an installed fabrikant uses
+`~/.local/share/fabrikant`. Specs: `<home>/projects/*.fabrikant.yaml` (plus `FABRIKANT_PROJECTS_PATH`).
 
 ## Custom steps
 
@@ -22,7 +22,7 @@ A step plugin is a function plus an entry point in a normal Python package:
 
 ```python
 # my_steps.py
-from fabrik.sdk import ok, failed, FailureKind
+from fabrikant.sdk import ok, failed, FailureKind
 
 def greet(ctx, step, emit):
     emit("greeting")
@@ -31,20 +31,20 @@ def greet(ctx, step, emit):
 
 ```toml
 # pyproject.toml of the plugin package
-[project.entry-points."fabrik.steps"]
+[project.entry-points."fabrikant.steps"]
 greet = "my_steps:greet"
 ```
 
-After `pip install` of the package (same environment as fabrik), `type: greet` is valid in every spec.
-`fabrik.sdk` is the only stable API: `register_step`, `StepPlugin` (entry-point target for steps with a JSON
+After `pip install` of the package (same environment as fabrikant), `type: greet` is valid in every spec.
+`fabrikant.sdk` is the only stable API: `register_step`, `StepPlugin` (entry-point target for steps with a JSON
 schema or `needs_worktree`), `ok`, `failed`, `FailureKind`, `substitute`. Plugins cannot override built-in
 step types, and a plugin that fails to import is logged and skipped.
 
 ## Docker
 
-The image runs `fabrik serve` with `FABRIK_HOME=/data`. Add plugins by extending it:
+The image runs `fabrikant serve` with `FABRIKANT_HOME=/data`. Add plugins by extending it:
 
 ```dockerfile
-FROM ghcr.io/<owner>/fabrik:latest
-RUN pip install my-fabrik-steps
+FROM ghcr.io/<owner>/fabrikant:latest
+RUN pip install my-fabrikant-steps
 ```

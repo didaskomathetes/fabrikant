@@ -9,9 +9,9 @@ import json
 
 import pytest
 
-from fabrik import secrets
-from fabrik.runmodel import FailureKind
-from fabrik.steps import agent as agent_step
+from fabrikant import secrets
+from fabrikant.runmodel import FailureKind
+from fabrikant.steps import agent as agent_step
 
 
 class _FakeBackend:
@@ -515,7 +515,7 @@ def test_github_identity_sets_role_token_on_cli_backend(monkeypatch):
 def test_github_identity_missing_token_fails_step(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_step, "create_backend", lambda *a, **k: _FakeCli())
     monkeypatch.delenv("GITHUB_REVIEWER_TOKEN", raising=False)
-    monkeypatch.setenv("FABRIK_ENV_FILE", str(tmp_path / "none.env"))
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", str(tmp_path / "none.env"))
     res = agent_step._step_agent({"project": "p", "run_id": "r", "workdir": "/tmp"}, _identity_step("reviewer"), print)
     assert res["ok"] is False and "GITHUB_REVIEWER_TOKEN" in res["summary"]
 
@@ -610,9 +610,9 @@ def test_opencode_sandbox_mode_needs_no_endpoint(monkeypatch):
     monkeypatch.setattr(agent_step.time, "sleep", lambda s: None)
     ctx = {"project": "p", "run_id": "r", "workdir": "/tmp"}
     step = {"name": "a", "backend": "opencode", "prompt": "p", "model": "lan/qwen"}
-    monkeypatch.setenv("FABRIK_SANDBOX", "1")
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
     assert agent_step._step_agent(ctx, step, lambda m: None)["ok"] is True
-    monkeypatch.setenv("FABRIK_SANDBOX", "0")
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "0")
     res = agent_step._step_agent(ctx, step, lambda m: None)
     assert res["ok"] is False and "endpoint/model fehlen" in res["summary"]
 

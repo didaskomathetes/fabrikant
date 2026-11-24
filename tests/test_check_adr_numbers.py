@@ -37,7 +37,7 @@ def _git(cwd: Path, *args: str) -> None:
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    """Repo mit Unterverzeichnis `pkg/` (wie fabrik/), main hat ADRs 1, 2, 5 (Lücke); Branch `feat`.
+    """Repo mit Unterverzeichnis `pkg/` (wie fabrikant/), main hat ADRs 1, 2, 5 (Lücke); Branch `feat`.
     `origin/main` ist eine lokale Ref auf main."""
     pkg = tmp_path / "pkg"
     adr = pkg / "docs" / "adr"

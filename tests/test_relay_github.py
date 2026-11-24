@@ -6,11 +6,11 @@ import urllib.error
 import pytest
 from helpers import http_error
 
-from fabrik.failures import ConfigError, classify_exception
-from fabrik.relay import github as relay_github
-from fabrik.relay.github import GitHubError, RelayGitHub, task_from_node
-from fabrik.relay.status import STATUS_MARKER
-from fabrik.runmodel import FailureKind
+from fabrikant.failures import ConfigError, classify_exception
+from fabrikant.relay import github as relay_github
+from fabrikant.relay.github import GitHubError, RelayGitHub, task_from_node
+from fabrikant.relay.status import STATUS_MARKER
+from fabrikant.runmodel import FailureKind
 
 NODE = {
     "number": 7,
@@ -18,7 +18,7 @@ NODE = {
     "body": "## Goal\r\nx",
     "createdAt": "2026-10-01T00:00:00Z",
     "author": {"login": "colleague"},
-    "labels": {"nodes": [{"name": "fabrik-relay"}, {"name": "relay: blocked"}]},
+    "labels": {"nodes": [{"name": "fabrikant-relay"}, {"name": "relay: blocked"}]},
     "userContentEdits": {
         "nodes": [
             {"editedAt": "2026-10-03T00:00:00Z", "editor": {"login": "me"}},
@@ -27,7 +27,7 @@ NODE = {
     },
     "timelineItems": {
         "nodes": [
-            {"createdAt": "2026-10-04T00:00:00Z", "label": {"name": "fabrik-relay"}, "actor": {"login": "me"}},
+            {"createdAt": "2026-10-04T00:00:00Z", "label": {"name": "fabrikant-relay"}, "actor": {"login": "me"}},
             {"createdAt": "2026-10-05T00:00:00Z", "label": {"name": "other"}, "actor": {"login": "mallory"}},
             {},
         ]
@@ -36,15 +36,15 @@ NODE = {
 
 
 def test_task_from_node_picks_latest_label_event_and_edit():
-    t = task_from_node(NODE, "fabrik-relay")
+    t = task_from_node(NODE, "fabrikant-relay")
     assert (t.number, t.body, t.author) == (7, "## Goal\nx", "colleague")
-    assert t.labels == frozenset({"fabrik-relay", "relay: blocked"})
+    assert t.labels == frozenset({"fabrikant-relay", "relay: blocked"})
     assert (t.label_actor, t.label_at.day) == ("me", 4)
     assert (t.body_editor, t.body_edited_at.day) == ("me", 3)
 
 
 def test_task_from_node_without_events_or_edits():
-    t = task_from_node({"number": 1, "author": None}, "fabrik-relay")
+    t = task_from_node({"number": 1, "author": None}, "fabrikant-relay")
     assert (t.author, t.label_actor, t.body_editor, t.labels) == ("ghost", None, None, frozenset())
 
 
@@ -59,7 +59,9 @@ def test_task_from_node_picks_newest_edit_beyond_window():
     # >20 Edits: der neueste Editor gewinnt, auch wenn ältere Edits im Fenster liegen.
     edits = [{"editedAt": f"2026-10-{d:02d}T00:00:00Z", "editor": {"login": "mallory"}} for d in range(1, 21)]
     edits.append({"editedAt": "2026-10-21T00:00:00Z", "editor": {"login": "me"}})
-    t = task_from_node({"number": 9, "author": {"login": "me"}, "userContentEdits": {"nodes": edits}}, "fabrik-relay")
+    t = task_from_node(
+        {"number": 9, "author": {"login": "me"}, "userContentEdits": {"nodes": edits}}, "fabrikant-relay"
+    )
     assert (t.body_editor, t.body_edited_at.day) == ("me", 21)
 
 
@@ -109,11 +111,11 @@ def test_tasks_and_task_via_graphql(api):
             }
         }
     )
-    assert [t.number for t in gh.tasks("fabrik-relay")] == [7]
-    assert gh.task(7, "fabrik-relay").number == 7
+    assert [t.number for t in gh.tasks("fabrikant-relay")] == [7]
+    assert gh.task(7, "fabrikant-relay").number == 7
     with pytest.raises(GitHubError, match="#8"):
-        gh.task(8, "fabrik-relay")
-    assert fake.calls[0][2]["variables"] == {"owner": "o", "name": "r", "label": "fabrik-relay", "after": None}
+        gh.task(8, "fabrikant-relay")
+    assert fake.calls[0][2]["variables"] == {"owner": "o", "name": "r", "label": "fabrikant-relay", "after": None}
 
 
 def test_tasks_paginates_beyond_first_page(api):
@@ -138,7 +140,7 @@ def test_tasks_paginates_beyond_first_page(api):
         return page(range(51, 56), False, "cursor-2")
 
     _, gh = api({("POST", "/graphql"): graphql})
-    numbers = [t.number for t in gh.tasks("fabrik-relay")]
+    numbers = [t.number for t in gh.tasks("fabrikant-relay")]
     assert len(numbers) == 55 and numbers[:3] == [1, 2, 3] and numbers[-1] == 55
     assert seen == [None, "cursor-1"]
 
@@ -151,8 +153,8 @@ def test_graphql_errors_raise(api):
 
 def test_file_decodes_content_and_maps_404_to_none(api):
     content = base64.b64encode(b"---\nissue: 7\n---\n").decode()
-    fake, gh = api({("GET", "?ref=fabrik%2Frelay%2F7"): {"content": content}})
-    assert gh.file(".fabrik/relay/7/HANDOFF.md", "fabrik/relay/7").startswith("---")
+    fake, gh = api({("GET", "?ref=fabrikant%2Frelay%2F7"): {"content": content}})
+    assert gh.file(".fabrikant/relay/7/HANDOFF.md", "fabrikant/relay/7").startswith("---")
     _, gh404 = api({("GET", "?ref=b"): http_error(404)})
     assert gh404.file("p", "b") is None
     _, gh500 = api({("GET", "?ref=b"): http_error(500)})
@@ -166,7 +168,7 @@ def comment(cid, login, body, typ="Bot"):
 
 def test_status_comment_only_trusts_the_pinned_bot(api):
     forged = comment(1, "mallory", f"{STATUS_MARKER}\nforged", typ="User")
-    real = comment(2, "my-builder-app[bot]", f'{STATUS_MARKER}\n<!-- fabrik-relay-state {{"audit": "pass"}} -->')
+    real = comment(2, "my-builder-app[bot]", f'{STATUS_MARKER}\n<!-- fabrikant-relay-state {{"audit": "pass"}} -->')
     _, gh = api({("GET", "&page=1"): [forged, real]})
     assert gh.status_comment(7)[0] == 2
     assert gh.status_state(7).audit == "pass"
@@ -178,7 +180,7 @@ def test_status_comment_only_trusts_the_pinned_bot(api):
 def test_status_comment_ignores_foreign_bot(api):
     # Fremder Bot mit Kommentarrecht: sein Status-Kommentar wird nicht vertraut,
     # der echte (spätere) Kommentar des gepinnten Bots gewinnt.
-    foreign = comment(1, "some-other-app[bot]", f'{STATUS_MARKER}\n<!-- fabrik-relay-state {{"audit": "pass"}} -->')
+    foreign = comment(1, "some-other-app[bot]", f'{STATUS_MARKER}\n<!-- fabrikant-relay-state {{"audit": "pass"}} -->')
     real = comment(2, "my-builder-app[bot]", f"{STATUS_MARKER}\nplain")
     _, gh = api({("GET", "&page=1"): [foreign, real]})
     assert gh.status_comment(7)[0] == 2
@@ -227,7 +229,7 @@ def test_sync_labels_adds_and_removes_only_differences(api):
     )
     gh.sync_labels(
         7,
-        frozenset({"fabrik-relay", "relay: done", "relay: blocked"}),
+        frozenset({"fabrikant-relay", "relay: done", "relay: blocked"}),
         {"relay: audited"},
         {"relay: done", "relay: blocked", "relay: missing"},
     )
@@ -248,31 +250,31 @@ def test_commit_identity_uses_bot_user_id(api):
 
 def test_create_ref_posts_hidden_ref(api):
     fake, gh = api({("POST", "/git/refs"): {}})
-    gh.create_ref("refs/fabrik/relay/7/audit-1", "abc")
+    gh.create_ref("refs/fabrikant/relay/7/audit-1", "abc")
     assert fake.calls == [
-        ("POST", "https://api.github.com/repos/o/r/git/refs", {"ref": "refs/fabrik/relay/7/audit-1", "sha": "abc"})
+        ("POST", "https://api.github.com/repos/o/r/git/refs", {"ref": "refs/fabrikant/relay/7/audit-1", "sha": "abc"})
     ]
 
 
 def test_ref_sha_exact_match_prefix_list_and_missing(api):
-    ref = "refs/fabrik/relay/7/audit-1"
-    _, gh = api({("GET", "/git/ref/fabrik/relay/7/audit-1"): {"ref": ref, "object": {"sha": "abc"}}})
+    ref = "refs/fabrikant/relay/7/audit-1"
+    _, gh = api({("GET", "/git/ref/fabrikant/relay/7/audit-1"): {"ref": ref, "object": {"sha": "abc"}}})
     assert gh.ref_sha(ref) == "abc"
-    _, gh = api({("GET", "/git/ref/fabrik/relay/7/audit-1"): [{"ref": ref + "0", "object": {"sha": "x"}}]})
+    _, gh = api({("GET", "/git/ref/fabrikant/relay/7/audit-1"): [{"ref": ref + "0", "object": {"sha": "x"}}]})
     assert gh.ref_sha(ref) is None  # Präfix-Treffer zählt nicht
-    _, gh = api({("GET", "/git/ref/fabrik/relay/7/audit-1"): http_error(404)})
+    _, gh = api({("GET", "/git/ref/fabrikant/relay/7/audit-1"): http_error(404)})
     assert gh.ref_sha(ref) is None
-    _, gh = api({("GET", "/git/ref/fabrik/relay/7/audit-1"): http_error(500)})
+    _, gh = api({("GET", "/git/ref/fabrikant/relay/7/audit-1"): http_error(500)})
     with pytest.raises(urllib.error.HTTPError):
         gh.ref_sha(ref)
 
 
 def test_open_pr_filters_by_head_branch(api):
     fake, gh = api({("GET", "per_page=1"): [{"number": 42}]})
-    assert gh.open_pr("fabrik/relay/7") == 42
-    assert "head=o%3Afabrik%2Frelay%2F7" in fake.calls[0][1] and "state=open" in fake.calls[0][1]
+    assert gh.open_pr("fabrikant/relay/7") == 42
+    assert "head=o%3Afabrikant%2Frelay%2F7" in fake.calls[0][1] and "state=open" in fake.calls[0][1]
     _, gh = api({("GET", "per_page=1"): []})
-    assert gh.open_pr("fabrik/relay/7") is None
+    assert gh.open_pr("fabrikant/relay/7") is None
 
 
 def test_pr_body_reads_and_patches_the_pull(api):

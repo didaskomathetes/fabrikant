@@ -6,7 +6,7 @@ import signal
 
 import pytest
 
-from fabrik import procs, server
+from fabrikant import procs, server
 
 
 def test_exit_on_signals_raises_system_exit(monkeypatch):

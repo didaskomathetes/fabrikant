@@ -3,7 +3,7 @@
 Covers ``stable_outcomes``/``capture_golden`` (pinned baseline), golden-file
 load/save (``projects/<p>.golden.json``), ``compare_golden`` (regression
 detection on the stable surface), ``run_eval`` (re-run via replay, trigger
-``eval``) and the ``fabrik golden`` / ``fabrik eval`` CLI commands.
+``eval``) and the ``fabrikant golden`` / ``fabrikant eval`` CLI commands.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import threading
 
 import pytest
 
-from fabrik import cli, golden, replay
+from fabrikant import cli, golden, replay
 
 
 def _write_spec(projects_dir, name="p", root=None, loops=None):
@@ -21,7 +21,7 @@ def _write_spec(projects_dir, name="p", root=None, loops=None):
     root = root or projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
     loops = loops or {"l": {"steps": [{"type": "shell", "cmd": "true"}]}}
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n"
         + "\n".join(
             f"  {ln}:\n    steps:\n" + "\n".join(f"      - {json.dumps(s)}" for s in ldef["steps"])

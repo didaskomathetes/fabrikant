@@ -3,7 +3,7 @@
 import sys
 import time
 
-from fabrik.backends import OneShotCliBackend
+from fabrikant.backends import OneShotCliBackend
 
 # Deutlich größer als der Linux-Pipe-Puffer (64 KiB).
 _BIG_OUTPUT_BYTES = 1_000_000
@@ -105,7 +105,7 @@ def test_base_env_is_scrubbed_for_subprocess(tmp_path, monkeypatch):
     """ADR 0050: Der Subprozess sieht nur die Allowlist — Secrets aus `os.environ`
     (z. B. GITHUB_TOKEN) landen NICHT in der Agent-Umgebung."""
     monkeypatch.setenv("GITHUB_TOKEN", "leak-check")
-    monkeypatch.delenv("FABRIK_AGENT_ENV_EXTRA", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_ENV_EXTRA", raising=False)
     be = _EnvBackend()
     assert _final(be, tmp_path)["text"].split() == ["None", "True"]
 
@@ -121,12 +121,12 @@ def _git_repo(path) -> None:
 
 
 def test_sandbox_enabled_wraps_cmd_in_docker_run(tmp_path, monkeypatch):
-    """ADR 0054: Mit `FABRIK_SANDBOX=1` wird der Agent-Befehl in `docker run`
+    """ADR 0054: Mit `FABRIKANT_SANDBOX=1` wird der Agent-Befehl in `docker run`
     gehüllt (Hardening-Flags, git-Austausch statt Worktree-Mount, gescrubte Env als -e-Flags);
     poll() übernimmt das Ergebnis und räumt den Austausch auf."""
     import io
 
-    from fabrik import sandbox
+    from fabrikant import sandbox
 
     _git_repo(tmp_path)
     monkeypatch.setattr(sandbox, "sandbox_enabled", lambda env=None: True)
@@ -151,7 +151,7 @@ def test_sandbox_enabled_wraps_cmd_in_docker_run(tmp_path, monkeypatch):
     import subprocess
     import types
 
-    from fabrik.backends import _oneshot
+    from fabrikant.backends import _oneshot
 
     # Nur das Backend bekommt den Fake — die git-Aufrufe der Sandbox laufen echt.
     fake_subprocess = types.SimpleNamespace(**{k: getattr(subprocess, k) for k in dir(subprocess) if k.isupper()})
@@ -178,7 +178,7 @@ def test_sandbox_enabled_wraps_cmd_in_docker_run(tmp_path, monkeypatch):
 
 
 def test_sandbox_result_rejection_fails_the_step(tmp_path, monkeypatch):
-    from fabrik import sandbox
+    from fabrikant import sandbox
 
     be = _EnvBackend()
     sid = be.create_task(str(tmp_path), "t")
@@ -195,7 +195,7 @@ def test_sandbox_result_rejection_fails_the_step(tmp_path, monkeypatch):
 
 def test_cancel_discards_sandbox_exchange(tmp_path, monkeypatch):
     """Abgebrochener Run: Ergebnis wird nicht übernommen, Bundle-Verzeichnis und Refs verschwinden."""
-    from fabrik import sandbox
+    from fabrikant import sandbox
 
     discarded: list = []
     monkeypatch.setattr(sandbox, "discard_exchange", lambda ex, wd: discarded.append(ex))
@@ -213,7 +213,7 @@ def test_cancel_stops_sandbox_container(monkeypatch, tmp_path):
     killpg auf die docker-CLI-Prozessgruppe beendet das laufende Image NICHT
     (der Agent würde nur vom Prozess-Handle entkoppelt, läuft aber weiter).
     Maßgeblich ist, ob DIESER Run einen Austausch hat — nicht das aktuelle Env-Flag."""
-    from fabrik import sandbox
+    from fabrikant import sandbox
 
     class _SlowBackend(OneShotCliBackend):
         name = "slow"
@@ -250,7 +250,7 @@ def test_cancel_stops_sandbox_container(monkeypatch, tmp_path):
 
 
 def test_cancel_without_sandbox_does_not_touch_docker(monkeypatch, tmp_path):
-    from fabrik import sandbox
+    from fabrikant import sandbox
 
     monkeypatch.setattr(sandbox, "stop_container", lambda sid: (_ for _ in ()).throw(AssertionError("docker")))
     be = _EnvBackend()
@@ -278,7 +278,7 @@ class _CrashBackend(_EchoBackend):
 def test_failed_result_keeps_exit_code_and_stderr_tail(tmp_path):
     """Ein Absturz der CLI: `_parse` behält nur den Banner-Anfang, die Ursache steht am Ende von
     stderr — `poll` liefert Exit-Code und dieses Ende mit (zeilenweise abgeschnitten, begrenzt)."""
-    from fabrik.backends._oneshot import STDERR_TAIL_CHARS
+    from fabrikant.backends._oneshot import STDERR_TAIL_CHARS
 
     r = _final(_CrashBackend(), tmp_path)
     assert r["status"] == "failed"
@@ -297,7 +297,7 @@ def test_done_result_has_no_exit_fields(tmp_path):
 
 
 def test_tail_short_text_and_no_newline():
-    from fabrik.backends._oneshot import _tail
+    from fabrikant.backends._oneshot import _tail
 
     assert _tail("kurz\n") == "kurz"
     assert _tail("x" * 50, limit=10) == "x" * 10

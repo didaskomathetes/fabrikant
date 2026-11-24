@@ -9,7 +9,7 @@ from collections.abc import Callable
 import pytest
 from helpers import http_error
 
-from fabrik import gitops
+from fabrikant import gitops
 
 
 # ---------------------------------------------------------------- _gh_token_safe
@@ -22,19 +22,19 @@ def test_gh_token_safe_env_file(monkeypatch, tmp_path):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     envf = tmp_path / ".env"
     envf.write_text('GITHUB_TOKEN="file-tok"\n')
-    monkeypatch.setenv("FABRIK_ENV_FILE", str(envf))
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", str(envf))
     assert gitops._gh_token_safe() == "file-tok"
 
 
 def test_gh_token_safe_none(monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.setenv("FABRIK_ENV_FILE", "/nonexistent/.env")
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", "/nonexistent/.env")
     assert gitops._gh_token_safe() == ""
 
 
 def test_gh_token_raises_when_missing(monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.setenv("FABRIK_ENV_FILE", "/nonexistent/.env")
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", "/nonexistent/.env")
     with pytest.raises(RuntimeError, match="GITHUB_TOKEN"):
         gitops._gh_token()
 
@@ -66,7 +66,7 @@ def test_git_fetch_ok(tmp_path):
 def test_git_fetch_failure_no_token(tmp_path, monkeypatch):
     repo = _make_repo(tmp_path)
     monkeypatch.setenv("GITHUB_TOKEN", "")
-    monkeypatch.setenv("FABRIK_ENV_FILE", "/nonexistent/.env")
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", "/nonexistent/.env")
     # origin auf ungültige URL → fetch schlägt fehl, kein Token → RuntimeError
     subprocess.run(["git", "-C", str(repo), "remote", "set-url", "origin", "/nonexistent/origin.git"], check=True)
     with pytest.raises(RuntimeError, match="git fetch"):
@@ -75,7 +75,7 @@ def test_git_fetch_failure_no_token(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- ensure_worktree
 def test_ensure_worktree_no_repo(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     spec = {"name": "p", "root": str(tmp_path)}
@@ -83,7 +83,7 @@ def test_ensure_worktree_no_repo(tmp_path, monkeypatch):
 
 
 def test_ensure_worktree_creates(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -94,7 +94,7 @@ def test_ensure_worktree_creates(tmp_path, monkeypatch):
 
 
 def test_ensure_worktree_fetches_target_branch(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -112,7 +112,7 @@ def test_ensure_worktree_fetches_target_branch(tmp_path, monkeypatch):
 
 
 def test_ensure_worktree_subpath_missing(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -127,7 +127,7 @@ def _spec(repo, name="p"):
 
 def test_ensure_worktree_separate_per_run(tmp_path, monkeypatch):
     """Jeder Run bekommt einen eigenen Worktree (ADR 0028)."""
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -141,7 +141,7 @@ def test_ensure_worktree_separate_per_run(tmp_path, monkeypatch):
 
 def test_ensure_worktree_resume_keeps_existing_state(tmp_path, monkeypatch):
     """Resume: existierender Run-Worktree bleibt unangetastet (kein fetch/reset)."""
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -158,11 +158,11 @@ def test_ensure_worktree_resume_keeps_existing_state(tmp_path, monkeypatch):
 
 
 def test_remove_worktree_and_cleanup_run_worktree(tmp_path, monkeypatch, projects_dir):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {repo}\nrepo: {{branch: main}}\nloops:\n  l:\n    steps:\n      - {{type: report, text: x}}\n"
     )
     base = gitops.ensure_worktree(_spec(repo), "r1")
@@ -217,11 +217,11 @@ def test_cleanup_orphaned_worktrees(tmp_path, monkeypatch, projects_dir, runs_di
     """Beim Start: verwaiste Run-Worktrees und Legacy-Worktrees weg; needs_approval bleibt."""
     import json
 
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {repo}\nrepo: {{branch: main}}\nloops:\n  l:\n    steps:\n      - {{type: report, text: x}}\n"
     )
     crashed = gitops.ensure_worktree(_spec(repo), "crashed")
@@ -238,12 +238,12 @@ def test_cleanup_orphaned_worktrees(tmp_path, monkeypatch, projects_dir, runs_di
 
 
 def test_cleanup_orphaned_worktrees_legacy_layout(tmp_path, monkeypatch, projects_dir):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     wt_root = tmp_path / "wt"
     monkeypatch.setattr(config, "WORKTREES_DIR", wt_root)
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {repo}\nrepo: {{branch: main}}\nloops:\n  l:\n    steps:\n      - {{type: report, text: x}}\n"
     )
     legacy = wt_root / "p"
@@ -254,7 +254,7 @@ def test_cleanup_orphaned_worktrees_legacy_layout(tmp_path, monkeypatch, project
 
 
 def test_cleanup_orphaned_worktrees_empty(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "nichts")
     assert gitops.cleanup_orphaned_worktrees() == []
@@ -406,7 +406,7 @@ def test_gh_dependencies_empty_and_invalid_kind(monkeypatch):
 
 # ---------------------------------------------------------------- Legacy-Worktree-Wurzel (ADR 0047, Nachtrag)
 def test_run_worktree_path_new_root_by_default(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "LEGACY_WORKTREES_DIR", tmp_path / "legacy")
@@ -415,7 +415,7 @@ def test_run_worktree_path_new_root_by_default(tmp_path, monkeypatch):
 
 def test_run_worktree_path_prefers_existing_legacy(tmp_path, monkeypatch):
     """Vor dem Umzug pausierter Run (needs_approval) setzt im alten Worktree fort."""
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "LEGACY_WORKTREES_DIR", tmp_path / "legacy")
@@ -428,7 +428,7 @@ def test_run_worktree_path_prefers_existing_legacy(tmp_path, monkeypatch):
 
 def test_run_worktree_path_ignores_empty_legacy_dir(tmp_path, monkeypatch):
     """Ein leerer/verwaister Legacy-Ordner (kein echter Worktree) verdeckt die neue Wurzel nicht."""
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "LEGACY_WORKTREES_DIR", tmp_path / "legacy")
@@ -437,7 +437,7 @@ def test_run_worktree_path_ignores_empty_legacy_dir(tmp_path, monkeypatch):
 
 
 def test_worktree_roots_dedups_same_dir(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "LEGACY_WORKTREES_DIR", tmp_path / "wt")
@@ -447,13 +447,13 @@ def test_worktree_roots_dedups_same_dir(tmp_path, monkeypatch):
 def test_cleanup_orphaned_worktrees_covers_legacy_root(tmp_path, monkeypatch, projects_dir, runs_dir):
     import json
 
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     legacy_root = tmp_path / "legacy"
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "LEGACY_WORKTREES_DIR", legacy_root)
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {repo}\nrepo: {{branch: main}}\nloops:\n  l:\n    steps:\n      - {{type: report, text: x}}\n"
     )
     for rid in ("old-crashed", "old-paused"):
@@ -477,7 +477,7 @@ _REPO_MUTATING = ("fetch", "worktree")
 
 
 def test_git_common_dir_shared_by_repo_and_worktree(tmp_path, monkeypatch):
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
@@ -500,7 +500,7 @@ def test_parallel_worktree_ops_are_serialized(tmp_path, monkeypatch):
     import threading
     import time
 
-    from fabrik import config
+    from fabrikant import config
 
     repo = _make_repo(tmp_path)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")

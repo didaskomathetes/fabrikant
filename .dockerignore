@@ -7,7 +7,7 @@
 runs
 state
 sessionlog.db*
-fabrik.env
+fabrikant.env
 .coverage
 tests
 docs

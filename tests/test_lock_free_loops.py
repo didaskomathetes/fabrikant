@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import config, engine, runs
-from fabrik.specs import _validate_spec
+from fabrikant import config, engine, runs
+from fabrikant.specs import _validate_spec
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def _write_spec(projects_dir, tmp_path, name, loops_yaml, repo=True):
     root.mkdir(parents=True, exist_ok=True)
     head = [f"name: {name}", f"root: {root}"] + (["repo:", "  branch: main"] if repo else [])
     body = "\n".join("  " + ln for ln in loops_yaml.strip().splitlines())
-    (projects_dir / f"{name}.fabrik.yaml").write_text("\n".join([*head, "loops:", body]) + "\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text("\n".join([*head, "loops:", body]) + "\n")
 
 
 _LOOPS = """

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from helpers import http_error
 
-from fabrik.steps import http
+from fabrikant.steps import http
 
 
 class _FakeResp:

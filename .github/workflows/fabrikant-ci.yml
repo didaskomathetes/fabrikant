@@ -1,0 +1,68 @@
+# Fabrik-CI. Siehe docs/ci.md (Secrets, Playwright, Artefakt-Regeln).
+name: fabrikant-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint, Typecheck, SAST (ruff, pyright, bandit)
+        run: bash scripts/lint.sh
+      - name: JS-Lint (Biome, src/fabrikant/web/app.js; Fehler blockieren, Warnungen nicht)
+        run: npx --yes @biomejs/biome@2.6.8 lint --diagnostic-level=error
+      - name: Dependency-Audit (pip-audit gegen uv.lock-Umgebung)
+        run: uv run pip-audit --skip-editable
+      - name: Specs validieren (vars, Templates, Steps — ohne host-abhängige root-Prüfung)
+        run: uv run fabrikant validate --offline projects/*.fabrikant.yaml
+      - name: Unit tests + Coverage-Gate (ohne Browser, parallel; fail_under in pyproject.toml)
+        run: uv run pytest -m "not browser and not perf" -n auto --cov=fabrikant --cov-report=term:skip-covered
+      - name: Perf-Budget-Tests (seriell, sonst Wall-Clock-Rauschen)
+        run: uv run pytest -m perf
+
+  package:
+    # The built wheel works from a clean virtualenv outside the checkout (ADR 0069).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+      - name: Wheel smoke test (init, validate, run, serve)
+        run: bash scripts/smoke-wheel.sh
+      - name: Docker image builds
+        run: docker build -t fabrikant:ci .
+
+  browser:
+    # Playwright/Chromium-Tests. Blockierend: Fehler lassen den Job fehlschlagen.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Install Chromium + System-Abhängigkeiten
+        run: uv run playwright install --with-deps chromium
+      - name: Browser tests
+        run: uv run pytest -m browser

@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from fabrik.fetch import fetcher
-from fabrik.fetch.fetcher import Fetcher, _SafeRedirectHandler
+from fabrikant.fetch import fetcher
+from fabrikant.fetch.fetcher import Fetcher, _SafeRedirectHandler
 
 
 def _mk(approved_domains=(), approved_urls=(), out_dir=None, ledger=None):

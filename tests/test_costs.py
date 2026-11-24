@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from fabrik import config, costs, runsearch
-from fabrik.runmodel import Run, RunStatus, Step, StepStatus, Usage
-from fabrik.runstore import STORE
+from fabrikant import config, costs, runsearch
+from fabrikant.runmodel import Run, RunStatus, Step, StepStatus, Usage
+from fabrikant.runstore import STORE
 
 
 def _step(name, usage=None):

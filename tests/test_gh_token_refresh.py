@@ -74,7 +74,7 @@ def test_write_token_creates_file(mod, tmp_path):
 def test_main_missing_config_fails(mod, monkeypatch, tmp_path, capsys):
     for k in ("BUILDER_APP_ID", "BUILDER_APP_KEY_FILE", "BUILDER_INSTALLATION_ID"):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(mod, "FABRIK_HOME", tmp_path)  # echtes fabrik.env nicht laden
+    monkeypatch.setattr(mod, "FABRIKANT_HOME", tmp_path)  # echtes fabrikant.env nicht laden
     assert mod.main() == 1
     assert "Config fehlt" in capsys.readouterr().err
 
@@ -273,7 +273,7 @@ def _main_env(mod, monkeypatch, tmp_path):
     monkeypatch.setenv("BUILDER_APP_ID", "1")
     monkeypatch.setenv("BUILDER_APP_KEY_FILE", str(key))
     monkeypatch.setenv("BUILDER_INSTALLATION_ID", "2")
-    monkeypatch.setenv("FABRIK_ENV_FILE", str(tmp_path / ".env"))
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", str(tmp_path / ".env"))
     monkeypatch.setattr(mod, "_make_jwt", lambda app_id, key_path: "jwt")
 
 
@@ -315,7 +315,7 @@ def test_main_reviewer_role_writes_reviewer_token(mod, monkeypatch, tmp_path, ca
         monkeypatch.setenv(k, v)
     env = tmp_path / ".env"
     env.write_text("GITHUB_TOKEN=dev-tok\n")
-    monkeypatch.setenv("FABRIK_ENV_FILE", str(env))
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", str(env))
     seen = {}
     monkeypatch.setattr(mod, "_make_jwt", lambda app_id, key_path: seen.setdefault("app", app_id) and "jwt")
     monkeypatch.setattr(mod, "_http", lambda m, u, t, p=None: seen.setdefault("url", u) and {"token": "ghs_qa"})
@@ -328,6 +328,6 @@ def test_main_reviewer_role_writes_reviewer_token(mod, monkeypatch, tmp_path, ca
 def test_main_reviewer_role_reports_its_own_missing_keys(mod, monkeypatch, capsys):
     for k in ("REVIEWER_APP_ID", "REVIEWER_APP_KEY_FILE", "REVIEWER_INSTALLATION_ID"):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(mod, "_load_fabrik_env", lambda: None)
+    monkeypatch.setattr(mod, "_load_fabrikant_env", lambda: None)
     assert mod.main(["--role", "reviewer"]) == 1
     assert "REVIEWER_APP_ID" in capsys.readouterr().err

@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import secrets
+from fabrikant import secrets
 
 SECRET = "sk-SECRET-XYZ999"
 
 
 @pytest.fixture
 def secret_env(monkeypatch):
-    monkeypatch.setenv("FABRIK_TEST_SECRET", SECRET)
+    monkeypatch.setenv("FABRIKANT_TEST_SECRET", SECRET)
     monkeypatch.setattr(secrets, "_env_secrets", [])
     secrets.refresh_env_secrets()
     yield
@@ -121,7 +121,7 @@ def test_secrets_does_not_iterate_environ(monkeypatch):
 
 def test_refresh_env_secrets_picks_up_new_value(monkeypatch):
     monkeypatch.setattr(secrets, "_env_secrets", [])
-    monkeypatch.setenv("FABRIK_TEST_SECRET", SECRET)
+    monkeypatch.setenv("FABRIKANT_TEST_SECRET", SECRET)
     assert SECRET not in secrets._secrets()
     secrets.refresh_env_secrets()
     assert SECRET in secrets._secrets()
@@ -129,8 +129,8 @@ def test_refresh_env_secrets_picks_up_new_value(monkeypatch):
 
 def test_refresh_ignores_short_and_non_secret_names(monkeypatch):
     monkeypatch.setattr(secrets, "_env_secrets", [])
-    monkeypatch.setenv("FABRIK_SHORT_TOKEN", "abc")
-    monkeypatch.setenv("FABRIK_PLAIN", SECRET)
+    monkeypatch.setenv("FABRIKANT_SHORT_TOKEN", "abc")
+    monkeypatch.setenv("FABRIKANT_PLAIN", SECRET)
     secrets.refresh_env_secrets()
     assert "abc" not in secrets._secrets()
     assert SECRET not in secrets._secrets()
@@ -147,7 +147,7 @@ def test_concurrent_redact_and_env_mutation(monkeypatch):
     def writer():
         i = 0
         while not stop.is_set():
-            monkeypatch.setenv(f"FABRIK_RACE_{i % 50}", str(i))
+            monkeypatch.setenv(f"FABRIKANT_RACE_{i % 50}", str(i))
             i += 1
 
     t = threading.Thread(target=writer)

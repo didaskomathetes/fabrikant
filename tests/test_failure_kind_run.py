@@ -6,17 +6,17 @@ import json
 
 import pytest
 
-import fabrik
-from fabrik import runsearch, specs
-from fabrik.failures import classify_exception
-from fabrik.runmodel import FailureKind
-from fabrik.runstore import parse_run
-from fabrik.steps import notify
-from fabrik.steps.shell import _step_shell
+import fabrikant
+from fabrikant import runsearch, specs
+from fabrikant.failures import classify_exception
+from fabrikant.runmodel import FailureKind
+from fabrikant.runstore import parse_run
+from fabrikant.steps import notify
+from fabrikant.steps.shell import _step_shell
 
 
 def _spec(projects_dir, name: str, steps: str) -> str:
-    (projects_dir / f"{name}.fabrik.yaml").write_text(f"name: {name}\nroot: /tmp\nloops:\n  t:\n    steps:\n{steps}")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(f"name: {name}\nroot: /tmp\nloops:\n  t:\n    steps:\n{steps}")
     return name
 
 
@@ -27,7 +27,7 @@ def _shell(name: str, cmd: str, extra: str = "") -> str:
 # ---------------------------------------------------------------- Engine
 def test_run_takes_kind_of_aborting_step(runs_dir, projects_dir):
     name = _spec(projects_dir, "fk_abort", _shell("s1", "exit 127") + _shell("s2", "echo nie"))
-    rec = fabrik.run_loop(name, "t")
+    rec = fabrikant.run_loop(name, "t")
     assert rec["status"] == "fail"
     assert rec["steps"][0]["failure_kind"] == "environment"
     assert rec["failure_kind"] == "environment"
@@ -42,18 +42,18 @@ def test_gate_false_run_takes_first_failed_step(runs_dir, projects_dir):
         + _shell("weg", "exit 127", "        gate: false\n")
         + _shell("ok", "true")
     )
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_gatefalse", steps), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_gatefalse", steps), "t")
     assert rec["status"] == "fail"
     assert rec["failure_kind"] == "outcome"
 
 
 def test_unclassified_exit_is_unknown(runs_dir, projects_dir):
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_unknown", _shell("s1", "exit 1")), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_unknown", _shell("s1", "exit 1")), "t")
     assert rec["failure_kind"] == "unknown"
 
 
 def test_passing_run_has_no_kind(runs_dir, projects_dir):
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_pass", _shell("s1", "true")), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_pass", _shell("s1", "true")), "t")
     assert rec["status"] == "pass"
     assert "failure_kind" not in rec
     assert "failure_kind" not in rec["steps"][0]
@@ -62,14 +62,14 @@ def test_passing_run_has_no_kind(runs_dir, projects_dir):
 def test_step_exception_is_classified_by_type(runs_dir, projects_dir):
     """Exception im Step → error; Klasse aus dem Exception-Typ (hier fehlendes Repo → ConfigError)."""
     steps = "      - type: pr\n        name: pr\n"
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_exc", steps), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_exc", steps), "t")
     assert rec["status"] == "error"
     assert rec["steps"][0]["failure_kind"] == "environment"
     assert rec["failure_kind"] == "environment"
 
 
 def test_step_timeout_is_unknown(runs_dir, projects_dir):
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_timeout", _shell("s1", "sleep 5", "        timeout: 1\n")), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_timeout", _shell("s1", "sleep 5", "        timeout: 1\n")), "t")
     assert rec["steps"][0]["status"] == "timeout"
     assert rec["failure_kind"] == "unknown"
 
@@ -80,8 +80,8 @@ def test_new_run_record_carries_trigger_key(runs_dir, projects_dir):
         "name: fk_tkey\nroot: /tmp\ngithub: owner/repo\nloops:\n  t:\n"
         "    triggers:\n      - {type: on_issue}\n    steps:\n" + _shell("s1", "true")
     )
-    (projects_dir / "fk_tkey.fabrik.yaml").write_text(spec)
-    rec = fabrik.run_loop("fk_tkey", "t", trigger="on_issue:#42")
+    (projects_dir / "fk_tkey.fabrikant.yaml").write_text(spec)
+    rec = fabrikant.run_loop("fk_tkey", "t", trigger="on_issue:#42")
     assert rec["trigger_key"] == "issue:owner/repo#42"
     stored = json.loads((runs_dir / "fk_tkey" / f"{rec['id']}.json").read_text())
     assert stored["trigger_key"] == "issue:owner/repo#42"
@@ -89,20 +89,20 @@ def test_new_run_record_carries_trigger_key(runs_dir, projects_dir):
 
 def test_new_run_without_chain_has_empty_trigger_key(runs_dir, projects_dir):
     """Kein Issue-/PR-/Cron-Bezug → leerer Schlüssel (keine Kette)."""
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_tkey_none", _shell("s1", "true")), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_tkey_none", _shell("s1", "true")), "t")
     assert rec["trigger_key"] == ""
 
 
 def test_run_level_abort_is_classified(runs_dir, projects_dir, monkeypatch):
     """Abbruch außerhalb der Steps (z. B. git fetch beim Worktree-Aufbau) → Klasse der Exception."""
-    from fabrik import engine
-    from fabrik.failures import GitError
+    from fabrikant import engine
+    from fabrikant.failures import GitError
 
     def _boom(*a, **k):
         raise GitError("git fetch fehlgeschlagen", "fatal: unable to access '…': Could not resolve host: github.com")
 
     monkeypatch.setattr(engine, "_build_ctx", _boom)
-    rec = fabrik.run_loop(_spec(projects_dir, "fk_runlevel", _shell("s1", "true")), "t")
+    rec = fabrikant.run_loop(_spec(projects_dir, "fk_runlevel", _shell("s1", "true")), "t")
     assert rec["status"] == "error"
     assert rec["failure_kind"] == "transient"
 
@@ -272,5 +272,5 @@ def test_unknown_loop_is_environment(runs_dir, projects_dir):
     """Projekt/Loop unbekannt → environment; bleibt ein RuntimeError für bestehende Aufrufer."""
     name = _spec(projects_dir, "fk_noloop", _shell("s1", "true"))
     with pytest.raises(RuntimeError) as exc:
-        fabrik.run_loop(name, "gibtsnicht")
+        fabrikant.run_loop(name, "gibtsnicht")
     assert classify_exception(exc.value).kind is FailureKind.ENVIRONMENT

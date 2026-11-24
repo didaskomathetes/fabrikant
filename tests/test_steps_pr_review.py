@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from fabrik import gitops
-from fabrik.steps import pr_review
+from fabrikant import gitops
+from fabrikant.steps import pr_review
 
 APPROVED = json.dumps({"verdict": "approved", "findings": [], "summary": "ok"})
 CHANGES = json.dumps(
@@ -141,13 +141,13 @@ def test_review_prompt_includes_issue_requirements(monkeypatch, tmp_path):
         return agent(ctx, step, emit, backend, prompt)
 
     monkeypatch.setattr(pr_review, "_step_agent_backend", _spy)
-    ctx = {**_ctx(tmp_path), "issue_number": "83", "issue_title": "CI fehlt", "issue_body": "- AC: fabrik-ci.yml"}
+    ctx = {**_ctx(tmp_path), "issue_number": "83", "issue_title": "CI fehlt", "issue_body": "- AC: fabrikant-ci.yml"}
     res = pr_review._step_pr_review(ctx, {"repo": "o/r", "model": "m2"}, lambda m: None)
     assert res["ok"] is True
     assert len(prompts) == 3  # Review, Fix, Re-Review
     for prompt in prompts:
         assert "#83 CI fehlt" in prompt
-        assert "AC: fabrik-ci.yml" in prompt
+        assert "AC: fabrikant-ci.yml" in prompt
 
 
 def test_requirements_empty_without_issue(tmp_path):
@@ -418,10 +418,10 @@ def test_fix_backend_and_model_override_builder(monkeypatch, tmp_path):
 
 
 def test_fix_step_without_builder_falls_back_to_env(monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_BACKEND", "opencode")
+    monkeypatch.setenv("FABRIKANT_AGENT_BACKEND", "opencode")
     fix = pr_review._fix_step({}, {"backend": "copilot", "model": "critic"})
     assert fix["backend"] == "opencode"
-    assert fix["model"] == ""  # → FABRIK_AGENT_MODEL im Agent-Backend, nicht das Reviewer-Modell
+    assert fix["model"] == ""  # → FABRIKANT_AGENT_MODEL im Agent-Backend, nicht das Reviewer-Modell
 
 
 def test_rereview_prompt_carries_previous_findings(monkeypatch, tmp_path):

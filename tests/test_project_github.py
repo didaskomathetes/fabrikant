@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from fabrik import gitops
+from fabrikant import gitops
 
 
 @pytest.fixture
@@ -80,17 +80,17 @@ def test_github_env_passes_project_file_to_agent(files, monkeypatch):
 
 
 def test_shell_step_inherits_project_file(files, tmp_path):
-    from fabrik.steps.shell import _step_shell
+    from fabrikant.steps.shell import _step_shell
 
     _, proj = files
     ctx = {"workdir": str(tmp_path)}
     with gitops.project_github({gitops.SPEC_ENV_FILE_KEY: str(proj)}):
-        res = _step_shell(ctx, {"cmd": 'echo "$FABRIK_ENV_FILE"'}, lambda m: None)
+        res = _step_shell(ctx, {"cmd": 'echo "$FABRIKANT_ENV_FILE"'}, lambda m: None)
     assert res["summary"] == str(proj)
 
 
 def test_subprocess_inherits_override_and_ignores_global_token_env(files, monkeypatch):
-    """Subprozess (z. B. `python -m fabrik.push` aus einem Shell-Step) ohne Kontext:
+    """Subprozess (z. B. `python -m fabrikant.push` aus einem Shell-Step) ohne Kontext:
     das geerbte Env markiert die Projekt-Datei, globale Token-Werte zählen nicht."""
     _, proj = files
     with gitops.project_github({gitops.SPEC_ENV_FILE_KEY: str(proj), gitops.SPEC_COMMIT_VIA_KEY: "api"}):
@@ -122,7 +122,7 @@ def test_process_env_drops_tokens_when_project_file_has_none(files, tmp_path):
 
 
 def test_shell_step_gh_token_is_project_identity(files, monkeypatch, tmp_path):
-    from fabrik.steps.shell import _step_shell
+    from fabrikant.steps.shell import _step_shell
 
     _, proj = files
     monkeypatch.setenv("GH_TOKEN", "global-gh")
@@ -132,8 +132,8 @@ def test_shell_step_gh_token_is_project_identity(files, monkeypatch, tmp_path):
 
 
 def test_agent_without_identity_gets_project_settings(files):
-    from fabrik.backends.claude_code import ClaudeCodeBackend
-    from fabrik.steps.agent import _apply_github_identity
+    from fabrikant.backends.claude_code import ClaudeCodeBackend
+    from fabrikant.steps.agent import _apply_github_identity
 
     _, proj = files
     be = ClaudeCodeBackend.__new__(ClaudeCodeBackend)
@@ -146,8 +146,8 @@ def test_agent_without_identity_gets_project_settings(files):
 
 def test_agent_without_identity_overrides_inherited_global_tokens(files, monkeypatch):
     """Geerbtes GH_TOKEN/GITHUB_TOKEN darf im Agent nicht die globale Identität behalten."""
-    from fabrik.backends.claude_code import ClaudeCodeBackend
-    from fabrik.steps.agent import _apply_github_identity
+    from fabrikant.backends.claude_code import ClaudeCodeBackend
+    from fabrikant.steps.agent import _apply_github_identity
 
     _, proj = files
     be = ClaudeCodeBackend.__new__(ClaudeCodeBackend)
@@ -163,7 +163,7 @@ def test_token_overrides_empty_without_project_file(files):
 
 
 def test_spec_rejects_relative_github_env_file(tmp_path):
-    from fabrik.specs import _validate_spec
+    from fabrikant.specs import _validate_spec
 
     spec = {
         "name": "p",
@@ -177,7 +177,7 @@ def test_spec_rejects_relative_github_env_file(tmp_path):
 
 @pytest.mark.parametrize("value", [123, "", "  ", ["a"]])
 def test_spec_rejects_invalid_github_env_file(value, tmp_path):
-    from fabrik.specs import _validate_spec
+    from fabrikant.specs import _validate_spec
 
     spec = {
         "name": "p",
@@ -190,24 +190,24 @@ def test_spec_rejects_invalid_github_env_file(value, tmp_path):
 
 
 def test_run_loop_applies_project_token_file(runs_dir, projects_dir, tmp_path):
-    import fabrik
+    import fabrikant
 
     tokens = tmp_path / "p.env"
     tokens.write_text("GITHUB_TOKEN=x\n")
-    (projects_dir / "ptok.fabrik.yaml").write_text(
+    (projects_dir / "ptok.fabrikant.yaml").write_text(
         f"name: ptok\nroot: /tmp\n{gitops.SPEC_ENV_FILE_KEY}: {tokens}\n"
-        "loops:\n  t:\n    steps:\n      - type: shell\n        name: s\n        cmd: 'echo \"$FABRIK_ENV_FILE\"'\n"
+        "loops:\n  t:\n    steps:\n      - type: shell\n        name: s\n        cmd: 'echo \"$FABRIKANT_ENV_FILE\"'\n"
     )
-    rec = fabrik.run_loop("ptok", "t")
+    rec = fabrikant.run_loop("ptok", "t")
     assert rec["steps"][0]["summary"] == str(tokens)
     assert gitops.subprocess_env() == {}  # nach dem Run zurückgesetzt
 
 
 def test_sandboxed_agent_without_identity_gets_no_token(files, monkeypatch):
     """Sandbox (ADR 0054): ohne `github_identity` kein (Builder-)Token im Container."""
-    from fabrik import sandbox
-    from fabrik.backends.claude_code import ClaudeCodeBackend
-    from fabrik.steps.agent import _apply_github_identity
+    from fabrikant import sandbox
+    from fabrikant.backends.claude_code import ClaudeCodeBackend
+    from fabrikant.steps.agent import _apply_github_identity
 
     _, proj = files
     monkeypatch.setenv(sandbox.ENABLE_VAR, "1")

@@ -2,7 +2,7 @@
 
 Tracing-Baustein: der Run-Record trägt pro LLM-Call strukturierte Usage-Daten,
 damit ein späterer Exporter (OTel/Langfuse) Kosten ausrechnen kann, ohne
-fabrik-Semantik zu forken.
+fabrikant-Semantik zu forken.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from fabrik import llm, run_loop
-from fabrik.steps import llm as llm_step
+from fabrikant import llm, run_loop
+from fabrikant.steps import llm as llm_step
 
 
 @pytest.fixture
@@ -21,12 +21,12 @@ def clean_llm(monkeypatch, tmp_path):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "test-model")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "test-model")
     llm.reset_cache()
     llm.set_active("dummy")
     yield
@@ -147,7 +147,7 @@ def test_usage_lands_in_run_record(clean_llm, monkeypatch, runs_dir, projects_di
     )
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "tusage.fabrik.yaml").write_text(
+    (projects_dir / "tusage.fabrikant.yaml").write_text(
         f"name: tusage\nroot: {root}\nloops:\n  t:\n    steps:\n"
         "      - type: llm\n        name: ask\n        prompt: hallo\n"
         "        schema:\n          a: integer\n"
@@ -163,7 +163,7 @@ def test_verify_lands_in_run_record(runs_dir, projects_dir, tmp_path):
     """Pro-Check-Output landet im Run-Record (Key 'verify'), nicht nur im Result."""
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "tverify.fabrik.yaml").write_text(
+    (projects_dir / "tverify.fabrikant.yaml").write_text(
         f"name: tverify\nroot: {root}\nloops:\n  t:\n    steps:\n"
         "      - type: verify\n        name: check\n        checks:\n"
         '          - type: shell\n            name: ok\n            cmd: "true"\n'

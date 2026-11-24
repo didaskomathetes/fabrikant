@@ -1,0 +1,586 @@
+:root {
+  --bg: #0d0f12;
+  --panel: #15181d;
+  --panel2: #1b1f26;
+  --line: #262c35;
+  --text: #d8dee7;
+  --dim: #7d8899;
+  --acc: #ffb454;
+  --ok: #7ec699;
+  --err: #e06c75;
+  --warn: #d9a441;
+  --run: #56b6c2;
+  --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  --chat-h: 340px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, sans-serif;
+  height: 100vh; display: flex; flex-direction: column;
+}
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.logo { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: 3px; color: var(--acc); }
+.logo .sub { font-size: 11px; letter-spacing: 0; color: var(--dim); font-weight: 400; margin-left: 10px; }
+.health { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.hdr-right { display: flex; align-items: center; gap: 14px; }
+/* Sprach-Umschalter: feste Breite, damit der Header bei de/en nicht springt. */
+#langtoggle { min-width: 44px; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; }
+.chatbar-right { display: flex; align-items: center; gap: 8px; }
+.llm-sel { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; }
+.llm-label { color: var(--dim); font-size: 11px; letter-spacing: 1px; }
+#llmselect {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: 12px;
+  cursor: pointer; max-width: 220px;
+}
+#llmselect:focus { outline: none; border-color: var(--acc); }
+#llmselect:disabled { opacity: .5; cursor: not-allowed; }
+main { flex: 1; display: flex; overflow: hidden; }
+.col {
+  overflow-y: auto; padding: 14px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.col::-webkit-scrollbar { width: 12px; }
+.col::-webkit-scrollbar-track { background: transparent; }
+.col::-webkit-scrollbar-thumb {
+  background: var(--line); border-radius: 6px;
+  border: 3px solid transparent; background-clip: content-box;
+}
+.col::-webkit-scrollbar-thumb:hover { background: var(--dim); background-clip: content-box; }
+/* Chat offen: Content kann über das Chat-Panel hinaus gescrollt werden,
+   damit nichts hinter dem Panel "verschwindet" / nicht mehr klickbar ist. */
+body.chat-open .col { padding-bottom: calc(var(--chat-h) + 16px); }
+.col.left { width: 300px; border-right: 1px solid var(--line); }
+.col.right { flex: 1; }
+.placeholder { color: var(--dim); font-family: var(--mono); padding: 30px; }
+
+.project {
+  padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; background: var(--panel);
+}
+.project:hover { border-color: var(--acc); }
+.project.active { border-color: var(--acc); background: var(--panel2); }
+.project .pname { font-weight: 600; font-family: var(--mono); }
+.project .pdesc { color: var(--dim); font-size: 12px; margin-top: 2px; }
+.project .pbranch { color: var(--run); font-size: 11px; font-family: var(--mono); margin-top: 3px; }
+.project .ploopcount { color: var(--dim); font-size: 11px; margin-top: 3px; }
+/* Loop-Liste des gewählten Projekts wächst frei; nur .col.left scrollt. */
+.project .ploops { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 4px; }
+.ploop { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 12px; padding: 1px 0; }
+.ploopstatus { color: var(--dim); font-size: 11px; }
+.ploopstatus.pass { color: var(--ok); }
+.ploopstatus.fail, .ploopstatus.error { color: var(--err); }
+
+/* Offene Freigabe-Anfragen (needs_approval) im Projekt-View: Badge + Liste */
+.apprbadge {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: #0d0f12; background: var(--acc); border-radius: 10px;
+  padding: 1px 8px; margin-left: 8px; cursor: pointer;
+}
+.apprbadge:hover { filter: brightness(1.1); }
+.applist { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.apprline {
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+  padding: 3px 6px; margin-bottom: 3px; border-radius: 5px; cursor: pointer;
+  background: rgba(255, 198, 120, 0.08); border: 1px solid rgba(255, 198, 120, 0.35);
+}
+.apprline:hover { border-color: var(--acc); }
+.apprline .apprloop { color: var(--acc); font-weight: 700; }
+.apprline .apprtime { color: var(--dim); margin-left: 6px; }
+.apprline .apprwhat { color: var(--dim); margin-left: 6px; word-break: break-word; }
+
+/* Erschöpfte Retry-Ketten („Abgelegt“, ADR 0036): Badge + Liste mit Aktionen */
+.shelvedbadge {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: #0d0f12; background: var(--warn, #d9a441); border-radius: 10px;
+  padding: 1px 8px; margin-left: 8px; cursor: pointer;
+}
+.shelvedbadge:hover { filter: brightness(1.1); }
+.shelvedlist { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.shelvedline {
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+  padding: 4px 6px; margin-bottom: 4px; border-radius: 5px;
+  background: rgba(217, 164, 65, 0.08); border: 1px solid rgba(217, 164, 65, 0.35);
+}
+.shelvedline .shelvedloop { color: var(--warn, #d9a441); font-weight: 700; }
+.shelvedline .shelvedmeta { color: var(--dim); margin-left: 6px; }
+.shelvedline .shelvederr {
+  color: var(--dim); margin-left: 6px; word-break: break-word;
+  max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.shelvedline .shelvedactions { margin-left: auto; display: flex; gap: 4px; }
+.shelvedline .shelvedactions button { font-size: 10px; padding: 1px 6px; }
+
+/* Retry-Info im Run-Modal (ADR 0036, Entscheidung 6) */
+.runretry {
+  font-family: var(--mono); font-size: 12px; color: var(--warn, #d9a441);
+  margin: 4px 0 8px; padding: 4px 8px; border-radius: 5px;
+  background: rgba(217, 164, 65, 0.08); border: 1px solid rgba(217, 164, 65, 0.3);
+}
+
+.loop {
+  border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px;
+  background: var(--panel); padding: 12px; cursor: pointer; transition: border-color .12s;
+}
+.loop:hover { border-color: var(--acc); }
+.loop.open { border-color: var(--acc); background: var(--panel2); }
+.loop h3 { margin: 0 0 4px; font-family: var(--mono); font-size: 15px; }
+.loop .loophint { color: var(--dim); font-size: 11px; font-weight: 400; margin-left: 8px; }
+.loop .ldesc { color: var(--dim); font-size: 12px; margin-bottom: 8px; }
+
+/* Loop-Spec (aufgeklappt) */
+.loopspec {
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+  max-height: 40vh; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--acc) var(--panel2);
+}
+.loopspec::-webkit-scrollbar { width: 12px; }
+.loopspec::-webkit-scrollbar-track { background: var(--panel2); }
+.loopspec::-webkit-scrollbar-thumb { background: var(--acc); border-radius: 6px; border: 3px solid var(--panel2); }
+.loopspec::-webkit-scrollbar-thumb:hover { background: #ffc678; }
+.loopspec.hidden { display: none; }
+.loopspec-loading { color: var(--dim); font-family: var(--mono); font-size: 12px; }
+.loopspec-desc { color: var(--dim); font-size: 12px; margin-bottom: 8px; }
+.loopspec-sec {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--dim); margin: 10px 0 6px;
+}
+.loopspec-trig { font-family: var(--mono); font-size: 12px; margin-bottom: 4px; }
+.loopspec-trigextra { color: var(--dim); font-size: 11px; }
+.loopspec-step {
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  margin-bottom: 6px; background: var(--bg);
+}
+.loopspec-stephead { font-family: var(--mono); font-size: 12.5px; }
+.loopspec-stepno { color: var(--dim); }
+.loopspec-steptype { color: var(--run); font-size: 11px; margin-left: 4px; }
+.loopspec-kv { margin-top: 6px; }
+.loopspec-kvrow {
+  display: flex; gap: 8px; font-family: var(--mono); font-size: 11.5px;
+  padding: 1px 0; border-top: 1px solid var(--line);
+}
+.loopspec-kvrow:first-child { border-top: 0; }
+.loopspec-k { color: var(--acc); min-width: 90px; flex-shrink: 0; }
+.loopspec-v { color: #aeb9c8; word-break: break-word; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--dim);
+}
+.badge.pass { color: var(--ok); border-color: var(--ok); }
+.badge.fail, .badge.error { color: var(--err); border-color: var(--err); }
+.badge.running { color: var(--run); border-color: var(--run); }
+.badge.queued { color: var(--dim); border-color: var(--run); border-style: dashed; }
+.badge.trig { color: var(--acc); border-color: var(--line); }
+.stepchip { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+button.run {
+  margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: #0d0f12; background: var(--acc); border: 0; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer;
+}
+button.run:hover { filter: brightness(1.1); }
+button.run:disabled { background: var(--dim); cursor: not-allowed; }
+button.ghost { background: none; border: 1px solid var(--line); color: var(--dim);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: var(--mono); }
+
+/* Run-Panel: zentriertes Modal, liegt über dem Chat (z-index 50) */
+.runbackdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(4, 6, 8, .62); backdrop-filter: blur(2px);
+}
+.runbackdrop.hidden { display: none; }
+.runpanel {
+  position: fixed; z-index: 70;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(920px, calc(100vw - 48px));
+  max-height: min(78vh, 760px);
+  background: #0a0c0e; border: 1px solid var(--line); border-top: 2px solid var(--acc);
+  border-radius: 10px; box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.runpanel.hidden { display: none; }
+.runbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 13px;
+  background: var(--panel); }
+.runbar #runtitle { font-weight: 700; color: var(--text); }
+.runbar button { margin-left: auto; }
+.runtabbar { display: flex; align-items: center; gap: 12px; padding: 6px 14px;
+  border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.runtabbar button.active { border-color: var(--acc); color: var(--text); }
+.runtabbar .hidden { display: none; }
+.turn { margin: 0 0 10px; padding: 6px 10px; border-left: 3px solid var(--line); }
+.turn-user { border-left-color: var(--run); }
+.turn-assistant { border-left-color: var(--acc); }
+.turnhead { color: var(--dim); font-size: 11px; }
+.turn pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+#runlog {
+  flex: 1; margin: 0; padding: 12px 16px; overflow-y: auto;
+  font-family: var(--mono); font-size: 12px; color: #aeb9c8;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+#runlog::-webkit-scrollbar { width: 10px; }
+#runlog::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; }
+footer {
+  padding: 6px 18px; border-top: 1px solid var(--line); color: var(--dim);
+  font-family: var(--mono); font-size: 11px; display: flex; gap: 14px;
+}
+a { color: var(--run); }
+
+/* ---- Spec-View ---- */
+.specview {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 12px; font-family: var(--mono); font-size: 12px;
+  line-height: 1.5; white-space: pre-wrap; color: #aeb9c8;
+  max-height: 45vh; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--acc) var(--panel2);
+}
+.specview::-webkit-scrollbar { width: 12px; }
+.specview::-webkit-scrollbar-track { background: var(--panel2); }
+.specview::-webkit-scrollbar-thumb { background: var(--acc); border-radius: 6px; border: 3px solid var(--panel2); }
+.specview::-webkit-scrollbar-thumb:hover { background: #ffc678; }
+.specview.hidden { display: none; }
+
+/* ---- Spec-Graph (Cytoscape) — View-Modus, ersetzt die Loop-Liste ---- */
+.graphview {
+  position: relative; width: 100%;
+  height: min(640px, calc(100vh - 240px));
+  margin-bottom: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+}
+.graphview.hidden { display: none; }
+/* Cytoscape-Container füllt #graphview; die Karte (#graphnode) liegt als
+   absolutes Overlay darüber (position:relative auf .graphview). */
+.graphcanvas { position: absolute; inset: 0; }
+/* Schwebende Knoten-Karte: Details + Edit IM Graph, am Knoten verankert.
+   Per Griff unten rechts in der Größe änderbar (resize; die Inline-Größe
+   bleibt beim Wechsel zwischen Knoten erhalten). */
+.graphnode {
+  position: absolute; z-index: 20; width: 380px; height: auto;
+  min-width: 260px; min-height: 160px; max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px); display: flex; flex-direction: column; resize: both;
+  background: var(--panel2); border: 1px solid var(--acc); border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55); overflow: hidden;
+}
+.graphnode.hidden { display: none; }
+.graphnode-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 13px;
+}
+.graphnode-head b { min-width: 0; overflow-wrap: anywhere; }
+.graphnode-head .ghost { margin-left: auto; }
+.graphnode-head .dim { font-size: 11px; font-weight: 400; }
+.graphnode-body { flex: 1 1 auto; min-height: 0; padding: 10px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--acc) var(--panel); }
+.graphnode-foot {
+  /* rechts Platz für den Resize-Griff der Karte */
+  display: flex; align-items: center; gap: 8px; padding: 8px 18px 8px 10px;
+  border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px;
+}
+.graphnode-dirty { color: var(--warn); font-size: 11px; }
+/* Save-Leiste: sichtbar, sobald der Draft ungespeicherte Änderungen hat. */
+.graphbar {
+  position: absolute; z-index: 25; top: 8px; right: 8px; display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; background: var(--panel2); border: 1px solid var(--warn); border-radius: 6px;
+  font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.graphbar.hidden { display: none; }
+.graphnode-err { color: var(--err); font-size: 12px; }
+.graphmsg {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--dim); font-family: var(--mono); font-size: 12px;
+}
+.graphmsg.err { color: var(--err); }
+/* Rechtsklick-Kontextmenü der Graph-View (fixed, folgt dem Cursor). */
+.graphctx {
+  position: fixed; z-index: 100; display: flex; gap: 6px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.graphctx.hidden { display: none; }
+/* Form-Editor: Sektionen, Step-/Trigger-Karten, Felder (in der Knoten-Karte). */
+.ge-sec {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--dim); margin: 12px 0 6px;
+}
+.ge-empty { color: var(--dim); font-size: 12px; font-family: var(--mono); padding: 4px 0 8px; }
+.ge-step, .ge-trig {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px; margin-bottom: 8px;
+}
+.ge-step-head, .ge-trig-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+}
+.ge-step-no { color: var(--dim); font-family: var(--mono); font-size: 12px; min-width: 18px; text-align: right; }
+.ge-step-head select, .ge-trig-head select {
+  min-width: 0; flex: 0 1 auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  color: var(--acc); font-family: var(--mono); font-size: 12px; padding: 3px 6px;
+}
+.ge-step-head input {
+  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 12px; padding: 3px 6px;
+}
+.ge-step-actions { margin-left: auto; display: flex; gap: 4px; }
+.ge-step-actions .ghost { padding: 2px 7px; font-size: 12px; }
+.ge-step-body, .ge-trig-body { display: flex; flex-direction: column; gap: 6px; }
+.ge-field { display: flex; align-items: flex-start; gap: 8px; font-family: var(--mono); font-size: 12px; }
+.ge-field label {
+  width: clamp(72px, 34%, 150px); flex-shrink: 0; color: var(--dim); padding-top: 4px; overflow-wrap: anywhere;
+}
+/* min-width: 0 — sonst behalten Inputs ihre Default-Breite (~170px) und
+   sprengen die Karte (horizontales Scrollen, abgeschnittene Labels). */
+.ge-field input, .ge-field select, .ge-field textarea {
+  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 12px; padding: 4px 8px;
+}
+.ge-field textarea { resize: vertical; line-height: 1.5; }
+.ge-field input[type="checkbox"] { width: 16px; height: 16px; margin-top: 3px; flex: none; }
+.ge-extra label { color: var(--warn); }
+/* Felder direkt in der Karte (Loop-/Step-Karte); in .ge-step-body sorgt gap dafür. */
+.graphnode-body > .ge-field { margin-bottom: 6px; }
+/* Read-only-Werte (generierte Loops, Template-Steps): umbrechen statt scrollen, lange Prompts begrenzt. */
+.ge-ro {
+  flex: 1; min-width: 0; margin: 0; padding: 4px 8px; background: var(--panel); border: 1px dashed var(--line);
+  border-radius: 4px; color: var(--text); font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+  overflow-wrap: anywhere; max-height: 16em; overflow-y: auto;
+}
+
+/* ---- Run-Log (gerendert) ---- */
+.runmeta { color: var(--dim); margin-bottom: 10px; }
+.runstep { margin-bottom: 8px; }
+.runstep .rsicon { margin-right: 6px; }
+.runstep.pass .rsicon { color: var(--ok); }
+.runstep.fail .rsicon, .runstep.error .rsicon { color: var(--err); }
+.runstep.skipped .rsicon, .runstep.skipped .rsname { color: var(--dim); }
+.runstep .rsname { font-weight: 700; color: var(--text); }
+.runstep .rstype { color: var(--dim); font-size: 11px; margin-left: 6px; }
+.runstep .rsdur { color: var(--dim); font-size: 11px; margin-left: 8px; }
+.runstep .rssummary { color: #aeb9c8; margin-left: 8px; }
+.runstep .rsoutput {
+  margin: 6px 0 0 22px; padding: 8px 10px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; font-size: 11px;
+  white-space: pre-wrap; max-height: 160px; overflow-y: auto;
+}
+.runerr { color: var(--err); margin-top: 8px; }
+/* Rohes Run-Log (per Toggle): Monospace, lange Zeilen umbrechen, kein Extra-Margin */
+.runrawlog {
+  margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; color: #aeb9c8;
+}
+
+/* Trace view (Issue #128): chronological step timeline from the session log. */
+.runtrace { padding: 2px 0; }
+.trace-entry {
+  display: flex; align-items: center; gap: 6px; margin: 6px 0;
+  padding: 6px 10px; font-size: 12px; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+}
+.trace-entry .trace-icon { margin: 0; }
+.trace-runend { color: var(--text); }
+.trace-warning { border-color: rgba(255, 198, 120, 0.4); background: rgba(255, 198, 120, 0.08); }
+.trace-step { margin: 0 0 8px; padding: 6px 10px; border-left: 3px solid var(--line); }
+.trace-step.pass { border-left-color: var(--ok); }
+.trace-step.fail, .trace-step.error, .trace-step.timeout { border-left-color: var(--err); }
+.trace-step.skipped { border-left-color: var(--line); }
+.trace-stephead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.trace-stepname { font-weight: 700; color: var(--text); }
+.trace-steptype { color: var(--dim); font-size: 11px; }
+.trace-dur, .trace-usage, .trace-count { color: var(--dim); font-size: 11px; margin-left: 4px; }
+.trace-icon { margin-right: 4px; }
+.trace-step.pass .trace-icon { color: var(--ok); }
+.trace-step.fail .trace-icon, .trace-step.error .trace-icon, .trace-step.timeout .trace-icon { color: var(--err); }
+.trace-step.skipped .trace-icon, .trace-step.skipped .trace-stepname { color: var(--dim); }
+.trace-events { margin: 6px 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
+.trace-event { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.trace-event summary {
+  cursor: pointer; padding: 5px 8px; font-size: 11px; color: var(--dim);
+  list-style: none; display: flex; align-items: center; gap: 4px;
+}
+.trace-event summary::-webkit-details-marker { display: none; }
+.trace-event[open] summary { color: var(--text); border-bottom: 1px solid var(--line); }
+.trace-event pre {
+  margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+  white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto;
+}
+.trace-artifacts { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.trace-artifacts-title { font-weight: 700; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+.trace-artifact { font-size: 11px; color: var(--dim); margin-bottom: 3px; word-break: break-all; }
+.trace-artifactmeta { color: var(--dim); opacity: 0.7; }
+
+/* Freigabe-Kontext: WAS wird freigegeben, welche Rechte, welches Issue */
+.runapproval {
+  margin: 0 0 12px; padding: 10px 12px;
+  background: rgba(255, 198, 120, 0.08);
+  border: 1px solid rgba(255, 198, 120, 0.35); border-radius: 8px;
+}
+.runapproval .appr-title { font-weight: 700; color: #ffc678; margin-bottom: 6px; font-size: 12px; }
+.runapproval .appr-row { display: flex; gap: 8px; margin-bottom: 3px; font-size: 12px; }
+.runapproval .appr-k { color: var(--dim); min-width: 52px; flex-shrink: 0; }
+.runapproval .appr-v { color: var(--text); word-break: break-word; }
+.runapproval .appr-v a { color: var(--acc); }
+
+/* ---- Chat ---- */
+#chattoggle { margin-left: 14px; }
+.chatpanel {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; flex-direction: column;
+  height: var(--chat-h);
+  background: #0d1117; border-top: 1px solid var(--line);
+  box-shadow: 0 -12px 40px rgba(0,0,0,.5);
+}
+.chatpanel.hidden { display: none; }
+
+/* ---- Schedule-View (Cron-Ausblick + One-time-Overrides) ---- */
+.schedpanel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; flex-direction: column;
+  width: min(460px, 100vw);
+  background: #0d1117; border-left: 1px solid var(--line);
+  box-shadow: -12px 0 40px rgba(0,0,0,.5);
+}
+.schedpanel.hidden { display: none; }
+.schedbody { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.sched-sec {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--dim); margin: 14px 0 6px;
+}
+.schedrow {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
+  margin-bottom: 6px; font-size: 13px;
+}
+.schedrow-main { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; }
+.schedname { font-family: var(--mono); font-size: 12px; }
+.schednext { font-size: 12px; color: var(--dim); font-family: var(--mono); }
+.sched-ot { font-size: 12px; color: var(--warn, #d29922); font-family: var(--mono); }
+.schedactions { display: flex; gap: 6px; margin-left: auto; }
+.sched-empty { color: var(--dim); font-size: 13px; padding: 6px 8px; }
+.sched-queue-summary { font-size: 12px; color: var(--dim); font-family: var(--mono); margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.sched-chip { border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+.q-wait { font-size: 12px; font-family: var(--mono); color: var(--dim); }
+.q-run { color: var(--ok, #3fb950); }
+.q-waiting { color: var(--warn, #d29922); }
+.q-approval-wait { color: #f85149; }
+.sched-err { color: #f85149; font-size: 13px; padding: 6px 8px; }
+.schedform {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--line);
+  background: rgba(210,153,34,.06);
+}
+.schedform input {
+  flex: 1; background: #161b22; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; font-family: var(--mono); font-size: 12px;
+}
+.chatbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; font-family: var(--mono); font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+#chatlog {
+  flex: 1; overflow-y: auto; padding: 10px 14px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+}
+.chatline { margin-bottom: 10px; white-space: normal; word-wrap: break-word; }
+.chatline .chatwho { color: var(--dim); margin-right: 8px; font-size: 11px; text-transform: uppercase; }
+.chatline.me .chatwho { color: var(--accent, #7ee787); }
+.chatpending { display: inline-flex; align-items: center; gap: 10px; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--dim);
+  animation: fabrikant-dot 1.2s infinite ease-in-out;
+}
+.dots i:nth-child(2) { animation-delay: 0.2s; }
+.dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes fabrikant-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+.chatpending .cancel {
+  font-family: var(--mono); font-size: 11px; cursor: pointer;
+  background: transparent; color: var(--dim); border: 1px solid var(--line);
+  border-radius: 5px; padding: 2px 8px;
+}
+.chatpending .cancel:hover { color: #e3b341; border-color: #e3b341; }
+#chatform { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+#chatinput { flex: 1; background: #161b22; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 13px; }
+#chatinput:focus { outline: none; border-color: var(--accent, #7ee787); }
+.badge.needs_approval { background: #57606a; color: #e3b341; }
+
+.statebadge { font-size: 10px; font-family: var(--mono); padding: 1px 6px; border-radius: 8px; border: 1px solid var(--dim); color: var(--dim); }
+.statebadge.paused { color: var(--run); border-color: var(--run); }
+.statebadge.disabled { color: var(--dim); }
+/* Deaktivierter Loop: alles abblenden außer den Zustands-Buttons (resume/pause,
+   button.ghost) — sie sind die einzige Aktion, die dort noch geht. Als
+   Ausschluss formuliert, damit neue Elemente der Karte automatisch mit abblenden. */
+.loop.disabled > :not(.row),
+.loop.disabled > .row > :not(button.ghost) { opacity: 0.5; filter: grayscale(1); }
+/* Gesperrtes ▶ run: Hover geht an den Wrapper, damit dessen Tooltip auch in
+   Browsern erscheint, die an disabled-Controls keine Maus-Events liefern. */
+.runlock button { pointer-events: none; }
+
+/* Login (Auth-Modus local, ADR 0030) */
+#loginview { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--bg, #111); }
+#loginview.hidden, #whoami.hidden, #loginform.hidden, #oidclogin.hidden { display: none; }
+#loginform { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
+#loginform .error { color: #e55; min-height: 1em; }
+#whoami { display: inline-flex; gap: 6px; align-items: center; margin-right: 8px; }
+
+/* Historie */
+.histview { margin-top: 16px; }
+.histview h4 { font-family: var(--mono); color: var(--dim); font-size: 12px; margin: 0 0 6px; }
+.histfilters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; color: var(--dim); }
+.histfilters input[type=search] { flex: 1 1 200px; }
+.histrow { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 3px 0; border-bottom: 1px solid var(--line, #2a2a2a); }
+.histmain { flex: 1; cursor: pointer; color: var(--dim); }
+.histmain:hover .histid { color: var(--acc); }
+.histmeta, .histnote, .histcost { margin-left: 6px; }
+.histcost { color: var(--muted, #888); font-variant-numeric: tabular-nums; }
+.histactions { display: flex; gap: 6px; }
+.histempty { color: var(--dim); font-size: 12px; padding: 6px 0; }
+
+/* Fehlerklasse (ADR 0035): environment braucht einen Menschen → hervorgehoben. */
+.badge.kind { margin-left: 4px; color: var(--dim); border-style: dashed; }
+.badge.kind.transient, .badge.kind.interrupted { color: var(--run); border-color: var(--run); }
+.badge.kind.environment { color: #fff; background: var(--err); border-color: var(--err); border-style: solid; font-weight: 700; }
+.badge.kind.outcome { color: var(--err); border-color: var(--err); }
+/* Verdikt: fachliches Ergebnis neben dem (technischen) Run-Status — gefüllt, damit es sich vom Status-Badge abhebt. */
+.badge.verdict { margin-left: 4px; color: var(--dim); }
+.badge.verdict.good { color: #fff; background: var(--ok); border-color: var(--ok); }
+.badge.verdict.bad { color: #fff; background: var(--err); border-color: var(--err); font-weight: 700; }
+
+/* Step-Leiste im Log-Tab: aktiver Step pulsiert, Klick filtert das Log */
+.logsteps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; position: sticky; top: 0; background: var(--panel); padding: 4px 0; }
+.logchip { font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+  background: transparent; color: var(--dim); border: 1px solid var(--line); }
+.logchip.active { color: var(--text); border-color: var(--acc); }
+.logchip.pass .rsicon { color: var(--ok); }
+.logchip.fail .rsicon { color: var(--err); }
+.logchip .rsicon { margin-right: 4px; }
+.logchip.running { color: var(--text); border-color: var(--acc); animation: logpulse 1.4s ease-in-out infinite; }
+.logchip.running .rsicon { color: var(--acc); }
+@keyframes logpulse { 50% { opacity: 0.55; } }
+.logseg.hidden { display: none; }
+.runmetabox { margin: 0 0 12px; }
+.runmetabox .appr-row { display: flex; gap: 8px; margin-bottom: 3px; font-size: 12px; }
+.runmetabox .appr-k { color: var(--dim); min-width: 52px; flex-shrink: 0; }
+.runmetabox a { color: var(--acc); }
+/* ---- Einstellungen: Verbindungen (ADR 0052) ---- */
+.settingspanel #settingsbody { padding: 12px 16px; overflow-y: auto; font-family: var(--mono); font-size: 12px; }
+.conntable { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+.conntable th { text-align: left; color: var(--dim); font-weight: normal; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.conntable td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.conntable .connactions { text-align: right; white-space: nowrap; }
+.connform { display: grid; grid-template-columns: 130px 1fr; gap: 8px 10px; align-items: center;
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; background: var(--panel); }
+.connform h3 { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+.connform input[type=text], .connform input[type=password], .connform select {
+  width: 100%; box-sizing: border-box; background: #0a0c0e; color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-family: var(--mono); }
+.connform .connbuttons { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+.connform .connerror { color: var(--err); }
+.connform .connhint { color: var(--warn); font-size: 0.85em; }
+.connform label.inline { display: flex; gap: 6px; align-items: center; }

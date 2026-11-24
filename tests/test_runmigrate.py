@@ -7,9 +7,9 @@ import sqlite3
 import pytest
 from sqlalchemy import text
 
-from fabrik import cli, config, runs, sessionlog
-from fabrik.runmigrate import migrate_runs
-from fabrik.runstore_sql import store_for_url
+from fabrikant import cli, config, runs, sessionlog
+from fabrikant.runmigrate import migrate_runs
+from fabrikant.runstore_sql import store_for_url
 
 FINDING = {"severity": "high", "text": "t", "suggestion": "fix it", "file": "x.py"}
 
@@ -34,7 +34,7 @@ def history(runs_dir, tmp_path, monkeypatch):
     _save(runs_dir, "p", _rec("weird", surprise=True))
     _save(runs_dir, "q", _rec("a"))  # gleiche Id in anderem Projekt
     db = tmp_path / "sessionlog.db"
-    monkeypatch.setenv("FABRIK_SESSIONLOG", str(db))
+    monkeypatch.setenv("FABRIKANT_SESSIONLOG", str(db))
     log = sessionlog.SessionLog("a", "p", "l")
     log.start()
     log.event("step_done", step_name="r", usage={"prompt_tokens": 2, "completion_tokens": 1})
@@ -221,7 +221,7 @@ def test_session_log_dump_file_backend(history):
 
 def test_session_log_dump_missing_file_creates_nothing(monkeypatch, tmp_path):
     p = tmp_path / "nope" / "sessionlog.db"
-    monkeypatch.setenv("FABRIK_SESSIONLOG", str(p))
+    monkeypatch.setenv("FABRIKANT_SESSIONLOG", str(p))
     monkeypatch.setattr(sessionlog, "_conn", None)
     assert sessionlog.session_log_dump("a") == {"events": [], "checkpoints": [], "artifacts": []}
     assert not p.exists()

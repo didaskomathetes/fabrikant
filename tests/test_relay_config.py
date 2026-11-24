@@ -5,9 +5,9 @@ import sys
 import pytest
 import yaml
 
-from fabrik import specs
-from fabrik.relay import config as relay_config
-from fabrik.relay.config import (
+from fabrikant import specs
+from fabrikant.relay import config as relay_config
+from fabrikant.relay.config import (
     LOOP_AUDIT,
     LOOP_DISPATCH,
     LOOP_SESSION,
@@ -29,7 +29,7 @@ def spec(**relay) -> dict:
 
 def test_defaults_come_from_spec_level():
     cfg = RelayConfig.from_spec(spec())
-    assert (cfg.project, cfg.repo, cfg.base, cfg.label) == ("demo", "o/r", "develop", "fabrik-relay")
+    assert (cfg.project, cfg.repo, cfg.base, cfg.label) == ("demo", "o/r", "develop", "fabrikant-relay")
     assert cfg.allowed == frozenset({"me"}) and cfg.audit is True
     assert cfg.session_timeout == cfg.max_session_minutes * 60 + relay_config.AGENT_TIMEOUT_GRACE_S
 
@@ -99,10 +99,10 @@ def test_build_loops_shapes():
     assert loops[LOOP_DISPATCH]["triggers"] == [{"type": "cron", "cron": relay_config.DEFAULT_DISPATCH_CRON}]
     session = {s["name"]: s for s in loops[LOOP_SESSION]["steps"]}
     assert list(session) == ["branch", "checkout", "session", "checkin", "publish"]
-    assert session["branch"]["branch"] == "fabrik/relay/{issue_number}"
+    assert session["branch"]["branch"] == "fabrikant/relay/{issue_number}"
     agent = session["session"]
     assert (agent["gate"], agent["github_identity"], agent["model"]) == (False, "dev", "b")
-    assert "backend" not in agent  # nicht gesetzt → FABRIK_AGENT_BACKEND
+    assert "backend" not in agent  # nicht gesetzt → FABRIKANT_AGENT_BACKEND
     # Issue-Nummer nur über env: (ADR 0008), Interpreter = der des Servers.
     assert "{issue_number}" not in session["checkout"]["cmd"]
     assert session["checkout"]["env"] == {"RELAY_ISSUE": "{issue_number}"}
@@ -127,8 +127,8 @@ def test_expand_loops_rejects_reserved_names_and_ignores_specs_without_relay():
 def test_spec_with_only_relay_block_loads_and_validates(tmp_path, monkeypatch):
     monkeypatch.setattr(specs.config, "PROJECTS_DIR", tmp_path)
     data = {**spec(forbid=[".github/**"]), "root": str(tmp_path)}
-    (tmp_path / "demo.fabrik.yaml").write_text(yaml.safe_dump(data))
-    loaded = specs.load_spec(tmp_path / "demo.fabrik.yaml")
+    (tmp_path / "demo.fabrikant.yaml").write_text(yaml.safe_dump(data))
+    loaded = specs.load_spec(tmp_path / "demo.fabrikant.yaml")
     assert {LOOP_DISPATCH, LOOP_SESSION, LOOP_AUDIT} <= set(loaded["loops"])
     loaded_spec, cfg = relay_config.load("demo")
     assert cfg.forbid == (".github/**",) and loaded_spec["name"] == "demo"
@@ -137,16 +137,16 @@ def test_spec_with_only_relay_block_loads_and_validates(tmp_path, monkeypatch):
 def test_load_without_relay_block_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(specs.config, "PROJECTS_DIR", tmp_path)
     data = {"name": "demo", "root": str(tmp_path), "loops": {"x": {"steps": [{"type": "shell", "cmd": "true"}]}}}
-    (tmp_path / "demo.fabrik.yaml").write_text(yaml.safe_dump(data))
+    (tmp_path / "demo.fabrikant.yaml").write_text(yaml.safe_dump(data))
     with pytest.raises(ValueError, match="keinen relay"):
         relay_config.load("demo")
 
 
-def test_fabrik_url_env_override(monkeypatch):
-    monkeypatch.setenv(relay_config.FABRIK_URL_ENV, "http://host:1/")
-    assert relay_config.fabrik_url() == "http://host:1"
-    monkeypatch.delenv(relay_config.FABRIK_URL_ENV)
-    assert relay_config.fabrik_url().endswith(f":{relay_config.config.DEFAULT_PORT}")
+def test_fabrikant_url_env_override(monkeypatch):
+    monkeypatch.setenv(relay_config.FABRIKANT_URL_ENV, "http://host:1/")
+    assert relay_config.fabrikant_url() == "http://host:1"
+    monkeypatch.delenv(relay_config.FABRIKANT_URL_ENV)
+    assert relay_config.fabrikant_url().endswith(f":{relay_config.config.DEFAULT_PORT}")
 
 
 def test_retry_block_is_parsed_and_validated():

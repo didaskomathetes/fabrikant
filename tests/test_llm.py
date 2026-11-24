@@ -6,14 +6,14 @@ import threading
 
 import pytest
 
-from fabrik import llm
+from fabrikant import llm
 
 
 @pytest.fixture
 def clean_llm_env(monkeypatch, tmp_path):
-    """Isoliert alle FABRIK_LLM_*-Env-Vars + die Persistenz-Datei pro Test."""
+    """Isoliert alle FABRIKANT_LLM_*-Env-Vars + die Persistenz-Datei pro Test."""
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     state_file = tmp_path / "active_llm"
     monkeypatch.setattr(llm, "_ACTIVE_FILE", state_file)
@@ -24,11 +24,11 @@ def clean_llm_env(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- list_providers
 def test_list_providers_named(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "ollama,llama-cpp")
-    monkeypatch.setenv("FABRIK_LLM_OLLAMA_URL", "http://o/v1")
-    monkeypatch.setenv("FABRIK_LLM_OLLAMA_MODEL", "m1")
-    monkeypatch.setenv("FABRIK_LLM_LLAMA_CPP_URL", "http://l/v1")
-    monkeypatch.setenv("FABRIK_LLM_LLAMA_CPP_MODEL", "m2")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "ollama,llama-cpp")
+    monkeypatch.setenv("FABRIKANT_LLM_OLLAMA_URL", "http://o/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_OLLAMA_MODEL", "m1")
+    monkeypatch.setenv("FABRIKANT_LLM_LLAMA_CPP_URL", "http://l/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_LLAMA_CPP_MODEL", "m2")
     names = [p["name"] for p in llm.list_providers()]
     assert names == ["ollama", "llama-cpp"]
     # Bindestrich im Namen → Unterstrich im Env-Präfix
@@ -36,8 +36,8 @@ def test_list_providers_named(clean_llm_env, monkeypatch):
 
 
 def test_list_providers_legacy_default(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_URL", "http://x/v1")
-    monkeypatch.setenv("FABRIK_LLM_MODEL", "legacy")
+    monkeypatch.setenv("FABRIKANT_LLM_URL", "http://x/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_MODEL", "legacy")
     providers = llm.list_providers()
     assert [p["name"] for p in providers] == ["default"]
     assert providers[0]["model"] == "legacy"
@@ -45,11 +45,11 @@ def test_list_providers_legacy_default(clean_llm_env, monkeypatch):
 
 def test_list_providers_named_wins_over_legacy(clean_llm_env, monkeypatch):
     # 'default' als Named-Provider + Legacy → nur ein Eintrag
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "default")
-    monkeypatch.setenv("FABRIK_LLM_DEFAULT_URL", "http://n/v1")
-    monkeypatch.setenv("FABRIK_LLM_DEFAULT_MODEL", "named")
-    monkeypatch.setenv("FABRIK_LLM_URL", "http://legacy/v1")
-    monkeypatch.setenv("FABRIK_LLM_MODEL", "legacy")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "default")
+    monkeypatch.setenv("FABRIKANT_LLM_DEFAULT_URL", "http://n/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_DEFAULT_MODEL", "named")
+    monkeypatch.setenv("FABRIKANT_LLM_URL", "http://legacy/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_MODEL", "legacy")
     providers = llm.list_providers()
     assert [p["name"] for p in providers] == ["default"]
     assert providers[0]["url"] == "http://n/v1"
@@ -57,27 +57,27 @@ def test_list_providers_named_wins_over_legacy(clean_llm_env, monkeypatch):
 
 def test_list_providers_incomplete_skipped(clean_llm_env, monkeypatch):
     # Provider ohne URL oder ohne Modell wird nicht gelistet
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a,b")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a/v1")  # kein Modell
-    monkeypatch.setenv("FABRIK_LLM_B_MODEL", "m")  # keine URL
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a,b")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a/v1")  # kein Modell
+    monkeypatch.setenv("FABRIKANT_LLM_B_MODEL", "m")  # keine URL
     assert llm.list_providers() == []
 
 
 def test_list_providers_key_included(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "k")
-    monkeypatch.setenv("FABRIK_LLM_K_URL", "http://k/v1")
-    monkeypatch.setenv("FABRIK_LLM_K_MODEL", "m")
-    monkeypatch.setenv("FABRIK_LLM_K_KEY", "sekret123")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "k")
+    monkeypatch.setenv("FABRIKANT_LLM_K_URL", "http://k/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_K_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_K_KEY", "sekret123")
     assert llm.get_provider("k")["key"] == "sekret123"
 
 
 # ---------------------------------------------------------------- active provider
 def test_default_name_first_named(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a,b")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "m")
-    monkeypatch.setenv("FABRIK_LLM_B_URL", "http://b")
-    monkeypatch.setenv("FABRIK_LLM_B_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a,b")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_B_URL", "http://b")
+    monkeypatch.setenv("FABRIKANT_LLM_B_MODEL", "m")
     assert llm.default_name() == "a"
 
 
@@ -87,11 +87,11 @@ def test_default_name_none_when_empty(clean_llm_env):
 
 
 def test_set_active_persists(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a,b")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "m")
-    monkeypatch.setenv("FABRIK_LLM_B_URL", "http://b")
-    monkeypatch.setenv("FABRIK_LLM_B_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a,b")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_B_URL", "http://b")
+    monkeypatch.setenv("FABRIKANT_LLM_B_MODEL", "m")
     llm.set_active("b")
     assert llm.active_name() == "b"
     # Persistenz überlebt Cache-Reset (simulierter Neustart)
@@ -100,18 +100,18 @@ def test_set_active_persists(clean_llm_env, monkeypatch):
 
 
 def test_set_active_unknown_raises(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "m")
     with pytest.raises(ValueError, match="unbekannt"):
         llm.set_active("zzz")
 
 
 def test_active_falls_back_to_default(clean_llm_env, monkeypatch):
     # Persistierte Datei zeigt auf nicht mehr existierenden Provider → Default
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "m")
     llm._ACTIVE_FILE.write_text("gone\n")
     assert llm.active_name() == "a"
 
@@ -122,29 +122,29 @@ def _step_ctx():
 
 
 def test_step_uses_active_provider(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a/v1")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "m")
     llm.set_active("a")
     prov = llm.active_provider()
     assert prov["url"] == "http://a/v1" and prov["model"] == "m"
 
 
 def test_step_pins_provider(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a,b")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "ma")
-    monkeypatch.setenv("FABRIK_LLM_B_URL", "http://b")
-    monkeypatch.setenv("FABRIK_LLM_B_MODEL", "mb")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a,b")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "ma")
+    monkeypatch.setenv("FABRIKANT_LLM_B_URL", "http://b")
+    monkeypatch.setenv("FABRIKANT_LLM_B_MODEL", "mb")
     llm.set_active("a")
     # Step pinnt 'b' → gewinnt über aktiven 'a'
     assert llm.get_provider("b")["model"] == "mb"
 
 
 def test_step_model_override(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "a")
-    monkeypatch.setenv("FABRIK_LLM_A_URL", "http://a")
-    monkeypatch.setenv("FABRIK_LLM_A_MODEL", "ma")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_URL", "http://a")
+    monkeypatch.setenv("FABRIKANT_LLM_A_MODEL", "ma")
     step = {"provider": "a", "model": "override"}
     prov = llm.get_provider(step["provider"])
     assert (step.get("model") or prov["model"]) == "override"

@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from helpers import http_error
 
-from fabrik.failures import (
+from fabrikant.failures import (
     ConfigError,
     Failure,
     GitError,
@@ -31,7 +31,7 @@ from fabrik.failures import (
     parse_retry_after,
     run_failure,
 )
-from fabrik.runmodel import FailureKind as K
+from fabrikant.runmodel import FailureKind as K
 
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
 
@@ -169,7 +169,7 @@ def test_github_rate_limited_403_is_transient_with_reset():
         (ConnectionResetError(), K.TRANSIENT),
         (TimeoutError(), K.TRANSIENT),
         (TimeoutError(), K.TRANSIENT),
-        # Real: "[Errno 2] No such file or directory: '…/.fabrik/worktrees/fabrik/…'"
+        # Real: "[Errno 2] No such file or directory: '…/.fabrikant/worktrees/fabrikant/…'"
         (FileNotFoundError(2, "No such file or directory"), K.ENVIRONMENT),
         (PermissionError(13, "Permission denied"), K.ENVIRONMENT),
         (subprocess.TimeoutExpired("sh", 600), K.UNKNOWN),
@@ -202,7 +202,7 @@ def test_typed_errors_keep_their_base_types():
     [
         # Real (4×): git fetch Netzfehler
         (
-            "fatal: unable to access 'https://github.com/didaskomathetes/fabrik.git/': "
+            "fatal: unable to access 'https://github.com/didaskomathetes/fabrikant.git/': "
             "Could not resolve host: github.com",
             K.TRANSIENT,
         ),
@@ -211,7 +211,7 @@ def test_typed_errors_keep_their_base_types():
         # Real: abgelaufenes/falsches Token
         (
             "remote: Invalid username or token. Password authentication is not supported for Git operations.\n"
-            "fatal: Authentication failed for 'https://github.com/didaskomathetes/fabrik.git/'",
+            "fatal: Authentication failed for 'https://github.com/didaskomathetes/fabrikant.git/'",
             K.ENVIRONMENT,
         ),
         ("fatal: unable to access '…': The requested URL returned error: 403", K.ENVIRONMENT),

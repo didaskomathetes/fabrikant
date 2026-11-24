@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from fabrik import secrets
+from fabrikant import secrets
 
 
 @pytest.mark.parametrize(
@@ -58,6 +58,6 @@ def test_log_tail_failsafe(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCa
         raise ValueError("kaputt")
 
     monkeypatch.setattr(secrets, "redact_text", _boom)
-    with caplog.at_level(logging.WARNING, logger="fabrik.secrets"):
+    with caplog.at_level(logging.WARNING, logger="fabrikant.secrets"):
         assert secrets.redact_log_tail("token=abc12345") == "token=abc12345"
     assert "unredigiert" in caplog.text

@@ -4,7 +4,7 @@
 Aufruf aus scripts/sonar-scan.sh (Schritt 6b); die Antworten kommen als Dateien:
 
     sonar_report.py --gate G.json --measures M.json --issues I.json --project-key K \\
-        --repo-prefix fabrik/ --dashboard URL --report out.json \\
+        --repo-prefix fabrikant/ --dashboard URL --report out.json \\
         [--comment out.md --link-base https://github.com/<repo>/blob/<sha>]
 
 Nur Standardbibliothek (läuft mit dem System-Python wie die übrigen Skripte).
@@ -101,7 +101,7 @@ class Report:
             if self.issues_total > len(ranked):
                 lines.append(f"- … and {self.issues_total - len(ranked)} more")
             parts.append("**Issues**\n" + "\n".join(lines))
-        parts.append(f"<sub>Local SonarQube analysis (fabrik loop sonar-pr) · Details: {self.dashboard}</sub>")
+        parts.append(f"<sub>Local SonarQube analysis (fabrikant loop sonar-pr) · Details: {self.dashboard}</sub>")
         return "\n\n".join(parts) + "\n"
 
     def _metrics_table(self) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fabrik.fetch.clean import clean_html, normalize_text
+from fabrikant.fetch.clean import clean_html, normalize_text
 
 
 def test_normalize_strips_invisible_chars():

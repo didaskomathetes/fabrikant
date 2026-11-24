@@ -6,8 +6,8 @@ Komplementär zu test_core.py (dort: root-Expansion, verify-Checks). Hier: die
 
 import pytest
 
-from fabrik import config, specs
-from fabrik.backends import known_backends
+from fabrikant import config, specs
+from fabrikant.backends import known_backends
 
 
 def _valid_spec(root: str) -> dict:
@@ -484,14 +484,14 @@ def test_validate_trigger_not_mapping(tmp_path):
 
 # ---------------------------------------------------------------- load_spec
 def test_load_spec_rejects_non_mapping(tmp_path):
-    f = tmp_path / "bad.fabrik.yaml"
+    f = tmp_path / "bad.fabrikant.yaml"
     f.write_text("- a\n- b\n")
     with pytest.raises(ValueError, match="Mapping"):
         specs.load_spec(f)
 
 
 def test_load_spec_derives_name_from_stem(tmp_path):
-    f = tmp_path / "myproj.fabrik.yaml"
+    f = tmp_path / "myproj.fabrikant.yaml"
     f.write_text(f"root: {tmp_path}\nloops:\n  l1:\n    steps:\n      - type: shell\n        cmd: echo hi\n")
     spec = specs.load_spec(f)
     assert spec["name"] == "myproj"
@@ -506,7 +506,7 @@ def test_load_projects_missing_dir(tmp_path, monkeypatch):
 def test_load_projects_marks_broken_spec_with_error(projects_dir, tmp_path):
     """Defekte Spec (ungültiger Step-Type) wird nicht verworfen, sondern mit
     `_error` gemarke — so sieht die UI den Grund statt einer leisen Lücke."""
-    (projects_dir / "broken.fabrik.yaml").write_text(
+    (projects_dir / "broken.fabrikant.yaml").write_text(
         f"root: {tmp_path}\nloops:\n  l1:\n    steps:\n      - type: bogus\n"
     )
     projects = specs.load_projects()
@@ -517,7 +517,7 @@ def test_load_projects_marks_broken_spec_with_error(projects_dir, tmp_path):
 
 # ---------------------------------------------------------------- approval-Loop (ADR 0011)
 def _approval_loop_spec(root: str) -> dict:
-    """Der `approval`-Loop aus projects/fabrik.fabrik.yaml (ADR 0011).
+    """Der `approval`-Loop aus projects/fabrikant.fabrikant.yaml (ADR 0011).
 
     Pinnt die Struktur, auf der das Approval-Request-Protokoll aufbaut:
     on_pr-Trigger (reconcile) auf 'needs approval' + statisches approval-Gate
@@ -533,7 +533,7 @@ def _approval_loop_spec(root: str) -> dict:
                     {
                         "type": "on_pr",
                         "repo": "o/r",
-                        "labels": ["fabrik", "needs approval"],
+                        "labels": ["fabrikant", "needs approval"],
                         "reconcile": True,
                         "poll": 300,
                     }
@@ -560,8 +560,8 @@ def test_approval_loop_spec_valid(tmp_path):
     loop = spec["loops"]["approval"]
     trig = loop["triggers"][0]
     assert trig["type"] == "on_pr"
-    # AND-Filter: nur fabrik-PRs mit 'needs approval' (nicht alle 'needs approval')
-    assert trig["labels"] == ["fabrik", "needs approval"]
+    # AND-Filter: nur fabrikant-PRs mit 'needs approval' (nicht alle 'needs approval')
+    assert trig["labels"] == ["fabrikant", "needs approval"]
     # reconcile: true ist der Kern — ohne sie feuert der Trigger nicht auf
     # bestehende ADR-PRs (Erst-Poll initialisiert nur).
     assert trig["reconcile"] is True

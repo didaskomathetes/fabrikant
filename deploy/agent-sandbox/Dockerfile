@@ -1,18 +1,18 @@
 # Image für die Per-Run-Agent-Sandbox (ADR 0054): One-Shot-CLI-Agenten (claude-code, codex,
-# copilot, opencode) laufen darin mit `FABRIK_SANDBOX=1`.
+# copilot, opencode) laufen darin mit `FABRIKANT_SANDBOX=1`.
 #
-#   docker build -t fabrik/agent-sandbox:latest deploy/agent-sandbox
+#   docker build -t fabrikant/agent-sandbox:latest deploy/agent-sandbox
 #
-# Was fabrik voraussetzt (sandbox.render_docker_cmd / entrypoint_script):
+# Was fabrikant voraussetzt (sandbox.render_docker_cmd / entrypoint_script):
 #   - POSIX `sh` und `git` (Austausch per git-Bundle), die Agent-CLIs im PATH;
 #   - read-only Root-FS: alles Schreibbare kommt als tmpfs (`/tmp`, HOME `/home/agent`, `/work`)
 #     bzw. Mount (`/in` ro, `/out`) — das Image legt nur die Mountpunkte an;
 #   - beliebige uid (`-u` = Host-uid bzw. 10001): nichts im Image darf einen bestimmten User
-#     voraussetzen; HOME setzt fabrik per `-e HOME=/home/agent`;
+#     voraussetzen; HOME setzt fabrikant per `-e HOME=/home/agent`;
 #   - kein Netz außer dem Egress-Proxy (ADR 0051): zur Laufzeit wird nichts nachinstalliert.
 #
 # Updates: Versionen unten bewusst anheben (`--build-arg` zum Ausprobieren) und das Image neu
-# bauen; fabrik startet es mit `--pull never`.
+# bauen; fabrikant startet es mit `--pull never`.
 
 # opencode 2.x gibt es nicht auf npm (dort nur 1.x): Release-Binary von GitHub, per SHA-256 geprüft.
 # Eigene Stage, damit curl nicht im Agent-Image landet. Basis per Digest gepinnt.
@@ -73,9 +73,9 @@ ENV DISABLE_AUTOUPDATER=1 \
     OPENCODE_DISABLE_AUTOUPDATE=1 \
     OPENCODE_DISABLE_MODELS_FETCH=1
 
-# Default-User; fabrik überschreibt ihn mit `-u` (Host-uid bzw. 10001).
+# Default-User; fabrikant überschreibt ihn mit `-u` (Host-uid bzw. 10001).
 USER 10001:10001
 WORKDIR /work
 
-# fabrik setzt `--entrypoint sh` und den Austausch-Entrypoint selbst; ohne fabrik: Versionen zeigen.
+# fabrikant setzt `--entrypoint sh` und den Austausch-Entrypoint selbst; ohne fabrikant: Versionen zeigen.
 CMD ["sh", "-c", "git --version && claude --version && codex --version && copilot --version && opencode --version"]

@@ -21,12 +21,12 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-FABRIK_DIR = Path(__file__).resolve().parent.parent
+FABRIKANT_DIR = Path(__file__).resolve().parent.parent
 HOST_URL = os.environ.get("SONAR_HOST_URL", "http://127.0.0.1:9000")
 ADMIN_USER = os.environ.get("SONAR_ADMIN_USER", "admin")
 OLD_PASS = os.environ.get("SONAR_OLD_PASSWORD", "admin")
-NEW_PASS = os.environ.get("SONAR_ADMIN_PASSWORD", "fabrik-admin")
-TOKEN_FILE = FABRIK_DIR / "state" / "sonar-token.txt"
+NEW_PASS = os.environ.get("SONAR_ADMIN_PASSWORD", "fabrikant-admin")
+TOKEN_FILE = FABRIKANT_DIR / "state" / "sonar-token.txt"
 
 
 def _fill_login(page):
@@ -71,7 +71,7 @@ def main() -> int:
         # Token über die Browser-Session erzeugen (nutzt das Session-Cookie)
         resp = page.evaluate(
             """async () => {
-                const r = await fetch('/api/user_tokens/generate?name=fabrik-scanner', {method: 'POST'});
+                const r = await fetch('/api/user_tokens/generate?name=fabrikant-scanner', {method: 'POST'});
                 return {status: r.status, body: await r.text()};
             }"""
         )

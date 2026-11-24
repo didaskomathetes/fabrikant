@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fabrik import engine
+from fabrikant import engine
 
 
 def test_agent_step_records_builder_model_and_backend(runs_dir, projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "root"
     root.mkdir()
-    (projects_dir / "bt.fabrik.yaml").write_text(
+    (projects_dir / "bt.fabrikant.yaml").write_text(
         f"name: bt\nroot: {root}\nloops:\n  s:\n    steps:\n"
         "    - name: build\n      type: agent\n      prompt: x\n      variant: medium\n"
         "    - name: after\n      type: shell\n      cmd: 'true'\n"

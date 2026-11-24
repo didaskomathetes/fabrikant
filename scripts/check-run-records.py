@@ -5,7 +5,7 @@ Exit 0, wenn alle ladbar sind, sonst 1. Aufruf: ``uv run python scripts/check-ru
 
 import sys
 
-from fabrik.runstore import RunStore
+from fabrikant.runstore import RunStore
 
 
 def main(argv: list[str]) -> int:

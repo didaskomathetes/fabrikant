@@ -12,11 +12,11 @@ import urllib.parse
 import urllib.request
 
 import pytest
-from test_server_api import fabrik_home, fabrik_url  # noqa: F401  (Fixtures)
+from test_server_api import fabrikant_home, fabrikant_url  # noqa: F401  (Fixtures)
 
-from fabrik import alerts, config, gitops, runs, server, specs, webhook
-from fabrik import llm as llm_registry
-from fabrik.engine import run_loop
+from fabrikant import alerts, config, gitops, runs, server, specs, webhook
+from fabrikant import llm as llm_registry
+from fabrikant.engine import run_loop
 
 SECRET = "alert-secret-value"
 
@@ -104,7 +104,7 @@ def test_route_is_deterministic_with_defined_fallback():
 TRIG = {"type": "on_alert", "source": "sentry", "secret_env": "ALERT_SECRET"}
 
 
-def test_authenticate_accepts_fabrik_and_sentry_signature(monkeypatch):
+def test_authenticate_accepts_fabrikant_and_sentry_signature(monkeypatch):
     monkeypatch.setenv("ALERT_SECRET", SECRET)
     body = b"{}"
     assert alerts.authenticate(TRIG, body, webhook.sign(SECRET, body)) is TRIG
@@ -181,7 +181,7 @@ def test_validate_trigger():
 
 # ----------------------------------------------------------- alert_route Step
 def test_alert_route_none_for_unmapped_category():
-    from fabrik.steps.alert_route import _step_alert_route
+    from fabrikant.steps.alert_route import _step_alert_route
 
     ctx = {"category": "noise", "loop": "triage"}
     res = _step_alert_route(ctx, {"routes": {"bug": "hotfix"}}, lambda m: None)
@@ -189,7 +189,7 @@ def test_alert_route_none_for_unmapped_category():
 
 
 def test_alert_route_rejects_self_route():
-    from fabrik.steps.alert_route import _step_alert_route
+    from fabrikant.steps.alert_route import _step_alert_route
 
     res = _step_alert_route({"category": "bug", "loop": "triage"}, {"routes": {"bug": "triage"}}, lambda m: None)
     assert not res["ok"]
@@ -229,7 +229,7 @@ loops:
 
 
 @pytest.fixture
-def incident(fabrik_home, tmp_path, monkeypatch):  # noqa: F811
+def incident(fabrikant_home, tmp_path, monkeypatch):  # noqa: F811
     repo = tmp_path / "repo"
     repo.mkdir()
     for cmd in (["init", "-q", "-b", "main"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
@@ -243,7 +243,7 @@ def incident(fabrik_home, tmp_path, monkeypatch):  # noqa: F811
     subprocess.run(["git", "-C", str(repo), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setenv("ALERT_SECRET", SECRET)
-    (fabrik_home / "projects" / "incident.fabrik.yaml").write_text(SPEC.format(repo=repo))
+    (fabrikant_home / "projects" / "incident.fabrikant.yaml").write_text(SPEC.format(repo=repo))
     prs: list[dict] = []
 
     def fake_gh(method, url, token, payload=None):
@@ -293,17 +293,17 @@ def test_spec_with_on_alert_is_valid(incident):
 
 
 def test_spec_with_unknown_route_target_is_invalid(incident):
-    path = config.PROJECTS_DIR / "incident.fabrik.yaml"
+    path = config.PROJECTS_DIR / "incident.fabrikant.yaml"
     path.write_text(path.read_text().replace("routes: {bug: hotfix}", "routes: {bug: hotfx}"))
     err = specs.load_projects()["incident"].get("_error") or ""
     assert "unbekannter Loop 'hotfx'" in err
 
 
-def test_intake_accepts_sentry_signature_header_case_insensitive(incident, fabrik_url):  # noqa: F811
+def test_intake_accepts_sentry_signature_header_case_insensitive(incident, fabrikant_url):  # noqa: F811
     """HTTP-Header sind case-insensitiv; Proxies/HTTP/2 (Tunnel) liefern sie kleingeschrieben."""
     body = json.dumps(SENTRY).encode()
     raw = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
-    url = urllib.parse.urlsplit(fabrik_url)
+    url = urllib.parse.urlsplit(fabrikant_url)
     conn = http.client.HTTPConnection(url.hostname, url.port)
     try:  # http.client sendet Header-Namen unverändert
         conn.request("POST", "/api/alert/incident/triage", body, {"sentry-hook-signature": raw})
@@ -314,8 +314,8 @@ def test_intake_accepts_sentry_signature_header_case_insensitive(incident, fabri
     assert _runs("triage")
 
 
-def test_e2e_alert_to_triage_to_hotfix_pr(incident, fabrik_url):  # noqa: F811
-    status, resp = _post(f"{fabrik_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
+def test_e2e_alert_to_triage_to_hotfix_pr(incident, fabrikant_url):  # noqa: F811
+    status, resp = _post(f"{fabrikant_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
     assert status == 200 and resp["started"]
     (triage,) = _runs("triage")
     (hotfix,) = _runs("hotfix")
@@ -327,38 +327,38 @@ def test_e2e_alert_to_triage_to_hotfix_pr(incident, fabrik_url):  # noqa: F811
     assert len(incident["prs"]) == 1 and incident["prs"][0]["title"] == "hotfix: KeyError: x"
 
 
-def test_e2e_unknown_alert_gets_no_hotfix(incident, fabrik_url):  # noqa: F811
+def test_e2e_unknown_alert_gets_no_hotfix(incident, fabrikant_url):  # noqa: F811
     incident["answer"]["text"] = json.dumps({"category": "noise"})
-    status, _ = _post(f"{fabrik_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
+    status, _ = _post(f"{fabrikant_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
     assert status == 200
     (triage,) = _runs("triage")
     assert triage["status"] == "pass" and triage["vars"]["route"] == "none"
     assert not _runs("hotfix") and not incident["prs"]
 
 
-def test_e2e_failed_verify_blocks_pr(incident, fabrik_url, monkeypatch):  # noqa: F811
-    spec = (config.PROJECTS_DIR / "incident.fabrik.yaml").read_text().replace("grep -q fixed fix.txt", "false")
-    (config.PROJECTS_DIR / "incident.fabrik.yaml").write_text(spec)
-    _post(f"{fabrik_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
+def test_e2e_failed_verify_blocks_pr(incident, fabrikant_url, monkeypatch):  # noqa: F811
+    spec = (config.PROJECTS_DIR / "incident.fabrikant.yaml").read_text().replace("grep -q fixed fix.txt", "false")
+    (config.PROJECTS_DIR / "incident.fabrikant.yaml").write_text(spec)
+    _post(f"{fabrikant_url}/api/alert/incident/triage", SENTRY, _signed(SENTRY))
     assert _runs("hotfix")[0]["status"] == "fail"
     assert _runs("triage")[0]["status"] == "fail"
     assert not incident["prs"]
 
 
-def test_intake_rejects_unsigned_and_unknown(incident, fabrik_url):  # noqa: F811
-    assert _post(f"{fabrik_url}/api/alert/incident/triage", SENTRY)[0] == 401
-    assert _post(f"{fabrik_url}/api/alert/incident/nope", SENTRY, _signed(SENTRY))[0] == 401
-    assert _post(f"{fabrik_url}/api/alert/incident", SENTRY, _signed(SENTRY))[0] == 401
+def test_intake_rejects_unsigned_and_unknown(incident, fabrikant_url):  # noqa: F811
+    assert _post(f"{fabrikant_url}/api/alert/incident/triage", SENTRY)[0] == 401
+    assert _post(f"{fabrikant_url}/api/alert/incident/nope", SENTRY, _signed(SENTRY))[0] == 401
+    assert _post(f"{fabrikant_url}/api/alert/incident", SENTRY, _signed(SENTRY))[0] == 401
     assert not _runs("triage")
 
 
-def test_intake_422_on_bad_payload(incident, fabrik_url):  # noqa: F811
-    assert _post(f"{fabrik_url}/api/alert/incident/triage", {"x": 1}, _signed({"x": 1}))[0] == 422
+def test_intake_422_on_bad_payload(incident, fabrikant_url):  # noqa: F811
+    assert _post(f"{fabrikant_url}/api/alert/incident/triage", {"x": 1}, _signed({"x": 1}))[0] == 422
 
 
-def test_intake_cloudwatch_ok_state_ignored(incident, fabrik_url):  # noqa: F811
-    spec = (config.PROJECTS_DIR / "incident.fabrik.yaml").read_text().replace("source: sentry", "source: cloudwatch")
-    (config.PROJECTS_DIR / "incident.fabrik.yaml").write_text(spec)
+def test_intake_cloudwatch_ok_state_ignored(incident, fabrikant_url):  # noqa: F811
+    spec = (config.PROJECTS_DIR / "incident.fabrikant.yaml").read_text().replace("source: sentry", "source: cloudwatch")
+    (config.PROJECTS_DIR / "incident.fabrikant.yaml").write_text(spec)
     body = {**CW_ALARM, "NewStateValue": "OK"}
-    status, resp = _post(f"{fabrik_url}/api/alert/incident/triage", body, _signed(body))
+    status, resp = _post(f"{fabrikant_url}/api/alert/incident/triage", body, _signed(body))
     assert status == 200 and resp["ignored"] and not _runs("triage")

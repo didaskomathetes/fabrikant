@@ -6,7 +6,7 @@ mit den echten Step-Implementierungen (``pr``, ``pr_review``, ``human_gate``,
 git, LLM). Damit wird verifiziert, dass die Steps im Zusammenspiel über die Engine
 funktionieren, nicht nur isoliert:
 
-  - PR wird mit Label ``fabrik-develop`` angelegt (``pr``-Step; ``review-pr`` filtert auf ``fabrik``)
+  - PR wird mit Label ``fabrikant-develop`` angelegt (``pr``-Step; ``review-pr`` filtert auf ``fabrikant``)
   - ``pr_review``: Review = Reviewer-Modell, Fix = Builder-Modell (Dual-Identity, ADR 0010)
   - ``human_gate`` pausiert bei ADR-Pfad im Diff (fail-closed, ADR 0010); ohne
     Heuristik-Treffer entscheidet die (gemockte) LLM-Meinung
@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import json
 
-from fabrik import gitops, scheduler
-from fabrik.engine import run_loop
-from fabrik.steps import human_gate, pr_review
+from fabrikant import gitops, scheduler
+from fabrikant.engine import run_loop
+from fabrikant.steps import human_gate, pr_review
 
 REPO = "o/r"
 PR_NUMBER = 7
@@ -34,7 +34,7 @@ BUILDER_MODEL = "hetzner/qwen3.8-27b"
 REVIEWER_BACKEND = "claude_code"
 REVIEWER_MODEL = "claude-sonnet-5-5"
 FIXED_SHA = "sha-fixed"
-DEVELOP_LABEL = "fabrik-develop"  # pr_label im develop-Template (Label-Split)
+DEVELOP_LABEL = "fabrikant-develop"  # pr_label im develop-Template (Label-Split)
 
 APPROVED = json.dumps({"verdict": "approved", "findings": [], "summary": "ok"})
 CHANGES = json.dumps(
@@ -50,14 +50,14 @@ def _write_spec(projects_dir, tmp_path, name, steps_yaml):
     root.mkdir(parents=True, exist_ok=True)
     body = "\n".join("    " + ln for ln in steps_yaml.strip().splitlines())
     lines = [f"name: {name}", f"root: {root}", "loops:", "  develop:", "    steps:", body]
-    (projects_dir / f"{name}.fabrik.yaml").write_text("\n".join(lines) + "\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text("\n".join(lines) + "\n")
 
 
 def _develop_steps():
     """Kern des develop-Loops: pr → pr_review → human_gate → pr_merge."""
     return (
-        "- name: pr\n  type: pr\n  repo: o/r\n  base: main\n  head: fabrik/auto/42\n"
-        f'  labels: [{DEVELOP_LABEL}]\n  title: "fabrik: test (auto)"\n'
+        "- name: pr\n  type: pr\n  repo: o/r\n  base: main\n  head: fabrikant/auto/42\n"
+        f'  labels: [{DEVELOP_LABEL}]\n  title: "fabrikant: test (auto)"\n'
         "- name: review\n  type: pr_review\n  repo: o/r\n  backend: claude_code\n"
         f"  model: {REVIEWER_MODEL}\n  max_rounds: 2\n"
         "- name: gate\n  type: human_gate\n  repo: o/r\n  adr_paths: [docs/adr]\n"
@@ -124,7 +124,7 @@ def _patch_externals(monkeypatch, verdicts, files):
         if args == ("status", "--porcelain"):
             return "M docs/adr/0010-dual-identity.md"
         if args == ("rev-parse", "--abbrev-ref", "HEAD"):
-            return "fabrik/auto/42"
+            return "fabrikant/auto/42"
         if args == ("rev-parse", "HEAD"):
             return FIXED_SHA
         return ""
@@ -163,7 +163,7 @@ def test_develop_flow_pr_review_gate_merge(runs_dir, projects_dir, tmp_path, mon
 
     rec = run_loop("dev_e2e", "develop", trigger="on_issue:#42", initial_vars=_builder_vars())
 
-    # 1) PR mit Label `fabrik-develop` angelegt
+    # 1) PR mit Label `fabrikant-develop` angelegt
     assert calls["labels"] == [(PR_NUMBER, [DEVELOP_LABEL])]
     pr_step = next(s for s in rec["steps"] if s["name"] == "pr")
     assert pr_step["status"] == "pass"
@@ -210,7 +210,7 @@ def test_develop_flow_fix_round_uses_builder(runs_dir, projects_dir, tmp_path, m
     assert fix_calls == [("fix", BUILDER_BACKEND, BUILDER_MODEL)]
     # Fix hat commited + gepusht
     assert ("add", ":/") in calls["git"]
-    assert ("push", "origin", "fabrik/auto/42") in calls["git"]
+    assert ("push", "origin", "fabrikant/auto/42") in calls["git"]
     # Re-Review: Reviewer-Modell, APPROVE
     assert calls["reviews"][1][1]["event"] == "APPROVE"
     review_calls = [c for c in calls["agent"] if c[0] == "review"]
@@ -244,34 +244,34 @@ class _FakeSched(scheduler.Scheduler):
 def _pr(num, labels, sha="abc123"):
     return {
         "number": num,
-        "title": "fabrik: test (auto)",
+        "title": "fabrikant: test (auto)",
         "state": "open",
         "updated_at": "2026-01-01T00:00:00Z",
         "labels": [{"name": x} for x in labels],
-        "head": {"sha": sha, "ref": "fabrik/auto/42"},
+        "head": {"sha": sha, "ref": "fabrikant/auto/42"},
         "html_url": f"https://github.com/o/r/pull/{num}",
     }
 
 
 def test_on_pr_fires_on_develop_labeled_pr(monkeypatch):
-    """Label-Split gegen Doppel-Review: der review-pr-Loop (on_pr, Label `fabrik`)
-    feuert auf PRs mit Label `fabrik` (manuelle/Refactor-PRs, früher auch develop-PRs).
-    develop-PRs tragen `fabrik-develop` → darauf feuert er NICHT (kein Doppel-Review,
+    """Label-Split gegen Doppel-Review: der review-pr-Loop (on_pr, Label `fabrikant`)
+    feuert auf PRs mit Label `fabrikant` (manuelle/Refactor-PRs, früher auch develop-PRs).
+    develop-PRs tragen `fabrikant-develop` → darauf feuert er NICHT (kein Doppel-Review,
     kein Human-Gate-Bypass über pr-reply)."""
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
-    trig = {"repo": "o/r", "poll": 0, "labels": ["fabrik"], "reconcile": "head"}
+    trig = {"repo": "o/r", "poll": 0, "labels": ["fabrikant"], "reconcile": "head"}
 
-    # PR mit Label `fabrik` → review-pr feuert (vor dem Split: auch develop-PRs → Doppel-Review)
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrik"])])
+    # PR mit Label `fabrikant` → review-pr feuert (vor dem Split: auch develop-PRs → Doppel-Review)
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrikant"])])
     _FakeSched()._check_pr("p", "review-pr", {"github": "o/r"}, trig)
     assert fired == ["on_pr:#7@abc123"]
 
-    # Label-Split: develop-PR mit `fabrik-develop` → review-pr (Label `fabrik`) feuert NICHT
+    # Label-Split: develop-PR mit `fabrikant-develop` → review-pr (Label `fabrikant`) feuert NICHT
     fired2 = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired2.append(t))
-    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrik-develop"])])
+    monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: [_pr(7, ["fabrikant-develop"])])
     _FakeSched()._check_pr("p", "review-pr", {"github": "o/r"}, trig)
     assert fired2 == []

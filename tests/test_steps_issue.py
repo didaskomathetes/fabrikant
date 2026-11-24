@@ -9,10 +9,10 @@ import pytest
 import yaml
 from helpers import http_error
 
-from fabrik import gitops, secrets
-from fabrik.engine import _dispatch_step
-from fabrik.secrets import _redact_record
-from fabrik.steps import issue
+from fabrikant import gitops, secrets
+from fabrikant.engine import _dispatch_step
+from fabrikant.secrets import _redact_record
+from fabrikant.steps import issue
 
 PROJECTS = Path(__file__).resolve().parent.parent / "projects"
 
@@ -232,10 +232,10 @@ def test_token_redacted_in_run_record(monkeypatch):
 
 @pytest.mark.parametrize(
     ("project", "loop"),
-    [("fabrik", "refine"), ("fabrik", "refactor-sweep")],
+    [("fabrikant", "refine"), ("fabrikant", "refactor-sweep")],
 )
 def test_migrated_flows_use_issue_steps_without_gh(project, loop):
-    spec = yaml.safe_load((PROJECTS / f"{project}.fabrik.yaml").read_text())
+    spec = yaml.safe_load((PROJECTS / f"{project}.fabrikant.yaml").read_text())
     loops = spec["loops"]
     steps = loops[loop]["steps"] if isinstance(loops, dict) else next(lp for lp in loops if lp["name"] == loop)["steps"]
     assert any(s["type"] == "issue" for s in steps)
@@ -246,7 +246,7 @@ def test_migrated_flows_use_issue_steps_without_gh(project, loop):
 
 
 def test_sweep_prompt_has_no_gh_calls():
-    text = (PROJECTS.parent / "prompts" / "fabrik-refactor-sweep.prompt.md").read_text()
+    text = (PROJECTS.parent / "prompts" / "fabrikant-refactor-sweep.prompt.md").read_text()
     assert "gh issue" not in text
 
 
@@ -292,18 +292,18 @@ def _gh_issue(num, **extra):
 
 def test_list_emits_lines_without_prs_and_self(routed):
     items = [
-        _gh_issue(1, labels=[{"name": "p1"}, {"name": "fabrik"}], body="Zeile 1\n\n  Zeile 2"),
+        _gh_issue(1, labels=[{"name": "p1"}, {"name": "fabrikant"}], body="Zeile 1\n\n  Zeile 2"),
         _gh_issue(2, pull_request={}),
         _gh_issue(7),  # eigenes Issue
         _gh_issue(3, body=None),
     ]
     api = routed([("GET", "/issues?", items)])
     ctx = {"issue_number": "7"}
-    res = issue._step_issue(ctx, {"action": "list", "repo": "o/r", "labels": ["fabrik"], "emit": "open_issues"})
+    res = issue._step_issue(ctx, {"action": "list", "repo": "o/r", "labels": ["fabrikant"], "emit": "open_issues"})
     assert res["ok"] is True and "2 Issues (open) → open_issues" in res["summary"]
-    assert ctx["open_issues"] == "#1 [p1, fabrik] T1 — Zeile 1 Zeile 2\n#3 T3"
+    assert ctx["open_issues"] == "#1 [p1, fabrikant] T1 — Zeile 1 Zeile 2\n#3 T3"
     url = api.calls[0][1]
-    assert "state=open" in url and "labels=fabrik" in url and "sort=updated" in url and "page=1" in url
+    assert "state=open" in url and "labels=fabrikant" in url and "sort=updated" in url and "page=1" in url
 
 
 def test_list_truncates_body_and_respects_limit(routed):
@@ -497,11 +497,11 @@ def test_create_emit_keeps_issue_number(routed):
 
 def test_create_inherit_labels_is_a_whitelist(routed):
     """Nur gelistete Labels wandern mit — Status-Labels wie 'ready for development' nie."""
-    src = _gh_issue(7, labels=[{"name": "p1"}, {"name": "ready for development"}, {"name": "fabrik"}])
+    src = _gh_issue(7, labels=[{"name": "p1"}, {"name": "ready for development"}, {"name": "fabrikant"}])
     api = routed([("GET", "/issues/7", src), ("POST", "/issues", {"number": 50})])
-    step = {"action": "create", "repo": "o/r", "title": "t", "labels": ["fabrik"], "inherit_labels": ["p0", "p1"]}
+    step = {"action": "create", "repo": "o/r", "title": "t", "labels": ["fabrikant"], "inherit_labels": ["p0", "p1"]}
     issue._step_issue({"issue_number": "7"}, step)
-    assert api.calls[-1][2]["labels"] == ["fabrik", "p1"]
+    assert api.calls[-1][2]["labels"] == ["fabrikant", "p1"]
 
 
 def test_create_inherit_labels_without_source_issue(routed):

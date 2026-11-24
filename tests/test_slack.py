@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from fabrik import scheduler, slack
+from fabrikant import scheduler, slack
 
 
 class FakeSlack:
@@ -145,9 +145,9 @@ def test_validate_trigger():
 
 
 def test_spec_validation_accepts_on_slack(projects_dir, tmp_path):
-    from fabrik.specs import load_projects
+    from fabrikant.specs import load_projects
 
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {tmp_path}\nloops:\n  l:\n    triggers:\n      - {{type: on_slack, token_env: T, channels: [C1]}}\n"
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -326,16 +326,16 @@ def test_pending_survives_concurrent_mark_started(state):
 
 
 def test_alert_vars_are_reserved():
-    from fabrik.spec_expand import RESERVED_VARS
+    from fabrikant.spec_expand import RESERVED_VARS
 
     assert set(slack.ALERT_VARS) <= RESERVED_VARS
 
 
 @pytest.mark.parametrize("poll", ["abc", float("nan"), float("inf"), -1, True, [60]])
 def test_spec_rejects_invalid_poll(projects_dir, tmp_path, poll):
-    from fabrik.specs import load_projects
+    from fabrikant.specs import load_projects
 
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         json.dumps(
             {
                 "name": "p",
@@ -354,10 +354,10 @@ def test_spec_rejects_invalid_poll(projects_dir, tmp_path, poll):
 
 @pytest.mark.parametrize("poll", [0, 60, 1.5, "60"])
 def test_spec_accepts_valid_poll(projects_dir, tmp_path, poll):
-    from fabrik.specs import load_projects
+    from fabrikant.specs import load_projects
 
     trig = {"type": "on_issue", "repo": "o/r", "poll": poll}
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         json.dumps(
             {
                 "name": "p",
@@ -414,7 +414,7 @@ def test_page_limit_loses_no_message(state, caplog):
 
 
 def test_alert_text_is_capped(state, caplog):
-    caplog.set_level("DEBUG", logger="fabrik.slack")
+    caplog.set_level("DEBUG", logger="fabrikant.slack")
     c = FakeSlack({"C1": [_msg("200.0", "ALERT " + "x" * 50)]})
     trig = _trig(max_alert_chars=10)
     slack.poll(c, trig, state, "100.0")
@@ -435,10 +435,10 @@ def test_pattern_matches_full_text_before_cap(state):
 @pytest.mark.parametrize("key", ["max_pages", "max_alert_chars"])
 @pytest.mark.parametrize("value", [0, -1, 1.5, "abc", True, float("nan")])
 def test_spec_rejects_invalid_slack_limits(projects_dir, tmp_path, key, value):
-    from fabrik.specs import load_projects
+    from fabrikant.specs import load_projects
 
     trig = {"type": "on_slack", "token_env": "T", "channels": ["C1"], key: value}
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         json.dumps(
             {
                 "name": "p",

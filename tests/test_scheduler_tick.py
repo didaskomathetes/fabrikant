@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import gitops, retry_chains, scheduler
-from fabrik.scheduler import Scheduler
+from fabrikant import gitops, retry_chains, scheduler
+from fabrikant.scheduler import Scheduler
 
 
 class _FakeSched(Scheduler):
@@ -31,7 +31,7 @@ class _FakePool:
 def test_tick_dispatches_cron(projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {{type: cron, cron: "* * * * *"}}\n'
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -47,7 +47,7 @@ def test_tick_onetime_store_error_does_not_block_cron(projects_dir, tmp_path, mo
     """Ein defekter One-time-Store darf Cron-Trigger nicht für jeden Tick stoppen."""
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {{type: cron, cron: "* * * * *"}}\n'
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -65,7 +65,7 @@ def test_tick_onetime_store_error_does_not_block_cron(projects_dir, tmp_path, mo
 def test_tick_cron_no_double_fire_same_minute(projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {{type: cron, cron: "* * * * *"}}\n'
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -80,7 +80,7 @@ def test_tick_cron_no_double_fire_same_minute(projects_dir, tmp_path, monkeypatc
 def _cron_spec(projects_dir, tmp_path, trigger: str) -> None:
     root = tmp_path / "proj"
     root.mkdir(exist_ok=True)
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {trigger}\n"
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -151,7 +151,7 @@ def _start_gate_spec(projects_dir, tmp_path) -> None:
     root = tmp_path / "proj"
     root.mkdir(exist_ok=True)
     step = '    steps:\n      - {type: shell, cmd: "true"}\n'
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {root}\nloops:\n"
         '  dispatch:\n    triggers:\n      - {type: cron, cron: "* * * * *"}\n'
         + step
@@ -211,7 +211,7 @@ def test_tick_start_gate_is_per_project(projects_dir, tmp_path, monkeypatch):
     _start_gate_spec(projects_dir, tmp_path)
     other = tmp_path / "other"
     other.mkdir()
-    (projects_dir / "q.fabrik.yaml").write_text(
+    (projects_dir / "q.fabrikant.yaml").write_text(
         f"name: q\nroot: {other}\nloops:\n  poll:\n    triggers:\n      - {{type: on_pr, repo: o/q}}\n"
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -225,7 +225,7 @@ def test_tick_cron_skipped_when_retry_chain_pending_starts_exactly_one_run(proje
     wird übersprungen und die Kette startet den Versuch — genau ein Run, nie zwei."""
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {{type: cron, cron: "* * * * *"}}\n'
         "    retry: {max: 3, backoff: [30s, 40s]}\n"  # Backoff < Intervall (sonst Spec-Fehler)
         '    steps:\n      - {type: shell, cmd: "true"}\n'
@@ -237,7 +237,7 @@ def test_tick_cron_skipped_when_retry_chain_pending_starts_exactly_one_run(proje
     monkeypatch.setattr(retry_chains, "get_run", lambda rid, proj: None)
     fired, submitted = [], []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
-    monkeypatch.setattr("fabrik.engine._get_run_pool", lambda: _FakePool(submitted))
+    monkeypatch.setattr("fabrikant.engine._get_run_pool", lambda: _FakePool(submitted))
     s = _FakeSched()
     s.tick()
     assert fired == []  # Cron-Tick übersprungen (Kette pending)
@@ -246,7 +246,7 @@ def test_tick_cron_skipped_when_retry_chain_pending_starts_exactly_one_run(proje
 
 
 def test_tick_skips_error_spec(projects_dir, monkeypatch):
-    (projects_dir / "bad.fabrik.yaml").write_text("name: bad\nroot: /nonexistent\nloops: {}\n")
+    (projects_dir / "bad.fabrikant.yaml").write_text("name: bad\nroot: /nonexistent\nloops: {}\n")
     fired = []
     monkeypatch.setattr(scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     s = _FakeSched()
@@ -258,7 +258,7 @@ def test_tick_on_file(projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir()
     (root / "a.txt").write_text("x")
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n"
         '      - {type: on_file, glob: "*.txt", debounce: 0}\n'
         '    steps:\n      - {type: shell, cmd: "true"}\n'
@@ -629,7 +629,7 @@ def test_check_issue_reconcile_unexpected_run_read_error_aborts_poll(monkeypatch
 def test_stale_runs_marks_old_running(runs_dir, projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    steps:\n      - {{type: shell, cmd: "true"}}\n'
     )
     d = runs_dir / "p"
@@ -676,11 +676,11 @@ def test_stale_runs_increments_reaped_metric(runs_dir, projects_dir, tmp_path, m
     """Dead-Man's-Switch inkrementiert die Reaper-KPI (Produktionsanbindung)."""
     from datetime import datetime
 
-    from fabrik import metrics
+    from fabrikant import metrics
 
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    steps:\n      - {{type: shell, cmd: "true"}}\n'
     )
     d = runs_dir / "p"
@@ -691,13 +691,13 @@ def test_stale_runs_increments_reaped_metric(runs_dir, projects_dir, tmp_path, m
         json.dumps({"id": "r1", "project": "p", "loop": "l", "status": "running", "started": started})
     )
     monkeypatch.setattr(scheduler, "_notify", lambda spec, rec, **kw: [])
-    before = metrics.FABRIK_REAPED_RUNS_TOTAL.value(reason="stale")
+    before = metrics.FABRIKANT_REAPED_RUNS_TOTAL.value(reason="stale")
     s = _FakeSched()
     s._check_stale_runs()
     # Stale Run → error + genau eine Zählerhöhung.
     rec = json.loads((d / "r1.json").read_text())
     assert rec["status"] == "error"
-    assert metrics.FABRIK_REAPED_RUNS_TOTAL.value(reason="stale") == before + 1
+    assert metrics.FABRIKANT_REAPED_RUNS_TOTAL.value(reason="stale") == before + 1
 
 
 def test_stale_runs_ignores_fresh(runs_dir, monkeypatch):
@@ -742,9 +742,9 @@ def _prio_issue(num, *labels):
 
 
 def test_priority_rank():
-    assert scheduler._priority_rank(_prio_issue(1, "fabrik", "p2"), PRIO) == 2
+    assert scheduler._priority_rank(_prio_issue(1, "fabrikant", "p2"), PRIO) == 2
     assert scheduler._priority_rank(_prio_issue(1, "p3", "p1"), PRIO) == 1  # höchste Stufe gewinnt
-    assert scheduler._priority_rank(_prio_issue(1, "fabrik"), PRIO) == len(PRIO)
+    assert scheduler._priority_rank(_prio_issue(1, "fabrikant"), PRIO) == len(PRIO)
     assert scheduler._priority_rank({"number": 1, "labels": None}, PRIO) == len(PRIO)
     assert scheduler._priority_rank({"number": 1, "labels": ["p0"]}, PRIO) == len(PRIO)  # kein Label-Objekt
 
@@ -801,7 +801,7 @@ def test_check_issue_event_mode_priority_same_tier_oldest_first(monkeypatch):
 def test_reap_orphaned_runs_restart(runs_dir, monkeypatch):
     """running → error (Grund+finished), needs_approval unverändert, kein Alert,
     und r1 zählt danach nicht mehr als aktiv (loop_run_triggers)."""
-    from fabrik import runs
+    from fabrikant import runs
 
     d = runs_dir / "p"
     d.mkdir(parents=True, exist_ok=True)
@@ -815,7 +815,7 @@ def test_reap_orphaned_runs_restart(runs_dir, monkeypatch):
     assert runs.reap_orphaned_runs() == ["r1"]
     got = json.loads((d / "r1.json").read_text())
     assert got["status"] == "error"
-    assert got["error"] == "abgebrochen: fabrik serve neu gestartet"
+    assert got["error"] == "abgebrochen: fabrikant serve neu gestartet"
     assert got["finished"]
     assert got["failure_kind"] == "interrupted"  # ADR 0035: Reaper → interrupted
     assert json.loads((d / "r2.json").read_text()) == appr
@@ -826,7 +826,7 @@ def test_reap_orphaned_runs_restart(runs_dir, monkeypatch):
 
 def test_reap_orphaned_runs_write_failure_keeps_record(runs_dir, monkeypatch):
     """Schlägt das atomare Schreiben fehl, bleibt der alte Record intakt und wird übersprungen."""
-    from fabrik import runs
+    from fabrikant import runs
 
     d = runs_dir / "p"
     d.mkdir(parents=True, exist_ok=True)
@@ -842,7 +842,7 @@ def test_reap_orphaned_runs_write_failure_keeps_record(runs_dir, monkeypatch):
 
 
 def test_reap_orphaned_runs_no_runs_dir(tmp_path, monkeypatch):
-    from fabrik import config, runs
+    from fabrikant import config, runs
 
     monkeypatch.setattr(config, "RUNS_DIR", tmp_path / "missing")
     assert runs.reap_orphaned_runs() == []
@@ -851,13 +851,13 @@ def test_reap_orphaned_runs_no_runs_dir(tmp_path, monkeypatch):
 def test_cron_matches_zero_step_is_invalid():
     from datetime import datetime
 
-    from fabrik.scheduler import cron_matches
+    from fabrikant.scheduler import cron_matches
 
     assert cron_matches("*/0 * * * *", datetime(2026, 1, 1, 12, 0)) is False
 
 
 def test_trigger_vars_helpers():
-    from fabrik.scheduler import issue_vars, pr_vars
+    from fabrikant.scheduler import issue_vars, pr_vars
 
     assert issue_vars({"number": 1, "title": "t", "body": None}) == {
         "issue_number": 1,
@@ -869,8 +869,8 @@ def test_trigger_vars_helpers():
 
 
 def test_cron_chain_pending_tolerates_corrupt_store(monkeypatch, tmp_path):
-    from fabrik import retry_chains
-    from fabrik.scheduler import _cron_chain_pending
+    from fabrikant import retry_chains
+    from fabrikant.scheduler import _cron_chain_pending
 
     path = tmp_path / "retry-chains.json"
     path.write_text("{kaputt")

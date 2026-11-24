@@ -11,8 +11,8 @@ from alembic.migration import MigrationContext
 from sqlalchemy import insert, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from fabrik import config, runs, sessionlog
-from fabrik.runschema import (
+from fabrikant import config, runs, sessionlog
+from fabrikant.runschema import (
     approval_permissions,
     approvals,
     metadata,
@@ -25,9 +25,9 @@ from fabrik.runschema import (
     steps,
     verify_checks,
 )
-from fabrik.runschema import runs as runs_table
-from fabrik.runstore import STORE, PreconditionError, RunStore, RunStoreError
-from fabrik.runstore_sql import InvalidRecordError, SqlRunStore, make_engine, migrate, store_for_url
+from fabrikant.runschema import runs as runs_table
+from fabrikant.runstore import STORE, PreconditionError, RunStore, RunStoreError
+from fabrikant.runstore_sql import InvalidRecordError, SqlRunStore, make_engine, migrate, store_for_url
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_default_backend_is_sql_and_db_url_lives_in_state_dir(tmp_path, monkeypa
 
 def test_unknown_backend_is_rejected(monkeypatch):
     monkeypatch.setenv(config.RUN_STORE_ENV, "mongo")
-    with pytest.raises(ValueError, match="FABRIK_RUN_STORE"):
+    with pytest.raises(ValueError, match="FABRIKANT_RUN_STORE"):
         config.run_store_backend()
 
 
@@ -76,7 +76,7 @@ def test_sqlite_pragmas(sql):
 
 
 def test_upgrade_head_on_empty_db_matches_schema(tmp_path):
-    """Alembic `upgrade head` auf leerer DB erzeugt genau das Schema aus fabrik.runschema."""
+    """Alembic `upgrade head` auf leerer DB erzeugt genau das Schema aus fabrikant.runschema."""
     engine = make_engine(f"sqlite:///{tmp_path / 'm.db'}")
     migrate(engine)
     with engine.connect() as conn:
@@ -303,11 +303,11 @@ def test_runs_readers_work_on_sql_backend(sql):
 
 
 def test_reap_orphaned_runs_on_sql_backend(sql, monkeypatch):
-    from fabrik import retry_chains
+    from fabrikant import retry_chains
 
     monkeypatch.setattr(retry_chains, "record_run_end", lambda *a, **k: None)
     monkeypatch.setattr(retry_chains, "release_stale_claims", lambda: None)
-    monkeypatch.setattr("fabrik.specs.load_projects", lambda: {})
+    monkeypatch.setattr("fabrikant.specs.load_projects", lambda: {})
     sql.create("p", "a", _rec(id="a"))
     sql.create("p", "b", _rec(id="b", status="pass"))
     assert runs.reap_orphaned_runs() == ["a"]
@@ -315,7 +315,7 @@ def test_reap_orphaned_runs_on_sql_backend(sql, monkeypatch):
 
 
 def test_stale_check_on_sql_backend(sql, monkeypatch):
-    from fabrik import scheduler
+    from fabrikant import scheduler
 
     monkeypatch.setattr(scheduler.retry_chains, "on_run_finished_safe", lambda *a, **k: {})
     monkeypatch.setattr(scheduler, "_notify", lambda *a, **k: [])
@@ -379,7 +379,7 @@ def test_session_log_redacts_and_never_raises(sql, monkeypatch):
 
 # ---------------------------------------------------------------- Engine Ende-zu-Ende auf dem SQL-Store
 def _spec(projects_dir, name: str, steps_yaml: str) -> str:
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: /tmp\nloops:\n  t:\n    steps:\n{steps_yaml}"
     )
     return name
@@ -387,7 +387,7 @@ def _spec(projects_dir, name: str, steps_yaml: str) -> str:
 
 def test_engine_pause_approve_resume_on_sql_store(sql, projects_dir):
     """run_loop → needs_approval → Approve → Resume: alles über den SQL-Store, keine Run-JSON."""
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _spec(
         projects_dir,
@@ -415,7 +415,7 @@ def test_engine_pause_approve_resume_on_sql_store(sql, projects_dir):
 
 
 def test_engine_failed_run_is_searchable_on_sql_store(sql, projects_dir):
-    from fabrik import engine, runsearch
+    from fabrikant import engine, runsearch
 
     name = _spec(projects_dir, "sqlfail", "      - {name: s1, type: shell, cmd: 'exit 127'}\n")
     rec = engine.run_loop(name, "t")

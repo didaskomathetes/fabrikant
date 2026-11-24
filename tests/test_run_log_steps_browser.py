@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import config, engine
+from fabrikant import config, engine
 
 pytestmark = pytest.mark.browser
 
@@ -27,11 +27,11 @@ loops:
 
 
 @pytest.fixture
-def fabrik_home(tmp_path, monkeypatch):
-    home = tmp_path / "fabrik_home"
+def fabrikant_home(tmp_path, monkeypatch):
+    home = tmp_path / "fabrikant_home"
     for d in ("projects", "runs", "state"):
         (home / d).mkdir(parents=True)
-    (home / "projects" / "uitest.fabrik.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
+    (home / "projects" / "uitest.fabrikant.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "RUNS_DIR", home / "runs")
     monkeypatch.setattr(config, "STATE_DIR", home / "state")
@@ -39,7 +39,7 @@ def fabrik_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def page(fabrik_home, live_server):
+def page(fabrikant_home, live_server):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -52,14 +52,14 @@ def page(fabrik_home, live_server):
         browser.close()
 
 
-def _log_text(fabrik_home) -> str:
+def _log_text(fabrikant_home) -> str:
     engine.run_loop("uitest", "two", "manual")
-    (log,) = (fabrik_home / "runs" / "uitest").glob("*.log")
+    (log,) = (fabrikant_home / "runs" / "uitest").glob("*.log")
     return log.read_text(encoding="utf-8")
 
 
-def test_step_bar_tracks_running_step_and_filters(page, fabrik_home):
-    lines = _log_text(fabrik_home).splitlines(keepends=True)
+def test_step_bar_tracks_running_step_and_filters(page, fabrikant_home):
+    lines = _log_text(fabrikant_home).splitlines(keepends=True)
     start2 = next(i for i, ln in enumerate(lines) if "▶ second" in ln)
     page.evaluate("() => openRunPanel('uitest / two', 'running')")
     page.evaluate("() => { window.v = new RunLogView(document.querySelector('#runlog')); }")

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from fabrik import runs
+from fabrikant import runs
 
 
 def _write(runs_dir, project, rid, status="pass", loop="l", log=None):

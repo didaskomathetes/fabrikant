@@ -8,7 +8,7 @@
 #
 # VORAUSSETZUNGEN (sonst endet der Job mit Exit 2 = Fehler, nicht Regression):
 #  - Golden-Dateien speichern nur Run-IDs. Der Baseline-Run muss im Run-Store
-#    des Runners existieren (gleiches FABRIK_HOME / gleicher Run-Store wie beim
+#    des Runners existieren (gleiches FABRIKANT_HOME / gleicher Run-Store wie beim
 #    `golden capture`) — ein frischer GitHub-hosted Runner hat ihn NICHT; nutze
 #    einen self-hosted Runner oder stelle den Run-Store vorher wieder her.
 #  - Backend-Secrets der Loop-Steps (z. B. API-Keys) und ein `gh`-Token
@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: "Fabrik-Project (Name der *.fabrik.yaml)"
+        description: "Fabrik-Project (Name der *.fabrikant.yaml)"
         required: true
       loop:
         description: "Loop-Name"
@@ -58,11 +58,11 @@ jobs:
           GOLDEN: ${{ github.event.inputs.golden }}
           # Prerequisites (see header): same run store + backend secrets + gh token.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # FABRIK_HOME: ${{ vars.FABRIK_HOME }}  # must point at the run store holding the baseline run
+          # FABRIKANT_HOME: ${{ vars.FABRIKANT_HOME }}  # must point at the run store holding the baseline run
         run: |
           set -euo pipefail
           GOLDEN_ARGS=()
           [ -n "$GOLDEN" ] && GOLDEN_ARGS+=(--name "$GOLDEN")
           # --yes: eval re-runs the loop for real (side effects!); in CI there is no TTY for the
           # prompt, and triggering this workflow manually is the explicit confirmation.
-          uv run fabrik eval "$PROJECT" "$LOOP" "${GOLDEN_ARGS[@]+"${GOLDEN_ARGS[@]}"}" --yes
+          uv run fabrikant eval "$PROJECT" "$LOOP" "${GOLDEN_ARGS[@]+"${GOLDEN_ARGS[@]}"}" --yes

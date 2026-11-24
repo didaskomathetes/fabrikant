@@ -6,14 +6,14 @@ import sqlite3
 
 import pytest
 
-from fabrik import secrets, sessionlog
-from fabrik.engine import run_loop
+from fabrikant import secrets, sessionlog
+from fabrikant.engine import run_loop
 
 
 @pytest.fixture
 def fresh_db(tmp_path, monkeypatch):
     """Frisches Session-Log-File pro Test (Global-Connection reset)."""
-    monkeypatch.setenv("FABRIK_SESSIONLOG", str(tmp_path / "sl" / "test.db"))
+    monkeypatch.setenv("FABRIKANT_SESSIONLOG", str(tmp_path / "sl" / "test.db"))
     monkeypatch.setattr(sessionlog, "_conn", None)
     yield sessionlog.connect()
     monkeypatch.setattr(sessionlog, "_conn", None)
@@ -61,7 +61,7 @@ def test_set_status_without_run_end(fresh_db):
 
 
 def test_reap_orphaned_run_finishes_sessionlog(fresh_db, runs_dir):
-    from fabrik import runs
+    from fabrikant import runs
 
     lg = sessionlog.SessionLog("orphan-1", "proj", "loop")
     lg.start()
@@ -85,7 +85,7 @@ def test_finish_orphaned_run_sqlite_error_warns(monkeypatch, capsys):
 
 
 def test_serve_reaps_before_scheduler(monkeypatch):
-    from fabrik import server
+    from fabrikant import server
 
     order = []
 
@@ -235,7 +235,9 @@ def _write_spec(projects_dir, tmp_path, name, steps_yaml):
     root = tmp_path / f"root-{name}"
     root.mkdir(parents=True, exist_ok=True)
     body = "\n".join("    " + ln for ln in steps_yaml.strip().splitlines())
-    (projects_dir / f"{name}.fabrik.yaml").write_text(f"name: {name}\nroot: {root}\nloops:\n  s:\n    steps:\n{body}\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
+        f"name: {name}\nroot: {root}\nloops:\n  s:\n    steps:\n{body}\n"
+    )
     return root
 
 
@@ -312,8 +314,8 @@ class _FakeOpenCode:
 
 
 def test_agent_events_landed(fresh_db, projects_dir, tmp_path, monkeypatch):
-    import fabrik.steps.agent as agent_mod
-    from fabrik.backends import registry
+    import fabrikant.steps.agent as agent_mod
+    from fabrikant.backends import registry
 
     monkeypatch.setitem(registry.ADAPTERS, "opencode", _FakeOpenCode)
     monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)
@@ -358,8 +360,8 @@ class _FlakyTranscriptOpenCode(_FakeOpenCode):
 
 
 def test_agent_empty_transcript_poll_does_not_duplicate_tools(fresh_db, projects_dir, tmp_path, monkeypatch):
-    import fabrik.steps.agent as agent_mod
-    from fabrik.backends import registry
+    import fabrikant.steps.agent as agent_mod
+    from fabrikant.backends import registry
 
     monkeypatch.setitem(registry.ADAPTERS, "opencode", _FlakyTranscriptOpenCode)
     monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)
@@ -383,8 +385,8 @@ def test_agent_empty_transcript_poll_does_not_duplicate_tools(fresh_db, projects
 
 
 def test_agent_usage_in_run_record(fresh_db, projects_dir, tmp_path, monkeypatch):
-    import fabrik.steps.agent as agent_mod
-    from fabrik.backends import registry
+    import fabrikant.steps.agent as agent_mod
+    from fabrikant.backends import registry
 
     monkeypatch.setitem(registry.ADAPTERS, "opencode", _FakeOpenCode)
     monkeypatch.setattr(agent_mod.time, "sleep", lambda s: None)

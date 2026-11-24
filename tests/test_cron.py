@@ -1,4 +1,4 @@
-"""Gemeinsame Cron-Semantik (`fabrik.cron`): Ausblick == das, was der Scheduler feuert."""
+"""Gemeinsame Cron-Semantik (`fabrikant.cron`): Ausblick == das, was der Scheduler feuert."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from fabrik import cron
+from fabrikant import cron
 
 NOW = datetime(2026, 11, 5, 11, 0, 0)
 

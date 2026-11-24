@@ -11,9 +11,9 @@ from typing import cast
 
 import pytest
 
-from fabrik import runs
-from fabrik.runmodel import ApprovalReason, ApprovalStatus, RunStatus, StepStatus
-from fabrik.runstore import (
+from fabrikant import runs
+from fabrikant.runmodel import ApprovalReason, ApprovalStatus, RunStatus, StepStatus
+from fabrikant.runstore import (
     PreconditionError,
     RecordError,
     RunStore,
@@ -648,7 +648,7 @@ def test_read_raw_is_utf8_independent_of_locale(runs_dir, tmp_path):
     """Records werden als UTF-8 geschrieben und gelesen — auch unter LANG=C (Container, systemd)."""
     _save(runs_dir, _rec(id="r1", status="running", note="Dead-Man’s-Switch — ü"))
     script = (
-        "import sys; from pathlib import Path; from fabrik.runstore import RunStore; "
+        "import sys; from pathlib import Path; from fabrikant.runstore import RunStore; "
         "s = RunStore(Path(sys.argv[1])); s.reap('p', 'r1', error='x'); print(s.get('r1', 'p').note)"
     )
     env = {**os.environ, "LC_ALL": "C", "LANG": "C", "PYTHONUTF8": "0", "PYTHONIOENCODING": "utf-8"}

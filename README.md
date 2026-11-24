@@ -1,13 +1,13 @@
-# fabrik — the software factory
+# fabrikant — the software factory
 
 Define agentic development loops as YAML specs, run them locally, steer them
-from the UI, adjust them via chat. One engine process (`fabrik serve`) watches
+from the UI, adjust them via chat. One engine process (`fabrikant serve`) watches
 triggers and executes loops; the UI at `http://127.0.0.1:8321` shows
 projects, loops, runs, live logs and a chat interface.
 
 **Principles:**
 - Local, 127.0.0.1, no cloud backend, no build step
-- Python stdlib + PyYAML — one Python package (`src/fabrik/`) + a vanilla-JS UI
+- Python stdlib + PyYAML — one Python package (`src/fabrikant/`) + a vanilla-JS UI
 - **Python 3.11+** (modern typing: `str | None`, `tuple[str, bool]`;
   `requires-python` in `pyproject.toml`)
 - Git projects run in **isolated worktrees** (the main checkout is never
@@ -22,29 +22,29 @@ projects, loops, runs, live logs and a chat interface.
 ## Install
 
 ```bash
-pip install fabrik                 # Python 3.11+; or: docker run -p 8321:8321 -v fabrik-data:/data <image>
-mkdir my-factory && cd my-factory && fabrik init
-fabrik serve                       # your specs live in ./projects, custom steps in ./plugins
+pip install fabrikant                 # Python 3.11+; or: docker run -p 8321:8321 -v fabrikant-data:/data <image>
+mkdir my-factory && cd my-factory && fabrikant init
+fabrikant serve                       # your specs live in ./projects, custom steps in ./plugins
 ```
 
-Your own work is only specs (`projects/*.fabrik.yaml`) and optional custom step packages registered via the
-`fabrik.steps` entry point — see [docs/plugins.md](docs/plugins.md) and ADR 0069.
+Your own work is only specs (`projects/*.fabrikant.yaml`) and optional custom step packages registered via the
+`fabrikant.steps` entry point — see [docs/plugins.md](docs/plugins.md) and ADR 0069.
 
 ## Getting started
 
 ```bash
-fabrik init [DIR]       # scaffold a project directory (specs, fabrik.env, plugin skeleton)
-fabrik serve            # engine + UI + scheduler, 127.0.0.1:8321
-fabrik list             # projects + loops
-fabrik validate         # check specs (--offline [SPEC…]: without root check, e.g. CI)
-fabrik run <project> <loop> [--note "…"]
-fabrik runs [--project X]
-fabrik runs show <run_id> [--project X] # single run: fields, steps, session log
-fabrik runs export <run_id> [--project X]  # single run + session log as JSON
-fabrik approve <run_id> [--project X]   # needs_approval → resume
-fabrik reject  <run_id> [--project X]   # needs_approval → abort
-fabrik chat "…"          # chat command / LLM copilot
-fabrik alert test [--project X]          # test alert channels
+fabrikant init [DIR]       # scaffold a project directory (specs, fabrikant.env, plugin skeleton)
+fabrikant serve            # engine + UI + scheduler, 127.0.0.1:8321
+fabrikant list             # projects + loops
+fabrikant validate         # check specs (--offline [SPEC…]: without root check, e.g. CI)
+fabrikant run <project> <loop> [--note "…"]
+fabrikant runs [--project X]
+fabrikant runs show <run_id> [--project X] # single run: fields, steps, session log
+fabrikant runs export <run_id> [--project X]  # single run + session log as JSON
+fabrikant approve <run_id> [--project X]   # needs_approval → resume
+fabrikant reject  <run_id> [--project X]   # needs_approval → abort
+fabrikant chat "…"          # chat command / LLM copilot
+fabrikant alert test [--project X]          # test alert channels
 ```
 
 **GitHub Apps (ADR 0010):** `scripts/gh-token-refresh.py` renews the 1h installation tokens —
@@ -55,56 +55,56 @@ QA app (`REVIEWER_APP_ID`, `REVIEWER_APP_KEY_FILE`, `REVIEWER_INSTALLATION_ID` �
 *GitHub-specific (implementation detail, no ADR; moves into the GitHub adapter with the
 provider ports from PR #437):*
 
-**Tokens per project:** `github_env_file: <path>` in a spec replaces `FABRIK_ENV_FILE` for that
+**Tokens per project:** `github_env_file: <path>` in a spec replaces `FABRIKANT_ENV_FILE` for that
 project: runs, trigger polls, retry attempts and their subprocesses (shell steps, agent `gh`)
 read `GITHUB_TOKEN`/`GITHUB_REVIEWER_TOKEN` only from this file; global
 `GITHUB_TOKEN` env values don't apply there (shell steps get `GH_TOKEN`/`GITHUB_TOKEN` =
-the project's builder token; subprocesses recognize the override via `FABRIK_PROJECT_ENV_FILE`).
+the project's builder token; subprocesses recognize the override via `FABRIKANT_PROJECT_ENV_FILE`).
 For a different app installation (other org) or a PAT as reviewer. Refresh via cron with an env
-override, e.g. `FABRIK_ENV_FILE=<path> BUILDER_INSTALLATION_ID=<id> scripts/gh-token-refresh.py`.
+override, e.g. `FABRIKANT_ENV_FILE=<path> BUILDER_INSTALLATION_ID=<id> scripts/gh-token-refresh.py`.
 
 **Signed commits (GitHub):** `commit_via: api` in a spec (default `git`) doesn't push with `git push`
-but rebuilds the local commits through the Git Data API (`src/fabrik/apicommit.py`). GitHub
+but rebuilds the local commits through the Git Data API (`src/fabrikant/apicommit.py`). GitHub
 signs them itself for the builder app ("Verified", author = app bot) — for repos with
 `required_signatures`, without keys on the host. Applies to `git` steps (`push: true`), the
 fix rounds of `pr_review` and relay pushes. Agents that push themselves call
-`python -m fabrik.push [--force]` instead of `git push` (the route per project is selected via
-`FABRIK_COMMIT_VIA`). Limits: no root commit; the local author/timestamp are lost.
+`python -m fabrikant.push [--force]` instead of `git push` (the route per project is selected via
+`FABRIKANT_COMMIT_VIA`). Limits: no root commit; the local author/timestamp are lost.
 
-`fabrik` is the console script from `pyproject.toml` (after `uv sync`).
-Without installation: `python -m fabrik …` (from the project root).
+`fabrikant` is the console script from `pyproject.toml` (after `uv sync`).
+Without installation: `python -m fabrikant …` (from the project root).
 
-Environment variables: `GITHUB_TOKEN` (GitHub API), `FABRIK_ENV_FILE` (path to the
-`.env` file with `GITHUB_TOKEN`, default `~/.config/fabrik/fabrik.env`), `FABRIK_TOKEN`
-(optional: bearer token for the API `POST` routes), `FABRIK_WORKERS`
-(worker pool size, default 4), `FABRIK_LLM_PROVIDERS` +
-`FABRIK_LLM_<NAME>_{URL,MODEL,KEY}` (LLM providers, see below).
+Environment variables: `GITHUB_TOKEN` (GitHub API), `FABRIKANT_ENV_FILE` (path to the
+`.env` file with `GITHUB_TOKEN`, default `~/.config/fabrikant/fabrikant.env`), `FABRIKANT_TOKEN`
+(optional: bearer token for the API `POST` routes), `FABRIKANT_WORKERS`
+(worker pool size, default 4), `FABRIKANT_LLM_PROVIDERS` +
+`FABRIKANT_LLM_<NAME>_{URL,MODEL,KEY}` (LLM providers, see below).
 
 ### Local operation (systemd user units)
 
-Permanent operation runs as a user service instead of a foreground `fabrik serve`, so that
+Permanent operation runs as a user service instead of a foreground `fabrikant serve`, so that
 scheduler/cron triggers survive closing the terminal and reboots. Only one
 `serve` process at a time (see "Single node" under Runs).
 
-The units in `deploy/` contain no checkout paths. They read `FABRIK_HOME`
-(the `fabrik/` directory of the checkout, same meaning as in
+The units in `deploy/` contain no checkout paths. They read `FABRIKANT_HOME`
+(the `fabrikant/` directory of the checkout, same meaning as in
 `config.py`) from **one** file per machine and switch there via
-`/bin/sh -c 'cd "$FABRIK_HOME" && exec …'` (systemd doesn't expand
+`/bin/sh -c 'cd "$FABRIKANT_HOME" && exec …'` (systemd doesn't expand
 variables in `WorkingDirectory=`). If the variable is missing, the unit aborts with
-"FABRIK_HOME missing".
+"FABRIKANT_HOME missing".
 
 ```bash
-# ~/.config/fabrik/deploy.env — create once per machine
-mkdir -p ~/.config/fabrik
-echo "FABRIK_HOME=$PWD/fabrik" > ~/.config/fabrik/deploy.env   # from the repo root
-# example content: FABRIK_HOME=/home/<user>/src/fabrik
+# ~/.config/fabrikant/deploy.env — create once per machine
+mkdir -p ~/.config/fabrikant
+echo "FABRIKANT_HOME=$PWD/fabrikant" > ~/.config/fabrikant/deploy.env   # from the repo root
+# example content: FABRIKANT_HOME=/home/<user>/src/fabrikant
 ```
 
 ```bash
-cp fabrik/deploy/fabrik.service fabrik/deploy/fabrik-autoupdate.{service,timer} ~/.config/systemd/user/
+cp fabrikant/deploy/fabrikant.service fabrikant/deploy/fabrikant-autoupdate.{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now fabrik.service fabrik-autoupdate.timer
-journalctl --user -u fabrik -u fabrik-autoupdate -f      # logs
+systemctl --user enable --now fabrikant.service fabrikant-autoupdate.timer
+journalctl --user -u fabrikant -u fabrikant-autoupdate -f      # logs
 ```
 
 systemd starts without a shell profile: agent CLIs outside `/usr/bin`
@@ -112,19 +112,19 @@ systemd starts without a shell profile: agent CLIs outside `/usr/bin`
 fail with "CLI '…' not in PATH". Set it per machine via a drop-in:
 
 ```ini
-# ~/.config/systemd/user/fabrik.service.d/path.conf
+# ~/.config/systemd/user/fabrikant.service.d/path.conf
 [Service]
 Environment=PATH=%h/.nvm/versions/node/<version>/bin:%h/.local/bin:%h/.opencode/bin:/usr/local/bin:/usr/bin:/bin
 ```
 
 Don't forget `enable`, or nothing starts after a reboot (`systemctl --user is-enabled
-fabrik`); without a login you also need `loginctl enable-linger`.
+fabrikant`); without a login you also need `loginctl enable-linger`.
 
-**Auto-update after merges** (`scripts/fabrik-autoupdate.py`, timer every 5 min):
+**Auto-update after merges** (`scripts/fabrikant-autoupdate.py`, timer every 5 min):
 pulls `main` from `origin` with `--ff-only` (only on branch `main`; with
 local commits/conflicts it aborts with exit 1, nothing is overwritten),
 runs `uv sync` if `pyproject.toml`/`uv.lock` changed and restarts
-`fabrik.service` if anything under `fabrik/` has changed since the start commit
+`fabrikant.service` if anything under `fabrikant/` has changed since the start commit
 (`state/serve-commit`, written via `ExecStartPre`).
 Restarts happen only when idle — if `running`/`queued` runs exist, it is deferred to
 the next tick (a restart would orphan them as `error`/`interrupted`;
@@ -144,25 +144,25 @@ bash scripts/lint.sh    # gate: ruff check + format --check, pyright (types), ba
 ```
 
 **Browser tests (UI):** `tests/test_ui_browser.py` starts an isolated
-fabrik server + Chromium (Playwright) and checks the interactive UI behavior
+fabrikant server + Chromium (Playwright) and checks the interactive UI behavior
 (scrollbars, run modal, clickable loop specs, chat overlay). Once:
 `uv run playwright install chromium`. To skip: `uv run pytest -m "not browser"`.
 
-**CI:** `.github/workflows/fabrik-ci.yml` (PRs + pushes to `main`, only for changes under
-`fabrik/`) has two independent jobs: `test` (`uv sync --frozen`, `scripts/lint.sh`
+**CI:** `.github/workflows/fabrikant-ci.yml` (PRs + pushes to `main`, only for changes under
+`fabrikant/`) has two independent jobs: `test` (`uv sync --frozen`, `scripts/lint.sh`
 (ruff, pyright, bandit), `pytest -m "not browser and not perf" -n auto`, then `pytest -m perf`
 serially) and `browser` (Playwright + Chromium, `pytest -m browser`). Python 3.11+, uv cache keyed on `uv.lock`.
 
 **Worker pool:** trigger runs execute on a bounded pool of daemon workers
-(`FABRIK_WORKERS`, default 4). For local development / initial testing:
-`FABRIK_WORKERS=1` → all runs serially on a single agent worker
+(`FABRIKANT_WORKERS`, default 4). For local development / initial testing:
+`FABRIKANT_WORKERS=1` → all runs serially on a single agent worker
 (no parallel LLM sessions). Daemon threads: Ctrl+C (or SIGTERM/SIGHUP) ends the
 process immediately without waiting for running runs; running shell steps and one-shot agents
 are terminated together with their process group.
 
 **Parallel runs (ADR 0028):** each run works in its own git worktree
-(`<WORKTREES_DIR>/<project>/<run_id>`; `FABRIK_WORKTREES`, default
-`~/.local/state/fabrik/worktrees/<installation>` — deliberately outside the checkout so
+(`<WORKTREES_DIR>/<project>/<run_id>`; `FABRIKANT_WORKTREES`, default
+`~/.local/state/fabrikant/worktrees/<installation>` — deliberately outside the checkout so
 IDEs don't index the run checkouts, ADR 0047 addendum), which is cleaned up at the end (or on reject, and after
 a crash on the next server start); a run in `needs_approval`
 keeps it for the resume. `max_parallel` (project spec, default 3) limits
@@ -172,14 +172,14 @@ manual/chat runs and approved resumes are queued (ADR 0015) and wait for
 a free slot. `worktree: false` loops (ADR 0020) don't occupy a slot. At most one active run
 runs per loop + issue/PR. `state/replied-comments.json` and
 `state/reviewed-prs.json` are merged under lock into `state/agent/<project>/`.
-Operation: exactly **one** fabrik process per project (see ADR 0028).
-True parallelism needs `FABRIK_WORKERS` > 1.
+Operation: exactly **one** fabrikant process per project (see ADR 0028).
+True parallelism needs `FABRIKANT_WORKERS` > 1.
 
-## Spec format (`*.fabrik.yaml`)
+## Spec format (`*.fabrikant.yaml`)
 
 **Vollständige Feld-Referenz:** [docs/spec-reference.md](docs/spec-reference.md) — generiert aus
-[`src/fabrik/fabrik-spec.schema.json`](src/fabrik/fabrik-spec.schema.json) (Single Source of Truth;
-`fabrik validate` prüft dagegen).
+[`src/fabrikant/fabrikant-spec.schema.json`](src/fabrikant/fabrikant-spec.schema.json) (Single Source of Truth;
+`fabrikant validate` prüft dagegen).
 
 ```yaml
 name: my-app
@@ -196,7 +196,7 @@ notify:                                     # alert channels on (default: run_fa
   webhooks:                                 # generic: Datadog, CloudWatch, …
     - {name: datadog, url: https://http-intake.logs.datadoghq.com/v1/input?api_key=…}
   github_issue: true                        # on run_failed: open an issue in the repo
-  issue_labels: [fabrik]
+  issue_labels: [fabrikant]
   events: [run_failed]                      # also: [run_failed, run_passed]; run_failed includes run_exhausted
 
 loops:
@@ -205,7 +205,7 @@ loops:
     triggers:
       - {type: on_issue, labels: [migration], poll: 300}   # new issue → loop
     steps:
-      - {type: git, name: prepare, action: prepare, message: "fabrik: …"}
+      - {type: git, name: prepare, action: prepare, message: "fabrikant: …"}
       - {type: agent, name: changes, prompt_file: prompts/….md}
       - {type: shell, name: checks, cmd: "bash scripts/run_checks.sh"}
       - {type: pr, name: pr, base: master, title: "…", approval: true}
@@ -213,11 +213,11 @@ loops:
 
 ### Spec sources, `vars` and loop templates (ADR 0047)
 
-**Where specs live** (first hit wins; the same `name:` in two sources is reported as an error by `fabrik validate`):
+**Where specs live** (first hit wins; the same `name:` in two sources is reported as an error by `fabrikant validate`):
 
-1. `FABRIK_PROJECTS_PATH` — colon-separated like `PATH` (folders with `*.fabrik.yaml` or a repo with `.fabrik/fabrik.yaml`)
-2. `FABRIK_DATA/projects` (without `FABRIK_DATA`: the installation's `projects/`)
-3. Target repos with `.fabrik/fabrik.yaml`, registered via `fabrik project add <repo-path>` (without `name:` the repo folder applies, without `root:` the repo)
+1. `FABRIKANT_PROJECTS_PATH` — colon-separated like `PATH` (folders with `*.fabrikant.yaml` or a repo with `.fabrikant/fabrikant.yaml`)
+2. `FABRIKANT_DATA/projects` (without `FABRIKANT_DATA`: the installation's `projects/`)
+3. Target repos with `.fabrikant/fabrikant.yaml`, registered via `fabrikant project add <repo-path>` (without `name:` the repo folder applies, without `root:` the repo)
 4. the bundled examples in `projects/`
 
 **Paths:** `prompt_file` and `scripts/…` in shell commands are resolved relative to the spec file, then relative to the
@@ -244,8 +244,8 @@ loops:
   review-pr: {use: review-pr, with: {prompt_file: review.prompt.md}}
 ```
 
-If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to it (`.fabrik/develop.prompt.md`).
-`projects/fabrik.fabrik.yaml` is itself an instance (repo name only in `vars`).
+If the spec lives as `.fabrikant/fabrikant.yaml` in the repo, the prompts sit next to it (`.fabrikant/develop.prompt.md`).
+`projects/fabrikant.fabrikant.yaml` is itself an instance (repo name only in `vars`).
 
 ### Step types
 
@@ -253,8 +253,8 @@ If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to 
 |----------|---------------------------------------------------------------|----------|
 | `shell`  | `cmd`, `workdir`, `env`, `timeout` (default 600 s), `name`, `failure_kind` | Run `sh -c`; exit ≠ 0 aborts the loop. `failure_kind` (`outcome`\|`transient`\|`environment`) names the [failure class](#failure-classes-adr-0035) for exit ≠ 0, e.g. `outcome` for test/lint steps. Fixed exit codes take precedence: 126/127 and 78 (`EX_CONFIG`) → `environment`, 75 (`EX_TEMPFAIL`) → `transient` — this is how a script reports the class itself; death by signal (OOM kill, SIGTERM; exit > 128) stays `unknown`. Allowed on shell steps only |
 | `git`    | `fetch`, `branch`, `track`, `commit: {add, message}`, `push` | Git op; `push` blocks on protected branches; `commit` on a clean tree is a no-op |
-| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIK_ENV_FILE` / `~/.config/fabrik/fabrik.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
-| `agent`  | `backend` (e.g. `opencode`), `prompt`, `workdir`, `endpoint`, `model`, `variant` (`opencode` only: model variant from the opencode config, e.g. reasoning effort), `permissions`, `timeout`, `github_identity` — or legacy: `cmd`, `prompt` | Agent task via a pluggable backend (session + prompt + polling) or an agent CLI. Without `backend`/`cmd` = cleanly skipped. `github_identity: dev\|reviewer` (CLI backends only) sets the role's `GH_TOKEN`/`GITHUB_TOKEN` in the agent process — `gh` (and `git` with `gh` as credential helper) then runs as the builder or QA app instead of as the local user. A `gh` wrapper at the front of the PATH reads the token fresh from `FABRIK_ENV_FILE` on every call, so runs with `timeout` > 1h survive the 1h installation token |
+| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIKANT_ENV_FILE` / `~/.config/fabrikant/fabrikant.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
+| `agent`  | `backend` (e.g. `opencode`), `prompt`, `workdir`, `endpoint`, `model`, `variant` (`opencode` only: model variant from the opencode config, e.g. reasoning effort), `permissions`, `timeout`, `github_identity` — or legacy: `cmd`, `prompt` | Agent task via a pluggable backend (session + prompt + polling) or an agent CLI. Without `backend`/`cmd` = cleanly skipped. `github_identity: dev\|reviewer` (CLI backends only) sets the role's `GH_TOKEN`/`GITHUB_TOKEN` in the agent process — `gh` (and `git` with `gh` as credential helper) then runs as the builder or QA app instead of as the local user. A `gh` wrapper at the front of the PATH reads the token fresh from `FABRIKANT_ENV_FILE` on every call, so runs with `timeout` > 1h survive the 1h installation token |
 | `report` | `text`, `write` (optional: file path, relative to the project root) | Message to the run log and/or a report file |
 | `http`   | `url`, `method`, `headers`, `body`, `expect: {status}`, `emit: {var: body\|status}` | HTTP request; the response/status becomes available as a variable for following steps |
 | `llm`    | `prompt`, `schema: {var: type}`, `untrusted: [vars]`, `provider`, `model`, `temperature`, `extra_context` | Structured LLM call; the JSON is validated against the schema, keys become variables. Schema value: a type or `{type, enum, default}` — `enum` = whitelist, `default` makes the key optional. `provider` pins a configured LLM provider (otherwise the active one), `model` overrides the provider model. `untrusted` marks external content as data (prompt-injection protection). Per call, `usage` (tokens + model + provider) is written to the run record (tracing building block for cost exporters) |
@@ -266,7 +266,7 @@ If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to 
 | `review` | `model` (required), `backend`/`endpoint` (as `agent`), `target` (optional), `prompt_file` (optional; resolved as for `agent`) | Cross-model cold critic (ADR 0003): agent session with a **different model** than the builder step (engine check). The reviewer answers with a JSON verdict (`approved`\|`changes_requested` + findings, optional `acceptance` — AC verification `[{criterion, status: met\|unmet\|unverifiable, evidence}]`, ADR 0013; invalid → no verdict) → lands in the run record (`step.review`). `changes_requested` → run `fail`. `target` default: output of the last agent step |
 | `pr_review` | `repo`, `pr`, `model` (required), `backend`, `max_rounds` (default 2), `max_findings` (default 5), `fix_backend`/`fix_model`/`fix_variant` (default: last agent step), `fix_timeout` (default 1800 s), `fix_checks: [cmd]`, `fix_check_timeout` (default 900 s) | LLM review of the PR diff + GitHub review; on `changes_requested` the builder (backend/model/variant of the last `agent` step) fixes and pushes. `fix_checks` (e.g. lint + test) run after the fix **before** commit/push; a red check aborts the step (`outcome`), nothing is pushed |
 | `pr_merge` | `repo`, `pr`, `method` (`squash`\|`merge`\|`rebase`), `update_branch` (default `false`) | Merge a PR. `update_branch: true`: if the PR is behind the base, first `update-branch` (merge the base into the PR) and wait for mergeability; conflict = step red (`outcome`). The update merge commit is **not** tested again (trade-off: otherwise the PR would be stranded behind a moving `main`) |
-| `escalation` | `repo`, `item` (default `{pr_number}`, else `{issue_number}`), `label` (default `needs human`) | Escalation to a human (ADR 0057): if the item carries the label, the run pauses with a kind (`blocked`\|`stalled`\|`exhausted`\|`scope`\|`access`) and the reason from the last `fabrik-escalate` comment. Approve = resume (label removed), reject = give up (label stays). The label is set by `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`) |
+| `escalation` | `repo`, `item` (default `{pr_number}`, else `{issue_number}`), `label` (default `needs human`) | Escalation to a human (ADR 0057): if the item carries the label, the run pauses with a kind (`blocked`\|`stalled`\|`exhausted`\|`scope`\|`access`) and the reason from the last `fabrikant-escalate` comment. Approve = resume (label removed), reject = give up (label stays). The label is set by `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`) |
 
 ### `issue` step
 
@@ -302,7 +302,7 @@ never through a shell, so untrusted text (LLM output, issue body) is safe.
 - {type: issue, action: close, repo: o/r, number: "{issue_number}", comment: "Duplicate of #65"}
 ```
 
-**Auth:** `GITHUB_TOKEN` (env or `FABRIK_ENV_FILE`, developer identity as with `pr`). The
+**Auth:** `GITHUB_TOKEN` (env or `FABRIKANT_ENV_FILE`, developer identity as with `pr`). The
 token ends up in no step result; logs and run records are additionally protected by
 secret masking (`[REDACTED]`). Error → step `fail` with the HTTP status.
 
@@ -368,7 +368,7 @@ HEAD commit is reused (the develop `test` step produces it). Instead of the gate
 `scripts/sonar-pr-report.py` writes a deterministic Markdown report to stdout:
 Sonar issues only on the changed lines, lint (ruff check + ruff format + mypy) on the
 changed lines, coverage of the changed lines (`diff-cover`), key figures; last line
-`<!-- fabrik-quality sha=<head> -->`. `--post` creates it as a single
+`<!-- fabrikant-quality sha=<head> -->`. `--post` creates it as a single
 PR comment or updates it. As an `extra_context` source (`trusted: true`) it lands
 in every `pr_review` prompt; `review-pr` reads the comment. Logs go to stderr.
 
@@ -398,7 +398,7 @@ Useful for "best-effort" steps (e.g. optional cleanup or
 notification steps) that shouldn't block the rest of the loop.
 
 Every step can have `approval: true` → the run pauses **before** this step
-with status `needs_approval`. Approve via `fabrik approve <run_id>`,
+with status `needs_approval`. Approve via `fabrikant approve <run_id>`,
 `POST /api/approve` or the button in the UI. Rejecting aborts the run.
 This keeps the human completely out of the loop — stepping in only for
 the critical actions.
@@ -429,7 +429,7 @@ errors land in the run log.
 
 Substitution in `cmd`/`env`/`text`/`prompt`: `{project}`, `{root}`,
 `{workdir}`, `{branch}`, `{head}`, `{loop}`, `{trigger}`, `{run_id}`,
-`{fabrik_home}` (fabrik checkout, e.g. for `{fabrik_home}/scripts/pr-status.py` from
+`{fabrikant_home}` (fabrikant checkout, e.g. for `{fabrikant_home}/scripts/pr-status.py` from
 other projects) + all `env:` variables of the spec.
 
 ### Agent backends (P1)
@@ -439,30 +439,30 @@ the conductor stays deterministic, the agent is replaceable:
 
 | Backend    | Setup                                                        |
 |------------|--------------------------------------------------------------|
-| `opencode` | Host: `opencode serve --port 8945` + `fabrik.env`: `FABRIK_AGENT_ENDPOINT`, `FABRIK_AGENT_MODEL` (format `provider/model`); 2.x additionally `FABRIK_AGENT_PASSWORD`. With `FABRIK_SANDBOX=1`: no `serve` — one `opencode run --standalone` per session inside the sandbox container, model as `<LLM connection>/<model>` (e.g. `llama-cpp/Qwen3.8-27B-GGUF`); the provider config is derived from the connection (http endpoint, secret only if set), whose host must be on the egress allowlist. Step `permissions` are restrictive: listed patterns apply, all others of the same permission are `deny` |
+| `opencode` | Host: `opencode serve --port 8945` + `fabrikant.env`: `FABRIKANT_AGENT_ENDPOINT`, `FABRIKANT_AGENT_MODEL` (format `provider/model`); 2.x additionally `FABRIKANT_AGENT_PASSWORD`. With `FABRIKANT_SANDBOX=1`: no `serve` — one `opencode run --standalone` per session inside the sandbox container, model as `<LLM connection>/<model>` (e.g. `llama-cpp/Qwen3.8-27B-GGUF`); the provider config is derived from the connection (http endpoint, secret only if set), whose host must be on the egress allowlist. Step `permissions` are restrictive: listed patterns apply, all others of the same permission are `deny` |
 | (legacy)   | `cmd:` with any agent CLI (e.g. `claude -p {prompt_file}`) |
 
 Security layers for agent processes (can be enabled individually, see the ADRs):
 
 - **Agent env allowlist (ADR 0050):** agent subprocesses don't inherit `os.environ` —
-  only the allowlist (`agentenv.py`, extendable via `FABRIK_AGENT_ENV_EXTRA`) plus
+  only the allowlist (`agentenv.py`, extendable via `FABRIKANT_AGENT_ENV_EXTRA`) plus
   variables passed explicitly per step. For the shared `opencode serve` process:
-  `fabrik agent-env` prints the scrubbed env (systemd `EnvironmentFile` / Docker
+  `fabrikant agent-env` prints the scrubbed env (systemd `EnvironmentFile` / Docker
   `--env-file`).
-- **Egress default-deny (ADR 0051):** agent containers attach to `fabrik-sandbox`
+- **Egress default-deny (ADR 0051):** agent containers attach to `fabrikant-sandbox`
   (no direct internet access); all egress goes through a Tinyproxy with a
-  domain allowlist (`fabrik egress start`; allowlist: builtins + optional `FABRIK_EGRESS_ALLOWLIST_FILE`/
-  `FABRIK_EGRESS_ALLOWLIST`, validated). Denied requests in the proxy log are an injection signal.
+  domain allowlist (`fabrikant egress start`; allowlist: builtins + optional `FABRIKANT_EGRESS_ALLOWLIST_FILE`/
+  `FABRIKANT_EGRESS_ALLOWLIST`, validated). Denied requests in the proxy log are an injection signal.
   Known limit: the shared `opencode serve` process runs unsandboxed on the host with
-  full network access and isn't covered by the proxy (only agents in `fabrik-sandbox`).
-- **Per-run agent sandbox (ADR 0054, under revision):** with `FABRIK_SANDBOX=1`, every
+  full network access and isn't covered by the proxy (only agents in `fabrikant-sandbox`).
+- **Per-run agent sandbox (ADR 0054, under revision):** with `FABRIKANT_SANDBOX=1`, every
   one-shot CLI agent run executes in a hardened Docker container (`--cap-drop ALL`,
   no-new-privileges, resource caps, read-only root fs, egress only via the ADR 0051 proxy).
   The worktree is not mounted: the state goes in as a git bundle, the result comes
-  back as a bundle; fabrik checks it and applies the diff to the worktree. The image needs the
+  back as a bundle; fabrikant checks it and applies the diff to the worktree. The image needs the
   agent CLI and git; template with claude-code, codex, copilot, gh, Python/uv:
-  `docker build -t fabrik/agent-sandbox:latest deploy/agent-sandbox` (versions via
-  `--build-arg`, base images pinned by digest; fabrik starts it with `--pull never`).
+  `docker build -t fabrikant/agent-sandbox:latest deploy/agent-sandbox` (versions via
+  `--build-arg`, base images pinned by digest; fabrikant starts it with `--pull never`).
   A GitHub token only enters the container with `github_identity`; without it all
   token variables are empty (also for projects with `github_env_file`).
 
@@ -471,7 +471,7 @@ ADR 0005):
 - Supports opencode serve **1.x and 2.x** — the server version is detected
   automatically (`/api/info` vs. `/api/health`). 2.x requires
   HTTP basic auth: `OPENCODE_SERVER_PASSWORD` on the server +
-  `FABRIK_AGENT_PASSWORD` in `fabrik.env` (same value)
+  `FABRIKANT_AGENT_PASSWORD` in `fabrikant.env` (same value)
 - One session per step (workdir via `?directory=` (1.x) or `location`
   (2.x) → work happens in the step workdir, one serve process serves many projects)
 - Prompt + polling of the message API (no SSE needed);
@@ -539,9 +539,9 @@ Project state beats loop state; running runs finish. Optional
 `state/run-state-changes.jsonl` (who, when, from, to, until).
 
 ```bash
-fabrik pause <project> [loop] [--until 2026-01-31T18:00]
-fabrik disable <project> [loop]
-fabrik resume <project> [loop]
+fabrikant pause <project> [loop] [--until 2026-01-31T18:00]
+fabrikant disable <project> [loop]
+fabrikant resume <project> [loop]
 ```
 
 Chat: `pause|resume|disable <project> [loop]`; UI: buttons per project/loop;
@@ -549,9 +549,9 @@ API: `POST /api/projects/<p>/state`. An emergency stop for all projects is not
 part of v1. Access: role `operator` (see "Authentication and roles").
 
 - **on_webhook** — `POST /api/webhook/<project>/<loop>` (ADR 0027). Auth via
-  HMAC-SHA256 of the raw body in the header `X-Fabrik-Signature: sha256=<hex>`; wrong/
+  HMAC-SHA256 of the raw body in the header `X-Fabrikant-Signature: sha256=<hex>`; wrong/
   missing → `401`. Payload→variables via `map` (dot paths; invalid JSON `400`,
-  missing field `422`). CORS only for `FABRIK_WEBHOOK_ORIGIN` (tunnel origin, never
+  missing field `422`). CORS only for `FABRIKANT_WEBHOOK_ORIGIN` (tunnel origin, never
   `*`); over this host only the webhook route is reachable.
   ```yaml
   triggers:
@@ -561,7 +561,7 @@ part of v1. Access: role `operator` (see "Authentication and roles").
   ```
 
 - **on_alert** — `POST /api/alert/<project>/<loop>` (ADR 0045): Sentry/CloudWatch intake.
-  Auth as with `on_webhook` (HMAC in `X-Fabrik-Signature`; Sentry additionally
+  Auth as with `on_webhook` (HMAC in `X-Fabrikant-Signature`; Sentry additionally
   `Sentry-Hook-Signature`), otherwise `401`. Variables: `alert_source|title|message|level|service|url|fingerprint`.
   CloudWatch state ≠ `ALARM` → `200 ignored`, no run. Reachable via the tunnel host.
 
@@ -596,8 +596,8 @@ part of v1. Access: role `operator` (see "Authentication and roles").
 ### Relay tasks (ADR 0037)
 
 For tasks that don't fit into a single run (historical import, migration, analysis over days).
-An issue with the label `fabrik-relay` is the assignment. It runs in many short sessions, the
-handoff file lives on the branch `fabrik/relay/<N>`. On `done`, an independent,
+An issue with the label `fabrikant-relay` is the assignment. It runs in many short sessions, the
+handoff file lives on the branch `fabrikant/relay/<N>`. On `done`, an independent,
 initially blind audit checks the result. Enable per project:
 
 ```yaml
@@ -613,15 +613,15 @@ relay:
   #           audit_timeout, audit: false
 ```
 
-From this fabrik generates the loops `relay-dispatch` (cron, no agent), `relay-session` and
+From this fabrikant generates the loops `relay-dispatch` (cron, no agent), `relay-session` and
 `relay-audit`. Brief template and flow: [docs/relay.md](docs/relay.md). A human unblocks
 (checkpoint, stall, changed `## Verify`) by removing the label `relay: blocked`.
-The dispatcher needs `FABRIK_URL` (default `http://127.0.0.1:8321`) and, if applicable, `FABRIK_TOKEN`
+The dispatcher needs `FABRIKANT_URL` (default `http://127.0.0.1:8321`) and, if applicable, `FABRIKANT_TOKEN`
 for `POST /api/runs`.
 
 **Trail archive** (ADR 0037, addendum 2026-11-03): with `trail_archive`, `audit-publish` stores the trail
-(`.fabrik/relay/<N>/`) immutably after `pass` (`git-ref`: hidden ref
-`refs/fabrik/relay/<N>/audit-<k>`; `local`: `FABRIK_DATA/relay-archive/`), checks the archive against
+(`.fabrikant/relay/<N>/`) immutably after `pass` (`git-ref`: hidden ref
+`refs/fabrikant/relay/<N>/audit-<k>`; `local`: `FABRIKANT_DATA/relay-archive/`), checks the archive against
 the trail hash and only then removes the trail from the branch with a delete commit. The PR diff and merge
 thus contain only the actual change. The verdict is bound to the hash (last line of
 `AUDIT.md`, status comment). If a later session or a repeated audit needs the trail, it is
@@ -653,7 +653,7 @@ loops:
 
 Sources: **Sentry** — internal integration/webhook to the URL, client secret as
 `secret_env`. **CloudWatch** — alarm → SNS → relay (Lambda/API Gateway) that signs the body with
-HMAC (`X-Fabrik-Signature: sha256=<hex>`) and forwards it; the SNS envelope is
+HMAC (`X-Fabrikant-Signature: sha256=<hex>`) and forwards it; the SNS envelope is
 unpacked. The hotfix run is subject to the normal tier/approval gates.
 
 ### Alerts (`notify`)
@@ -681,7 +681,7 @@ After every run whose status is in `events`:
   unredacted + warning). Heuristic — still keep the targets restricted
   (ADR 0025, ADR 0026)
 
-Test: `fabrik alert test [--project X]` or `alert test` in the chat.
+Test: `fabrikant alert test [--project X]` or `alert test` in the chat.
 
 ## Chat (UI + CLI + API)
 
@@ -693,20 +693,20 @@ LLM copilot.
 `alert test [project]`, `apply <project>`
 
 **LLM copilot:** everything that isn't a command goes to the **active**
-LLM provider (OpenAI-compatible). Providers are configured in `fabrik.env`
+LLM provider (OpenAI-compatible). Providers are configured in `fabrikant.env`
 and switched in the UI (select at the top right, `POST /api/llm`):
 
 - **Named providers** (any number, e.g. Ollama + local llama.cpp):
-  `FABRIK_LLM_PROVIDERS=ollama,llama-cpp` +
-  `FABRIK_LLM_OLLAMA_URL`/`_MODEL`/`_KEY` and
-  `FABRIK_LLM_LLAMA_CPP_URL`/`_MODEL`/`_KEY`
+  `FABRIKANT_LLM_PROVIDERS=ollama,llama-cpp` +
+  `FABRIKANT_LLM_OLLAMA_URL`/`_MODEL`/`_KEY` and
+  `FABRIKANT_LLM_LLAMA_CPP_URL`/`_MODEL`/`_KEY`
   (hyphens in the name → underscores in the env prefix).
 - **CLI providers** (`_CLI` instead of `_URL`, auth = the CLI's login, no key):
-  `FABRIK_LLM_CLAUDE_CLI=claude` / `FABRIK_LLM_COPILOT_CLI=copilot` + `_MODEL`.
+  `FABRIKANT_LLM_CLAUDE_CLI=claude` / `FABRIKANT_LLM_COPILOT_CLI=copilot` + `_MODEL`.
   Runs without tools and without repo instructions (plain text answer);
   `temperature`/`max_tokens` are ignored.
-- **Legacy** (one endpoint, becomes provider `default`): `FABRIK_LLM_URL`,
-  `FABRIK_LLM_MODEL`, optionally `FABRIK_LLM_KEY`.
+- **Legacy** (one endpoint, becomes provider `default`): `FABRIKANT_LLM_URL`,
+  `FABRIKANT_LLM_MODEL`, optionally `FABRIKANT_LLM_KEY`.
 
 The active provider is persisted in `state/active_llm` (survives
 restarts); the default is the first configured provider. `llm` steps can
@@ -737,7 +737,7 @@ CLI is killed. The model dropdown sits in the chat's title bar.
 | `/api/runs` | POST `{"project","loop","note"}` | Start a run; if the project is running, it is queued (202, `queued: true`, record status `queued`) and starts with priority over trigger runs (ADR 0015). The response contains `run_id` |
 | `/api/run/<id>` | GET | Run record (steps, output) + `cost`: token/cost sum from the step usages, broken down per step and backend; `unpriced_steps` > 0 = the backend reported no cost (the sum is a lower bound) |
 | `/api/kpis/costs?project=&from=&to=` | GET | Cost rollup per project (runs, tokens, `cost_usd`, per backend) over the period (`from`/`to` as in the history, `to` as a date = the whole day) + total; the run list carries `cost` per row (issue #126) |
-| `/api/kpis?project=&from=&to=` | GET | Factory KPIs (framework-v1-draft §5) per project/loop + total: cycle time (start → accept, successful runs: avg/median/max), judge veto rate (runs with a review and `changes_requested`), defect escape (proxy: an outcome failure after an earlier successful run of the same loop = escaped; runs with a red `verify`/veto/outcome failure otherwise = caught). Also per group: `failed` (status `fail`/`error`), `runtime_s` (count/sum/mean/max over all finished runs) and `cost` (tokens, `cost_usd`, `unpriced_steps` as in `/api/kpis/costs`). Rates are `null` without data. The same values as Prometheus gauges `fabrik_kpi_*{project,loop}` in `GET /api/metrics`; KPI panel in the web UI (issue #127) |
+| `/api/kpis?project=&from=&to=` | GET | Factory KPIs (framework-v1-draft §5) per project/loop + total: cycle time (start → accept, successful runs: avg/median/max), judge veto rate (runs with a review and `changes_requested`), defect escape (proxy: an outcome failure after an earlier successful run of the same loop = escaped; runs with a red `verify`/veto/outcome failure otherwise = caught). Also per group: `failed` (status `fail`/`error`), `runtime_s` (count/sum/mean/max over all finished runs) and `cost` (tokens, `cost_usd`, `unpriced_steps` as in `/api/kpis/costs`). Rates are `null` without data. The same values as Prometheus gauges `fabrikant_kpi_*{project,loop}` in `GET /api/metrics`; KPI panel in the web UI (issue #127) |
 | `/api/run/<id>/log?lines=N` | GET | Raw run log as plain text (tail via `lines`) |
 | `/api/run/<id>/stream?project=` | GET | Live log + status changes as server-sent events (`log`/`status`/`end`); reconnect via `Last-Event-ID` (byte offset); secrets redacted (ADR 0038) |
 | `/api/run/<id>/transcript?after=&limit=` | GET | Agent turns (prompt, tool calls, answers) from the SessionLog, paginated (ADR 0038) |
@@ -749,21 +749,21 @@ CLI is killed. The model dropdown sits in the chat's title bar.
 | `/api/llm` | POST `{"provider"}` | Set the active LLM provider (persisted) |
 | `/api/health` | GET | Liveness |
 
-All `POST` routes check the origin (own host) and — if `FABRIK_TOKEN`
-is set — the bearer token; otherwise `403`. With `FABRIK_AUTH=local`,
+All `POST` routes check the origin (own host) and — if `FABRIKANT_TOKEN`
+is set — the bearer token; otherwise `403`. With `FABRIKANT_AUTH=local`,
 **all** `/api/` routes (including `GET`) check session or token according to the role (`401`/`403`);
 additionally `/api/login` (POST), `/api/logout` (POST), `/api/session` (GET).
 
 ### Connections (ADR 0052)
 
 LLM providers and agent backends can be maintained as **named connections** in the UI (⚙ at the top right,
-writing only as `admin`). Env configuration (`FABRIK_LLM_*`, `FABRIK_AGENT_*`) keeps applying and appears
+writing only as `admin`). Env configuration (`FABRIKANT_LLM_*`, `FABRIKANT_AGENT_*`) keeps applying and appears
 read-only (`env`); a UI connection with the same name overrides it.
 
 - An agent step selects via `connection: <name>`; without it, the connection marked as default applies
   (if its backend matches the step). Precedence: step fields > `connection:` > default > env.
 - Secrets (API key, server password) are stored Fernet-encrypted in the `connections` table of the
-  state DB (`FABRIK_DB_URL`) and are never returned via the API. Key: `FABRIK_SECRET_KEY`,
+  state DB (`FABRIKANT_DB_URL`) and are never returned via the API. Key: `FABRIKANT_SECRET_KEY`,
   otherwise `state/secret.key` (0600, generated automatically). Without the key, stored secrets
   are unusable — back up the key separately from the DB.
 
@@ -774,61 +774,61 @@ steps:
 
 ### Authentication and roles (ADR 0030)
 
-`FABRIK_AUTH=none` (default): as before, loopback bind only. `FABRIK_AUTH=local`:
+`FABRIKANT_AUTH=none` (default): as before, loopback bind only. `FABRIKANT_AUTH=local`:
 login with local users (`state/users.json`, scrypt), session cookie
-(HttpOnly, SameSite=Strict, `FABRIK_SESSION_TTL` seconds, default 28800) and
+(HttpOnly, SameSite=Strict, `FABRIKANT_SESSION_TTL` seconds, default 28800) and
 a CSRF header `X-CSRF-Token` on writing requests. Roles: `viewer` (read),
 `operator` (+ start runs, approve/reject, pause, chat), `admin`
-(+ LLM providers, branch switch, spec `apply`). `FABRIK_TOKEN` stays as an
+(+ LLM providers, branch switch, spec `apply`). `FABRIKANT_TOKEN` stays as an
 API token (= admin, without CSRF) for CLI/automation. Binding to a
-non-loopback address (`fabrik serve --host 0.0.0.0` / `FABRIK_HOST`) without
-`local` is refused; TLS via a reverse proxy (+ `FABRIK_COOKIE_SECURE=1`).
+non-loopback address (`fabrikant serve --host 0.0.0.0` / `FABRIKANT_HOST`) without
+`local` is refused; TLS via a reverse proxy (+ `FABRIKANT_COOKIE_SECURE=1`).
 
 ```bash
-export FABRIK_AUTH=local
-fabrik user add anna operator        # the password is prompted for (or --password-stdin)
-fabrik user passwd anna
-fabrik user role anna admin
+export FABRIKANT_AUTH=local
+fabrikant user add anna operator        # the password is prompted for (or --password-stdin)
+fabrikant user passwd anna
+fabrikant user role anna admin
 ```
 
 Run records contain `started_by`, `approved_by`, `rejected_by`.
 
-#### OIDC login (`FABRIK_AUTH=oidc`, ADR 0046)
+#### OIDC login (`FABRIKANT_AUTH=oidc`, ADR 0046)
 
 Sign-in via a central IdP (authorization code flow + PKCE, `state`/`nonce`, ID token validation
-via JWKS). Needs the extra: `pip install 'fabrik[oidc]'` (`uv sync --extra oidc`); without it
-`fabrik serve` aborts with a message. Register the redirect URI `https://<host>/api/oidc/callback`
+via JWKS). Needs the extra: `pip install 'fabrikant[oidc]'` (`uv sync --extra oidc`); without it
+`fabrikant serve` aborts with a message. Register the redirect URI `https://<host>/api/oidc/callback`
 at the IdP (https required, `http` only for loopback) and create a confidential client with a secret.
-The `state` is additionally bound via a short-lived cookie (`fabrik_oidc_state`, `SameSite=Lax`) to the
+The `state` is additionally bound via a short-lived cookie (`fabrikant_oidc_state`, `SameSite=Lax`) to the
 browser that started the login (protection against login CSRF). Logging out ends only the
-fabrik session, not the one at the IdP; the UI doesn't automatically redirect to the IdP again afterwards.
+fabrikant session, not the one at the IdP; the UI doesn't automatically redirect to the IdP again afterwards.
 
 | Variable | Meaning |
 |---|---|
-| `FABRIK_OIDC_ISSUER` | Issuer URL (discovery: `<issuer>/.well-known/openid-configuration`) |
-| `FABRIK_OIDC_CLIENT_ID` / `_CLIENT_SECRET` | Client credentials |
-| `FABRIK_OIDC_REDIRECT_URI` | must be registered at the IdP |
-| `FABRIK_OIDC_ROLE_MAP` | `group=role,…` (roles `viewer`/`operator`/`admin`; the highest wins) |
-| `FABRIK_OIDC_GROUPS_CLAIM` | Groups claim (default `groups`) |
-| `FABRIK_OIDC_SCOPES` | Default `openid profile email` |
+| `FABRIKANT_OIDC_ISSUER` | Issuer URL (discovery: `<issuer>/.well-known/openid-configuration`) |
+| `FABRIKANT_OIDC_CLIENT_ID` / `_CLIENT_SECRET` | Client credentials |
+| `FABRIKANT_OIDC_REDIRECT_URI` | must be registered at the IdP |
+| `FABRIKANT_OIDC_ROLE_MAP` | `group=role,…` (roles `viewer`/`operator`/`admin`; the highest wins) |
+| `FABRIKANT_OIDC_GROUPS_CLAIM` | Groups claim (default `groups`) |
+| `FABRIKANT_OIDC_SCOPES` | Default `openid profile email` |
 
 Anyone not in a mapped group is rejected (403). Examples:
 
 ```bash
 # Keycloak (group mapper "Group Membership" → claim "groups", full group path off)
-export FABRIK_OIDC_ISSUER=https://kc.example.com/realms/acme
-export FABRIK_OIDC_CLIENT_ID=fabrik FABRIK_OIDC_CLIENT_SECRET=...
-export FABRIK_OIDC_ROLE_MAP="fabrik-admins=admin,fabrik-ops=operator"
+export FABRIKANT_OIDC_ISSUER=https://kc.example.com/realms/acme
+export FABRIKANT_OIDC_CLIENT_ID=fabrikant FABRIKANT_OIDC_CLIENT_SECRET=...
+export FABRIKANT_OIDC_ROLE_MAP="fabrikant-admins=admin,fabrikant-ops=operator"
 
 # AWS Cognito (issuer = user pool: https://cognito-idp.<region>.amazonaws.com/<pool-id>)
-export FABRIK_OIDC_ISSUER=https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_AbCdEf
-export FABRIK_OIDC_GROUPS_CLAIM=cognito:groups
-export FABRIK_OIDC_ROLE_MAP="fabrik-admins=admin,fabrik-ops=operator"
+export FABRIKANT_OIDC_ISSUER=https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_AbCdEf
+export FABRIKANT_OIDC_GROUPS_CLAIM=cognito:groups
+export FABRIKANT_OIDC_ROLE_MAP="fabrikant-admins=admin,fabrikant-ops=operator"
 
 # Entra ID (enable the groups claim in the app registration; groups arrive as object IDs)
-export FABRIK_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
-export FABRIK_OIDC_GROUPS_CLAIM=groups
-export FABRIK_OIDC_ROLE_MAP="11111111-aaaa-...=admin,22222222-bbbb-...=operator"
+export FABRIKANT_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+export FABRIKANT_OIDC_GROUPS_CLAIM=groups
+export FABRIKANT_OIDC_ROLE_MAP="11111111-aaaa-...=admin,22222222-bbbb-...=operator"
 ```
 
 `POST /api/runs` returns `run_id` **before** the worker starts — the UI
@@ -853,7 +853,7 @@ showing each step's status, duration and usage (tokens/cost), with agent events
 (prompt / tool call / message) as drill-down items and the run's artifacts listed
 at the end (issue #128).
 
-**Single node:** on start, `fabrik serve` sets every `running` record to `error`
+**Single node:** on start, `fabrikant serve` sets every `running` record to `error`
 (restart recovery, `needs_approval` stays). Two server processes sharing a
 `runs/` directory are therefore not supported.
 
@@ -875,7 +875,7 @@ it as a badge (loop list, history, run modal), the history filters by it.
 | `outcome` | genuine negative result | tests red (`failure_kind: outcome` on the step), review `changes_requested`, merge rejected |
 | `unknown` | not classified (default, also legacy data) | everything else |
 
-Classification happens at the source (`src/fabrik/failures.py`): steps report the
+Classification happens at the source (`src/fabrikant/failures.py`): steps report the
 class in the result or raise typed errors; text patterns exist only as a
 fallback for foreign CLI output (agent CLIs, `git`). With `transient`, a
 run can carry `retry_after` (UTC), e.g. from `Retry-After`. The class doesn't change
@@ -885,7 +885,7 @@ the flow behavior; auto-retry builds on it (ADR 0036).
 
 The run status says whether the machinery ran; a step can still report a negative
 *result* — e.g. `relay-audit`: `audit-publish` runs green and publishes `fail`. A
-shell step reports this with a dedicated output line `::fabrik-verdict::<word>` (a–z, `_`, `-`,
+shell step reports this with a dedicated output line `::fabrikant-verdict::<word>` (a–z, `_`, `-`,
 max. 20 characters). The line disappears from output and summary and lands as `verdict` in the
 step record; the run's verdict is that of the last step that reported one. The UI shows it
 as a badge next to the status (list, history, run detail, step): `pass`/`done` green, `fail`/`blocked`
@@ -922,7 +922,7 @@ A closed issue or a merged/closed PR ends the chain
 As long as the chain is `pending`, there is no `run_failed`; the final
 failure arrives as `run_exhausted` — also with `events: [run_failed]`.
 
-**One-off inventory reconciliation** (`fabrik retry-backfill`, idempotent): creates a chain for
+**One-off inventory reconciliation** (`fabrikant retry-backfill`, idempotent): creates a chain for
 triggers whose *entire* runs failed (inventory from before `retry` was introduced) — if the class
 of the last run is in `on` of the loop's policy → `pending` (starts on the next scheduler tick after the backoff;
 a `retry_after` of the last run counts, capped at `max_wait`), every other
@@ -935,28 +935,28 @@ non-failed runs stay untouched.
 
 ### Run store (ADR 0034)
 
-Runs are read and written only via the run store (`fabrik.runstore.STORE`);
-the backend is selected by `FABRIK_RUN_STORE`:
+Runs are read and written only via the run store (`fabrikant.runstore.STORE`);
+the backend is selected by `FABRIKANT_RUN_STORE`:
 
-- `sql` (default): relational schema (SQLAlchemy Core + Alembic) under `FABRIK_DB_URL`,
-  default `sqlite:///$FABRIK_HOME/state/fabrik.db` (WAL, `busy_timeout`,
+- `sql` (default): relational schema (SQLAlchemy Core + Alembic) under `FABRIKANT_DB_URL`,
+  default `sqlite:///$FABRIKANT_HOME/state/fabrikant.db` (WAL, `busy_timeout`,
   foreign keys). Tables for runs, steps, usage, review results, verify checks,
   approvals, run variables and the session log (`run_events`, `run_artifacts`,
   `run_checkpoints`); the DB enforces status, required fields and foreign keys. The
-  schema migrates to `head` automatically on first access (`src/fabrik/migrations`).
+  schema migrates to `head` automatically on first access (`src/fabrikant/migrations`).
   Run search is an indexed `SELECT`. Run logs (`runs/<project>/<id>.log`)
   stay files.
 - `json`: the former storage `runs/<project>/<id>.json` (fallback, tests).
 
-Existing run JSON and `sessionlog.db` are taken over by `fabrik migrate-runs` (first
+Existing run JSON and `sessionlog.db` are taken over by `fabrikant migrate-runs` (first
 `--dry-run`: writes nothing and lists every record that can't be mapped or that differs,
 with run ID and reason; idempotent). After a real import, the imported run JSON
 is moved to `state/runs-archive/` (never deleted; layout
 like `runs/`) — broken or differing records stay in `runs/`. Sessions
 without a run record (e.g. test leftovers) are counted, not imported.
 
-In the SQL store, runs are no longer readable via `cat`/`jq`: `fabrik runs show <run_id>`
-shows a single run (fields, steps, session log counts), `fabrik runs export
+In the SQL store, runs are no longer readable via `cat`/`jq`: `fabrikant runs show <run_id>`
+shows a single run (fields, steps, session log counts), `fabrikant runs export
 <run_id>` prints record + session log as JSON.
 
 ### Session log (SQLite, ADR 0002)
@@ -965,7 +965,7 @@ In the SQL store (default) the session log lives in the run store (see above); w
 follows describes the JSON operation.
 
 Next to the run JSONs there is an append-only event store:
-`$FABRIK_HOME/sessionlog.db` (override: `FABRIK_SESSIONLOG`), WAL mode.
+`$FABRIKANT_HOME/sessionlog.db` (override: `FABRIKANT_SESSIONLOG`), WAL mode.
 Tables: `sessions` (one row per run), `events`
 (`run_start`/`step_start`/`step_done`/`tool_call`/`message`/`cost`/
 `approval`/`run_end`), `artifacts`, `checkpoints` (only `pass` steps).
@@ -974,7 +974,7 @@ The run JSON stays the single source of truth for the engine — the log is
 a durable, queryable projection (raw data: tokens + cost from the agent,
 no price table). Agent steps additionally land tool-call events per
 newly seen tool. Existing P0 runs are imported via
-`fabrik import-runs` (idempotent, `source='import'` — native sessions
+`fabrikant import-runs` (idempotent, `source='import'` — native sessions
 win). Log errors never fail a run (best effort).
 
 ## SonarQube scan
@@ -984,7 +984,7 @@ win). Log errors never fail a run (best effort).
 loop `sonar-pr`). The daily main scan additionally cleans up orphaned
 legacy PR projects (`scripts/sonar-pr-cleanup.py`, ADR 0053): before native
 PR analysis (#524), a separate project
-`<org>:fabrik:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
+`<org>:fabrikant:pr-<n>` was created per PR. All `…:pr-<n>` projects whose PR
 is no longer open on GitHub are listed and deleted. Fail-safe:
 undeterminable PR status → the project stays; a cleanup failure is
 only a warning and doesn't change the scan's exit code.
@@ -992,19 +992,19 @@ only a warning and doesn't change the scan's exit code.
 
 ## Deployment profile (ADR 0056)
 
-`--profile homelab|cloud` (global, before the subcommand) or `FABRIK_PROFILE`; default `homelab`,
-CLI beats env. At startup the profile selects the adapter per port (`fabrik.profiles`):
+`--profile homelab|cloud` (global, before the subcommand) or `FABRIKANT_PROFILE`; default `homelab`,
+CLI beats env. At startup the profile selects the adapter per port (`fabrikant.profiles`):
 `homelab` → local store, `cloud` → placeholder (`NotImplementedError`, until the follow-up issues
 land). New ports/adapters are registered in `profiles._build_default_registry`; the
 business logic doesn't know the profile name (guard test in `tests/test_profiles.py`).
 
 ## Security
 
-- The server binds to **127.0.0.1 only by default**; other addresses only with `FABRIK_AUTH=local` or `oidc`
+- The server binds to **127.0.0.1 only by default**; other addresses only with `FABRIKANT_AUTH=local` or `oidc`
 - The API is hardened against cross-origin: `POST` requests are accepted only from the own
   origin (no `Access-Control-Allow-Origin: *`), so that an
   arbitrary web page in the operator's browser can't fire shell steps
-  (drive-by RCE). Optional: `FABRIK_TOKEN` enforces a bearer token for all
+  (drive-by RCE). Optional: `FABRIKANT_TOKEN` enforces a bearer token for all
   `POST` endpoints.
 - Pushing to `main`/`master` (or the `protected:` list) is hard-refused
 - Substituted branch/head names (`git`/`pr` step) are validated before git/API calls
@@ -1014,10 +1014,10 @@ business logic doesn't know the profile name (guard test in `tests/test_profiles
   `report.write` paths must stay inside the project root
 - LLM steps inject only schema keys into the ctx (no overwriting of
   trusted variables — untrusted input stays data)
-- Secrets are masked from logs **and** run records (env + `fabrik.env` +
+- Secrets are masked from logs **and** run records (env + `fabrikant.env` +
   spec env values); git error messages are redacted
 - SonarQube: use only the cached token from `state/sonar-token.txt`
-  (`state/` and `fabrik.env` are gitignored); `SONAR_ADMIN_PASSWORD` serves
+  (`state/` and `fabrikant.env` are gitignored); `SONAR_ADMIN_PASSWORD` serves
   exclusively to mint a fresh token — never write it to the repo, issues,
   commits or logs
 - `send` loops (irreversible, e.g. Signal) are `manual`-only
@@ -1039,10 +1039,10 @@ gh label delete "ready to develop" --repo OWNER/REPO --yes   # optional, afterwa
 
 ## Projects in use
 
-fabrik runs several private projects in production — e.g. a CMS migration
+fabrikant runs several private projects in production — e.g. a CMS migration
 (issue→PR loop with approval gate and failure alerts), a game project
 (lint/test loops) and a meeting pipeline. Their specs stay with each
-project (`FABRIK_DATA` or `.fabrik/fabrik.yaml` in the repo).
+project (`FABRIKANT_DATA` or `.fabrikant/fabrikant.yaml` in the repo).
 
 ## Licensing
 
@@ -1052,17 +1052,17 @@ project (`FABRIK_DATA` or `.fabrik/fabrik.yaml` in the repo).
   plugin contract. Free to use, modify and redistribute, including
   commercially.
 - **Closed / enterprise features** — separate packages built on the
-  `fabrik.steps` plugin contract (ADR 0069), under a commercial license and
+  `fabrikant.steps` plugin contract (ADR 0069), under a commercial license and
   distributed outside this repo. The core never requires them.
-- **SaaS** — fabrik as a hosted service is a service offering and is not
+- **SaaS** — fabrikant as a hosted service is a service offering and is not
   covered by this repository's license.
 
 ## Roadmap
 
 - [x] `agent` steps with the opencode backend (P1; SPIKE: `docs/spike-opencode.md`)
-- [x] SQLite session log (final schema, ADR 0002; `fabrik import-runs`)
+- [x] SQLite session log (final schema, ADR 0002; `fabrikant import-runs`)
 - [x] `review` step: cross-model cold critic (ADR 0003)
 - [ ] More agent backends (claude/codex) via the same interface
 - [ ] Loop dependencies (loop A must be green before loop B)
-- [x] Bounded worker pool for trigger runs (`FABRIK_WORKERS`; local = 1)
+- [x] Bounded worker pool for trigger runs (`FABRIKANT_WORKERS`; local = 1)
 - [ ] Spec editor in the UI (direct, without chat)

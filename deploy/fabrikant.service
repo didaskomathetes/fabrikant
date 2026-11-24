@@ -1,0 +1,40 @@
+# Fabrik — Software-Fabrik (Engine + UI + Scheduler) als systemd-User-Service.
+#
+# Ohne diesen Service lebt der Scheduler NUR im `fabrikant serve`-Prozess —
+# Terminal zu / Reboot → keine cron-Trigger mehr (Regression: review-pr
+# 2026-10-18, cron lief nicht, weil der Foreground-Prozess gestorben war).
+#
+# Install:
+#   cp fabrikant/deploy/fabrikant.service ~/.config/systemd/user/fabrikant.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fabrikant
+#
+# Status/Logs:
+#   systemctl --user status fabrikant
+#   journalctl --user -u fabrikant -f
+#
+# Auto-Update nach Merges: fabrikant-autoupdate.{service,timer}.
+# ExecStartPre merkt sich den gestarteten Commit (state/serve-commit), daran
+# erkennt scripts/fabrikant-autoupdate.py, ob ein Neustart fällig ist.
+#
+# Alle Secrets kommen aus fabrikant/fabrikant.env (wird von config.py geladen) —
+# keine Shell-Env-Variablen nötig.
+#
+# Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
+# ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
+
+[Unit]
+Description=Fabrik — Software-Fabrik (Engine + UI + Scheduler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/fabrikant/deploy.env
+ExecStartPre=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && mkdir -p state && git rev-parse HEAD > state/serve-commit'
+ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && exec .venv/bin/fabrikant serve'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

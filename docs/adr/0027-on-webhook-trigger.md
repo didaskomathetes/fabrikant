@@ -13,11 +13,11 @@ Tunnel (cloudflared) würde ihn öffentlich machen: `POST /api/runs` ohne
 
 - **Route:** `POST /api/webhook/<projekt>/<loop>`; Loop braucht einen
   `on_webhook`-Trigger (`secret_env`, optional `map`).
-- **Auth:** HMAC-SHA256 über den rohen Body im Header `X-Fabrik-Signature:
+- **Auth:** HMAC-SHA256 über den rohen Body im Header `X-Fabrikant-Signature:
   sha256=<hex>`, Vergleich per `hmac.compare_digest`. Fehlende/falsche Signatur,
   unbekanntes Projekt/Loop, kein Trigger oder ungesetztes Secret → einheitlich
   **401** (kein Existenz-Orakel); es startet nie ein Run. Die Route ist von
-  Origin/`FABRIK_TOKEN` ausgenommen (Aufrufer sind Server; HMAC ersetzt sie).
+  Origin/`FABRIKANT_TOKEN` ausgenommen (Aufrufer sind Server; HMAC ersetzt sie).
 - **Secret-Handhabung:** Das Spec nennt nur den Env-Namen (`secret_env`), nie den
   Wert. Pro Loop ein eigenes Secret. Kein Replay-Schutz (Timestamp/Nonce) in
   diesem Schritt — bewusst ausgeklammert, Folge-Issue falls nötig.
@@ -30,12 +30,12 @@ Tunnel (cloudflared) würde ihn öffentlich machen: `POST /api/runs` ohne
 - **Ein Code-Pfad:** Der Start läuft über `FabrikHandler._start_run` — dieselbe
   Funktion wie `POST /api/runs` ("Run mit Initial-Variablen starten"); Trigger
   `on_webhook`, Antwort mit `run_id`, 409 bei belegtem Projekt-Lock.
-- **CORS:** `FABRIK_WEBHOOK_ORIGIN` (z. B. `https://hooks.example.com`). Nur auf der
+- **CORS:** `FABRIKANT_WEBHOOK_ORIGIN` (z. B. `https://hooks.example.com`). Nur auf der
   Webhook-Route und nur bei exakt gleichem `Origin` wird
   `Access-Control-Allow-Origin` gesetzt (+ Preflight `OPTIONS`). Nie `*`.
 - **Tunnel-Exposition:** Requests mit `Host` = Tunnel-Host erreichen ausschließlich
   `/api/webhook/*` (alles andere 404). Der Tunnel muss den Original-Host
-  durchreichen (cloudflared-Default). Ohne `FABRIK_WEBHOOK_ORIGIN` gibt es keine
+  durchreichen (cloudflared-Default). Ohne `FABRIKANT_WEBHOOK_ORIGIN` gibt es keine
   Sperre und kein CORS; der Operator darf den Tunnel dann nicht öffnen.
 
 ## Konsequenzen

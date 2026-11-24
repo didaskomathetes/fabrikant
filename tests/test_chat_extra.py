@@ -9,7 +9,7 @@ import time
 import pytest
 from helpers import not_none
 
-from fabrik import chat, config, engine, llm, runs
+from fabrikant import chat, config, engine, llm, runs
 
 
 @pytest.fixture
@@ -17,12 +17,12 @@ def clean_llm(monkeypatch, tmp_path):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "test-model")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "test-model")
     llm.reset_cache()
     llm.set_active("dummy")
     yield
@@ -49,7 +49,7 @@ def _drain_resume_workers():
 def _write_spec(projects_dir, name="p", root=None):
     root = root or projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f'name: {name}\nroot: {root}\nloops:\n  l:\n    steps:\n      - {{type: shell, cmd: "true"}}\n'
     )
 
@@ -107,7 +107,7 @@ def test_chat_lauf_unknown_loop(projects_dir, tmp_path):
 
 def test_chat_lauf_starts(projects_dir, tmp_path, monkeypatch):
     _write_spec(projects_dir, "p", root=tmp_path / "proj")
-    from fabrik import engine
+    from fabrikant import engine
 
     done = threading.Event()
     monkeypatch.setattr(engine, "run_loop", lambda *a, **k: done.set())
@@ -492,7 +492,7 @@ def test_chat_alert_test_no_notify(projects_dir, tmp_path):
 def test_chat_alert_test_sends(projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nnotify:\n  slack: https://x\nloops:\n  l:\n    steps:\n      - {{type: shell, cmd: "true"}}\n'
     )
     monkeypatch.setattr(chat, "_notify", lambda spec, rec: ["slack:200"])
@@ -503,7 +503,7 @@ def test_chat_alert_test_sends(projects_dir, tmp_path, monkeypatch):
 def test_chat_alert_test_filter_project(projects_dir, tmp_path, monkeypatch):
     root = tmp_path / "proj"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nnotify:\n  slack: https://x\nloops:\n  l:\n    steps:\n      - {{type: shell, cmd: "true"}}\n'
     )
     monkeypatch.setattr(chat, "_notify", lambda spec, rec: ["slack:200"])
@@ -530,7 +530,7 @@ def test_llm_chat_no_provider(monkeypatch, projects_dir):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     llm.reset_cache()
     assert chat._llm_chat("hi") is None
@@ -601,10 +601,10 @@ def test_chat_llm_fallback_no_config(monkeypatch, projects_dir):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     llm.reset_cache()
-    out = chat._chat("was ist fabrik?")
+    out = chat._chat("was ist fabrikant?")
     assert "Kein LLM konfiguriert" in out
     llm.reset_cache()
 

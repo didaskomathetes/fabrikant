@@ -47,7 +47,7 @@ Loops + Bezugs kann starten.
   nicht-blockierend; der Chat-/Server-Resume läuft über `blocking=True`).
 
   ```
-  CLI: fabrik approve r1        (r1 = needs_approval, pr_number=5)
+  CLI: fabrikant approve r1        (r1 = needs_approval, pr_number=5)
 
   claim_run(vars={pr_number: 5})                          → None  ✖ (eigener Record)
   claim_run(vars={pr_number: 5}, exclude_run_id="r1")     → Claim ✔

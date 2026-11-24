@@ -7,9 +7,9 @@ from urllib import parse
 
 import pytest
 
-from fabrik import gitops
-from fabrik.hosting import get_provider
-from fabrik.steps import notify
+from fabrikant import gitops
+from fabrikant.hosting import get_provider
+from fabrikant.steps import notify
 
 
 def _record(project: str = "p", loop: str = "l", status: str = "fail", rid: str = "r1") -> dict:
@@ -73,7 +73,7 @@ def test_notify_github_issue(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None, accept=None: {"number": 42})
     spec = {
-        "notify": {"events": ["run_failed"], "github_issue": True, "issue_labels": ["fabrik"]},
+        "notify": {"events": ["run_failed"], "github_issue": True, "issue_labels": ["fabrikant"]},
         "github": "o/r",
     }
     sent = notify._notify(spec, _record(status="error"))
@@ -174,7 +174,7 @@ _COPILOT_FAIL = "agent session fehlgeschlagen: copilot: Session endete ohne fina
 
 
 def _failed(rid: str, sid: str = "8a1f1b454c95", summary: str = _COPILOT_FAIL, step: str = "review") -> dict:
-    rec = _record(project="fabrik", loop="review-pr", status="fail", rid=rid)
+    rec = _record(project="fabrikant", loop="review-pr", status="fail", rid=rid)
     rec["steps"] = [
         {"name": "prepare", "status": "pass", "summary": "ok"},
         {"name": step, "status": "fail", "summary": summary.format(sid=sid)},
@@ -209,7 +209,7 @@ class _FakeGitHub:
 
 def _gh_spec() -> dict:
     return {
-        "notify": {"events": ["run_failed"], "github_issue": True, "issue_labels": ["fabrik-alert"]},
+        "notify": {"events": ["run_failed"], "github_issue": True, "issue_labels": ["fabrikant-alert"]},
         "github": "o/r",
     }
 
@@ -288,7 +288,7 @@ def test_alert_dedup_comments_on_open_issue(monkeypatch: pytest.MonkeyPatch) -> 
     # Lookup filtert offene Issues mit den Alert-Labels
     get_url = next(c[1] for c in fake.calls if c[0] == "GET")
     assert "state=open" in get_url
-    assert "labels=fabrik-alert" in get_url
+    assert "labels=fabrikant-alert" in get_url
 
 
 def test_alert_new_issue_for_different_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -316,10 +316,10 @@ def test_alert_issue_body_carries_marker_and_title_without_run_id(monkeypatch: p
     notify._notify(_gh_spec(), rec)
     (_, _, payload) = fake.posts("/issues")[0]
     assert payload is not None
-    assert f"fabrik-alert:fp={notify._alert_fingerprint(rec)}" in payload["body"]
-    assert payload["title"].startswith("[fabrik] fabrik/review-pr FAILED [unknown] — review:")
+    assert f"fabrikant-alert:fp={notify._alert_fingerprint(rec)}" in payload["body"]
+    assert payload["title"].startswith("[fabrikant] fabrikant/review-pr FAILED [unknown] — review:")
     assert rec["id"] not in payload["title"]
-    assert payload["labels"] == ["fabrik-alert"]
+    assert payload["labels"] == ["fabrikant-alert"]
 
 
 def test_alert_environment_title_bare_body_highlighted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -331,7 +331,7 @@ def test_alert_environment_title_bare_body_highlighted(monkeypatch: pytest.Monke
     notify._notify(_gh_spec(), rec)
     (_, _, payload) = fake.posts("/issues")[0]
     assert payload is not None
-    assert payload["title"].startswith("[fabrik] fabrik/review-pr FAILED [environment] — review:")
+    assert payload["title"].startswith("[fabrikant] fabrikant/review-pr FAILED [environment] — review:")
     assert "braucht einen Menschen" not in payload["title"]
     assert "braucht einen Menschen" in payload["body"]
 
@@ -345,7 +345,7 @@ def test_alert_title_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
     (_, _, payload) = fake.posts("/issues")[0]
     assert payload is not None
     title = payload["title"]
-    prefix = "[fabrik] fabrik/review-pr FAILED [unknown] — review: "
+    prefix = "[fabrikant] fabrikant/review-pr FAILED [unknown] — review: "
     assert title.startswith(prefix)
     sanitized = title[len(prefix) :]
     assert "\n" not in title
@@ -380,7 +380,7 @@ def test_alert_lookup_paginates_beyond_first_page(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _paged)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 3
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], marker) == 3
 
 
 def test_alert_lookup_caps_page_size_to_github_max(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -402,7 +402,7 @@ def test_alert_lookup_caps_page_size_to_github_max(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _capped)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 3
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], marker) == 3
 
 
 def test_alert_lookup_aborts_after_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -421,7 +421,7 @@ def test_alert_lookup_aborts_after_max_pages(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _infinite)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], "marker") is None
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], "marker") is None
     assert calls == 2
 
 
@@ -439,7 +439,7 @@ def test_alert_lookup_skips_pull_requests(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _gh)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 2
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], marker) == 2
 
 
 def test_alert_fingerprint_normalizes_ids_to_named_token() -> None:
@@ -490,17 +490,17 @@ def test_alert_dedup_with_multiple_labels(monkeypatch: pytest.MonkeyPatch) -> No
     fake = _FakeGitHub()
     _patch_gh(monkeypatch, fake)
     spec = _gh_spec()
-    spec["notify"]["issue_labels"] = ["fabrik-alert", "team-x"]
+    spec["notify"]["issue_labels"] = ["fabrikant-alert", "team-x"]
     first = notify._notify(spec, _failed("run-a"))
     second = notify._notify(spec, _failed("run-b", sid="bbbbbbbbbbbb"))
     assert first == ["issue#100"]
     assert second == ["issue#100(+)"]
     get_url = next(c[1] for c in fake.calls if c[0] == "GET")
     # each label quoted, joined by literal commas (a comma *inside* a label would be %2C)
-    assert "labels=fabrik-alert,team-x" in get_url
+    assert "labels=fabrikant-alert,team-x" in get_url
     (_, _, payload) = fake.posts("/issues")[0]
     assert payload is not None
-    assert payload["labels"] == ["fabrik-alert", "team-x"]
+    assert payload["labels"] == ["fabrikant-alert", "team-x"]
 
 
 def test_alert_lookup_labels_with_special_chars_are_percent_encoded(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -540,7 +540,7 @@ def test_alert_lookup_unexpected_shape_returns_none(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _dict_response)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], "marker") is None
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], "marker") is None
 
 
 def test_alert_lookup_skips_non_dict_elements(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -557,7 +557,7 @@ def test_alert_lookup_skips_non_dict_elements(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", _gh)
-    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrik-alert"], marker) == 2
+    assert notify._find_open_alert(get_provider("o/r"), "o/r", ["fabrikant-alert"], marker) == 2
 
 
 def test_alert_comment_post_failure_reports_error(monkeypatch: pytest.MonkeyPatch) -> None:

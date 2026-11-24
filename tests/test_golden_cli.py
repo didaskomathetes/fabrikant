@@ -1,12 +1,12 @@
-"""CLI tests for ``fabrik golden`` / ``fabrik eval``: exit codes and guard paths (roadmap #130)."""
+"""CLI tests for ``fabrikant golden`` / ``fabrikant eval``: exit codes and guard paths (roadmap #130)."""
 
 from __future__ import annotations
 
 import pytest
 
-from fabrik import cli
-from fabrik.golden import GoldenError
-from fabrik.replay import ReplayError
+from fabrikant import cli
+from fabrikant.golden import GoldenError
+from fabrikant.replay import ReplayError
 
 
 class _Claim:
