@@ -113,3 +113,35 @@ immer.
 - Read-only Zugang für den Prüfer stellt das Projekt bereit; fabrikant kann ihn nicht erzwingen.
 - Der Prüfer kann nur die Invarianten prüfen. Nicht spezifizierte Transformationen meldet er,
   bewerten muss sie ein Mensch.
+
+## Configuration (ADR 0037)
+
+For tasks that don't fit into a single run (historical import, migration, analysis over days). An issue with the
+label `fabrikant-relay` is the assignment. It runs in many short sessions, the handoff file lives on the branch
+`fabrikant/relay/<N>`. On `done`, an independent, initially blind audit checks the result. Enable per project:
+
+```yaml
+relay:
+  allowed: [alice]             # required: only these logins may approve briefs (label + body)
+  forbid: [infrastructure/**]  # paths that sessions never commit
+  builder: {model: ...}        # sessions (github_identity dev)
+  reviewer: {model: ...}       # audit (github_identity reviewer, read-only)
+  bot_login: my-builder-app    # required: read the status comment only from this identity; commit author
+  retry: {max: 3, backoff: [5m, 30m, 2h], "on": [interrupted, transient], max_wait: 24h}  # like run retry (ADR 0036); off by default
+  trail_archive: {type: git-ref}  # after audit pass, archive the trail + remove it from the branch (git-ref | local)
+  # optional: repo, base, label, dispatch (cron), max_session_minutes, verify_timeout,
+  #           audit_timeout, audit: false
+```
+
+From this fabrikant generates the loops `relay-dispatch` (cron, no agent), `relay-session` and `relay-audit`.
+A human unblocks (checkpoint, stall, changed `## Verify`) by removing the label `relay: blocked`. The dispatcher
+needs `FABRIKANT_URL` (default `http://127.0.0.1:8321`) and, if applicable, `FABRIKANT_TOKEN` for
+`POST /api/runs`.
+
+**Trail archive** (ADR 0037, addendum 2026-11-03): with `trail_archive`, `audit-publish` stores the trail
+(`.fabrikant/relay/<N>/`) immutably after `pass` (`git-ref`: hidden ref `refs/fabrikant/relay/<N>/audit-<k>`;
+`local`: `FABRIKANT_DATA/relay-archive/`), checks the archive against the trail hash and only then removes the
+trail from the branch with a delete commit. The PR diff and merge thus contain only the actual change. The
+verdict is bound to the hash (last line of `AUDIT.md`, status comment). If a later session or a repeated audit
+needs the trail, it is restored from the archive (hash check, otherwise the step fails). Without `trail_archive`
+the trail stays on the branch; the status comment warns as soon as a PR from the branch exists.

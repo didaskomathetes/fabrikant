@@ -1,5 +1,5 @@
 """deploy/*.service|timer — keine hartkodierten Checkout-Pfade; Services lösen den
-Checkout über FABRIKANT_HOME aus ~/.config/fabrikant/deploy.env auf (README, „Lokaler Betrieb")."""
+Checkout über FABRIKANT_HOME aus ~/.config/fabrikant/deploy.env auf (docs/operations.md)."""
 
 from __future__ import annotations
 

@@ -78,3 +78,22 @@ Bringt das Projekt ein eigenes Scan-Skript mit (eigene `sonar-project.properties
 der Loop dieses als `SONAR_SCANNER` auf, mit `SONAR_TEST_CMD=true` und leerem `SONAR_COVERAGE_PATHS`.
 Das Skript muss seine Argumente (`-Dsonar.branch.name` / `-Dsonar.pullrequest.*`) an den Scanner
 weiterreichen.
+
+## PR mode: quality report in the review
+
+`bash scripts/sonar-scan.sh --pr <n> [--post] [--base main]` scans the current workdir (PR head) under its own
+key `<projectKey>:pr-<n>` (advisory; the main analysis stays untouched). A `coverage.xml` newer than the HEAD
+commit is reused (the develop `test` step produces it). Instead of the gate, `scripts/sonar-pr-report.py` writes a
+deterministic Markdown report to stdout: Sonar issues only on the changed lines, lint on the changed lines,
+coverage of the changed lines (`diff-cover`), key figures; last line `<!-- fabrikant-quality sha=<head> -->`.
+`--post` creates it as a single PR comment or updates it. As an `extra_context` source (`trusted: true`, see
+[steps.md](steps.md#extra_context-all-llm-nodes)) it lands in every `pr_review` prompt; `review-pr` reads the
+comment. Logs go to stderr.
+
+## Orphaned legacy PR projects (ADR 0053)
+
+The daily main scan also cleans up orphaned legacy PR projects (`scripts/sonar-pr-cleanup.py`): before native PR
+analysis (#524), a separate project `<org>:fabrikant:pr-<n>` was created per PR. All `...:pr-<n>` projects whose
+PR is no longer open on GitHub are listed and deleted. Fail-safe: undeterminable PR status → the project stays; a
+cleanup failure is only a warning and doesn't change the scan's exit code.
+`scripts/sonar-pr-cleanup.py --dry-run` shows what would be deleted.

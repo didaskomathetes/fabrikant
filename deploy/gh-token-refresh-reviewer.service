@@ -5,7 +5,7 @@
 # (state/github.env). fabrikant liest die Datei pro API-Call neu — kein Restart.
 #
 # Install:
-#   cp fabrikant/deploy/gh-token-refresh-reviewer.{service,timer} ~/.config/systemd/user/
+#   cp deploy/gh-token-refresh-reviewer.{service,timer} ~/.config/systemd/user/
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now gh-token-refresh-reviewer.timer
 #
@@ -17,7 +17,7 @@
 # aus fabrikant/fabrikant.env — das Script lädt es selbst als Fallback.
 #
 # Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
+# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
 
 [Unit]
 Description=Fabrikant — GitHub-App-Installation-Token refresh (fabrikant-reviewer)

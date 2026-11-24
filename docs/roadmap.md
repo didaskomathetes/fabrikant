@@ -216,5 +216,7 @@ tracker):
   (#24, #74), English README (#23), full migration (#134; remainder after PRs #162–#165)
 - **Self-optimization:** falsifiable improvement proposals — design
   proposal merged (#174), implementation tracked in issue #176
+- **Engine:** loop dependencies (loop A must be green before loop B); direct spec editor in the UI beyond the
+  graph view (the spec `PUT` API exists)
 - **Refactors:** typed `AgentPollResult` (#19), typed run model
   continuation (#18), server dispatch table (#54)
