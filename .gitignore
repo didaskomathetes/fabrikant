@@ -11,3 +11,11 @@ fabrikant.env
 selftest/reports/
 # GitHub-App-Private-Keys gehören nach ~/.config/fabrikant/ (0600), nie ins Repo
 *.pem
+
+# local agent/IDE state and personal notes
+.claude/
+.idea/
+.coverage
+features.md
+# legacy local env file (was accidentally tracked by the rename)
+fabrik.env
