@@ -15,8 +15,7 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
   context (ideally a different vendor) for the review — the Cold Critic
   (ADR 0003). Model choice is configuration, not architecture
   (ADR 0022).
-- **Interface history.** The v1.1 design draft
-  ([`archive/framework-v1-draft.md`](archive/framework-v1-draft.md), §2)
+- **Interface history.** An early design draft
   proposed a frozen `AgentBackend` base class with
   `create_session`/`run`/`resume`/`health`/`budget`. That design was never
   frozen: the interface above is implicit (no base class) and shaped by
@@ -74,7 +73,7 @@ Rest des Streams (copilot: exit 0, JSONL ohne `result`-Event; #153).
 ## opencode (P1)
 
 Langlaufender HTTP-Server (`opencode serve`), persistente Sessions, Polling über
-`GET /session/{id}/message`. Details: [`archive/spike-opencode.md`](archive/spike-opencode.md).
+`GET /session/{id}/message`. 
 
 **Modelle** sind `provider/id` — der Provider muss in der opencode-Config
 (`~/.config/opencode/opencode.jsonc`) des serve-Prozesses existieren.

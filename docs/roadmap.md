@@ -1,11 +1,7 @@
 # Roadmap
 
-Living plan for fabrikant. This document supersedes the phase plan of the
-archived v1.1 design draft
-([`archive/framework-v1-draft.md`](archive/framework-v1-draft.md)): it keeps the
-draft's principles, its P0→P3 structure and its KPI definitions, reconciled
-with what is actually shipped (ADRs + code) and what is in flight (PRs,
-issues).
+Living plan for fabrikant: principles, the P0→P3 phase structure and KPI definitions,
+reconciled with what is actually shipped (ADRs + code) and what is in flight (PRs, issues).
 
 Statuses as of 2026-11-23.
 
@@ -75,7 +71,7 @@ open (P2).
 
 | Draft item | Status | Pointer |
 |---|---|---|
-| SPIKE: `opencode serve` (resume, cost, health, workdir) | shipped (spike done) | [`archive/spike-opencode.md`](archive/spike-opencode.md) |
+| SPIKE: `opencode serve` (resume, cost, health, workdir) | shipped (spike done) | ADR 0005 |
 | `AgentBackend` interface freeze incl. `resume`/`health`/`budget` | **reconciled:** never frozen as a base class — the shipped interface is implicit (no base class) and shaped by what backends support | [backends.md](backends.md); per-session `resume` does not exist, recovery is run-level (ADR 0036) |
 | `opencode` backend (primary, HTTP, session API) | shipped | ADR 0005 (dual 1.x/2.x) |
 | One-shot CLI backends (`claude_code`, `codex`, `copilot`) | shipped (beyond the draft's single `cli` backend) | [backends.md](backends.md) |
@@ -136,73 +132,9 @@ its mechanics one by one, mostly on the homelab profile.
 | ACP backend (OpenHands via SDK/ACP) | deferred — observe, not adopt | ADR 0044 |
 | `hermes` backend for non-dev workflows | dropped | no demand; watch only (ADR 0044) |
 
-## First wins (strategy 2026-11-17)
-
-The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-23.
-
-**1. Observability & KPIs** — shipped
-
-- Per-run cost rollup (cost-per-change) from `step_usage` — issue #126 (shipped, #142)
-- Factory KPIs from the run store: cycle time, defect escape, judge veto — issue #127 (shipped, #143/#168)
-- Trace view per run in the web UI (steps, durations, usage, agent events) — issue #128 (shipped, #173)
-
-**2. Reproducibility & evals**
-
-- Replay: deterministic re-execution of a run from pinned inputs — issue #129 (shipped, #170, ADR 0061)
-- Golden runs + eval harness ("this pipeline change did not regress my
-  loops" as a provable statement) — issue #130 (core shipped, #177, ADR 0065; gaps: goldens are sidecar files
-  instead of run-store marks, CLI is `fabrikant eval <project> <loop>`, opt-in CI
-  workflow still in `docs/ci/golden-eval.yml`, no user-facing docs)
-
-**3. Spec as a standard**
-
-- JSON schema for `*.fabrikant.yaml`, single source of truth for validation
-  and docs — issue #131 (shipped, #169)
-- fabrikant as an MCP server (runs, specs, approvals reachable from any
-  MCP-capable agent) — issue #132 (shipped, #178, ADR 0064, incl. the
-  `validate_spec` tool; ADR 0064 amendment in draft PR #183)
-- Grow the template library (≥5 documented, versioned templates) — issue #133 (not started)
-
-## Known contradictions & stale ADRs
-
-Tracked for follow-up; **not** fixed by this branch. ADR content is only
-changed with explicit approval (see `adr/README.md`).
-
-**Shipped features whose ADR was never accepted** (index status out of date;
-ADR 0049 and ADR 0051 have since been accepted and dropped from this list):
-
-| ADR | Feature | Evidence in code |
-|---|---|---|
-| 0037 | Relay tasks (status: Draft) | `src/fabrikant/relay/`, `prompts/relay/`, [relay.md](relay.md) |
-| 0038 | Live log (SSE) + transcript in run modal | `server.py` (`text/event-stream`) |
-| 0039 | Convergent PR review rounds | `steps/pr_review.py` |
-| 0043 | Reconcile dedup (queued triggers, paused runs) | `engine.py` (`_safe_run`), `runs.py` |
-| 0050 | Agent env allowlist | `agentenv.py` |
-
-**Cross-reference & consistency issues:**
-
-- ADR 0030 says it "supplements ADR 0019 (Rollen)", but ADR 0019
-  (pause/resume/disable) defines no roles.
-- ADR 0024 assumes the reviewer is the personal account (human PRs share
-  one account). ADR 0010's amendment (2026-11-03: identities per project,
-  signed API commits) and ADR 0030's user-based run attribution post-date
-  it; ADR 0024 was never amended.
-- ADR 0002 is "partly replaced by ADR 0034", and both stores run in
-  parallel: `sessionlog.py` still receives agent events while the
-  relational store grows (issues #48, #41).
-- The draft's §2 P1 interface (frozen `AgentBackend` base class with
-  `create_session`/`run`/`resume`/`health`/`budget`) was never adopted;
-  the shipped interface is implicit and different — see
-  [backends.md](backends.md).
-- Issue #134 tracks the language migration (docs/ADRs/issues → English);
-  ADR translations (#162, #163), backend message catalogs (#164) and source
-  comments/docstrings (#165) are merged; newer modules (hosting, MCP server,
-  replay, golden) still contain German strings and comments. Until it is
-  done, this roadmap and any new content stay in English.
-
 ## Backlog highlights
 
-Open issues beyond the phase tables and first wins (all in the issue
+Open issues beyond the phase tables (all in the issue
 tracker):
 
 - **Sandbox hardening:** fail-closed without Docker (#6), sandbox by
