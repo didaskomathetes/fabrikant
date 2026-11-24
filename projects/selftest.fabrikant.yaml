@@ -2,7 +2,7 @@
 # Research = read-only, external content is marked untrusted (guiding principle 7)
 name: selftest
 description: "P0 proof — general-purpose workflows (research, admin)"
-root: ~/src/fabrikant  # adjust to your local checkout
+root: $FABRIKANT_REPO_ROOT  # path of your local checkout (set in fabrikant.env)
 env:
   topic: "fabrikant P0 selftest"
 loops:

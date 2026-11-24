@@ -6,7 +6,7 @@
 # Branch switching at runtime (UI): ADR 0004 (state/branch-overrides.json).
 name: fabrikant
 description: "Fabrikant dogfooding: Fabrikant develops Fabrikant — {repo}"
-root: ~/src/fabrikant  # adjust to your local checkout
+root: $FABRIKANT_REPO_ROOT  # path of your local checkout (set in fabrikant.env)
 repo:
   branch: main
 github: "{repo}"
