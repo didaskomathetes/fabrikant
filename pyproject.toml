@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "fabrikant — a local software factory: agentic development loops as YAML specs"
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = ["agents", "automation", "ci", "software-factory", "llm", "workflow"]
 license = {text = "Apache-2.0"}
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -27,6 +28,12 @@ dependencies = [
     "ruamel-yaml>=0.19.1",
     "sqlalchemy>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/didaskomathetes/fabrikant"
+Source = "https://github.com/didaskomathetes/fabrikant"
+Issues = "https://github.com/didaskomathetes/fabrikant/issues"
+Documentation = "https://github.com/didaskomathetes/fabrikant/tree/main/docs"
 
 [project.optional-dependencies]
 # OIDC-Login (ADR 0046): ID-Token-Signaturprüfung braucht Krypto außerhalb der Stdlib.
