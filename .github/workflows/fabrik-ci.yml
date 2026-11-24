@@ -24,7 +24,7 @@ jobs:
         run: uv sync --frozen
       - name: Lint, Typecheck, SAST (ruff, pyright, bandit)
         run: bash scripts/lint.sh
-      - name: JS-Lint (Biome, web/app.js; Fehler blockieren, Warnungen nicht)
+      - name: JS-Lint (Biome, src/fabrik/web/app.js; Fehler blockieren, Warnungen nicht)
         run: npx --yes @biomejs/biome@2.6.8 lint --diagnostic-level=error
       - name: Dependency-Audit (pip-audit gegen uv.lock-Umgebung)
         run: uv run pip-audit --skip-editable

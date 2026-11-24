@@ -129,7 +129,7 @@ def test_effective_step_applies_project_context_to_verify_checks():
     assert checks[1:] == verify["checks"][1:]
 
 
-TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
+TEMPLATES = Path(__file__).resolve().parent.parent / "src" / "fabrik" / "templates"
 
 
 def test_loop_templates_pass_context_params_to_llm_steps():

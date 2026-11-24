@@ -1,6 +1,6 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
-  "files": { "includes": ["web/app.js"] },
+  "files": { "includes": ["src/fabrik/web/app.js"] },
   "formatter": { "enabled": false },
   "linter": {
     "enabled": true,
