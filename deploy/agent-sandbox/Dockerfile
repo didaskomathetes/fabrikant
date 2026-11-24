@@ -1,21 +1,21 @@
-# Image für die Per-Run-Agent-Sandbox (ADR 0054): One-Shot-CLI-Agenten (claude-code, codex,
-# copilot, opencode) laufen darin mit `FABRIKANT_SANDBOX=1`.
+# Image for the per-run agent sandbox (ADR 0054): one-shot CLI agents (claude-code, codex,
+# copilot, opencode) run inside it with `FABRIKANT_SANDBOX=1`.
 #
 #   docker build -t fabrikant/agent-sandbox:latest deploy/agent-sandbox
 #
-# Was fabrikant voraussetzt (sandbox.render_docker_cmd / entrypoint_script):
-#   - POSIX `sh` und `git` (Austausch per git-Bundle), die Agent-CLIs im PATH;
-#   - read-only Root-FS: alles Schreibbare kommt als tmpfs (`/tmp`, HOME `/home/agent`, `/work`)
-#     bzw. Mount (`/in` ro, `/out`) — das Image legt nur die Mountpunkte an;
-#   - beliebige uid (`-u` = Host-uid bzw. 10001): nichts im Image darf einen bestimmten User
-#     voraussetzen; HOME setzt fabrikant per `-e HOME=/home/agent`;
-#   - kein Netz außer dem Egress-Proxy (ADR 0051): zur Laufzeit wird nichts nachinstalliert.
+# What fabrikant requires (sandbox.render_docker_cmd / entrypoint_script):
+#   - POSIX `sh` and `git` (exchange via git bundle), the agent CLIs on PATH;
+#   - read-only root FS: everything writable comes as tmpfs (`/tmp`, HOME `/home/agent`, `/work`)
+#     or mount (`/in` ro, `/out`) — the image only creates the mount points;
+#   - arbitrary uid (`-u` = host uid or 10001): nothing in the image may assume a particular user;
+#     fabrikant sets HOME via `-e HOME=/home/agent`;
+#   - no network except the egress proxy (ADR 0051): nothing is installed at runtime.
 #
-# Updates: Versionen unten bewusst anheben (`--build-arg` zum Ausprobieren) und das Image neu
-# bauen; fabrikant startet es mit `--pull never`.
+# Updates: bump the versions below deliberately (`--build-arg` to try them out) and rebuild
+# the image; fabrikant starts it with `--pull never`.
 
-# opencode 2.x gibt es nicht auf npm (dort nur 1.x): Release-Binary von GitHub, per SHA-256 geprüft.
-# Eigene Stage, damit curl nicht im Agent-Image landet. Basis per Digest gepinnt.
+# opencode 2.x is not on npm (only 1.x there): release binary from GitHub, verified by SHA-256.
+# Separate stage so curl does not end up in the agent image. Base pinned by digest.
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS opencode
 ARG OPENCODE_VERSION=2.2.5
 ARG OPENCODE_SHA256=09f44302c10fd036912f59c81fd1aef5df45dd06f649197f9dfc9bbe2a79614e
@@ -26,26 +26,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && mkdir /opt/opencode && tar -xzf /tmp/opencode.tar.gz -C /opt/opencode \
     && find /opt/opencode -maxdepth 2 -type f -name opencode -exec install -m 0755 {} /usr/local/bin/opencode \;
 
-# Basis: Node (Agent-CLIs sind npm-Pakete), per Digest gepinnt.
+# Base: Node (agent CLIs are npm packages), pinned by digest.
 FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
 
 ARG CLAUDE_CODE_VERSION=2.1.322
 ARG CODEX_VERSION=0.167.0
 ARG COPILOT_VERSION=1.0.108
-# Python für Ziel-Repos mit `requires-python` jenseits von Debians python3 (z. B. 3.13).
+# Python for target repos with `requires-python` beyond Debian's python3 (e.g. 3.13).
 ARG PYTHON_VERSION=3.13.13
 
-# Werkzeuge, die Agenten in Ziel-Repos typischerweise brauchen: git (Pflicht), gh, ripgrep,
-# Python 3 für Tests/Skripte. `ca-certificates` für TLS durch den Proxy (CONNECT, kein MITM).
+# Tools agents typically need in target repos: git (mandatory), gh, ripgrep,
+# Python 3 for tests/scripts. `ca-certificates` for TLS through the proxy (CONNECT, no MITM).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git gh ripgrep python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# uv (Python-Projekte), per Digest gepinnt.
+# uv (Python projects), pinned by digest.
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /uvx /usr/local/bin/
 
-# Interpreter ins Image statt zur Laufzeit laden (die Downloads liegen nicht auf der
-# Egress-Allowlist). Ort außerhalb von HOME (tmpfs) und lesbar für jede uid.
+# Bake the interpreter into the image instead of downloading it at runtime (the downloads are not on the
+# egress allowlist). Location outside HOME (tmpfs) and readable by every uid.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_PYTHON_DOWNLOADS=never
 RUN UV_PYTHON_DOWNLOADS=automatic uv python install "${PYTHON_VERSION}" \
@@ -59,12 +59,12 @@ RUN npm install -g --omit=dev --no-fund --no-audit \
 
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 
-# Mountpunkte (read-only Root-FS: docker legt sie sonst zur Laufzeit an, hier explizit).
-# /home/agent und /work sind tmpfs mit mode=1777 (render_docker_cmd), /out ist 0777 auf dem Host.
+# Mount points (read-only root FS: docker would otherwise create them at runtime; explicit here).
+# /home/agent and /work are tmpfs with mode=1777 (render_docker_cmd), /out is 0777 on the host.
 RUN mkdir -p /in /out /work /home/agent \
     && chmod 1777 /work /home/agent
 
-# Kein Auto-Update/keine Telemetrie aus der Sandbox (kein Netz dafür, read-only FS).
+# No auto-update/telemetry from the sandbox (no network for it, read-only FS).
 ENV DISABLE_AUTOUPDATER=1 \
     DISABLE_TELEMETRY=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
@@ -73,9 +73,9 @@ ENV DISABLE_AUTOUPDATER=1 \
     OPENCODE_DISABLE_AUTOUPDATE=1 \
     OPENCODE_DISABLE_MODELS_FETCH=1
 
-# Default-User; fabrikant überschreibt ihn mit `-u` (Host-uid bzw. 10001).
+# Default user; fabrikant overrides it with `-u` (host uid or 10001).
 USER 10001:10001
 WORKDIR /work
 
-# fabrikant setzt `--entrypoint sh` und den Austausch-Entrypoint selbst; ohne fabrikant: Versionen zeigen.
+# fabrikant sets `--entrypoint sh` and the exchange entrypoint itself; without fabrikant: show versions.
 CMD ["sh", "-c", "git --version && claude --version && codex --version && copilot --version && opencode --version"]

@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""sonar-pr-cleanup — verwaiste SonarQube-PR-Projekte aufräumen (ADR 0053).
+"""sonar-pr-cleanup — clean up orphaned SonarQube PR projects (ADR 0053).
 
-Legacy-Aufräumung: Bis zur nativen PR-Analyse (Community-Branch-Plugin, PR #524)
-legte `scripts/sonar-scan.sh --pr <n>` pro PR ein eigenes SonarQube-Projekt
-`<base>:pr-<n>` an (Community Edition konnte keine PR-Analyse). Nach Merge oder
-Close des PRs ist das Projekt verwaist — dieses Script entfernt es. Seit #524
-entstehen keine `:pr-<n>`-Projekte mehr; der Lauf ist damit eine sich selbst
-beendende Bestandsaufräumung (solange keine Treffer, keine GitHub-Calls):
+Legacy cleanup: until native PR analysis (community branch plugin, PR #524),
+`scripts/sonar-scan.sh --pr <n>` created a separate SonarQube project per PR,
+`<base>:pr-<n>` (Community Edition could not do PR analysis). After merge or
+close of the PR the project is orphaned — this script removes it. Since #524
+no `:pr-<n>` projects are created any more; the run is therefore a self-
+terminating backlog cleanup (as long as there are no matches, no GitHub calls):
 
-  1. Alle Sonar-Projekte auflisten (`api/projects/search`, paginiert)
-  2. Keys des Musters `<base>:pr-<n>` herausfiltern
-  3. Pro PR: Status via GitHub (`gh api repos/<repo>/pulls/<n>`)
-  4. Geschlossene (gemergt oder nicht) PRs → Projekt löschen
+  1. List all Sonar projects (`api/projects/search`, paginated)
+  2. Filter out keys matching the pattern `<base>:pr-<n>`
+  3. Per PR: status via GitHub (`gh api repos/<repo>/pulls/<n>`)
+  4. Closed (merged or not) PRs → delete the project
      (`api/projects/delete`)
 
-Fail-safe: Ist der PR-Status nicht ermittelbar (GitHub nicht erreichbar, 404,
-kaputtes JSON), wird das Projekt NICHT gelöscht. Jeder Fehlschlag — Sonar- oder
-GitHub-API nicht erreichbar, Löschen abgelehnt — ist nur eine Warnung: Das
-Script endet immer mit Exit 0, damit der aufrufende main-Scan
-(`sonar-scan.sh`) nicht abbricht.
+Fail-safe: if the PR status cannot be determined (GitHub unreachable, 404,
+broken JSON), the project is NOT deleted. Every failure — Sonar or
+GitHub API unreachable, deletion rejected — is only a warning: the
+script always ends with exit 0 so that the calling main scan
+(`sonar-scan.sh`) does not abort.
 
-`--dry-run` listet, was gelöscht würde, ohne etwas zu löschen.
+`--dry-run` lists what would be deleted without deleting anything.
 
-Env: SONAR_HOST_URL (Default http://127.0.0.1:9000), SONAR_TOKEN (sonst
-Token-File SONAR_TOKEN_FILE / state/sonar-token.txt), SONAR_PROJECT_KEY
-(Default fabrikant:fabrikant), GITHUB_REPOSITORY (Default
+Env: SONAR_HOST_URL (default http://127.0.0.1:9000), SONAR_TOKEN (otherwise
+token file SONAR_TOKEN_FILE / state/sonar-token.txt), SONAR_PROJECT_KEY
+(default fabrikant:fabrikant), GITHUB_REPOSITORY (default
 didaskomathetes/fabrikant).
 """
 
@@ -45,8 +45,8 @@ from pathlib import Path
 DEFAULT_REPO = "didaskomathetes/fabrikant"
 DEFAULT_HOST_URL = "http://127.0.0.1:9000"
 DEFAULT_BASE_KEY = "fabrikant:fabrikant"
-PAGE_SIZE = 500  # api/projects/search: max. 500 pro Seite
-HTTP_TIMEOUT = 10  # Sekunden pro Sonar-Request
+PAGE_SIZE = 500  # api/projects/search: max. 500 per page
+HTTP_TIMEOUT = 10  # seconds per Sonar request
 FABRIKANT_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -59,23 +59,23 @@ def _warn(msg: str) -> None:
 
 
 def _gh_json(*args: str):
-    """`gh <args>` ausführen, stdout als JSON (Fehler → Exception)."""
+    """Run `gh <args>`, stdout as JSON (error → exception)."""
     return json.loads(subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout)
 
 
 def pr_key_pattern(base_key: str) -> re.Pattern[str]:
-    """Regex für PR-Projekt-Keys: exakt `<base>:pr-<n>` (n = Ziffern)."""
+    """Regex for PR project keys: exactly `<base>:pr-<n>` (n = digits)."""
     return re.compile(rf"^{re.escape(base_key)}:pr-(\d+)$")
 
 
 def pr_number(key: str, pattern: re.Pattern[str]) -> int | None:
-    """PR-Nummer aus einem Projekt-Key, None für Nicht-PR-Keys (main, fremde Keys)."""
+    """PR number from a project key, None for non-PR keys (main, foreign keys)."""
     m = pattern.match(key)
     return int(m.group(1)) if m else None
 
 
 def _http_json(url: str, token: str, method: str = "GET") -> dict:
-    """Sonar-REST-Request (Basic-Auth mit Scanner-Token) → JSON. Fehler → Exception."""
+    """Sonar REST request (basic auth with scanner token) → JSON. Error → exception."""
     req = urllib.request.Request(url, method=method)
     req.add_header("Authorization", "Basic " + base64.b64encode(f"{token}:".encode()).decode())
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
@@ -97,8 +97,8 @@ def list_project_keys(host_url: str, token: str) -> list[str]:
 
 
 def pr_is_open(repo: str, number: int) -> bool | None:
-    """PR-Status via GitHub: True = offen, False = geschlossen (gemergt oder nicht),
-    None = nicht ermittelbar (fail-safe: dann wird NICHT gelöscht)."""
+    """PR status via GitHub: True = open, False = closed (merged or not),
+    None = cannot be determined (fail-safe: then NOT deleted)."""
     try:
         pr = _gh_json("api", f"repos/{repo}/pulls/{number}")
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError):
@@ -112,21 +112,21 @@ def pr_is_open(repo: str, number: int) -> bool | None:
 
 
 def delete_project(host_url: str, token: str, key: str) -> None:
-    """Sonar-Projekt löschen (`api/projects/delete`). Fehler → Exception."""
+    """Delete a Sonar project (`api/projects/delete`). Error → exception."""
     _http_json(f"{host_url}/api/projects/delete?projectKey={urllib.parse.quote(key)}", token, method="DELETE")
 
 
 def cleanup(host_url: str, token: str, repo: str, base_key: str, dry_run: bool = False) -> dict:
-    """Verwaiste PR-Projekte löschen; liefert eine Statistik.
+    """Delete orphaned PR projects; returns statistics.
 
-    Wirft nie: Jeder Fehlschlag (Liste, PR-Status, Löschen) wird nur gewarnt.
-    Projekte offener PRs, das main-Projekt und fremde Keys bleiben unangetastet."""
+    Never raises: every failure (list, PR status, deletion) is only warned about.
+    Projects of open PRs, the main project and foreign keys remain untouched."""
     stats = {"found": 0, "deleted": 0, "kept_open": 0, "skipped": 0, "failed": 0}
     pattern = pr_key_pattern(base_key)
     try:
         keys = list_project_keys(host_url, token)
-    except Exception as e:  # noqa: BLE001 — fail-safe: Aufräumen darf den Scan nie brechen
-        _warn(f"Sonar-Projekte nicht auflistbar ({e}) — Aufräumen übersprungen")
+    except Exception as e:  # noqa: BLE001 — fail-safe: cleanup must never break the scan
+        _warn(f"Sonar projects cannot be listed ({e}) — cleanup skipped")
         return stats
     for key in keys:
         number = pr_number(key, pattern)
@@ -136,28 +136,28 @@ def cleanup(host_url: str, token: str, repo: str, base_key: str, dry_run: bool =
         open_ = pr_is_open(repo, number)
         if open_ is None:
             stats["skipped"] += 1
-            _warn(f"PR #{number} nicht ermittelbar — {key} bleibt (fail-safe)")
+            _warn(f"PR #{number} status unknown — keeping {key} (fail-safe)")
             continue
         if open_:
             stats["kept_open"] += 1
             continue
         if dry_run:
             stats["deleted"] += 1
-            _log(f"[dry-run] würde löschen: {key} (PR #{number} geschlossen)")
+            _log(f"[dry-run] would delete: {key} (PR #{number} closed)")
             continue
         try:
             delete_project(host_url, token, key)
         except Exception as e:  # noqa: BLE001
             stats["failed"] += 1
-            _warn(f"Löschen von {key} fehlgeschlagen ({e})")
+            _warn(f"Deleting {key} failed ({e})")
             continue
         stats["deleted"] += 1
-        _log(f"gelöscht: {key} (PR #{number} geschlossen)")
+        _log(f"deleted: {key} (PR #{number} closed)")
     return stats
 
 
 def read_token_file() -> str:
-    """Scanner-Token aus SONAR_TOKEN_FILE bzw. state/sonar-token.txt, '' wenn nicht da."""
+    """Scanner token from SONAR_TOKEN_FILE or state/sonar-token.txt, '' if absent."""
     path = Path(os.environ.get("SONAR_TOKEN_FILE") or FABRIKANT_DIR / "state" / "sonar-token.txt")
     try:
         return path.read_text().strip()
@@ -172,8 +172,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--base-key", default=os.environ.get("SONAR_PROJECT_KEY", DEFAULT_BASE_KEY), help="main-Projekt-Key")
     p.add_argument("--host-url", default=os.environ.get("SONAR_HOST_URL", DEFAULT_HOST_URL), help="SonarQube-URL")
-    p.add_argument("--token", default=None, help="Scanner-Token (Default: SONAR_TOKEN, sonst Token-File)")
-    p.add_argument("--dry-run", action="store_true", help="nur auflisten, was gelöscht würde")
+    p.add_argument("--token", default=None, help="Scanner token (default: SONAR_TOKEN, otherwise token file)")
+    p.add_argument("--dry-run", action="store_true", help="only list what would be deleted")
     args = p.parse_args(argv)
 
     token = args.token or os.environ.get("SONAR_TOKEN") or read_token_file()

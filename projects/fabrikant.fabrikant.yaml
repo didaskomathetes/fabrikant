@@ -1,59 +1,59 @@
-# Fabrikant-Dogfooding: Fabrikant entwickelt Fabrikant.
+# Fabrikant dogfooding: Fabrikant develops Fabrikant.
 # Repo: didaskomathetes/fabrikant.
 # ADR: docs/adr/0001-dogfooding-loops.md
 #
-# root = Git-Repo-Root.
-# Branch-Wechsel zur Laufzeit (UI): ADR 0004 (state/branch-overrides.json).
+# root = git repo root.
+# Branch switching at runtime (UI): ADR 0004 (state/branch-overrides.json).
 name: fabrikant
-description: "Fabrikant-Dogfooding: Fabrikant entwickelt Fabrikant — {repo}"
-root: ~/PycharmProjects/fabrikant
+description: "Fabrikant dogfooding: Fabrikant develops Fabrikant — {repo}"
+root: ~/src/fabrikant  # adjust to your local checkout
 repo:
   branch: main
 github: "{repo}"
 
-# Variablen (ADR 0047): `{name}` gilt überall in der Spec und in den Loop-Vorlagen.
-# Ein Fork/zweite Instanz ändert nur diesen Block.
+# Variables (ADR 0047): `{name}` applies everywhere in the spec and in the loop templates.
+# A fork/second instance only changes this block.
 vars:
   repo: didaskomathetes/fabrikant
   # 2026-10-24: switched from claude_code to a hosted opencode provider.
   # 2026-11-03: switched to a local llama.cpp server (session hangs, cost, latency).
   builder_backend: opencode
-  # Builder-Modell = Konfiguration (ADR 0022) — pr-reply nutzt dasselbe wie develop.
+  # Builder model = configuration (ADR 0022) — pr-reply uses the same one as develop.
   builder_model: llama/ukisai_Swift-1.5-Qwen3.8-27b-IQ4_XS
-  # Reasoning-Aufwand (opencode-Variante) für alle Builder-Steps; der Default des Modells war zu lang (Timeouts).
+  # Reasoning effort (opencode variant) for all builder steps; the model's default took too long (timeouts).
   builder_variant: medium
-  # Lint/Test-Gate von develop und refactor (eine Quelle). lint.sh: ruff + pyright + bandit (wie die CI).
+  # Lint/test gate of develop and refactor (single source). lint.sh: ruff + pyright + bandit (as in CI).
   lint_cmd: bash scripts/lint.sh
   test_cmd: uv run pytest -m "not browser"
-  # Cross-Model-Reviewer (ADR 0001): ≠ Builder. 2026-10-23: Copilot (gpt-5.6-luna) → 402
-  # Monatsquota; 2026-11-04: lokales Qwen via opencode (llama.cpp-Server, max_parallel: 1).
+  # Cross-model reviewer (ADR 0001): ≠ builder. 2026-10-23: Copilot (gpt-5.6-luna) → 402
+  # monthly quota; 2026-11-04: local Qwen via opencode (llama.cpp server, max_parallel: 1).
   reviewer_backend: opencode
   reviewer_model: llama/Qwen3.8-27B-GGUF
-  # Merge-Gate gepinnt statt aktivem Chat-Provider; llama-cpp (Qwen) = nicht das Builder-Modell.
+  # Merge gate pinned instead of the active chat provider; llama-cpp (Qwen) = not the builder model.
   gate_provider: llama-cpp
   fast_poll: 60
-  # Phasen-Labels aus framework-v1-draft §6 als Priorität (ADR 0021):
-  # p0 vor p1 … vor unlabelten Issues, innerhalb einer Stufe älteste zuerst.
+  # Phase labels from framework-v1-draft §6 as priority (ADR 0021):
+  # p0 before p1 … before unlabeled issues, oldest first within a level.
   priority_labels: [p0, p1, p2, p3]
 
 notify:
   github_issue: true
-  # Eigener Alert-Label: NICHT 'fabrikant' — sonst picken refine/develop die
-  # Failure-Alerts als Development-Tasks auf (Feedback-Loop, Okt 2026).
+  # Dedicated alert label: NOT 'fabrikant' — otherwise refine/develop pick up the
+  # failure alerts as development tasks (feedback loop, Oct 2026).
   issue_labels: [fabrikant-alert]
   events: [run_failed]
 
-# Prompt-Kontext für Code schreibende/reviewende LLM-Knoten (extra_context, README).
-# Nicht projektweit: worktree:false-Loops (refine, approval) haben kein AGENTS.md in der Workdir.
-# Nicht bei reinen Copilot-Knoten (review-pr): Copilot lädt AGENTS.md selbst.
+# Prompt context for LLM nodes that write/review code (extra_context, README).
+# Not project-wide: worktree:false loops (refine, approval) have no AGENTS.md in the workdir.
+# Not for pure Copilot nodes (review-pr): Copilot loads AGENTS.md itself.
 x-context:
   agents-md: &agents_md {name: agents_md, file: AGENTS.md, trusted: true}
 
-# Geteilte Step-Bausteine (YAML-Anker) für refine + deps-backfill (ADR 0031).
-# Nicht Teil des Spec-Schemas — die Engine ignoriert den Key.
+# Shared step building blocks (YAML anchors) for refine + deps-backfill (ADR 0031).
+# Not part of the spec schema — the engine ignores the key.
 x-shared-steps:
-  # Kontext für Duplikat-/Blocker-Erkennung: die anderen offenen fabrikant-Issues als
-  # kompakte Liste (#N [Labels] Titel — Body-Auszug), ohne das eigene Issue.
+  # Context for duplicate/blocker detection: the other open fabrikant issues as a
+  # compact list (#N [labels] title — body excerpt), excluding the issue itself.
   list-open: &list_open_step
     name: list-open
     type: issue
@@ -70,70 +70,68 @@ x-shared-steps:
     repo: "{repo}"
     labels: [fabrikant]
     state: closed
-    limit: 30  # zuletzt aktualisierte — für "bereits gelöst" / "existiert schon"
+    limit: 30  # most recently updated — for "already solved" / "already exists"
     emit: closed_issues
   dependencies: &dependencies_step
     name: dependencies
     type: llm
-    provider: claude  # gepinnt wie classify (#80)
+    provider: claude  # pinned like classify (#80)
     prompt: |
-      Du prüfst die Abhängigkeiten von Issue #{issue_number} im Fabrikant-Projekt
+      You are checking the dependencies of issue #{issue_number} in the Fabrikant project
       ({repo}).
-      Die Entwicklung startet ein Issue erst, wenn alle seine Blocker erledigt sind.
-      Ein falscher Blocker hält das Issue unnötig auf; ein fehlender lässt es auf einer
-      Grundlage starten, die es noch nicht gibt.
+      Development only starts an issue once all of its blockers are done.
+      A wrong blocker holds the issue back needlessly; a missing one lets it start on a
+      foundation that does not exist yet.
 
-      1. blocked_by: offene Issues aus open_issues, die zwingend VORHER umgesetzt sein
-         müssen, weil dieses Issue direkt auf ihrem Ergebnis aufbaut (ein dort erst
-         eingeführter Mechanismus, Step-Typ, eine API, Datenstruktur oder
-         ADR-Entscheidung). NICHT für bloß verwandte Themen, gewünschte Reihenfolge
-         oder Phasen-Labels. Ein Verweis wie "Abhängig von #N" im Issue-Text zählt,
-         wenn #N in open_issues steht. Nur Nummern aus open_issues, höchstens 5,
-         Format "#12, #14"; sonst "".
-      2. Fehlende Voraussetzung (prerequisite_*): Setzt das Issue einen Mechanismus,
-         ein Konzept oder eine Entscheidung voraus, die weder umgesetzt ist (siehe
-         closed_issues) noch von einem Issue in open_issues abgedeckt wird? Beispiel:
-         Das Issue unterscheidet Deployment-Profile/Betriebsmodi (homelab|cloud), aber
-         es gibt weder den Mechanismus noch ein Issue dafür. Dann beschreibe GENAU EINE
-         solche Voraussetzung als neues Issue — die kleinste Grundlage, auf der dieses
-         Issue aufbauen kann, nicht das ganze Feature. Deckt ein offenes Issue sie nur
-         als kleinen Teil eines viel größeren Umfangs ab, ist eine schmale Grundlage
-         richtig. Sonst leere Strings.
+      1. blocked_by: open issues from open_issues that MUST be implemented BEFORE,
+         because this issue builds directly on their result (a mechanism, step type,
+         API, data structure or ADR decision first introduced there). NOT for merely
+         related topics, desired ordering or phase labels. A reference such as
+         "Depends on #N" in the issue text counts if #N is in open_issues. Only numbers
+         from open_issues, at most 5, format "#12, #14"; otherwise "".
+      2. Missing prerequisite (prerequisite_*): Does the issue presuppose a mechanism,
+         concept or decision that is neither implemented (see closed_issues) nor covered
+         by an issue in open_issues? Example: the issue distinguishes deployment
+         profiles/operating modes (homelab|cloud), but there is neither the mechanism
+         nor an issue for it. Then describe EXACTLY ONE such prerequisite as a new
+         issue — the smallest foundation this issue can build on, not the whole
+         feature. If an open issue covers it only as a small part of a much larger scope,
+         a narrow foundation is the right call. Otherwise empty strings.
 
-      Antworte NUR mit JSON, ohne Markdown. Alle drei Keys sind Pflicht ("" wenn nicht zutreffend):
+      Answer ONLY with JSON, without Markdown. All three keys are required ("" if not applicable):
       {
-        "blocked_by": "<z. B. '#12, #14' oder ''>",
-        "prerequisite_title": "<Titel der fehlenden Voraussetzung ohne Präfix, oder ''>",
-        "prerequisite_body": "<Markdown: ## Problem, ## Vorschlag, ## Acceptance Criteria; oder ''>"
+        "blocked_by": "<e.g. '#12, #14' or ''>",
+        "prerequisite_title": "<title of the missing prerequisite without prefix, or ''>",
+        "prerequisite_body": "<Markdown: ## Problem, ## Proposal, ## Acceptance Criteria; or ''>"
       }
     untrusted: [issue_title, issue_body, open_issues, closed_issues]
     schema:
       blocked_by: {type: string, default: ""}
       prerequisite_title: {type: string, default: ""}
       prerequisite_body: {type: string, default: ""}
-  # Fehlende Voraussetzung als eigenes Issue (Label fabrikant → durchläuft selbst refine:
-  # Duplikat-Check, ggf. needs approval). Priorität wird vom abhängigen Issue geerbt,
-  # sonst würde die Voraussetzung als unpriorisiert zuletzt bearbeitet (ADR 0021).
+  # Missing prerequisite as its own issue (label fabrikant → itself goes through refine:
+  # duplicate check, possibly needs approval). Priority is inherited from the dependent issue,
+  # otherwise the prerequisite would be handled last as unprioritized (ADR 0021).
   create-prerequisite: &create_prerequisite_step
     name: create-prerequisite
     type: issue
     action: create
     repo: "{repo}"
-    number: "{issue_number}"  # Quelle für inherit_labels
+    number: "{issue_number}"  # source for inherit_labels
     skip_if_empty: [prerequisite_title]
     title: "fabrikant: {prerequisite_title}"
     body: |
       {prerequisite_body}
 
       ---
-      Voraussetzung für #{issue_number} — automatisch angelegt vom Dependency-Check (ADR 0031).
+      Prerequisite for #{issue_number} — created automatically by the dependency check (ADR 0031).
     labels: [fabrikant]
     inherit_labels: [p0, p1, p2, p3]
-    emit: prerequisite_number  # issue_number bleibt das bearbeitete Issue
-  # Blocker als native GitHub-Dependencies. Halluzinierte/geschlossene Referenzen
-  # überspringt der Step; andere API-Fehler brechen den Run ab (fail closed).
-  # {prerequisite_number} bleibt ohne create-prerequisite unaufgelöst und wird als
-  # Nicht-Referenz ignoriert.
+    emit: prerequisite_number  # issue_number stays the issue being processed
+  # Blockers as native GitHub dependencies. Hallucinated/closed references
+  # are skipped by the step; other API errors abort the run (fail closed).
+  # {prerequisite_number} stays unresolved without create-prerequisite and is ignored
+  # as a non-reference.
   link-blockers: &link_blockers_step
     name: link-blockers
     type: issue
@@ -142,29 +140,29 @@ x-shared-steps:
     number: "{issue_number}"
     skip_if_empty: [blocked_by, prerequisite_number]
     blocked_by: "{blocked_by}"
-    prerequisite: "#{prerequisite_number}"  # separat: fällt nie unter das Blocker-Limit
+    prerequisite: "#{prerequisite_number}"  # separate: never counts toward the blocker limit
 
-max_parallel: 1  # llama-cpp verträgt nur eine Verbindung
+max_parallel: 1  # llama-cpp only handles one connection
 loops:
-  # ── 1. Refine: neues fabrikant-Issue → refinieren (AC + Hintergrund) → Label oder Close-Vorschlag (Human-Gate nur bei needs approval / close proposed, ADR 0017) ──
+  # ── 1. Refine: new fabrikant issue → refine (AC + background) → label or close proposal (human gate only for needs approval / close proposed, ADR 0017) ──
   # ADR: docs/adr/0006-issue-refine-loop.md
   refine:
-    description: "Issue-Refine: AC + Hintergrund zum Issue, Label (ready for development | needs approval | close proposed) — Human-Gate nur bei needs approval und vor jedem Close (ADR 0017)"
+    description: "Issue refine: AC + background for the issue, label (ready for development | needs approval | close proposed) — human gate only for needs approval and before every close (ADR 0017)"
     tier: 1
-    worktree: false  # nur llm + gh — läuft parallel zu develop & Co. (ADR 0020)
+    worktree: false  # llm + gh only — runs in parallel with develop & co. (ADR 0020)
     triggers:
       - type: on_issue
         repo: "{repo}"
         labels: [fabrikant]
-        poll: "{fast_poll}"  # s; GitHub-API-Budget unkritisch (3 Loops × 60/h)
-        reconcile: true  # Bestand nach Restart abarbeiten (ADR 0014)
+        poll: "{fast_poll}"  # s; GitHub API budget uncritical (3 loops × 60/h)
+        reconcile: true  # work through the backlog after a restart (ADR 0014)
         max_per_poll: 2
-        # Phasen-Labels aus framework-v1-draft §6 als Priorität (ADR 0021):
-        # p0 vor p1 … vor unlabelten Issues, innerhalb einer Stufe älteste zuerst.
+        # Phase labels from framework-v1-draft §6 as priority (ADR 0021):
+        # p0 before p1 … before unlabeled issues, oldest first within a level.
         priority_labels: "{priority_labels}"
-    # Auto-Retry (ADR 0036): Neustarts/Netzfehler heilen sich selbst (Steps mit
-    # Idempotenz-Guards). Approval-Gate je Versuch → max klein halten (ADR 0036,
-    # Konsequenzen).
+    # Auto-retry (ADR 0036): restarts/network errors heal themselves (steps with
+    # idempotency guards). Approval gate per attempt → keep max small (ADR 0036,
+    # consequences).
     retry:
       max: 2
       backoff: [5m, 30m]
@@ -175,8 +173,8 @@ loops:
       - *list_closed_step
       - name: classify
         type: llm
-        # Gepinnt statt aktivem Chat-Provider: das lokale Qwen lieferte
-        # kaputtes JSON (#80, unescapte Zeichen in acceptance_criteria).
+        # Pinned instead of the active chat provider: the local Qwen produced
+        # broken JSON (#80, unescaped characters in acceptance_criteria).
         provider: claude
         prompt: |
           Du bist der Refine-Agent für das Fabrikant-Projekt ({repo}).
@@ -244,32 +242,32 @@ loops:
           }
         untrusted: [issue_title, issue_body, open_issues, closed_issues]
         schema:
-          # enum-Whitelist: label landet in Shell-Kommandos (apply-label) —
-          # der llm-Step lehnt Abweichungen ab (ok: False), Injection ist
-          # damit an der Quelle unmöglich.
+          # enum whitelist: label ends up in shell commands (apply-label) —
+          # the llm step rejects deviations (ok: False), so injection is
+          # impossible at the source.
           label:
             type: string
             enum: ["ready for development", "needs approval", "close proposed"]
           reasoning: string
-          # default: LLMs lassen leere Felder trotz Prompt weg (#80) — fehlender
-          # Key → "" statt Schema-Fehler. Nur für Felder, die leer sein dürfen.
+          # default: LLMs omit empty fields despite the prompt (#80) — a missing
+          # key → "" instead of a schema error. Only for fields that may be empty.
           background: {type: string, default: ""}
           acceptance_criteria: {type: string, default: ""}
           close_reason: {type: string, default: ""}
-          # Close-Grund → GitHub state_reason: nur `completed` gibt abhängige Issues
-          # frei (ADR 0031). Leer = GitHub-Default completed.
+          # Close reason → GitHub state_reason: only `completed` releases dependent issues
+          # (ADR 0031). Empty = GitHub default completed.
           close_kind:
             type: string
             enum: ["", "duplicate", "completed", "not_planned"]
             default: ""
           duplicate_of: {type: string, default: ""}
-      # Bei close proposed ist das Ergebnis ohne Verwendung (keine Blocker/Voraussetzungen) → LLM-Call sparen.
+      # With close proposed the result is unused (no blockers/prerequisites) → save the LLM call.
       - <<: *dependencies_step
         only_if: &refined_labels
           label: ["ready for development", "needs approval"]
-      # Native issue-Steps (ADR 0001 §5): Werte gehen als JSON-Payload an die
-      # GitHub-API, nie durch eine Shell — LLM-Text (background, close_reason, …)
-      # kann nichts injizieren. Fehlende Labels legt GitHub beim Hinzufügen an.
+      # Native issue steps (ADR 0001 §5): values go to the GitHub API as a JSON
+      # payload, never through a shell — LLM text (background, close_reason, …)
+      # cannot inject anything. GitHub creates missing labels when they are added.
       - name: refine-body
         type: issue
         action: edit
@@ -277,7 +275,7 @@ loops:
         number: "{issue_number}"
         skip_if_empty: [background, acceptance_criteria]
         append: true
-        # Idempotenz-Guard: Marker im Body → Re-Run ist ein No-Op.
+        # Idempotency guard: marker in the body → re-run is a no-op.
         unless_contains: "<!-- Refine (auto) -->"
         body: |
           <!-- Refine (auto) -->
@@ -286,14 +284,14 @@ loops:
 
           ## Acceptance Criteria (auto)
           {acceptance_criteria}
-      # Voraussetzungen + Blocker VOR apply-label (ADR 0031): develop sieht das Label
-      # nie ohne die zugehörigen Blocker. Bei close proposed keine neuen Issues/Relationen.
+      # Prerequisites + blockers BEFORE apply-label (ADR 0031): develop never sees the label
+      # without the associated blockers. With close proposed no new issues/relations.
       - <<: *create_prerequisite_step
         only_if: *refined_labels
       - <<: *link_blockers_step
         only_if: *refined_labels
-      # Close-Vorschlag: Begründung sofort im Body sichtbar, damit die Freigabe auf
-      # GitHub nachvollziehbar ist (der issue-Step kennt keine reine Kommentar-Action).
+      # Close proposal: reasoning immediately visible in the body so the approval on
+      # GitHub is traceable (the issue step has no comment-only action).
       - name: propose-close
         type: issue
         action: edit
@@ -307,23 +305,23 @@ loops:
           <!-- Close-Vorschlag (auto) -->
           ## Close-Vorschlag (auto)
           {close_reason}
-      # Human-Gate nur bei needs approval und close proposed (ADR 0017): ready for
-      # development läuft ohne Pause durch — develop sichert über human_gate +
-      # PR-Review ab (ADR 0010).
+      # Human gate only for needs approval and close proposed (ADR 0017): ready for
+      # development runs through without a pause — develop is safeguarded by human_gate +
+      # PR review (ADR 0010).
       - name: apply-label
         type: issue
         action: label
         repo: "{repo}"
         number: "{issue_number}"
-        # Label sofort sichtbar machen — auch 'needs approval' und 'close proposed'.
+        # Make the label visible immediately — also 'needs approval' and 'close proposed'.
         labels: ["{label}"]
       - name: promote
         type: issue
         action: label
         repo: "{repo}"
         number: "{issue_number}"
-        # Freigabe = "darf entwickelt werden": needs approval → ready for development
-        # (develop triggert). Reject beendet den Run, das Label bleibt.
+        # Approval = "may be developed": needs approval → ready for development
+        # (develop triggers). Reject ends the run, the label stays.
         approval_when:
           label: "needs approval"
         only_if:
@@ -335,51 +333,51 @@ loops:
         action: close
         repo: "{repo}"
         number: "{issue_number}"
-        # Close mit Begründung als Kommentar — Issues werden geschlossen, NICHT gelöscht.
-        # Gate vor jedem Close (ADR 0017): Duplikat-/"gelöst"-Erkennung kann falsch
-        # sein, ein completed-Close gibt Abhängige frei (ADR 0031) und ein Reopen
-        # triggert refine nicht erneut. Reject: Run endet, 'close proposed' bleibt.
+        # Close with the reasoning as a comment — issues are closed, NOT deleted.
+        # Gate before every close (ADR 0017): duplicate/"solved" detection can be
+        # wrong, a completed close releases dependents (ADR 0031) and a reopen
+        # does not trigger refine again. Reject: run ends, 'close proposed' stays.
         approval_when:
           label: "close proposed"
         only_if:
           label: "close proposed"
         comment: "{close_reason}"
         state_reason: "{close_kind}"
-        # Duplikat: als duplicate schließen und abhängige Issues auf das Original umhängen.
+        # Duplicate: close as duplicate and re-point dependent issues to the original.
         duplicate_of: "{duplicate_of}"
       - name: report
         type: report
-        text: "Refine #{issue_number}: **{label}** — {reasoning} (Blocker: {blocked_by}; Voraussetzung: {prerequisite_title})"
+        text: "Refine #{issue_number}: **{label}** — {reasoning} (blockers: {blocked_by}; prerequisite: {prerequisite_title})"
 
-  # ── 2. Develop (dual-identity, ADR 0010): getriggtes Issue → PR → LLM-Review → Merge ──
-  # Refine (Loop 1) routet: "ready for development" → hier, "needs approval" → Mensch.
-  # Mensch im Loop NUR bei kritisch (human_gate: ADR-Pfade, Diff-Größe, Keywords, LLM).
-  # Instanz der Vorlage templates/develop.loop.yaml (ADR 0047).
+  # ── 2. Develop (dual-identity, ADR 0010): triggered issue → PR → LLM review → merge ──
+  # Refine (loop 1) routes: "ready for development" → here, "needs approval" → human.
+  # Human in the loop ONLY for critical changes (human_gate: ADR paths, diff size, keywords, LLM).
+  # Instance of the template templates/develop.loop.yaml (ADR 0047).
   develop:
     use: develop
-    description: "Issue-Entwicklung (dual-identity, ADR 0010): refined Issues → PR → LLM-Review (PAT) → Merge (Mensch nur bei kritisch)"
+    description: "Issue development (dual-identity, ADR 0010): refined issues → PR → LLM review (PAT) → merge (human only for critical changes)"
     with:
       prompt_file: prompts/fabrikant-develop.prompt.md
       builder_model: "{builder_model}"
       builder_variant: "{builder_variant}"
       reviewer_model: "{reviewer_model}"
       lint_cmd: "{lint_cmd}"
-      # coverage.xml für den Quality-Report im review-Step (sonar-scan.sh --pr nutzt ihn wieder)
+      # coverage.xml for the quality report in the review step (sonar-scan.sh --pr reuses it)
       test_cmd: uv run pytest -m "not browser" --cov=src --cov-report=xml:coverage.xml
-      adr_paths: [docs/adr]  # PR-Pfade sind repo-relativ
+      adr_paths: [docs/adr]  # PR paths are repo-relative
       builder_context: [*agents_md]
-      # Review + Fix-Runde (Builder). quality: Sonar-Scan des PR-Heads unter eigenem Key,
-      # Report (Sonar-Issues + Lint via ruff/mypy auf geänderten Zeilen, Diff-Coverage)
-      # als PR-Kommentar + Prompt-Kontext; läuft pro Runde neu (advisory, README
-      # „sonar-scan PR-Modus“). agents_md bleibt: derselbe Kontext geht auch an die
-      # Fix-Runde (Builder claude_code), die AGENTS.md nicht selbst lädt.
+      # Review + fix round (builder). quality: Sonar scan of the PR head under its own key,
+      # report (Sonar issues + lint via ruff/mypy on changed lines, diff coverage)
+      # as a PR comment + prompt context; re-runs every round (advisory, README
+      # "sonar-scan PR mode"). agents_md stays: the same context also goes to the
+      # fix round (builder claude_code), which does not load AGENTS.md itself.
       review_context:
         - *agents_md
         - {name: quality, cmd: "bash scripts/sonar-scan.sh --pr {pr_number} --post", trusted: true, timeout: 1800}
-    # ADR-Nummern deterministisch absichern (ADR 0032): neue ADRs mit auf main schon
-    # vergebener Nummer umbenennen (die neue Nummer überspringt auch offene PRs; deren
-    # Kollisionen fängt das merge-check-Gate), dann prüfen. Vor lint/test, damit die
-    # Reparatur mitgetestet und von ship committet wird.
+    # Safeguard ADR numbers deterministically (ADR 0032): rename new ADRs whose number is
+    # already taken on main (the new number also skips open PRs; their
+    # collisions are caught by the merge-check gate), then verify. Before lint/test so the
+    # repair is tested too and committed by ship.
     insert:
       - after: changes
         steps:
@@ -388,34 +386,34 @@ loops:
             cmd: uv run python scripts/check-adr-numbers.py fix && uv run python scripts/check-adr-numbers.py check
             timeout: 300
 
-  # ── 2b. Deps-Backfill (einmalig, ADR 0031): Bestand vor Einführung des Dependency-Checks ──
-  # Läuft genau einmal pro offenem fabrikant-Issue (Run-Records, ADR 0014) und setzt nur
-  # Blocker + fehlende Voraussetzungen — kein Relabel, kein Close. Ablauf:
-  #   1. fabrikant pause fabrikant develop    (sonst startet develop Issues vor ihren Blockern)
-  #   2. Backlog abarbeiten lassen (Runs-Ansicht: deps-backfill)
+  # ── 2b. Deps backfill (one-off, ADR 0031): backlog from before the dependency check was introduced ──
+  # Runs exactly once per open fabrikant issue (run records, ADR 0014) and only sets
+  # blockers + missing prerequisites — no relabel, no close. Procedure:
+  #   1. fabrikant pause fabrikant develop    (otherwise develop starts issues before their blockers)
+  #   2. Let the backlog drain (runs view: deps-backfill)
   #   3. fabrikant disable fabrikant deps-backfill && fabrikant resume fabrikant develop
-  # Neue Issues deckt refine ab (gleiche Step-Bausteine).
-  # Stand 2026-10-23: Backfill abgeschlossen, Loop per `fabrikant disable` deaktiviert
-  # (sonst prüft er neue Issues doppelt zum refine-Loop).
+  # New issues are covered by refine (same step building blocks).
+  # As of 2026-10-23: backfill finished, loop deactivated via `fabrikant disable`
+  # (otherwise it checks new issues twice alongside the refine loop).
   deps-backfill:
-    description: "Einmaliger Dependency-Backfill (ADR 0031): Blocker + fehlende Voraussetzungen für bereits refinte Issues — develop währenddessen pausieren, danach Loop deaktivieren"
+    description: "One-off dependency backfill (ADR 0031): blockers + missing prerequisites for already refined issues — pause develop meanwhile, then deactivate the loop"
     tier: 1
-    worktree: false  # nur issue + llm + report (API) — braucht keinen Slot (ADR 0020)
+    worktree: false  # issue + llm + report only (API) — needs no slot (ADR 0020)
     triggers:
-      # Ein Trigger (Poll-State ist pro Loop, ein zweiter on_issue-Trigger würde nie feuern).
+      # One trigger (poll state is per loop, a second on_issue trigger would never fire).
       - type: on_issue
         repo: "{repo}"
         labels: [fabrikant]
         reconcile: true
-        # 1 Run pro 120 s: ein Run (3 API-Calls + 1 LLM-Call) ist in der Regel fertig,
-        # bevor der nächste startet — so sieht er die Voraussetzung des vorigen in
-        # open_issues. Kein harter Serialisierungs-Garant; Doppel-Voraussetzungen
-        # fängt der Duplikat-Check im refine (close duplicate_of hängt Blocker um).
+        # 1 run per 120 s: a run (3 API calls + 1 LLM call) is usually done
+        # before the next one starts — so it sees the previous one's prerequisite in
+        # open_issues. No hard serialization guarantee; duplicate prerequisites
+        # are caught by the duplicate check in refine (close duplicate_of re-points blockers).
         poll: 120
         max_per_poll: 1
         priority_labels: "{priority_labels}"
-    # Auto-Retry (ADR 0036): Neustarts/Netzfehler heilen sich selbst (Steps mit
-    # Idempotenz-Guards; Duplikate fängt der Refine-Duplikat-Check).
+    # Auto-retry (ADR 0036): restarts/network errors heal themselves (steps with
+    # idempotency guards; duplicates are caught by the refine duplicate check).
     retry:
       max: 3
       backoff: [5m, 30m, 2h]
@@ -429,11 +427,11 @@ loops:
       - *link_blockers_step
       - name: report
         type: report
-        text: "Deps-Backfill #{issue_number}: Blocker {blocked_by}; Voraussetzung: {prerequisite_title}"
+        text: "Deps backfill #{issue_number}: blockers {blocked_by}; prerequisite: {prerequisite_title}"
 
-  # ── 3. Refactor (gezielt): manuell mit --var target=... ──
+  # ── 3. Refactor (targeted): manual with --var target=... ──
   refactor:
-    description: "Gezieltes Refactoring eines Moduls/Bereichs — manuell (fabrikant run refactor --var target=src/fabrikant/engine.py)"
+    description: "Targeted refactoring of a module/area — manual (fabrikant run refactor --var target=src/fabrikant/engine.py)"
     tier: 2
     triggers:
       - type: manual
@@ -462,7 +460,7 @@ loops:
       - name: ship
         type: git
         commit:
-          add: [":/"]  # Repo-Wurzel
+          add: [":/"]  # repo root
           message: "refactor(fabrikant): {target} (auto)"
         push: true
       - name: pr
@@ -470,25 +468,25 @@ loops:
         repo: "{repo}"
         base: main
         head: fabrikant/refactor-{run_id}
-        labels: [fabrikant]  # review-pr/pr-reply filtern nach diesem Label
+        labels: [fabrikant]  # review-pr/pr-reply filter on this label
         title: "refactor(fabrikant): {target} (auto)"
         body: |
-          Gezieltes Refactoring via fabrikant-Loop `refactor`.
+          Targeted refactoring via the fabrikant loop `refactor`.
 
           - Target: {target}
-          - Verhalten bleibt erhalten, alle Tests grün
-          - Lint + Format grün
+          - Behavior unchanged, all tests green
+          - Lint + format green
         approval: true
 
-  # ── 4. Refactor-Sweep: Code-Smells finden → Issues (Label fabrikant → refine → develop) ──
+  # ── 4. Refactor sweep: find code smells → issues (label fabrikant → refine → develop) ──
   refactor-sweep:
-    description: "Sweep auf Abruf (manuell): Code-Smells/Komplexität aus der letzten SonarQube-main-Analyse → Refactoring-Issues (max. 3 pro Run)"
+    description: "On-demand sweep (manual): code smells/complexity from the latest SonarQube main analysis → refactoring issues (max. 3 per run)"
     tier: 2
     triggers:
       - type: manual
     steps:
-      # Agent analysiert nur und liefert JSON; die Issues legen native issue-Steps
-      # an (ADR 0001 §5) — kein gh im Agent, kein Shell-Quoting von Titel/Body.
+      # The agent only analyzes and returns JSON; native issue steps create the
+      # issues (ADR 0001 §5) — no gh in the agent, no shell quoting of title/body.
       - name: sweep
         type: agent
         backend: "{builder_backend}"
@@ -499,13 +497,13 @@ loops:
         timeout: 1800
       - name: extract-candidates
         type: llm
-        provider: claude  # gepinnt wie classify (#80: lokales Qwen lieferte kaputtes JSON)
+        provider: claude  # pinned like classify (#80: local Qwen produced broken JSON)
         untrusted: [last_agent_output]
         prompt: |
-          Extrahiere aus dem Sweep-Ergebnis (JSON-Liste "candidates", max. 3) die
-          Refactoring-Kandidaten. Fehlende Kandidaten = leere Strings.
-          Antwort-Schema: {"title_1": "", "body_1": "", "title_2": "", "body_2": "", "title_3": "", "body_3": ""}
-        # default: fehlende Kandidaten-Keys → "" statt Schema-Fehler (#80)
+          Extract the refactoring candidates from the sweep result (JSON list
+          "candidates", max. 3). Missing candidates = empty strings.
+          Answer schema: {"title_1": "", "body_1": "", "title_2": "", "body_2": "", "title_3": "", "body_3": ""}
+        # default: missing candidate keys → "" instead of a schema error (#80)
         schema:
           title_1: {type: string, default: ""}
           body_1: {type: string, default: ""}
@@ -539,28 +537,28 @@ loops:
         labels: [fabrikant, refactor]
       - name: report
         type: report
-        text: "Refactor-Sweep {run_id}: Kandidaten geprüft, Issues bei Bedarf erstellt (siehe Agent-Output)."
+        text: "Refactor sweep {run_id}: candidates checked, issues created if needed (see agent output)."
 
-  # ── 5. Review-on-PR: neue/aktualisierte fabrikant-PRs — Cross-Model (anderes Modell als der Builder) ──
-  # Instanz der Vorlage templates/review-pr.loop.yaml (ADR 0047; on_pr-Trigger, ADR 0001 §4).
+  # ── 5. Review-on-PR: new/updated fabrikant PRs — cross-model (different model than the builder) ──
+  # Instance of the template templates/review-pr.loop.yaml (ADR 0047; on_pr trigger, ADR 0001 §4).
   review-pr:
     use: review-pr
-    description: "Code-Review neuer/aktualisierter fabrikant-PRs — lokaler Qwen-Reviewer ({reviewer_model} via {reviewer_backend}, Builder ≠ Reviewer, Leitprinzip 4)"
+    description: "Code review of new/updated fabrikant PRs — local Qwen reviewer ({reviewer_model} via {reviewer_backend}, builder ≠ reviewer, guiding principle 4)"
     with:
       prompt_file: prompts/fabrikant-review.prompt.md
       reviewer_model: "{reviewer_model}"
-      # Kein review_context mit AGENTS.md: Copilot lädt es selbst (sonst doppelt im Kontext).
-    # Auto-Retry (ADR 0036): hängende Review-Sessions/Netzfehler heilen sich
-    # selbst; jeder Versuch durchläuft das on_pr-Gate neu (reconcile: head).
+      # No review_context with AGENTS.md: Copilot loads it itself (otherwise it is doubled in the context).
+    # Auto-retry (ADR 0036): hanging review sessions/network errors heal
+    # themselves; every attempt passes the on_pr gate again (reconcile: head).
     retry:
       max: 3
       backoff: [5m, 30m, 2h]
       "on": [interrupted, transient]
       max_wait: 24h
 
-  # ── 6. PR-Reply: neue Kommentare auf fabrikant-PRs — Builder-Modell (antwortet + fixt Code) ──
+  # ── 6. PR reply: new comments on fabrikant PRs — builder model (replies + fixes code) ──
   pr-reply:
-    description: "Antwort auf neue Kommentare in fabrikant-PRs + Code-Fix auf dem PR-Branch — Builder-Modell (wie develop, YAML-Anker builder_model, ADR 0022)"
+    description: "Reply to new comments on fabrikant PRs + code fix on the PR branch — builder model (as in develop, YAML anchor builder_model, ADR 0022)"
     tier: 1
     triggers:
       - type: cron
@@ -574,10 +572,10 @@ loops:
         extra_context: [*agents_md]
         timeout: 1800
 
-  # ── 7. SonarQube-Scan: Code-Qualität (Python via pysonar) — täglich auf main ──
-  # Baseline für „New Code“ der PR-Analysen (sonar-pr). docs/sonarqube.md
+  # ── 7. SonarQube scan: code quality (Python via pysonar) — daily on main ──
+  # Baseline for "New Code" of the PR analyses (sonar-pr). docs/sonarqube.md
   sonar-scan:
-    description: "SonarQube-Code-Qualitäts-Scan (pysonar) — täglich (main); Quality Gate muss OK sein; räumt verwaiste Legacy-PR-Projekte auf (ADR 0053, advisory)"
+    description: "SonarQube code quality scan (pysonar) — daily (main); quality gate must be OK; cleans up orphaned legacy PR projects (ADR 0053, advisory)"
     tier: 1
     triggers:
       - type: cron
@@ -587,32 +585,32 @@ loops:
         type: shell
         cmd: bash scripts/sonar-scan.sh
         timeout: 900
-        failure_kind: outcome  # Quality Gate/Tests rot (ADR 0035); Skript meldet Server-/Setup-Fehler per Exit 75/78/127
+        failure_kind: outcome  # quality gate/tests red (ADR 0035); the script reports server/setup errors via exit 75/78/127
       - name: report
         type: report
-        text: "SonarQube-Scan {run_id}: Quality Gate OK (projectKey=fabrikant:fabrikant)"
+        text: "SonarQube scan {run_id}: quality gate OK (projectKey=fabrikant:fabrikant)"
 
-  # ── 7b. SonarQube-PR-Analyse (Community-Branch-Plugin, compose.yaml) → Ergebnis als PR-Kommentar ──
-  # Ohne GitHub-Checks-Permission und ohne LLM: das Skript rendert den Kommentar aus den Scan-Ergebnissen
-  # (scripts/sonar_report.py), gh-upsert-comment.sh postet ihn als Reviewer-App (einer pro PR, Update pro Push).
+  # ── 7b. SonarQube PR analysis (community branch plugin, compose.yaml) → result as a PR comment ──
+  # Without GitHub checks permission and without an LLM: the script renders the comment from the scan results
+  # (scripts/sonar_report.py), gh-upsert-comment.sh posts it as the reviewer app (one per PR, updated per push).
   sonar-pr:
-    description: "SonarQube-PR-Analyse (neuester Head, max. alle 30 min) → Gate, Coverage und Issues als PR-Kommentar (Reviewer-App); Quality Gate muss OK sein"
+    description: "SonarQube PR analysis (latest head, at most every 30 min) → gate, coverage and issues as a PR comment (reviewer app); quality gate must be OK"
     tier: 1
     triggers:
       - type: on_pr
         repo: "{repo}"
-        # Entprellen: pro Poll zählt nur der aktuelle Head-SHA (reconcile: head, ADR 0023) — Pushes
-        # innerhalb eines Intervalls ergeben einen Scan des letzten Stands; verworfene Trigger werden nachgeholt.
+        # Debounce: per poll only the current head SHA counts (reconcile: head, ADR 0023) — pushes
+        # within an interval result in one scan of the latest state; dropped triggers are caught up.
         poll: 1800
         reconcile: head
     steps:
       - name: scan
         type: shell
-        # Exit 1 MIT Report = Gate rot → trotzdem kommentieren (der gate-Step bewertet am Ende);
-        # Exit 1 ohne Report (Tests rot) und 75/78/127 brechen hier ab.
+        # Exit 1 WITH report = gate red → comment anyway (the gate step evaluates at the end);
+        # exit 1 without report (tests red) and 75/78/127 abort here.
         cmd: bash scripts/sonar-scan.sh || { rc=$?; [ "$rc" -eq 1 ] && [ -s .fabrikant/sonar/report.json ] || exit "$rc"; }
         env:
-          SONAR_PR_HEAD_REF: "{pr_head_ref}"  # untrusted → env (ADR 0008); Checkout im Skript
+          SONAR_PR_HEAD_REF: "{pr_head_ref}"  # untrusted → env (ADR 0008); checkout in the script
           SONAR_PR: "{pr_number}"
           SONAR_REPORT_FILE: .fabrikant/sonar/report.json
           SONAR_COMMENT_FILE: .fabrikant/sonar/comment.md
@@ -628,33 +626,33 @@ loops:
         cmd: python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["status"]; print("Quality Gate:", s); sys.exit(s != "OK")' .fabrikant/sonar/report.json
         failure_kind: outcome
 
-  # ── 7b. Eskalation (ADR 0057): PR mit 'needs human' → Gate-Run; Fortsetzen entfernt das Label ──
+  # ── 7c. Escalation (ADR 0057): PR with 'needs human' → gate run; resuming removes the label ──
   escalation:
     use: escalation
     with:
       poll: "{fast_poll}"
 
-  # ── 8. Approval (ADR 0011): ADR-PR 'needs approval' → Pause → Mensch approvet (UI/CLI) → ADR-PR mergen ──
-  # Schließt den Deadlock aus ADR 0011: Ein Agent (pr-reply), der eine Änderung
-  # braucht, die menschliche Freigabe erfordert (ADR/Spec, Architektur), legt die
-  # ADR als Draft an und öffnet einen gestapelten ADR-PR (Base = PR-Branch, Label
-  # 'needs approval'). Dieser Loop (reconcile) pausiert am approval-Gate; der
-  # Mensch approvet via `fabrikant approve` (UI/CLI); der Merge-Step mergt den ADR-PR.
+  # ── 8. Approval (ADR 0011): ADR PR 'needs approval' → pause → human approves (UI/CLI) → merge ADR PR ──
+  # Resolves the deadlock from ADR 0011: an agent (pr-reply) that needs a change
+  # requiring human approval (ADR/spec, architecture) creates the
+  # ADR as a draft and opens a stacked ADR PR (base = PR branch, label
+  # 'needs approval'). This loop (reconcile) pauses at the approval gate; the
+  # human approves via `fabrikant approve` (UI/CLI); the merge step merges the ADR PR.
   approval:
-    description: "Approval-Request (ADR 0011): ADR-PR (Label 'needs approval') → Pause → Mensch approvet (fabrikant UI/CLI) → ADR-PR mergen (stacked)"
+    description: "Approval request (ADR 0011): ADR PR (label 'needs approval') → pause → human approves (fabrikant UI/CLI) → merge ADR PR (stacked)"
     tier: 1
-    worktree: false  # nur pr_merge (API) — parallel (ADR 0020)
+    worktree: false  # pr_merge only (API) — parallel (ADR 0020)
     triggers:
       - type: on_pr
         repo: "{repo}"
-        # AND-Semantik (client-seitig): nur fabrikant-PRs mit 'needs approval' —
-        # 'needs approval' allein würde auch Nicht-fabrikant-PRs treffen.
+        # AND semantics (client-side): only fabrikant PRs with 'needs approval' —
+        # 'needs approval' alone would also match non-fabrikant PRs.
         labels: [fabrikant, needs approval]
         reconcile: true
         poll: "{fast_poll}"
     steps:
-      # Gate direkt am Merge: der Freigabe-Kontext zeigt "PR mergen (squash)" +
-      # PR-Titel/Link statt eines Platzhalter-echo-Steps.
+      # Gate directly at the merge: the approval context shows "merge PR (squash)" +
+      # PR title/link instead of a placeholder echo step.
       - name: merge-adr-pr
         type: pr_merge
         repo: "{repo}"

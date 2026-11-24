@@ -1,46 +1,46 @@
 #!/usr/bin/env bash
-# PR-/Issue-Kommentar anlegen oder aktualisieren — genau einer pro Marker — als fabrikant-GitHub-App.
+# Create or update a PR/issue comment — exactly one per marker — as the fabrikant GitHub App.
 #
-# Usage: gh-upsert-comment.sh <owner/repo> <nummer> <marker> <body-datei>
+# Usage: gh-upsert-comment.sh <owner/repo> <number> <marker> <body-file>
 #
-# Der Marker (z. B. `<!-- fabrikant-sonar -->`) wird dem Body vorangestellt. Ein vorhandener
-# Bot-Kommentar, der mit ihm beginnt, wird ersetzt, sonst wird ein neuer angelegt — Re-Runs pro
-# Push aktualisieren denselben Kommentar statt den PR zuzuspammen.
+# The marker (e.g. `<!-- fabrikant-sonar -->`) is prepended to the body. An existing
+# bot comment that starts with it is replaced, otherwise a new one is created — re-runs per
+# push update the same comment instead of spamming the PR.
 #
 # Env:
-#   GH_ROLE  dev | reviewer (Default reviewer) — Token GITHUB_TOKEN bzw. GITHUB_REVIEWER_TOKEN aus
-#            der Token-Datei des Projekts (FABRIKANT_PROJECT_ENV_FILE, sonst FABRIKANT_ENV_FILE; ADR 0010).
-#            Frisch halten: Loop `token-refresh`.
+#   GH_ROLE  dev | reviewer (default reviewer) — token GITHUB_TOKEN or GITHUB_REVIEWER_TOKEN from
+#            the project's token file (FABRIKANT_PROJECT_ENV_FILE, otherwise FABRIKANT_ENV_FILE; ADR 0010).
+#            Keep it fresh: loop `token-refresh`.
 #
-# Exit: 0 ok · 78 EX_CONFIG (Aufruf, Token fehlt) · sonst Exit-Code von `gh` (API-Fehler).
+# Exit: 0 ok · 78 EX_CONFIG (usage, token missing) · otherwise the exit code of `gh` (API error).
 set -euo pipefail
 
 EX_CONFIG=78
 
-die() { echo "[gh-upsert-comment] FEHLER: $*" >&2; exit "$EX_CONFIG"; }
+die() { echo "[gh-upsert-comment] ERROR: $*" >&2; exit "$EX_CONFIG"; }
 
-[ "$#" -eq 4 ] || die "Usage: $0 <owner/repo> <nummer> <marker> <body-datei>"
+[ "$#" -eq 4 ] || die "Usage: $0 <owner/repo> <number> <marker> <body-file>"
 repo="$1" number="$2" marker="$3" body_file="$4"
-[ -r "$body_file" ] || die "Body-Datei nicht lesbar: $body_file"
-case "$number" in ''|*[!0-9]*) die "keine Nummer: $number" ;; esac
+[ -r "$body_file" ] || die "Body file not readable: $body_file"
+case "$number" in ''|*[!0-9]*) die "not a number: $number" ;; esac
 
 case "${GH_ROLE:-reviewer}" in
   dev) token_key=GITHUB_TOKEN ;;
   reviewer) token_key=GITHUB_REVIEWER_TOKEN ;;
-  *) die "unbekannte GH_ROLE: $GH_ROLE (dev|reviewer)" ;;
+  *) die "unknown GH_ROLE: $GH_ROLE (dev|reviewer)" ;;
 esac
 env_file="${FABRIKANT_PROJECT_ENV_FILE:-${FABRIKANT_ENV_FILE:-}}"
-[ -r "$env_file" ] || die "Token-Datei nicht lesbar: ${env_file:-<FABRIKANT_ENV_FILE nicht gesetzt>}"
+[ -r "$env_file" ] || die "Token file not readable: ${env_file:-<FABRIKANT_ENV_FILE not set>}"
 GH_TOKEN="$(sed -n "s/^$token_key=[\"']\{0,1\}\([^\"']*\).*/\1/p" "$env_file" | tail -1)"
-[ -n "$GH_TOKEN" ] || die "$token_key fehlt in $env_file"
+[ -n "$GH_TOKEN" ] || die "$token_key missing in $env_file"
 export GH_TOKEN
-unset GITHUB_TOKEN  # gh bevorzugt GH_TOKEN, aber kein Builder-Token aus dem Step-Env durchreichen
+unset GITHUB_TOKEN  # gh prefers GH_TOKEN, but do not pass a builder token through from the step env
 
 body="$marker
 $(cat "$body_file")"
-# Nur eigene Kommentare ersetzen — nie einen fremden, der den Marker zitiert. Eigener Login wie in
-# pr-status.py: FABRIKANT_REVIEWER_LOGIN, sonst `gh api user` (PAT); App-Tokens dürfen /user nicht
-# abfragen → dann jeder Bot (die App ist der einzige Bot, der mit dem Marker postet).
+# Only replace own comments — never a foreign one that quotes the marker. Own login as in
+# pr-status.py: FABRIKANT_REVIEWER_LOGIN, otherwise `gh api user` (PAT); app tokens may not query
+# /user → then any bot (the app is the only bot that posts with the marker).
 own_login="${FABRIKANT_REVIEWER_LOGIN:-$(gh api user --jq .login 2>/dev/null || true)}"
 if [ -n "$own_login" ]; then
   author_filter=".user.login == \"$own_login\""

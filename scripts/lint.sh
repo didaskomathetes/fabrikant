@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Statische Checks der Fabrik — eine Quelle für CI (.github/workflows/fabrikant-ci.yml), den Lint-Gate von
-# develop/refactor (`lint_cmd` in projects/fabrikant.fabrikant.yaml) und die Sonar-Reports (scripts/sonar-scan.sh).
+# Static checks of the factory — one source for CI (.github/workflows/fabrikant-ci.yml), the lint gate of
+# develop/refactor (`lint_cmd` in projects/fabrikant.fabrikant.yaml) and the Sonar reports (scripts/sonar-scan.sh).
 #
-#   bash scripts/lint.sh                 Gate: ruff check + ruff format --check + pyright + bandit (ab medium).
-#                                        Läuft alle Checks durch, Exit 1 wenn einer rot ist.
-#   bash scripts/lint.sh --reports DIR   Sonar-Reports nach DIR (Funde sind kein Fehler, Exit 0):
+#   bash scripts/lint.sh                 Gate: ruff check + ruff format --check + pyright + bandit (medium and up).
+#                                        Runs all checks, exit 1 if any is red.
+#   bash scripts/lint.sh --reports DIR   Sonar reports to DIR (findings are not an error, exit 0):
 #                                          ruff.json           → sonar.python.ruff.reportPaths
 #                                          bandit.json         → sonar.python.bandit.reportPaths
 #                                          pyright-sonar.json  → sonar.externalIssuesReportPaths
-#                                        Exit 78 (EX_CONFIG), wenn ein Tool selbst scheitert (nicht: Funde).
+#                                        Exit 78 (EX_CONFIG) if a tool itself fails (not: findings).
 #
-# Konfiguration: [tool.ruff], [tool.pyright], [tool.bandit] in pyproject.toml.
+# Configuration: [tool.ruff], [tool.pyright], [tool.bandit] in pyproject.toml.
 set -euo pipefail
 
 EX_FINDINGS=1
@@ -18,7 +18,7 @@ EX_CONFIG=78
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RUFF_PATHS=(src tests scripts)
-REPORT_RUFF_PATHS=(src tests)  # nur was Sonar indiziert (sources + tests), sonst „unresolved file“-Warnungen
+REPORT_RUFF_PATHS=(src tests)  # only what Sonar indexes (sources + tests), otherwise "unresolved file" warnings
 BANDIT_PATHS=(src)
 BANDIT=(uv run bandit -c pyproject.toml -q -r "${BANDIT_PATHS[@]}")
 
@@ -28,7 +28,7 @@ if [ "${1:-}" = "--reports" ]; then
   dir="${2:?Aufruf: lint.sh --reports DIR}"
   mkdir -p "$dir"
   failed=0
-  # Exit 1 = Funde (erwartet); alles darüber = Tool-/Konfigurationsfehler.
+  # Exit 1 = findings (expected); anything above = tool/configuration error.
   report() {
     local name="$1"; shift
     local rc=0
@@ -38,7 +38,7 @@ if [ "${1:-}" = "--reports" ]; then
   report ruff uv run ruff check --output-format json --output-file "$dir/ruff.json" "${REPORT_RUFF_PATHS[@]}"
   report bandit "${BANDIT[@]}" -f json -o "$dir/bandit.json"
   report pyright sh -c 'uv run pyright --outputjson > "$1"' _ "$dir/pyright.json"
-  # Konverter kennt keine „Funde“: jeder Exit ≠ 0 ist ein Fehler.
+  # The converter has no notion of "findings": every exit ≠ 0 is an error.
   if [ "$failed" -eq 0 ] && ! python3 scripts/pyright_sonar.py "$dir/pyright.json" "$dir/pyright-sonar.json"; then
     log "FEHLER: pyright_sonar"; failed=1
   fi
@@ -57,7 +57,7 @@ check "ruff check" uv run ruff check "${RUFF_PATHS[@]}"
 check "ruff format" uv run ruff format --check "${RUFF_PATHS[@]}"
 check "pyright" uv run pyright
 check "bandit" "${BANDIT[@]}" --severity-level medium
-# Spec-Referenz muss zum Schema passen (Issue #131): scripts/generate-spec-reference.py --check
+# The spec reference must match the schema (issue #131): scripts/generate-spec-reference.py --check
 check "spec-reference aktuell" uv run python scripts/generate-spec-reference.py --check
 if [ "${#failed[@]}" -gt 0 ]; then
   log "ROT: ${failed[*]}"

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Deterministischer Quality-Report eines PRs aus SonarQube + diff-cover (advisory).
+"""Deterministic quality report of a PR from SonarQube + diff-cover (advisory).
 
-Aufruf durch `scripts/sonar-scan.sh --pr <n>` nach erfolgreicher Analyse unter dem
-PR-eigenen Project-Key (Community Edition: keine native PR-Analyse):
+Called by `scripts/sonar-scan.sh --pr <n>` after a successful analysis under the
+PR's own project key (Community Edition: no native PR analysis):
 
     sonar-pr-report.py --pr 12 --project-key fabrikant:fabrikant:pr-12 \
         [--base main] [--coverage coverage.xml] [--repo owner/name] [--post]
 
-- Issues (`api/issues/search`) nur auf den im PR geänderten Zeilen
-  (`git diff -U0 origin/<base>...HEAD`), stabil sortiert (Severity, Pfad, Zeile, Regel).
-- Lint (ruff check + ruff format + mypy) nur auf den geänderten Zeilen.
-- Kennzahlen des PR-Keys (`api/measures/component`).
-- Coverage der geänderten Zeilen über `diff-cover` (JSON-Report).
+- Issues (`api/issues/search`) only on the lines changed in the PR
+  (`git diff -U0 origin/<base>...HEAD`), stably sorted (severity, path, line, rule).
+- Lint (ruff check + ruff format + mypy) only on the changed lines.
+- Metrics of the PR key (`api/measures/component`).
+- Coverage of the changed lines via `diff-cover` (JSON report).
 
-Ausgabe: Markdown nach stdout, letzte Zeile `<!-- fabrikant-quality sha=<head> -->`.
-`--post` legt den Report als genau einen PR-Kommentar an bzw. aktualisiert den
-bestehenden mit Marker (gh-CLI, Auth wie `scripts/pr-status.py`).
+Output: Markdown to stdout, last line `<!-- fabrikant-quality sha=<head> -->`.
+`--post` creates the report as exactly one PR comment or updates the
+existing one with the marker (gh CLI, auth as in `scripts/pr-status.py`).
 Env: `SONAR_HOST_URL` (Default http://127.0.0.1:9000), `SONAR_TOKEN`.
 """
 
@@ -41,9 +41,9 @@ DEFAULT_BASE = "main"
 METRICS = ("bugs", "vulnerabilities", "code_smells", "duplicated_lines_density", "coverage")
 SEVERITY_ORDER = ("BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO")
 ISSUE_PAGE_SIZE = 500
-MAX_ISSUE_PAGES = 20  # Obergrenze: 10 k Issues reichen für einen PR-Report
+MAX_ISSUE_PAGES = 20  # upper bound: 10k issues are enough for a PR report
 COMMENT_PAGE_SIZE = 100
-MAX_COMMENT_PAGES = 10  # Obergrenze: 1000 Kommentare reichen für einen PR
+MAX_COMMENT_PAGES = 10  # upper bound: 1000 comments are enough for a PR
 HTTP_TIMEOUT_S = 30
 MAX_LISTED_ISSUES = 50
 
@@ -52,18 +52,18 @@ _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 # ---------------------------------------------------------------- Diff
 def parse_changed_lines(diff: str) -> dict[str, set[int]]:
-    """`git diff -U0` → {repo-relativer Pfad: geänderte/neue Zeilen im neuen Stand}."""
+    """`git diff -U0` → {repo-relative path: changed/new lines in the new state}."""
     changed: dict[str, set[int]] = {}
     current: str | None = None
     for line in diff.splitlines():
         if line.startswith("+++ "):
             target = line[4:].strip()
-            current = target[2:] if target.startswith("b/") else None  # /dev/null = gelöscht
+            current = target[2:] if target.startswith("b/") else None  # /dev/null = deleted
             continue
         m = _HUNK_RE.match(line)
         if m and current is not None:
             start, count = int(m.group(1)), int(m.group(2) or 1)
-            if count:  # reiner Lösch-Hunk (+c,0) hat keine neuen Zeilen
+            if count:  # a pure deletion hunk (+c,0) has no new lines
                 changed.setdefault(current, set()).update(range(start, start + count))
     return changed
 
@@ -71,7 +71,7 @@ def parse_changed_lines(diff: str) -> dict[str, set[int]]:
 # ---------------------------------------------------------------- Modell
 @dataclass(frozen=True)
 class Issue:
-    """Sonar-Issue auf einer geänderten Zeile (Pfad relativ zur Repo-Wurzel)."""
+    """Sonar issue on a changed line (path relative to the repo root)."""
 
     path: str
     line: int
@@ -87,14 +87,14 @@ class Issue:
 
 @dataclass
 class QualityReport:
-    """Alles, was in den PR-Kommentar geht; `render()` ist deterministisch."""
+    """Everything that goes into the PR comment; `render()` is deterministic."""
 
     pr: int
     sha: str
     measures: dict[str, str] = field(default_factory=dict)
     issues: list[Issue] = field(default_factory=list)
     lint_issues: list[Issue] = field(default_factory=list)
-    diff_coverage: float | None = None  # Prozent der geänderten, messbaren Zeilen
+    diff_coverage: float | None = None  # percent of the changed, measurable lines
     uncovered: dict[str, list[int]] = field(default_factory=dict)
 
     def render(self) -> str:
@@ -119,7 +119,7 @@ class QualityReport:
 
 # ---------------------------------------------------------------- Sonar
 def sonar_get(host: str, token: str, path: str, params: dict) -> dict:
-    """GET gegen die Sonar-Web-API (Basic-Auth `<token>:`)."""
+    """GET against the Sonar web API (basic auth `<token>:`)."""
     url = f"{host.rstrip('/')}{path}?{urllib.parse.urlencode(params)}"
     auth = base64.b64encode(f"{token}:".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {auth}"})
@@ -128,7 +128,7 @@ def sonar_get(host: str, token: str, path: str, params: dict) -> dict:
 
 
 def fetch_issues(host: str, token: str, key: str) -> list[dict]:
-    """Alle offenen Issues des Project-Keys (paginiert, max. `MAX_ISSUE_PAGES` Seiten)."""
+    """All open issues of the project key (paginated, at most `MAX_ISSUE_PAGES` pages)."""
     issues: list[dict] = []
     page = 1
     while page <= MAX_ISSUE_PAGES:
@@ -152,10 +152,10 @@ def fetch_measures(host: str, token: str, key: str) -> dict[str, str]:
 
 
 def issues_on_changed_lines(raw: list[dict], key: str, prefix: str, changed: dict[str, set[int]]) -> list[Issue]:
-    """Sonar-Issues → nur die auf geänderten Zeilen, stabil sortiert.
+    """Sonar issues → only those on changed lines, stably sorted.
 
-    `component` ist `<key>:<pfad relativ zum Scan-Verzeichnis>`; `prefix` macht daraus
-    den repo-relativen Pfad des Diffs (z. B. `fabrikant/`)."""
+    `component` is `<key>:<path relative to the scan directory>`; `prefix` turns it into
+    the repo-relative path of the diff (e.g. `fabrikant/`)."""
     result = []
     for item in raw:
         component, line = str(item.get("component", "")), item.get("line")
@@ -178,13 +178,13 @@ def issues_on_changed_lines(raw: list[dict], key: str, prefix: str, changed: dic
 
 # ---------------------------------------------------------------- Lint
 def _run(cmd: list[str]) -> str:
-    """Subprocess (advisory): stdout egal ob Exit 0 oder nicht, '' wenn das Tool fehlt."""
+    """Subprocess (advisory): stdout whether exit 0 or not, '' if the tool is missing."""
     proc = subprocess.run(cmd, capture_output=True, text=True)
     return proc.stdout
 
 
 def _json_values(text: str) -> list[dict]:
-    """JSON-Array ODER JSON-Lines (mypy) → Liste von Objekten; [] bei leerem/ungültigem Output."""
+    """JSON array OR JSON lines (mypy) → list of objects; [] on empty/invalid output."""
     text = text.strip()
     if not text:
         return []
@@ -201,19 +201,19 @@ def _json_values(text: str) -> list[dict]:
 
 
 def lint_issues(changed: dict[str, set[int]], prefix: str) -> list[Issue]:
-    """ruff (check + format) und mypy — nur Befunde auf geänderten Zeilen, stabil sortiert.
+    """ruff (check + format) and mypy — only findings on changed lines, stably sorted.
 
-    Pfade der Tools normalisieren wir relativ zum Aufruf-Verzeichnis (FABRIKANT_DIR;
-    ruff meldet absolute Pfade); `prefix` macht daraus den repo-relativen Pfad des
-    Diffs (z. B. `fabrikant/`). Ein defektes Tool (fehlend, ungültiger Output) liefert
-    einfach keine Befunde — advisory."""
+    We normalize the tools' paths relative to the calling directory (FABRIKANT_DIR;
+    ruff reports absolute paths); `prefix` turns that into the repo-relative path of the
+    diff (e.g. `fabrikant/`). A broken tool (missing, invalid output) simply yields
+    no findings — advisory."""
     cwd = Path.cwd().resolve()
 
     def rel(path: str) -> str:
         try:
             return Path(path).resolve().relative_to(cwd).as_posix()
         except (ValueError, OSError):
-            return ""  # außerhalb des Aufruf-Verzeichnisses → nicht zuordenbar
+            return ""  # outside the calling directory → cannot be mapped
 
     def row(diag: dict) -> int:
         loc = diag.get("location")
@@ -268,10 +268,10 @@ def lint_issues(changed: dict[str, set[int]], prefix: str) -> list[Issue]:
 
 # ---------------------------------------------------------------- diff-cover
 def diff_coverage(coverage_xml: Path, compare_ref: str) -> tuple[float | None, dict[str, list[int]]]:
-    """(Prozent, {pfad: ungedeckte Zeilen}) der geänderten Zeilen; (None, {}) ohne messbare Zeilen.
+    """(percent, {path: uncovered lines}) of the changed lines; (None, {}) without measurable lines.
 
-    `compare_ref` ist der Merge-Base-Commit: diff-cover diffet Workdir gegen den
-    Ref (zweipunktig) — mit dem Merge-Base deckt sich das mit `origin/<base>...HEAD`."""
+    `compare_ref` is the merge-base commit: diff-cover diffs the workdir against the
+    ref (two-dot) — with the merge base this coincides with `origin/<base>...HEAD`."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "diff-cover.json"
         subprocess.run(
@@ -295,7 +295,7 @@ def _gh(*args: str, stdin: str | None = None) -> str:
 
 
 def find_marker_comment(comments: list[dict]) -> int | None:
-    """ID des (ersten) Kommentars mit Quality-Marker, sonst None."""
+    """ID of the (first) comment with the quality marker, otherwise None."""
     for c in comments:
         if MARKER_PREFIX in str(c.get("body", "")):
             return int(c["id"])
@@ -316,7 +316,7 @@ def list_comments(repo: str, pr: int) -> list[dict]:
 
 
 def upsert_comment(repo: str, pr: int, body: str) -> str:
-    """Genau ein Quality-Kommentar pro PR: bestehenden aktualisieren, sonst anlegen. → 'updated'|'created'."""
+    """Exactly one quality comment per PR: update the existing one, otherwise create. → 'updated'|'created'."""
     payload = json.dumps({"body": body})
     existing = find_marker_comment(list_comments(repo, pr))
     if existing is not None:
@@ -334,8 +334,8 @@ def _git(*args: str) -> str:
 def build_report(args: argparse.Namespace, host: str, token: str) -> QualityReport:
     compare_ref = f"origin/{args.base}"
     changed = parse_changed_lines(_git("diff", "-U0", f"{compare_ref}...HEAD"))
-    # diff-cover diffet Workdir gegen den Ref (zweipunktig); der Merge-Base macht
-    # den Bereich identisch zu `origin/<base>...HEAD` (s. diff_coverage).
+    # diff-cover diffs the workdir against the ref (two-dot); the merge base makes
+    # the range identical to `origin/<base>...HEAD` (see diff_coverage).
     merge_base = _git("merge-base", compare_ref, "HEAD").strip()
     prefix = _git("rev-parse", "--show-prefix").strip()
     report = QualityReport(pr=args.pr, sha=_git("rev-parse", "HEAD").strip())
@@ -356,8 +356,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project-key", required=True)
     ap.add_argument("--base", default=DEFAULT_BASE)
     ap.add_argument("--coverage", type=Path, default=Path("coverage.xml"))
-    ap.add_argument("--repo", default="", help="owner/name (Default: gh repo view)")
-    ap.add_argument("--post", action="store_true", help="Report als PR-Kommentar anlegen/aktualisieren")
+    ap.add_argument("--repo", default="", help="owner/name (default: gh repo view)")
+    ap.add_argument("--post", action="store_true", help="create/update the report as a PR comment")
     args = ap.parse_args(argv)
     report = build_report(args, os.environ.get("SONAR_HOST_URL", DEFAULT_HOST), os.environ.get("SONAR_TOKEN", ""))
     body = report.render()

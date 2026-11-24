@@ -30,7 +30,7 @@ from fabrikant.steps import human_gate, pr_review
 REPO = "o/r"
 PR_NUMBER = 7
 BUILDER_BACKEND = "opencode"
-BUILDER_MODEL = "hetzner/qwen3.8-27b"
+BUILDER_MODEL = "provider/model-a"
 REVIEWER_BACKEND = "claude_code"
 REVIEWER_MODEL = "claude-sonnet-5-5"
 FIXED_SHA = "sha-fixed"

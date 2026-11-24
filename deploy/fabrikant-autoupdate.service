@@ -1,8 +1,8 @@
-# fabrikant-autoupdate — main nachziehen + fabrikant.service nach Merges neu starten.
+# fabrikant-autoupdate — pull main + restart fabrikant.service after merges.
 #
-# ff-only-Pull von origin/main im Haupt-Checkout, bei Änderungen unter fabrikant/
-# Neustart von fabrikant.service — aber nur im Leerlauf (kein running/queued Run);
-# sonst vertagt auf den nächsten Timer-Tick.
+# ff-only pull of origin/main in the main checkout; on changes under fabrikant/
+# restart fabrikant.service — but only when idle (no running/queued run);
+# otherwise deferred to the next timer tick.
 #
 # Install (setzt fabrikant.service voraus):
 #   cp deploy/fabrikant-autoupdate.{service,timer} ~/.config/systemd/user/
@@ -13,17 +13,17 @@
 #   systemctl --user status fabrikant-autoupdate.timer
 #   journalctl --user -u fabrikant-autoupdate.service -f
 #
-# Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
+# Path: FABRIKANT_HOME (= the fabrikant/ directory of the checkout) comes from
+# ~/.config/fabrikant/deploy.env — see docs/operations.md, "Local operation".
 
 [Unit]
-Description=Fabrikant — main nachziehen und fabrikant.service nach Merges neu starten
+Description=Fabrikant — pull main and restart fabrikant.service after merges
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 EnvironmentFile=-%h/.config/fabrikant/deploy.env
-# uv für `uv sync` bei geänderten Abhängigkeiten
+# uv for `uv sync` when dependencies change
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && exec .venv/bin/python scripts/fabrikant-autoupdate.py'
+ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME missing, see ~/.config/fabrikant/deploy.env}" && exec .venv/bin/python scripts/fabrikant-autoupdate.py'
