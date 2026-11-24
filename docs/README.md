@@ -29,6 +29,5 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [releasing.md](releasing.md) | Release process: tag-driven PyPI + GHCR publish (ADR 0069/0070). |
 | [relay.md](relay.md) | Relay tasks: spec config, how to write a brief, the session/audit flow, and how to intervene. |
 | [sonarqube.md](sonarqube.md) | Local SonarQube setup, `sonar-scan.sh` usage (incl. PR mode), PR comments via fabrikant loops. |
-| [migration-fabrikant.md](migration-fabrikant.md) | Migrating from the legacy `fabrik` names (ADR 0070). |
 | [threat-model.md](threat-model.md) | Threat model behind the security controls. |
 | [screenshots/](screenshots/) | UI screenshots. |

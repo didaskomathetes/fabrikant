@@ -79,4 +79,4 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0064](0064-mcp-server-stdio.md) | MCP-Server — fabrik als stdio-Endpoint für MCP-fähige Agenten (Runs, Specs, Approvals) | Accepted (2026-11-21) |
 | [0065](0065-golden-runs-eval-harness.md) | Golden Runs — gepinnte Baseline + Eval-Harness (`fabrik eval`, opt-in CI-Gate) | Accepted (2026-11-21) |
 | [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrik`, Docker, step plugins | Accepted (2026-11-24) |
-| [0070](0070-rename-to-fabrikant.md) | Rename to fabrikant — package, CLI, env, entry points | Accepted (2026-11-24) |
+| [0070](0070-rename-to-fabrikant.md) | Rename to fabrikant — package, CLI, env, entry points | Accepted (2026-11-24; amended: no legacy compat layer) |

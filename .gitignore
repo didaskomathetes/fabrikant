@@ -17,5 +17,5 @@ selftest/reports/
 .idea/
 .coverage
 features.md
-# legacy local env file (was accidentally tracked by the rename)
+# old local env file name; may still contain secrets on a developer machine
 fabrik.env

@@ -22,7 +22,7 @@ Module layout:
   cli       command line
 """
 
-from . import _bootstrap, config, llm  # noqa: F401  (_bootstrap first: legacy env adoption, ADR 0070)
+from . import config, llm  # noqa: F401
 from .backends import OpenCodeBackend
 from .chat import _chat, _chat_alert_test, _chat_resume, _chat_start_run
 from .config import now_id, utcnow

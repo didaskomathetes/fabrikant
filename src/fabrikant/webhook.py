@@ -16,7 +16,6 @@ from collections.abc import Mapping
 from typing import Any, Protocol, TypeAlias
 from urllib.parse import urlparse
 
-from . import legacy
 from .i18n import t
 
 SIGNATURE_HEADER = "X-Fabrikant-Signature"
@@ -34,14 +33,9 @@ class HeaderSource(Protocol):
     def get(self, name: str, failobj: Any = None, /) -> Any: ...
 
 
-def header_value(headers: HeaderSource, new_header: str) -> str:
-    """Webhook header value; falls back to the pre-rename `X-Fabrik-*` name (ADR 0070)."""
-    value = headers.get(new_header) or ""
-    if not value:
-        value = headers.get(legacy.legacy_header(new_header)) or ""
-        if value:
-            legacy.warn_once("webhook header", legacy.legacy_header(new_header))
-    return value
+def header_value(headers: HeaderSource, name: str) -> str:
+    """Value of the webhook header `name` (empty string if absent)."""
+    return headers.get(name) or ""
 
 
 REPLAY_FLAG = "replay_protection"  # opt-in per trigger (backward compatible)
