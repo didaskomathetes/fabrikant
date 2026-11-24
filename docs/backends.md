@@ -80,11 +80,9 @@ Langlaufender HTTP-Server (`opencode serve`), persistente Sessions, Polling übe
 (`~/.config/opencode/opencode.jsonc`) des serve-Prozesses existieren.
 Konfigurierte Provider:
 
-- `llama` — LAN-llama.cpp (`llama.jabjabhome.duckdns.org`), z. B.
-  `llama/Qwen3.8-27B-GGUF`.
-- `hetzner` — Hetzner Inference (`inference.hetzner.com`), z. B.
-  `hetzner/qwen3.8-27b` (→ Modell `Qwen3.8-27B`). API-Key liegt in
-  `~/.config/opencode/secrets/hetzner-token` (Deployment-Voraussetzung).
+- Any OpenAI-compatible endpoint, e.g. a local llama.cpp server (`llama/<model>`) or a hosted inference
+  provider (`<provider>/<model>`). API keys belong in a file outside the repo (e.g.
+  `~/.config/opencode/secrets/<provider>-token`), never in the spec.
 
 ## claude_code
 

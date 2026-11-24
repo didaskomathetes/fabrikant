@@ -15,8 +15,8 @@ github: "{repo}"
 # Ein Fork/zweite Instanz ändert nur diesen Block.
 vars:
   repo: didaskomathetes/fabrikant
-  # 2026-10-24: claude_code/claude-sonnet-5-5 → opencode/hetzner/qwen3.8-27b (Hetzner Inference).
-  # 2026-11-03: → lokaler llama.cpp-Server (Hetzner-Run #490: Session-Hang, Kosten, Latenz).
+  # 2026-10-24: switched from claude_code to a hosted opencode provider.
+  # 2026-11-03: switched to a local llama.cpp server (session hangs, cost, latency).
   builder_backend: opencode
   # Builder-Modell = Konfiguration (ADR 0022) — pr-reply nutzt dasselbe wie develop.
   builder_model: llama/ukisai_Swift-1.5-Qwen3.8-27b-IQ4_XS

@@ -43,5 +43,5 @@ appears read-only (`env`); a UI connection with the same name overrides it.
 
 ```yaml
 steps:
-  - {type: agent, name: changes, connection: hetzner-opencode, prompt_file: prompts/develop.md}
+  - {type: agent, name: changes, connection: my-opencode, prompt_file: prompts/develop.md}
 ```
