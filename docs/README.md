@@ -4,9 +4,7 @@
 shipped (per ADR), what is in flight, and what is open.
 
 Current documentation for the fabrikant framework. Architecture decisions are in
-[`adr/`](adr/README.md). Historical and one-off documents live in
-[`archive/`](archive/) (each carries a pointer note at the top).
-
+[`adr/`](adr/README.md). 
 ## Living
 
 | Document | Role |
@@ -32,13 +30,6 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [releasing.md](releasing.md) | Release checklist: PyPI Trusted Publisher, GHCR image, tagging (ADR 0069/0070). |
 | [relay.md](relay.md) | Relay tasks: spec config, how to write a brief, the session/audit flow, and how to intervene. |
 | [sonarqube.md](sonarqube.md) | Local SonarQube setup, `sonar-scan.sh` usage (incl. PR mode), PR comments via fabrikant loops. |
+| [migration-fabrikant.md](migration-fabrikant.md) | Migrating from the legacy `fabrik` names (ADR 0070). |
+| [threat-model.md](threat-model.md) | Threat model behind the security controls. |
 | [screenshots/](screenshots/) | UI screenshots. |
-
-## Historical (archive)
-
-| Document | Role |
-|---|---|
-| [archive/framework-v1-draft.md](archive/framework-v1-draft.md) | Historical v1.1 framework design draft (2026-10); the origin of the [roadmap](roadmap.md), which supersedes it as a plan. |
-| [archive/review-pr10-pr11.md](archive/review-pr10-pr11.md) | One-off code review of PRs #10/#11 (2026-10); findings addressed in later versions. |
-| [archive/spike-opencode.md](archive/spike-opencode.md) | Completed spike of `opencode serve` as agent backend (2026-10), incl. pitfalls and API references; referenced by [backends.md](backends.md). |
-| [archive/investigations/2026-10-ai-software-factory/](archive/investigations/2026-10-ai-software-factory/README.md) | Completed desk research on AI software factory patterns, measured against fabrikant (audited, 2026-10). |
