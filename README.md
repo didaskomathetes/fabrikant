@@ -98,5 +98,5 @@ The full index is [docs/README.md](docs/README.md). Highlights:
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE). Third-party packages can extend fabrikant through the step plugin contract
+Apache 2.0 — see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md); security reports: [SECURITY.md](SECURITY.md). Third-party packages can extend fabrikant through the step plugin contract
 ([docs/plugins.md](docs/plugins.md)).
