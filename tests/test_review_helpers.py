@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from fabrik.runmodel import FailureKind
-from fabrik.steps import review
-from fabrik.steps.review import _parse_verdict
+from fabrikant.runmodel import FailureKind
+from fabrikant.steps import review
+from fabrikant.steps.review import _parse_verdict
 
 
 @pytest.mark.parametrize(
@@ -22,9 +22,9 @@ from fabrik.steps.review import _parse_verdict
 )
 def test_resolve_backend(monkeypatch, step, env, expected):
     if env is None:
-        monkeypatch.delenv("FABRIK_AGENT_BACKEND", raising=False)
+        monkeypatch.delenv("FABRIKANT_AGENT_BACKEND", raising=False)
     else:
-        monkeypatch.setenv("FABRIK_AGENT_BACKEND", env)
+        monkeypatch.setenv("FABRIKANT_AGENT_BACKEND", env)
     assert review._resolve_backend(step) == expected
 
 

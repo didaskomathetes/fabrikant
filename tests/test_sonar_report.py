@@ -11,7 +11,7 @@ from helpers import load_script
 _PATH = Path(__file__).resolve().parent.parent / "scripts" / "sonar_report.py"
 sr = load_script(_PATH.name, "sonar_report")
 
-KEY = "fabrik:fabrik"
+KEY = "fabrikant:fabrikant"
 LINK = "https://github.com/o/r/blob/abc"
 
 
@@ -36,7 +36,7 @@ def _report(status: str = "OK", conditions: list | None = None, measures: list |
         {"component": {"measures": measures or []}},
         {"issues": issues, "total": len(issues) if total is None else total},
         project_key=KEY,
-        repo_prefix="fabrik/",
+        repo_prefix="fabrikant/",
         dashboard="http://sonar/dashboard",
     )
 
@@ -85,8 +85,8 @@ def test_issues_sorted_by_severity_capped_and_linked():
     text = _report(issues=issues, total=40).comment(LINK)
     listed = [line for line in text.splitlines() if line.startswith("- **")]
     assert len(listed) == sr.MAX_LISTED_ISSUES
-    assert listed[0] == f"- **BLOCKER** [fabrik/src/f99.py]({LINK}/fabrik/src/f99.py) — m99 (`python:S99`)"
-    assert f"[fabrik/src/f0.py:3]({LINK}/fabrik/src/f0.py#L3)" in text
+    assert listed[0] == f"- **BLOCKER** [fabrikant/src/f99.py]({LINK}/fabrikant/src/f99.py) — m99 (`python:S99`)"
+    assert f"[fabrikant/src/f0.py:3]({LINK}/fabrikant/src/f0.py#L3)" in text
     assert "- … and 25 more" in text  # total zählt alle, nicht nur die abgerufenen
 
 
@@ -101,13 +101,13 @@ def test_cli_writes_report_and_comment(tmp_path):
     out = tmp_path / "out"
     rc = sr.main(
         [*(a for n in files for a in (f"--{n}", str(tmp_path / f"{n}.json"))),
-         "--project-key", KEY, "--repo-prefix", "fabrik/", "--dashboard", "d",
+         "--project-key", KEY, "--repo-prefix", "fabrikant/", "--dashboard", "d",
          "--report", str(out / "report.json"), "--comment", str(out / "comment.md"), "--link-base", LINK + "/"]
     )  # fmt: skip
     assert rc == 0
-    assert json.loads((out / "report.json").read_text())["issues"][0]["path"] == "fabrik/src/f0.py"
+    assert json.loads((out / "report.json").read_text())["issues"][0]["path"] == "fabrikant/src/f0.py"
     assert "⚠️ warning" in (out / "comment.md").read_text()
-    assert f"({LINK}/fabrik/src/f0.py#L3)" in (out / "comment.md").read_text()  # kein doppelter Slash
+    assert f"({LINK}/fabrikant/src/f0.py#L3)" in (out / "comment.md").read_text()  # kein doppelter Slash
 
 
 def test_cli_comment_requires_link_base(tmp_path):

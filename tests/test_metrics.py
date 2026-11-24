@@ -1,4 +1,4 @@
-"""KPI-Metriken (src/fabrik/metrics.py): Prometheus-Textformat + Label-Escaping.
+"""KPI-Metriken (src/fabrikant/metrics.py): Prometheus-Textformat + Label-Escaping.
 
 Review PR 141: Label-Werte mit Backslash, Anführungszeichen oder
 Zeilenumbruch durften ungültige Samples erzeugen. Diese Tests pinnen das
@@ -10,8 +10,8 @@ import threading
 
 import pytest
 
-from fabrik import metrics
-from fabrik.metrics import Counter, _escape_label_value
+from fabrikant import metrics
+from fabrikant.metrics import Counter, _escape_label_value
 
 
 @pytest.fixture
@@ -149,7 +149,7 @@ def test_counter_rejects_invalid_names():
 
 def test_counter_accepts_valid_names():
     """Gültige Prometheus-Namen (inkl. ':' und '_') werden akzeptiert."""
-    for good in ("m_total", "fabrik_reaped_runs_total", "job:metric:name", "_leading", "A1_b2"):
+    for good in ("m_total", "fabrikant_reaped_runs_total", "job:metric:name", "_leading", "A1_b2"):
         Counter(good, "help", ["tier"])  # darf nicht werfen
 
 

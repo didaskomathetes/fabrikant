@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from fabrik import specs
+from fabrikant import specs
 
 # Top-Kommentar, Inline-Kommentar und Loops-Kommentar müssen nach einem
 # Save überleben; der Kommentar über `l1:` liegt IN der loops-Sektion und
@@ -43,7 +43,7 @@ loops:
 
 @pytest.fixture
 def spec_file(projects_dir, tmp_path):
-    f = projects_dir / "p.fabrik.yaml"
+    f = projects_dir / "p.fabrikant.yaml"
     f.write_text(SPEC_YAML.replace("__ROOT__", str(tmp_path)))
     return f
 
@@ -117,7 +117,7 @@ def test_save_spec_unknown_project(projects_dir):
 
 
 def test_save_spec_broken_spec_rejected(projects_dir, tmp_path):
-    (projects_dir / "broken.fabrik.yaml").write_text(
+    (projects_dir / "broken.fabrikant.yaml").write_text(
         f"root: {tmp_path}\nloops:\n  l1:\n    steps:\n      - type: bogus\n"
     )
     with pytest.raises(ValueError, match="defekte Spec"):
@@ -125,7 +125,7 @@ def test_save_spec_broken_spec_rejected(projects_dir, tmp_path):
 
 
 def test_save_spec_json_stays_json(projects_dir, tmp_path):
-    f = projects_dir / "pj.fabrik.json"
+    f = projects_dir / "pj.fabrikant.json"
     f.write_text(
         json.dumps(
             {"name": "pj", "root": str(tmp_path), "loops": {"l1": {"steps": [{"type": "shell", "cmd": "echo x"}]}}}
@@ -184,7 +184,7 @@ def test_save_spec_optimistic_lock_ok(spec_file):
 def test_save_spec_name_without_name_field(projects_dir, tmp_path):
     """Spec ohne `name:` → der gelieferte Name kommt aus der kanonischen Spec,
     nicht aus dem Temp-Pfad (früher: `p.yaml` statt `p`)."""
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'root: {tmp_path}\nloops:\n  l1:\n    steps:\n      - {{type: shell, cmd: "echo x"}}\n'
     )
     saved = specs.save_spec("p", specs.SpecUpdate(project_fields={"description": "d"}))
@@ -208,13 +208,13 @@ def test_save_spec_byte_preserves_untouched_sections(spec_file):
 def test_load_spec_raw_unexpanded(projects_dir, tmp_path):
     """load_spec_raw parst ohne Expansion: vars bleiben wörtlich, use: un-inlined,
     alle Loop-Schlüssel erhalten."""
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f"root: {tmp_path}\nvars:\n  greet: hallo\nloops:\n"
         "  l1:\n    worktree: false\n    retry: {max: 2}\n"
         '    steps:\n      - {type: shell, cmd: "echo ${greet}"}\n'
         "  l2:\n    use: some-template\n"
     )
-    raw = specs.load_spec_raw(projects_dir / "p.fabrik.yaml")
+    raw = specs.load_spec_raw(projects_dir / "p.fabrikant.yaml")
     assert raw["loops"]["l1"]["steps"][0]["cmd"] == "echo ${greet}"  # var wörtlich
     assert raw["loops"]["l1"]["worktree"] is False  # unbekannter Schlüssel erhalten
     assert raw["loops"]["l1"]["retry"] == {"max": 2}
@@ -286,7 +286,7 @@ def use_spec_file(projects_dir, tmp_path):
     """Spec mit einer `use:`-Template-Loop ohne eigene triggers/steps."""
     (projects_dir / "templates").mkdir()
     (projects_dir / "templates" / "base.loop.yaml").write_text(TEMPLATE_YAML)
-    f = projects_dir / "p.fabrik.yaml"
+    f = projects_dir / "p.fabrikant.yaml"
     f.write_text(f"name: p\nroot: {tmp_path}\nloops:\n  t:\n    use: base\n    description: alt\n")
     return f
 

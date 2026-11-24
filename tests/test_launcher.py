@@ -12,9 +12,9 @@ import threading
 
 import pytest
 
-from fabrik import config, engine
-from fabrik.launcher import InProcessLauncher, RunLauncher, create_launcher, known_launchers
-from fabrik.launcher.registry import ADAPTERS
+from fabrikant import config, engine
+from fabrikant.launcher import InProcessLauncher, RunLauncher, create_launcher, known_launchers
+from fabrikant.launcher.registry import ADAPTERS
 
 
 def _wait(flag: threading.Event, timeout: float = 2.0) -> bool:
@@ -57,7 +57,7 @@ class TestInProcess:
             pool.shutdown()
 
     def test_status_without_pool_reports_configured_size(self, monkeypatch):
-        monkeypatch.setenv("FABRIK_WORKERS", "7")
+        monkeypatch.setenv("FABRIKANT_WORKERS", "7")
         launcher = InProcessLauncher(
             pool_factory=lambda: (_ for _ in ()).throw(AssertionError("sollte nicht laufen")),
             pool_or_none=lambda: None,
@@ -151,7 +151,7 @@ class TestEngineLauncher:
     def test_pool_status_delegates_to_launcher_without_pool(self, monkeypatch):
         """pool_status() und launcher.status() stimmen überein (eine Quelle)."""
         monkeypatch.setattr(engine, "_run_pool", None)
-        monkeypatch.setenv("FABRIK_WORKERS", "7")
+        monkeypatch.setenv("FABRIKANT_WORKERS", "7")
         assert engine.pool_status() == engine._get_launcher().status()
         assert engine.pool_status() == {"workers": 7, "busy": 0, "queue": 0}
 
@@ -165,15 +165,15 @@ class TestEngineLauncher:
             pool.shutdown()
 
     def test_submit_failure_does_not_leak_queued_trigger(self, monkeypatch):
-        """Submit-Fehler (ungültige FABRIK_WORKERS) unterdrückt den Trigger nicht dauerhaft."""
+        """Submit-Fehler (ungültige FABRIKANT_WORKERS) unterdrückt den Trigger nicht dauerhaft."""
         monkeypatch.setattr(engine, "_run_pool", None)
         monkeypatch.setattr(engine, "_queued_triggers", {})
-        monkeypatch.setenv("FABRIK_WORKERS", "not-a-number")
+        monkeypatch.setenv("FABRIKANT_WORKERS", "not-a-number")
         with pytest.raises(ValueError):
             engine._safe_run("p", "l", "cron")
         assert engine._queued_triggers == {}
         # Nach dem Fehler kann derselbe Trigger erneut eingereiht werden.
-        monkeypatch.setenv("FABRIK_WORKERS", "2")
+        monkeypatch.setenv("FABRIKANT_WORKERS", "2")
         submitted: list = []
 
         class _FakePool:
@@ -185,7 +185,7 @@ class TestEngineLauncher:
         assert len(submitted) == 1
 
     def test_unknown_substrate_does_not_leak_queued_trigger(self, monkeypatch):
-        """Unbekanntes FABRIK_LAUNCHER unterdrückt den Trigger nicht dauerhaft."""
+        """Unbekanntes FABRIKANT_LAUNCHER unterdrückt den Trigger nicht dauerhaft."""
         monkeypatch.setattr(engine, "_launcher", None)
         monkeypatch.setattr(engine, "_queued_triggers", {})
         monkeypatch.setenv(config.LAUNCHER_ENV, "does-not-exist")

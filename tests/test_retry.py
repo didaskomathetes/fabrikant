@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fabrik.retry import DEFAULT_BACKOFF, DEFAULT_MAX_WAIT, RetryPolicy, format_duration, parse_duration
-from fabrik.runmodel import FailureKind
+from fabrikant.retry import DEFAULT_BACKOFF, DEFAULT_MAX_WAIT, RetryPolicy, format_duration, parse_duration
+from fabrikant.runmodel import FailureKind
 
 
 @pytest.mark.parametrize(("raw", "seconds"), [("45s", 45), ("5m", 300), ("2h", 7200), ("1d", 86400), (" 3m ", 180)])

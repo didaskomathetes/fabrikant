@@ -2,11 +2,11 @@
 
 Run explicitly against a real instance:
 
-    FABRIK_GITLAB_LIVE=1 FABRIK_GITLAB_HOST=gitlab.opencode.de \
-        FABRIK_GITLAB_LIVE_REF=oc000163725684/test-project \
+    FABRIKANT_GITLAB_LIVE=1 FABRIKANT_GITLAB_HOST=gitlab.opencode.de \
+        FABRIKANT_GITLAB_LIVE_REF=oc000163725684/test-project \
         .venv/bin/python -m pytest tests/test_hosting_live.py -v
 
-The token must be available via ``FABRIK_GITLAB_TOKEN`` or ``~/.config/gitlab/token``.
+The token must be available via ``FABRIKANT_GITLAB_TOKEN`` or ``~/.config/gitlab/token``.
 
 These checks are read-only. The verification PAT carries the ``api`` scope, but the
 instance answers project creation with ``403 insufficient_scope`` ("the request requires
@@ -21,13 +21,13 @@ import os
 
 import pytest
 
-from fabrik.hosting import GitLabProvider
+from fabrikant.hosting import GitLabProvider
 
-LIVE = os.environ.get("FABRIK_GITLAB_LIVE", "").strip().lower() in ("1", "true", "yes")
-HOST = os.environ.get("FABRIK_GITLAB_HOST", "gitlab.opencode.de")
-REF = os.environ.get("FABRIK_GITLAB_LIVE_REF", "oc000163725684/test-project")
+LIVE = os.environ.get("FABRIKANT_GITLAB_LIVE", "").strip().lower() in ("1", "true", "yes")
+HOST = os.environ.get("FABRIKANT_GITLAB_HOST", "gitlab.opencode.de")
+REF = os.environ.get("FABRIKANT_GITLAB_LIVE_REF", "oc000163725684/test-project")
 
-pytestmark = pytest.mark.skipif(not LIVE, reason="set FABRIK_GITLAB_LIVE=1 to run live GitLab checks")
+pytestmark = pytest.mark.skipif(not LIVE, reason="set FABRIKANT_GITLAB_LIVE=1 to run live GitLab checks")
 
 
 def test_live_auth_and_repo_parse():

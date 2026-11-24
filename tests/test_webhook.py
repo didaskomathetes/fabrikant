@@ -8,20 +8,20 @@ import urllib.error
 import urllib.request
 
 import pytest
-from test_server_api import fabrik_home, fabrik_url  # noqa: F401  (Fixtures)
+from test_server_api import fabrikant_home, fabrikant_url  # noqa: F401  (Fixtures)
 
-from fabrik import server, specs, webhook
+from fabrikant import server, specs, webhook
 
 SECRET = "s3cret-value"
 ORIGIN = "https://hooks.example.com"
 
 
 @pytest.fixture
-def hook(fabrik_home, monkeypatch):  # noqa: F811
+def hook(fabrikant_home, monkeypatch):  # noqa: F811
     monkeypatch.setenv("HOOK_SECRET", SECRET)
     monkeypatch.setenv(webhook.ORIGIN_ENV, ORIGIN)
-    (fabrik_home / "projects" / "uitest.fabrik.yaml").write_text(
-        f"name: uitest\nroot: {fabrik_home}\nloops:\n  t:\n    triggers:\n"
+    (fabrikant_home / "projects" / "uitest.fabrikant.yaml").write_text(
+        f"name: uitest\nroot: {fabrikant_home}\nloops:\n  t:\n    triggers:\n"
         "      - {type: on_webhook, secret_env: HOOK_SECRET, map: {title: issue.title, n: issue.number}}\n"
         '    steps:\n      - {type: shell, name: a, cmd: "true"}\n'
     )
@@ -51,47 +51,47 @@ def _signed(body: bytes, **extra):
 BODY = json.dumps({"issue": {"title": "Hi", "number": 7}}).encode()
 
 
-def test_valid_signature_starts_run_with_mapped_vars(fabrik_url, hook):  # noqa: F811
-    status, data, _ = _post(f"{fabrik_url}/api/webhook/uitest/t", BODY, _signed(BODY))
+def test_valid_signature_starts_run_with_mapped_vars(fabrikant_url, hook):  # noqa: F811
+    status, data, _ = _post(f"{fabrikant_url}/api/webhook/uitest/t", BODY, _signed(BODY))
     assert status == 200 and data["run_id"] == "rid"
     assert hook == [("uitest", "t", {"title": "Hi", "n": "7"}, "on_webhook")]
 
 
 @pytest.mark.parametrize("headers", [{}, {webhook.SIGNATURE_HEADER: "sha256=deadbeef"}, {webhook.SIGNATURE_HEADER: ""}])
-def test_bad_or_missing_signature_401(fabrik_url, hook, headers):  # noqa: F811
-    status, _, _ = _post(f"{fabrik_url}/api/webhook/uitest/t", BODY, headers)
+def test_bad_or_missing_signature_401(fabrikant_url, hook, headers):  # noqa: F811
+    status, _, _ = _post(f"{fabrikant_url}/api/webhook/uitest/t", BODY, headers)
     assert status == 401 and hook == []
 
 
-def test_signature_for_other_body_401(fabrik_url, hook):  # noqa: F811
-    status, _, _ = _post(f"{fabrik_url}/api/webhook/uitest/t", BODY + b" ", _signed(BODY))
+def test_signature_for_other_body_401(fabrikant_url, hook):  # noqa: F811
+    status, _, _ = _post(f"{fabrikant_url}/api/webhook/uitest/t", BODY + b" ", _signed(BODY))
     assert status == 401 and hook == []
 
 
 @pytest.mark.parametrize("path", ["uitest/nope", "nope/t", "uitest", "uitest/t/x"])
-def test_unknown_target_is_401(fabrik_url, hook, path):  # noqa: F811
-    status, _, _ = _post(f"{fabrik_url}/api/webhook/{path}", BODY, _signed(BODY))
+def test_unknown_target_is_401(fabrikant_url, hook, path):  # noqa: F811
+    status, _, _ = _post(f"{fabrikant_url}/api/webhook/{path}", BODY, _signed(BODY))
     assert status == 401 and hook == []
 
 
-def test_unset_secret_env_401(fabrik_url, hook, monkeypatch):  # noqa: F811
+def test_unset_secret_env_401(fabrikant_url, hook, monkeypatch):  # noqa: F811
     monkeypatch.delenv("HOOK_SECRET")
-    status, _, _ = _post(f"{fabrik_url}/api/webhook/uitest/t", BODY, _signed(BODY))
+    status, _, _ = _post(f"{fabrikant_url}/api/webhook/uitest/t", BODY, _signed(BODY))
     assert status == 401 and hook == []
 
 
-def test_invalid_json_400_and_missing_field_422(fabrik_url, hook):  # noqa: F811
+def test_invalid_json_400_and_missing_field_422(fabrikant_url, hook):  # noqa: F811
     bad = b"{nope"
-    assert _post(f"{fabrik_url}/api/webhook/uitest/t", bad, _signed(bad))[0] == 400
+    assert _post(f"{fabrikant_url}/api/webhook/uitest/t", bad, _signed(bad))[0] == 400
     arr = b"[1]"
-    assert _post(f"{fabrik_url}/api/webhook/uitest/t", arr, _signed(arr))[0] == 400
+    assert _post(f"{fabrikant_url}/api/webhook/uitest/t", arr, _signed(arr))[0] == 400
     miss = b'{"issue": {"title": "x"}}'
-    assert _post(f"{fabrik_url}/api/webhook/uitest/t", miss, _signed(miss))[0] == 422
+    assert _post(f"{fabrikant_url}/api/webhook/uitest/t", miss, _signed(miss))[0] == 422
     assert hook == []
 
 
-def test_cors_only_for_tunnel_origin(fabrik_url, hook):  # noqa: F811
-    url = f"{fabrik_url}/api/webhook/uitest/t"
+def test_cors_only_for_tunnel_origin(fabrikant_url, hook):  # noqa: F811
+    url = f"{fabrikant_url}/api/webhook/uitest/t"
     _, _, h = _post(url, BODY, _signed(BODY, Origin=ORIGIN))
     assert h["Access-Control-Allow-Origin"] == ORIGIN
     _, _, h = _post(url, BODY, _signed(BODY, Origin="https://evil.example"))
@@ -100,9 +100,11 @@ def test_cors_only_for_tunnel_origin(fabrik_url, hook):  # noqa: F811
     assert status == 401 and "Access-Control-Allow-Origin" not in h
 
 
-def test_preflight(fabrik_url, hook):  # noqa: F811
+def test_preflight(fabrikant_url, hook):  # noqa: F811
     def opt(origin):
-        req = urllib.request.Request(f"{fabrik_url}/api/webhook/uitest/t", method="OPTIONS", headers={"Origin": origin})
+        req = urllib.request.Request(
+            f"{fabrikant_url}/api/webhook/uitest/t", method="OPTIONS", headers={"Origin": origin}
+        )
         with urllib.request.urlopen(req) as r:
             return r.status, dict(r.headers)
 
@@ -112,19 +114,19 @@ def test_preflight(fabrik_url, hook):  # noqa: F811
     assert "Access-Control-Allow-Origin" not in opt("https://evil.example")[1]
 
 
-def test_tunnel_host_only_reaches_webhook(fabrik_url, hook):  # noqa: F811
+def test_tunnel_host_only_reaches_webhook(fabrikant_url, hook):  # noqa: F811
     host = {"Host": "HOOKS.EXAMPLE.COM:443"}
-    req = urllib.request.Request(f"{fabrik_url}/api/projects", headers=host)
+    req = urllib.request.Request(f"{fabrikant_url}/api/projects", headers=host)
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(req)
     assert e.value.code == 404
-    assert _post(f"{fabrik_url}/api/runs", b"{}", host)[0] == 404
-    assert _post(f"{fabrik_url}/api/webhook/uitest/t", BODY, {**_signed(BODY), **host})[0] == 200
+    assert _post(f"{fabrikant_url}/api/runs", b"{}", host)[0] == 404
+    assert _post(f"{fabrikant_url}/api/webhook/uitest/t", BODY, {**_signed(BODY), **host})[0] == 200
 
 
-def test_tunnel_host_blocks_options_for_non_webhook(fabrik_url, hook):  # noqa: F811
+def test_tunnel_host_blocks_options_for_non_webhook(fabrikant_url, hook):  # noqa: F811
     req = urllib.request.Request(
-        f"{fabrik_url}/api/projects",
+        f"{fabrikant_url}/api/projects",
         method="OPTIONS",
         headers={"Host": "HOOKS.EXAMPLE.COM:443"},
     )
@@ -133,8 +135,8 @@ def test_tunnel_host_blocks_options_for_non_webhook(fabrik_url, hook):  # noqa: 
     assert e.value.code == 404
 
 
-def test_no_cors_star_anywhere(fabrik_url, hook):  # noqa: F811
-    req = urllib.request.Request(f"{fabrik_url}/api/health", headers={"Origin": ORIGIN})
+def test_no_cors_star_anywhere(fabrikant_url, hook):  # noqa: F811
+    req = urllib.request.Request(f"{fabrikant_url}/api/health", headers={"Origin": ORIGIN})
     with urllib.request.urlopen(req) as r:
         assert "Access-Control-Allow-Origin" not in r.headers
 
@@ -193,9 +195,9 @@ def test_parse_content_length_rejects(raw, status):
 
 
 @pytest.mark.parametrize(("length", "status"), [("-5", 400), ("abc", 400), (str(webhook.MAX_BODY_BYTES + 1), 413)])
-def test_webhook_bad_content_length(fabrik_url, hook, length, status):  # noqa: F811
+def test_webhook_bad_content_length(fabrikant_url, hook, length, status):  # noqa: F811
     res = _post(
-        f"{fabrik_url}/api/webhook/uitest/t", b"", {webhook.SIGNATURE_HEADER: "sha256=x", "Content-Length": length}
+        f"{fabrikant_url}/api/webhook/uitest/t", b"", {webhook.SIGNATURE_HEADER: "sha256=x", "Content-Length": length}
     )
     assert res[0] == status and hook == []
 
@@ -299,10 +301,10 @@ def test_validate_trigger_replay_flag_type():
     assert webhook.validate_trigger({"secret_env": "X", "replay_protection": "yes"}, "w")
 
 
-def test_replay_over_http(fabrik_url, hook, fabrik_home, monkeypatch):  # noqa: F811
+def test_replay_over_http(fabrikant_url, hook, fabrikant_home, monkeypatch):  # noqa: F811
     monkeypatch.setattr(webhook, "NONCES", webhook.NonceCache())
-    (fabrik_home / "projects" / "uitest.fabrik.yaml").write_text(
-        f"name: uitest\nroot: {fabrik_home}\nloops:\n  t:\n    triggers:\n"
+    (fabrikant_home / "projects" / "uitest.fabrikant.yaml").write_text(
+        f"name: uitest\nroot: {fabrikant_home}\nloops:\n  t:\n    triggers:\n"
         "      - {type: on_webhook, secret_env: HOOK_SECRET, replay_protection: true}\n"
         '    steps:\n      - {type: shell, name: a, cmd: "true"}\n'
     )
@@ -312,13 +314,13 @@ def test_replay_over_http(fabrik_url, hook, fabrik_home, monkeypatch):  # noqa: 
         webhook.TIMESTAMP_HEADER: ts,
         webhook.NONCE_HEADER: "abc",
     }
-    url = f"{fabrik_url}/api/webhook/uitest/t"
+    url = f"{fabrikant_url}/api/webhook/uitest/t"
     assert _post(url, BODY, headers)[0] == 200
     assert _post(url, BODY, headers)[0] == 401  # Replay
     assert _post(url, BODY, _signed(BODY))[0] == 401  # Legacy-Signatur reicht nicht
 
 
-# --- FABRIK_WEBHOOK_ORIGIN / Host-Formen ----------------------------------------
+# --- FABRIKANT_WEBHOOK_ORIGIN / Host-Formen ----------------------------------------
 
 
 @pytest.mark.parametrize(

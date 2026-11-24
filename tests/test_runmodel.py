@@ -4,7 +4,7 @@ import itertools
 
 import pytest
 
-from fabrik.runmodel import (
+from fabrikant.runmodel import (
     APPROVAL_TRANSITIONS,
     RUN_TRANSITIONS,
     STEP_TRANSITIONS,
@@ -96,19 +96,19 @@ def test_run_properties():
 
 # ---------------------------------------------------------------- Verdikt (fachliches Step-Ergebnis)
 def test_verdict_line_round_trips_and_rejects_invalid_words():
-    from fabrik.runmodel import split_verdict, verdict_line
+    from fabrikant.runmodel import split_verdict, verdict_line
 
     assert split_verdict(f"a\n{verdict_line('fail')}\nrelay done\n") == ("a\nrelay done\n", "fail")
     assert split_verdict(f"{verdict_line('pass')}\n{verdict_line('blocked')}")[1] == "blocked"  # letztes gilt
-    assert split_verdict("::fabrik-verdict::BAD\nx") == ("x", "")  # ungültig: entfernt, aber kein Verdikt
-    assert split_verdict("say ::fabrik-verdict::fail inline") == ("say ::fabrik-verdict::fail inline", "")
+    assert split_verdict("::fabrikant-verdict::BAD\nx") == ("x", "")  # ungültig: entfernt, aber kein Verdikt
+    assert split_verdict("say ::fabrikant-verdict::fail inline") == ("say ::fabrikant-verdict::fail inline", "")
     for bad in ("", "Fail", "x" * 21, "a b"):
         with pytest.raises(ValueError):
             verdict_line(bad)
 
 
 def test_run_verdict_is_the_last_reported_step_verdict():
-    from fabrik.runmodel import Run, RunStatus, Step, StepStatus
+    from fabrikant.runmodel import Run, RunStatus, Step, StepStatus
 
     steps = (
         Step("a", "shell", StepStatus.PASS, verdict="pass"),

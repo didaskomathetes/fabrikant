@@ -11,9 +11,9 @@ import json
 import os
 import urllib.request
 
-from fabrik import llm
-from fabrik.chat import _approval_detail
-from fabrik.engine import (
+from fabrikant import llm
+from fabrikant.chat import _approval_detail
+from fabrikant.engine import (
     _approval_context,
     _format_permissions,
     _issue_link,
@@ -36,7 +36,7 @@ def _write_spec(projects_dir, tmp_path, name, *, tier=None, github=None, steps_y
         lines.append(f"    tier: {tier}")
     lines.append("    steps:")
     lines.append(body)
-    (projects_dir / f"{name}.fabrik.yaml").write_text("\n".join(lines) + "\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text("\n".join(lines) + "\n")
     return root
 
 
@@ -136,8 +136,8 @@ def test_step_intent_unknown_vars_stay_unsubstituted():
 
 
 def test_step_intent_git_substitutes_branch():
-    step = {"type": "git", "branch": "fabrik/auto/{issue_number}"}
-    assert _step_intent(step, {"issue_number": "9"}) == "Git: branch fabrik/auto/9"
+    step = {"type": "git", "branch": "fabrikant/auto/{issue_number}"}
+    assert _step_intent(step, {"issue_number": "9"}) == "Git: branch fabrikant/auto/9"
 
 
 def test_step_intent_issue_label_shows_number_and_diff():
@@ -309,7 +309,7 @@ def test_run_loop_resume_restores_vars(runs_dir, projects_dir, tmp_path):
     )
     assert rec["status"] == "needs_approval"
     # Variablen überleben den JSON-Roundtrip (Resume liest den Record neu)
-    from fabrik import get_run
+    from fabrikant import get_run
 
     reloaded = get_run(rec["id"], "appr_resume")
     assert reloaded["vars"]["issue_number"] == "42"
@@ -328,12 +328,12 @@ def test_run_loop_resume_restores_llm_injected_vars(runs_dir, projects_dir, tmp_
     Exakter Bug: classify (llm) injectet `label`, apply-label (approval) pausiert,
     Resume lief `gh issue edit {issue_number}` mit Literal-Platzhaltern."""
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "test-model")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "test-model")
     llm.reset_cache()
     llm.set_active("dummy")
 
@@ -506,7 +506,7 @@ def test_approval_detail_persisted_in_record_json(runs_dir, projects_dir, tmp_pa
         steps_yaml="- name: g\n  type: shell\n  cmd: echo x\n  approval: true\n",
     )
     rec = run_loop("appr_json", "s", trigger="on_issue:#3")
-    from fabrik import get_run
+    from fabrikant import get_run
 
     reloaded = get_run(rec["id"], "appr_json")
     assert reloaded["approval"]["issue"] == "https://github.com/o/r/issues/3"

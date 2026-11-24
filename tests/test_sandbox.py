@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import egress, sandbox
-from fabrik.config import HARNESS_DIR, HARNESS_LOCAL_FILE, HARNESS_PRIVATE_DIR
+from fabrikant import egress, sandbox
+from fabrikant.config import HARNESS_DIR, HARNESS_LOCAL_FILE, HARNESS_PRIVATE_DIR
 
 _REAL_STOP_CONTAINER = sandbox.stop_container  # vor dem autouse-Mock
-_EX = sandbox.Exchange(tmpdir=Path("/x/ex"), base="abc", ref="refs/fabrik/sandbox/sid123")
+_EX = sandbox.Exchange(tmpdir=Path("/x/ex"), base="abc", ref="refs/fabrikant/sandbox/sid123")
 
 
 @pytest.fixture(autouse=True)
@@ -47,8 +47,8 @@ def test_from_env_defaults_and_overrides(monkeypatch):
     cfg = sandbox.SandboxConfig.from_env()
     assert cfg.image == sandbox.DEFAULT_IMAGE
     assert cfg.memory == "4g" and cfg.cpus == "2" and cfg.pids_limit == 512
-    assert cfg.network == "fabrik-sandbox"
-    assert cfg.proxy_url == egress.agent_proxy_url()  # Default: der von `fabrik egress start` gestartete Proxy
+    assert cfg.network == "fabrikant-sandbox"
+    assert cfg.proxy_url == egress.agent_proxy_url()  # Default: der von `fabrikant egress start` gestartete Proxy
 
     env = {
         sandbox.IMAGE_VAR: "my/img:1",
@@ -56,12 +56,12 @@ def test_from_env_defaults_and_overrides(monkeypatch):
         sandbox.CPUS_VAR: "4",
         sandbox.USER_VAR: "1000:1000",
         sandbox.PIDS_LIMIT_VAR: "128",
-        sandbox.PROXY_URL_VAR: "http://fabrik-egress-proxy:8888",
+        sandbox.PROXY_URL_VAR: "http://fabrikant-egress-proxy:8888",
     }
     cfg = sandbox.SandboxConfig.from_env(env)
     assert cfg.image == "my/img:1" and cfg.memory == "8g" and cfg.cpus == "4"
     assert cfg.user == "1000:1000" and cfg.pids_limit == 128
-    assert cfg.proxy_url == "http://fabrik-egress-proxy:8888"
+    assert cfg.proxy_url == "http://fabrikant-egress-proxy:8888"
 
 
 def test_from_env_invalid_pids_limit_raises_cleanly(monkeypatch):
@@ -73,7 +73,7 @@ def test_from_env_invalid_pids_limit_raises_cleanly(monkeypatch):
 
 def test_container_name_is_docker_safe():
     name = sandbox.container_name("copilot-abc123XYZ/def")
-    assert name.startswith("fabrik-agent-")
+    assert name.startswith("fabrikant-agent-")
     assert "/" not in name and len(name) <= 63
 
 
@@ -99,7 +99,7 @@ def test_render_docker_cmd_has_hardening_and_mounts():
     assert "--rm" in cmd and "--init" in cmd and sandbox.container_name("sid123") in cmd
     # Prompt kommt via stdin: ohne -i hängt docker stdin nicht an (kein -t: kein TTY)
     assert "-i" in cmd and "-t" not in cmd
-    assert cmd[cmd.index("--network") + 1] == "fabrik-sandbox"
+    assert cmd[cmd.index("--network") + 1] == "fabrikant-sandbox"
     assert cmd[cmd.index("--cap-drop") + 1] == "ALL"
     assert cmd[cmd.index("--security-opt") + 1] == "no-new-privileges"
     assert cmd[cmd.index("--memory") + 1] == "4g"
@@ -135,7 +135,7 @@ def test_render_docker_cmd_has_hardening_and_mounts():
     # Entrypoint-Skript mit Basis-Ref, dann der Agent-Befehl.
     assert cmd[cmd.index("--entrypoint") + 1] == "sh"
     i = cmd.index("test/img:1")
-    assert cmd[i + 1 :] == ["-c", sandbox.entrypoint_script(), "fabrik-sandbox", _EX.ref, "claude", "--print"]
+    assert cmd[i + 1 :] == ["-c", sandbox.entrypoint_script(), "fabrikant-sandbox", _EX.ref, "claude", "--print"]
 
 
 def test_realistic_host_env_is_stripped_and_overridden():
@@ -148,7 +148,7 @@ def test_realistic_host_env_is_stripped_and_overridden():
         "XDG_CONFIG_HOME": "/root/.config",
         "XDG_CACHE_HOME": "/root/.cache",
         "UV_CACHE_DIR": "/root/.cache/uv",
-        "TMPDIR": "/tmp/fabrik-host",
+        "TMPDIR": "/tmp/fabrikant-host",
         "TZ": "UTC",
         "USER": "dom",
     }
@@ -263,8 +263,10 @@ def _run_container(ex: sandbox.Exchange, tmp_path: Path, agent: str) -> int:
         work_dir=str(tmp_path / "container-work"), in_bundle=str(ex.in_bundle), out_dir=str(ex.out_dir)
     )
     env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
-    p = subprocess.run(["sh", "-c", script, "fabrik-sandbox", ex.ref, "sh", "-c", agent], env=env, capture_output=True)
-    assert b"fabrik-base" not in p.stdout  # git-Ausgaben gehen nach stderr, stdout gehört dem Agenten
+    p = subprocess.run(
+        ["sh", "-c", script, "fabrikant-sandbox", ex.ref, "sh", "-c", agent], env=env, capture_output=True
+    )
+    assert b"fabrikant-base" not in p.stdout  # git-Ausgaben gehen nach stderr, stdout gehört dem Agenten
     return p.returncode
 
 
@@ -382,7 +384,7 @@ def test_no_result_bundle_changes_nothing(repo):
     assert sandbox.apply_result(ex, str(repo)) is False
     sandbox.discard_exchange(ex, str(repo))
     assert _sh(repo, "git", "status", "--porcelain") == ""
-    assert _sh(repo, "git", "for-each-ref", "refs/fabrik") == ""
+    assert _sh(repo, "git", "for-each-ref", "refs/fabrikant") == ""
 
 
 def _forge_result_head(ex: sandbox.Exchange, repo: Path, tree_entries: str, parent: str) -> None:
@@ -498,7 +500,7 @@ def test_prepare_exchange_requires_worktree_root(repo):
     sub.mkdir()
     with pytest.raises(sandbox.SandboxError, match="Worktree-Wurzel"):
         sandbox.prepare_exchange("sid-sub", str(sub))
-    assert _sh(repo, "git", "for-each-ref", "refs/fabrik") == ""
+    assert _sh(repo, "git", "for-each-ref", "refs/fabrikant") == ""
 
 
 def test_finish_exchange_stops_container_before_reading(repo, _no_real_docker):
@@ -521,7 +523,7 @@ def test_finish_exchange_reports_oserror_instead_of_raising(repo, monkeypatch):
 
 def test_result_with_symlink_is_rejected(repo):
     ex = sandbox.prepare_exchange("sid-link", str(repo))
-    _forge_result_head(ex, repo, f"120000 blob {_blob(repo, '/root/.config/fabrik/fabrik.env')}\tlink\n", ex.base)
+    _forge_result_head(ex, repo, f"120000 blob {_blob(repo, '/root/.config/fabrikant/fabrikant.env')}\tlink\n", ex.base)
     with pytest.raises(sandbox.SandboxError, match="Symlink"):
         sandbox.apply_result(ex, str(repo))
     assert not (repo / "link").exists() and not (repo / "link").is_symlink()

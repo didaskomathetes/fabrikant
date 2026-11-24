@@ -20,14 +20,14 @@
 #   SONAR_HOST_URL           (Default: http://127.0.0.1:9000)
 #   SONAR_ADMIN_USER         (Default: admin)
 #   SONAR_ADMIN_PASSWORD     (Default: admin)
-#   SONAR_PROJECT_KEY        (Default: fabrik:fabrik)
+#   SONAR_PROJECT_KEY        (Default: fabrikant:fabrikant)
 #   SONAR_GH_REPO            owner/repo (Default: aus `gh repo view`)
 #   SONAR_GH_ALM_KEY         Name der Konfiguration in SonarQube (Default: github)
 set -euo pipefail
 
 HOST_URL="${SONAR_HOST_URL:-http://127.0.0.1:9000}"
 AUTH="${SONAR_ADMIN_USER:-admin}:${SONAR_ADMIN_PASSWORD:-admin}"
-PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrik:fabrik}"
+PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrikant:fabrikant}"
 ALM_KEY="${SONAR_GH_ALM_KEY:-github}"
 GITHUB_API_URL="https://api.github.com/"
 
@@ -72,7 +72,7 @@ if ! curl -sS -u "$AUTH" "$HOST_URL/api/projects/search?projects=$PROJECT_KEY" |
     --data-urlencode "mainBranch=main"
 fi
 
-# monorepo=true: fabrik ist ein Unterordner von $REPO (mehrere Sonar-Projekte pro Repo möglich).
+# monorepo=true: fabrikant ist ein Unterordner von $REPO (mehrere Sonar-Projekte pro Repo möglich).
 log "Binde $PROJECT_KEY an $REPO"
 api alm_settings/set_github_binding --data-urlencode "almSetting=$ALM_KEY" \
   --data-urlencode "project=$PROJECT_KEY" --data-urlencode "repository=$REPO" \

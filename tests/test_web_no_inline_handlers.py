@@ -8,7 +8,7 @@ scheitert, sobald wieder ein ``on*``-Attribut mit String-Wert eingebaut wird.
 
 import re
 
-from fabrik import config
+from fabrikant import config
 
 # on*-Attribut mit String-Wert: Zeilenanfang oder Leerzeichen vor ``on``, dann
 # Buchstaben, dann ``=`` und Anführungszeichen. Trefft keine Wörter wie

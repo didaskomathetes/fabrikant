@@ -4,7 +4,7 @@
 Aufruf durch `scripts/sonar-scan.sh --pr <n>` nach erfolgreicher Analyse unter dem
 PR-eigenen Project-Key (Community Edition: keine native PR-Analyse):
 
-    sonar-pr-report.py --pr 12 --project-key fabrik:fabrik:pr-12 \
+    sonar-pr-report.py --pr 12 --project-key fabrikant:fabrikant:pr-12 \
         [--base main] [--coverage coverage.xml] [--repo owner/name] [--post]
 
 - Issues (`api/issues/search`) nur auf den im PR geänderten Zeilen
@@ -13,7 +13,7 @@ PR-eigenen Project-Key (Community Edition: keine native PR-Analyse):
 - Kennzahlen des PR-Keys (`api/measures/component`).
 - Coverage der geänderten Zeilen über `diff-cover` (JSON-Report).
 
-Ausgabe: Markdown nach stdout, letzte Zeile `<!-- fabrik-quality sha=<head> -->`.
+Ausgabe: Markdown nach stdout, letzte Zeile `<!-- fabrikant-quality sha=<head> -->`.
 `--post` legt den Report als genau einen PR-Kommentar an bzw. aktualisiert den
 bestehenden mit Marker (gh-CLI, Auth wie `scripts/pr-status.py`).
 Env: `SONAR_HOST_URL` (Default http://127.0.0.1:9000), `SONAR_TOKEN`.
@@ -34,8 +34,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-MARKER_PREFIX = "<!-- fabrik-quality"
-MARKER_RE = re.compile(r"<!-- fabrik-quality sha=([0-9a-f]{7,40}) -->")
+MARKER_PREFIX = "<!-- fabrikant-quality"
+MARKER_RE = re.compile(r"<!-- fabrikant-quality sha=([0-9a-f]{7,40}) -->")
 DEFAULT_HOST = "http://127.0.0.1:9000"
 DEFAULT_BASE = "main"
 METRICS = ("bugs", "vulnerabilities", "code_smells", "duplicated_lines_density", "coverage")
@@ -155,7 +155,7 @@ def issues_on_changed_lines(raw: list[dict], key: str, prefix: str, changed: dic
     """Sonar-Issues → nur die auf geänderten Zeilen, stabil sortiert.
 
     `component` ist `<key>:<pfad relativ zum Scan-Verzeichnis>`; `prefix` macht daraus
-    den repo-relativen Pfad des Diffs (z. B. `fabrik/`)."""
+    den repo-relativen Pfad des Diffs (z. B. `fabrikant/`)."""
     result = []
     for item in raw:
         component, line = str(item.get("component", "")), item.get("line")
@@ -203,9 +203,9 @@ def _json_values(text: str) -> list[dict]:
 def lint_issues(changed: dict[str, set[int]], prefix: str) -> list[Issue]:
     """ruff (check + format) und mypy — nur Befunde auf geänderten Zeilen, stabil sortiert.
 
-    Pfade der Tools normalisieren wir relativ zum Aufruf-Verzeichnis (FABRIK_DIR;
+    Pfade der Tools normalisieren wir relativ zum Aufruf-Verzeichnis (FABRIKANT_DIR;
     ruff meldet absolute Pfade); `prefix` macht daraus den repo-relativen Pfad des
-    Diffs (z. B. `fabrik/`). Ein defektes Tool (fehlend, ungültiger Output) liefert
+    Diffs (z. B. `fabrikant/`). Ein defektes Tool (fehlend, ungültiger Output) liefert
     einfach keine Befunde — advisory."""
     cwd = Path.cwd().resolve()
 

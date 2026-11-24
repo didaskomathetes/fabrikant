@@ -1,11 +1,11 @@
-# gh-token-refresh — GitHub-App-Installation-Token für fabrik erneuern (ADR 0010).
+# gh-token-refresh — GitHub-App-Installation-Token für fabrikant erneuern (ADR 0010).
 #
 # Mintet alle 30 min ein frisches 1h-Installation-Token für die
-# fabrik-builder-App und schreibt es nach $FABRIK_ENV_FILE
-# (state/github.env). fabrik liest die Datei pro API-Call neu — kein Restart.
+# fabrikant-builder-App und schreibt es nach $FABRIKANT_ENV_FILE
+# (state/github.env). fabrikant liest die Datei pro API-Call neu — kein Restart.
 #
 # Install:
-#   cp fabrik/deploy/gh-token-refresh.{service,timer} ~/.config/systemd/user/
+#   cp fabrikant/deploy/gh-token-refresh.{service,timer} ~/.config/systemd/user/
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now gh-token-refresh.timer
 #
@@ -14,17 +14,17 @@
 #   journalctl --user -u gh-token-refresh.service -f
 #
 # Config (BUILDER_APP_ID, BUILDER_APP_KEY_FILE, BUILDER_INSTALLATION_ID) kommt
-# aus fabrik/fabrik.env — das Script lädt es selbst als Fallback.
+# aus fabrikant/fabrikant.env — das Script lädt es selbst als Fallback.
 #
-# Pfad: FABRIK_HOME (= fabrik/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrik/deploy.env — siehe fabrik/README.md, „Lokaler Betrieb".
+# Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
+# ~/.config/fabrikant/deploy.env — siehe fabrikant/README.md, „Lokaler Betrieb".
 
 [Unit]
-Description=Fabrik — GitHub-App-Installation-Token refresh (fabrik-builder)
+Description=Fabrik — GitHub-App-Installation-Token refresh (fabrikant-builder)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-EnvironmentFile=-%h/.config/fabrik/deploy.env
-ExecStart=/bin/sh -c 'cd "$${FABRIK_HOME:?FABRIK_HOME fehlt, siehe ~/.config/fabrik/deploy.env}" && exec .venv/bin/python scripts/gh-token-refresh.py'
+EnvironmentFile=-%h/.config/fabrikant/deploy.env
+ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && exec .venv/bin/python scripts/gh-token-refresh.py'

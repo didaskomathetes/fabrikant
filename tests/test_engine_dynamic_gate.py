@@ -8,7 +8,7 @@ aus (der Step merkt sich den Zustand per ctx-Variable).
 
 from __future__ import annotations
 
-from fabrik.engine import run_loop
+from fabrikant.engine import run_loop
 
 
 def _write_spec(projects_dir, tmp_path, name, steps_yaml):
@@ -16,11 +16,11 @@ def _write_spec(projects_dir, tmp_path, name, steps_yaml):
     root.mkdir(parents=True, exist_ok=True)
     body = "\n".join("    " + ln for ln in steps_yaml.strip().splitlines())
     lines = [f"name: {name}", f"root: {root}", "loops:", "  s:", "    steps:", body]
-    (projects_dir / f"{name}.fabrik.yaml").write_text("\n".join(lines) + "\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text("\n".join(lines) + "\n")
 
 
 def test_dynamic_gate_pauses_and_resumes(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     calls = {"n": 0}
 
@@ -66,7 +66,7 @@ def test_dynamic_gate_pauses_and_resumes(runs_dir, projects_dir, tmp_path, monke
 
 
 def test_dynamic_gate_not_critical_runs_through(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     monkeypatch.setattr(engine, "_step_human_gate", lambda ctx, step, emit: {"ok": True, "summary": "nicht kritisch"})
     _write_spec(
@@ -81,7 +81,7 @@ def test_dynamic_gate_not_critical_runs_through(runs_dir, projects_dir, tmp_path
 
 
 def test_dynamic_gate_log_shows_context(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     monkeypatch.setattr(
         engine,

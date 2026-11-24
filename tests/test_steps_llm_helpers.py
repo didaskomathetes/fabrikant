@@ -6,21 +6,21 @@ import os
 
 import pytest
 
-from fabrik import llm
-from fabrik.runmodel import FailureKind
-from fabrik.steps import llm as llm_step
+from fabrikant import llm
+from fabrikant.runmodel import FailureKind
+from fabrikant.steps import llm as llm_step
 
 
 @pytest.fixture
 def provider(monkeypatch, tmp_path):
     """Ein aktiver Dummy-Provider, isoliert von Env und Persistenz."""
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "test-model")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "test-model")
     llm.reset_cache()
     llm.set_active("dummy")
     yield

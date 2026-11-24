@@ -1,23 +1,23 @@
 # Spec-Referenz
 
-Maschinenlesbare Single Source of Truth: [`src/fabrik/fabrik-spec.schema.json`](../src/fabrik/fabrik-spec.schema.json).
+Maschinenlesbare Single Source of Truth: [`src/fabrikant/fabrikant-spec.schema.json`](../src/fabrikant/fabrikant-spec.schema.json).
 Diese Seite wird daraus generiert (`scripts/generate-spec-reference.py`) — nicht von Hand editieren.
 
 Das Schema prüft die **Struktur** (Typen, Enums, Pflichtfelder, Bereiche) der *expandierten* Spec
 (nach `vars:`/Template-/Relay-Expansion). Semantische Prüfungen (Backend-Registry,
 Cron-vs-Retry-Intervalle, Alert-Route-Zyklen, Template-Parameter) laufen zusätzlich in
-`src/fabrik/specs.py`. `fabrik validate` beides.
+`src/fabrikant/specs.py`. `fabrikant validate` beides.
 
 Legende: **Pflicht** = required, *kursiv* = optional. Typen in ``Code``.
 
 ## Top-Level
 
-Eine Projekt-Spec (`*.fabrik.yaml` / `*.fabrik.json`) definiert Loops, die auf dem Projekt-`root` laufen. `loops` ist das einzige Pflichtfeld; alle anderen Felder sind optional.
+Eine Projekt-Spec (`*.fabrikant.yaml` / `*.fabrikant.json`) definiert Loops, die auf dem Projekt-`root` laufen. `loops` ist das einzige Pflichtfeld; alle anderen Felder sind optional.
 
 | Feld | Typ | Status | Beschreibung |
 |---|---|---|---|
 | `name` | string | optional | Project name. Defaults to the file name without suffix. Must not contain '::' (lock-key separator). |
-| `root` | string | optional | Path of the project root the loops operate on (~ and env vars are expanded). Required for validation; defaults to the repo root for specs in .fabrik/fabrik.yaml. |
+| `root` | string | optional | Path of the project root the loops operate on (~ and env vars are expanded). Required for validation; defaults to the repo root for specs in .fabrikant/fabrikant.yaml. |
 | `description` | string | optional | Human-readable project description (UI, docs). |
 | `env` | object | optional | Extra run-context variables (string values) available as {name} in all steps. |
 | `max_parallel` | → `numeric` | optional | Maximum parallel runs of this project (integer >= 1, default 3, ADR 0028). |
@@ -57,7 +57,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 
 | Feld | Typ | Status | Beschreibung |
 |---|---|---|---|
-| `type` | string | Pflicht | Step kind: a built-in (shell, git, pr, agent, report, http, llm, notify, state, verify, review, pr_review, pr_merge, issue, human_gate, alert_route, escalation) or a plugin registered via the `fabrik.steps` entry point (ADR 0069); membership is checked at load time. |
+| `type` | string | Pflicht | Step kind: a built-in (shell, git, pr, agent, report, http, llm, notify, state, verify, review, pr_review, pr_merge, issue, human_gate, alert_route, escalation) or a plugin registered via the `fabrikant.steps` entry point (ADR 0069); membership is checked at load time. |
 | `name` | string | optional | Step name (run log, insert anchors, reports). |
 | `gate` | boolean | optional | false = a failure of this step does NOT stop the run (default true). |
 | `approval` | boolean | optional | true = pause the run for human approval before this step (ADR 0015). |
@@ -249,4 +249,4 @@ Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. 
 | `on_alert` | `source`, `secret_env` |
 | `on_slack` | `token_env`, `channels` |
 
-_Generiert aus `src/fabrik/fabrik-spec.schema.json` — Änderungen bitte am Schema vornehmen und dieses Skript neu laufen lassen._
+_Generiert aus `src/fabrikant/fabrikant-spec.schema.json` — Änderungen bitte am Schema vornehmen und dieses Skript neu laufen lassen._

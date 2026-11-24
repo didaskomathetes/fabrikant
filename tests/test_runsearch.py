@@ -13,8 +13,8 @@ import urllib.request
 import pytest
 from helpers import not_none
 
-from fabrik import config, runsearch
-from fabrik.runstore import STORE
+from fabrikant import config, runsearch
+from fabrikant.runstore import STORE
 
 
 @pytest.fixture
@@ -365,7 +365,7 @@ def test_search_under_200ms_with_3k_runs(json_idx):
 @pytest.mark.perf
 def test_sql_search_under_200ms_with_10k_runs(runs_dir, monkeypatch):
     """Indiziertes SELECT auf den Run-Tabellen: < 200 ms bei 10 000 Runs (ADR 0034, #277)."""
-    from fabrik.runstore_sql import encode_record
+    from fabrikant.runstore_sql import encode_record
 
     monkeypatch.setenv(config.RUN_STORE_ENV, config.RUN_STORE_SQL)
     store = STORE.backend()

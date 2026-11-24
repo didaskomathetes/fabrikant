@@ -8,8 +8,8 @@ import threading
 
 import pytest
 
-from fabrik import agent_state, config
-from fabrik.filelock import locked
+from fabrikant import agent_state, config
+from fabrikant.filelock import locked
 
 
 @pytest.fixture(autouse=True)
@@ -163,7 +163,7 @@ def test_locked_is_exclusive(tmp_path):
 
 def test_state_step_concurrent_add_loses_nothing(tmp_path):
     """state-Step: paralleles `add` auf denselben Zähler (Read-Modify-Write unter Lock)."""
-    from fabrik.steps.state import _step_state
+    from fabrikant.steps.state import _step_state
 
     root = tmp_path / "root"
     root.mkdir()
@@ -184,7 +184,7 @@ def _git(cwd, *args):
     return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True).stdout
 
 
-@pytest.mark.parametrize("subpath", ["", "fabrik"])
+@pytest.mark.parametrize("subpath", ["", "fabrikant"])
 def test_seed_excludes_state_dir_anchored_to_workdir(tmp_path, subpath):
     """state/ landet nie im Commit — gleichnamige Verzeichnisse woanders bleiben sichtbar."""
     repo = tmp_path / "repo"

@@ -1,4 +1,4 @@
-"""JSON schema validation (Issue #131): schema/fabrik-spec.schema.json.
+"""JSON schema validation (Issue #131): schema/fabrikant-spec.schema.json.
 
 Parity: every spec that `specs._validate_spec` accepts must also pass the
 schema (no regressions). The tests here cover the schema's structural
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import specs
-from fabrik.specschema import SCHEMA_PATH, load_schema, validate_spec
+from fabrikant import specs
+from fabrikant.specschema import SCHEMA_PATH, load_schema, validate_spec
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -65,7 +65,7 @@ def test_valid_full_spec():
                 "slack": "https://hooks.slack.com/x",
                 "webhooks": [{"name": "dd", "url": "https://x"}],
                 "github_issue": True,
-                "issue_labels": ["fabrik"],
+                "issue_labels": ["fabrikant"],
                 "events": ["run_failed", "run_passed"],
             },
             "protected": ["main"],
@@ -134,7 +134,7 @@ def test_valid_step_types(step):
 
 def test_valid_bundled_specs():
     """Parity: all bundled specs pass the schema."""
-    for f in sorted(REPO_ROOT.glob("projects/*.fabrik.*")):
+    for f in sorted(REPO_ROOT.glob("projects/*.fabrikant.*")):
         spec = specs.load_spec(f, check_root=False)
         assert validate_spec(spec) == [], f"{f.name}: {validate_spec(spec)}"
 
@@ -270,7 +270,7 @@ def test_on_slack_requires_token_and_channels():
 def test_internal_keys_are_ignored():
     """Runtime bookkeeping keys (`_path`, ...) do not disturb schema validation."""
     spec = _valid_spec()
-    spec["_path"] = "/x/y.fabrik.yaml"
+    spec["_path"] = "/x/y.fabrikant.yaml"
     assert validate_spec(spec) == []
 
 
@@ -284,12 +284,12 @@ def test_error_paths_are_json_pointer_like():
 # ------------------------------------------------------------------ end-to-end
 def test_e2e_valid_spec_runs_through_engine(projects_dir, tmp_path):
     """A valid spec passes the schema and the engine executes it (no mocks)."""
-    from fabrik.engine import run_loop
-    from fabrik.specs import load_projects
+    from fabrikant.engine import run_loop
+    from fabrikant.specs import load_projects
 
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "e2e.fabrik.yaml").write_text(
+    (projects_dir / "e2e.fabrikant.yaml").write_text(
         f"name: e2e\nroot: {root}\nloops:\n"
         "  hello:\n"
         "    triggers:\n"
@@ -307,13 +307,13 @@ def test_e2e_valid_spec_runs_through_engine(projects_dir, tmp_path):
 def test_e2e_invalid_spec_rejected_at_load(projects_dir, tmp_path):
     """An invalid spec is marked at load time with schema errors (pointer paths)
     and the engine refuses the run before any step starts."""
-    from fabrik.engine import run_loop
-    from fabrik.failures import SetupError
-    from fabrik.specs import load_projects
+    from fabrikant.engine import run_loop
+    from fabrikant.failures import SetupError
+    from fabrikant.specs import load_projects
 
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "bad.fabrik.yaml").write_text(
+    (projects_dir / "bad.fabrikant.yaml").write_text(
         f"name: bad\nroot: {root}\nloops:\n"
         "  broken:\n"
         "    steps:\n"
@@ -328,8 +328,8 @@ def test_e2e_invalid_spec_rejected_at_load(projects_dir, tmp_path):
 
 
 def test_schema_ships_inside_the_package():
-    """Das Schema muss im Paketverzeichnis liegen, sonst fehlt es in Wheel-Installs (hatch packt nur src/fabrik)."""
-    import fabrik
+    """Das Schema muss im Paketverzeichnis liegen, sonst fehlt es in Wheel-Installs (hatch packt nur src/fabrikant)."""
+    import fabrikant
 
     assert SCHEMA_PATH.is_file()
-    assert SCHEMA_PATH.parent == Path(fabrik.__file__).resolve().parent
+    assert SCHEMA_PATH.parent == Path(fabrikant.__file__).resolve().parent

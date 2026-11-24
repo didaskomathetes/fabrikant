@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import pause, schedule
-from fabrik import scheduler as scheduler_mod
-from fabrik.scheduler import Scheduler, cron_matches
+from fabrikant import pause, schedule
+from fabrikant import scheduler as scheduler_mod
+from fabrikant.scheduler import Scheduler, cron_matches
 
 NOW = datetime(2026, 11, 5, 11, 0, 0)
 
@@ -113,7 +113,7 @@ def test_parse_when_rejects_garbage():
 def _write_project(projects_dir: Path, name: str = "p", loop: str = "l") -> None:
     root = projects_dir / "root"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n  {loop}:\n    triggers:\n      - {{type: manual}}\n"
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -248,7 +248,7 @@ def test_onetime_add_unknown_raises_not_found(projects_dir):
 
 
 def test_queued_trigger_snapshot_ordering(monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     monkeypatch.setattr(engine, "_queued_triggers", {("p", "b", "cron"): 200.0, ("p", "a", "cron"): 100.0})
     snap = engine.queued_trigger_snapshot()
@@ -257,16 +257,16 @@ def test_queued_trigger_snapshot_ordering(monkeypatch):
 
 
 def test_pool_status_without_pool(monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     monkeypatch.setattr(engine, "_run_pool", None)
-    monkeypatch.setenv("FABRIK_WORKERS", "7")
+    monkeypatch.setenv("FABRIKANT_WORKERS", "7")
     # Konfigurierte Größe, nicht 0 (Pool entsteht erst mit dem 1. Trigger-Run)
     assert engine.pool_status() == {"workers": 7, "busy": 0, "queue": 0}
 
 
 def test_slot_snapshot(monkeypatch):
-    from fabrik import runs
+    from fabrikant import runs
 
     monkeypatch.setattr(runs, "_slots_used", {"p": 2})
     monkeypatch.setattr(runs, "_active_keys", {("p", "l", "issue=1")})
@@ -281,7 +281,7 @@ def test_worker_pool_counts_busy_workers():
     """`busy` = laufende Works (Grundlage der `est`-Einschätzung der Pool-Queue)."""
     import threading
 
-    from fabrik import engine
+    from fabrikant import engine
 
     pool = engine._WorkerPool(2)
     started, release = threading.Event(), threading.Event()

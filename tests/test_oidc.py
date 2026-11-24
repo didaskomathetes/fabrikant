@@ -16,11 +16,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from test_server_api import _req, fabrik_home, fabrik_url  # noqa: F401
+from test_server_api import _req, fabrikant_home, fabrikant_url  # noqa: F401
 
-from fabrik import auth, oidc
+from fabrikant import auth, oidc
 
-CLIENT_ID = "fabrik-client"
+CLIENT_ID = "fabrikant-client"
 KID = "test-key"
 ROLE_MAP = "fab-admins=admin,fab-ops=operator,fab-view=viewer"
 CALLBACK = "http://localhost/api/oidc/callback"
@@ -122,13 +122,13 @@ class FakeIdP:
 @pytest.fixture
 def idp(monkeypatch):
     fake = FakeIdP()
-    monkeypatch.setenv("FABRIK_OIDC_ISSUER", fake.issuer)
-    monkeypatch.setenv("FABRIK_OIDC_CLIENT_ID", CLIENT_ID)
-    monkeypatch.setenv("FABRIK_OIDC_CLIENT_SECRET", "s3cret")
-    monkeypatch.setenv("FABRIK_OIDC_REDIRECT_URI", CALLBACK)
-    monkeypatch.setenv("FABRIK_OIDC_ROLE_MAP", ROLE_MAP)
-    monkeypatch.delenv("FABRIK_OIDC_GROUPS_CLAIM", raising=False)
-    monkeypatch.delenv("FABRIK_OIDC_SCOPES", raising=False)
+    monkeypatch.setenv("FABRIKANT_OIDC_ISSUER", fake.issuer)
+    monkeypatch.setenv("FABRIKANT_OIDC_CLIENT_ID", CLIENT_ID)
+    monkeypatch.setenv("FABRIKANT_OIDC_CLIENT_SECRET", "s3cret")
+    monkeypatch.setenv("FABRIKANT_OIDC_REDIRECT_URI", CALLBACK)
+    monkeypatch.setenv("FABRIKANT_OIDC_ROLE_MAP", ROLE_MAP)
+    monkeypatch.delenv("FABRIKANT_OIDC_GROUPS_CLAIM", raising=False)
+    monkeypatch.delenv("FABRIKANT_OIDC_SCOPES", raising=False)
     oidc.reset_caches()
     auth._sessions.clear()
     yield fake
@@ -168,20 +168,20 @@ def test_config_from_env(idp):
 
 
 def test_config_missing_vars(idp, monkeypatch):
-    monkeypatch.delenv("FABRIK_OIDC_CLIENT_ID")
-    monkeypatch.delenv("FABRIK_OIDC_ROLE_MAP")
-    with pytest.raises(oidc.OidcError, match="FABRIK_OIDC_CLIENT_ID.*FABRIK_OIDC_ROLE_MAP"):
+    monkeypatch.delenv("FABRIKANT_OIDC_CLIENT_ID")
+    monkeypatch.delenv("FABRIKANT_OIDC_ROLE_MAP")
+    with pytest.raises(oidc.OidcError, match="FABRIKANT_OIDC_CLIENT_ID.*FABRIKANT_OIDC_ROLE_MAP"):
         oidc.OidcConfig.from_env()
 
 
 def test_config_requires_https_for_remote_issuer(idp, monkeypatch):
-    monkeypatch.setenv("FABRIK_OIDC_ISSUER", "http://idp.example.com")
+    monkeypatch.setenv("FABRIKANT_OIDC_ISSUER", "http://idp.example.com")
     with pytest.raises(oidc.OidcError, match="https"):
         oidc.OidcConfig.from_env()
 
 
 def test_auth_mode_oidc_accepted(monkeypatch):
-    monkeypatch.setenv("FABRIK_AUTH", "oidc")
+    monkeypatch.setenv("FABRIKANT_AUTH", "oidc")
     assert auth.mode() == auth.MODE_OIDC
     auth.check_bind("0.0.0.0")  # oidc ist Auth → Nicht-Loopback-Bind erlaubt
 
@@ -197,7 +197,7 @@ def test_missing_extra_gives_clear_error(monkeypatch):
         return real_import(name, *a, **kw)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    with pytest.raises(oidc.OidcError, match=r"fabrik\[oidc\]"):
+    with pytest.raises(oidc.OidcError, match=r"fabrikant\[oidc\]"):
         oidc.check_ready()
 
 
@@ -222,7 +222,7 @@ def test_state_cookie_binds_browser(monkeypatch):
     assert cookie.startswith(f"{oidc.STATE_COOKIE}=st;") and "SameSite=Lax" in cookie and "HttpOnly" in cookie
     assert f"Max-Age={oidc.PENDING_TTL_S}" in cookie and "Secure" not in cookie
     assert "Max-Age=0" in oidc.clear_state_cookie()
-    monkeypatch.setenv("FABRIK_COOKIE_SECURE", "1")
+    monkeypatch.setenv("FABRIKANT_COOKIE_SECURE", "1")
     assert "Secure" in start.state_cookie()
 
 
@@ -232,7 +232,7 @@ def test_highest_mapped_role_wins(idp):
 
 
 def test_group_claim_as_string_and_custom_claim(idp, monkeypatch):
-    monkeypatch.setenv("FABRIK_OIDC_GROUPS_CLAIM", "cognito:groups")
+    monkeypatch.setenv("FABRIKANT_OIDC_GROUPS_CLAIM", "cognito:groups")
     idp.claims = {"groups": None, "cognito:groups": "fab-admins"}
     assert _login(idp)[1] == "admin"
 
@@ -353,7 +353,7 @@ def test_discovery_issuer_mismatch(idp):
 
 
 def test_discovery_unreachable(idp, monkeypatch):
-    monkeypatch.setenv("FABRIK_OIDC_ISSUER", "http://127.0.0.1:1")
+    monkeypatch.setenv("FABRIKANT_OIDC_ISSUER", "http://127.0.0.1:1")
     with pytest.raises(oidc.OidcError, match="fehlgeschlagen"):
         oidc.begin_login(oidc.OidcConfig.from_env())
 
@@ -387,9 +387,9 @@ def _get_noredirect(url, headers=None):
 
 
 @pytest.fixture
-def oidc_url(fabrik_url, idp, monkeypatch):
-    monkeypatch.setenv("FABRIK_AUTH", "oidc")
-    return fabrik_url
+def oidc_url(fabrikant_url, idp, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_AUTH", "oidc")
+    return fabrikant_url
 
 
 def _callback(url, idp, *, with_state_cookie=True, **claims):
@@ -457,14 +457,14 @@ def test_http_idp_error_param(oidc_url):
 
 
 def test_http_login_route_reports_misconfiguration(oidc_url, monkeypatch):
-    monkeypatch.setenv("FABRIK_OIDC_CLIENT_ID", "")
+    monkeypatch.setenv("FABRIKANT_OIDC_CLIENT_ID", "")
     status, body, _ = _get_noredirect(oidc_url + "/api/login/oidc")
-    assert status == 502 and "FABRIK_OIDC_CLIENT_ID" in json.loads(body)["error"]
+    assert status == 502 and "FABRIKANT_OIDC_CLIENT_ID" in json.loads(body)["error"]
 
 
-def test_oidc_routes_inactive_in_other_modes(fabrik_url, idp, monkeypatch):
-    monkeypatch.setenv("FABRIK_AUTH", "none")
-    assert _get_noredirect(fabrik_url + "/api/login/oidc")[0] == 404
+def test_oidc_routes_inactive_in_other_modes(fabrikant_url, idp, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_AUTH", "none")
+    assert _get_noredirect(fabrikant_url + "/api/login/oidc")[0] == 404
 
 
 def test_oidc_session_survives_local_user_store_changes(idp):

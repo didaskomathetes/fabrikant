@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import config, connections
+from fabrikant import config, connections
 
 pytestmark = pytest.mark.browser
 
@@ -23,11 +23,11 @@ loops:
 
 
 @pytest.fixture
-def fabrik_url(tmp_path, monkeypatch, live_server):
-    home = tmp_path / "fabrik_home"
+def fabrikant_url(tmp_path, monkeypatch, live_server):
+    home = tmp_path / "fabrikant_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs" / "uitest").mkdir(parents=True)
-    (home / "projects" / "uitest.fabrik.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
+    (home / "projects" / "uitest.fabrikant.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "RUNS_DIR", home / "runs")
     monkeypatch.setattr(config, "STATE_DIR", home / "state")
@@ -35,14 +35,14 @@ def fabrik_url(tmp_path, monkeypatch, live_server):
 
 
 @pytest.fixture
-def page(fabrik_url):
+def page(fabrikant_url):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         pg = browser.new_page(viewport={"width": 1280, "height": 800})
         pg.add_init_script("Object.defineProperty(navigator, 'language', {value: 'en-US'});")
-        pg.goto(fabrik_url)
+        pg.goto(fabrikant_url)
         pg.wait_for_selector("#projects .project")
         yield pg
         browser.close()

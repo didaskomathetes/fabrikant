@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from helpers import http_error
 
-from fabrik import gitops
-from fabrik.steps import pr_merge
+from fabrikant import gitops
+from fabrikant.steps import pr_merge
 
 
 def _patch(monkeypatch, response=None, exc=None):

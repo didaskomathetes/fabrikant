@@ -8,8 +8,8 @@ from datetime import timedelta
 import pytest
 from helpers import not_none
 
-from fabrik import chat, cli, config, pause, scheduler
-from fabrik.scheduler import Scheduler
+from fabrikant import chat, cli, config, pause, scheduler
+from fabrikant.scheduler import Scheduler
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def proj(projects_dir, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STATE_DIR", tmp_path / "state")
     root = tmp_path / "root"
     root.mkdir()
-    (projects_dir / "p.fabrik.yaml").write_text(
+    (projects_dir / "p.fabrikant.yaml").write_text(
         f'name: p\nroot: {root}\nloops:\n  l:\n    triggers:\n      - {{type: cron, cron: "* * * * *"}}\n'
         '    steps:\n      - {type: shell, cmd: "true"}\n'
     )
@@ -64,7 +64,7 @@ def test_resume_removes_entry(proj):
 
 def test_persists_and_survives_spec_change(proj, projects_dir):
     pause.set_state("p", "l", "paused", until=_future(), actor="t")
-    spec = projects_dir / "p.fabrik.yaml"
+    spec = projects_dir / "p.fabrikant.yaml"
     spec.write_text(spec.read_text() + "\n# edit\n")
     st = pause.get_state("p", "l")  # frischer Read von Disk = "Restart"
     assert st["state"] == "paused" and st["until"]

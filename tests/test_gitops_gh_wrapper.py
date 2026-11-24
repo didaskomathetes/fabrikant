@@ -1,4 +1,4 @@
-"""`gh`-Wrapper: frisches Identity-Token pro Call aus FABRIK_ENV_FILE (ADR 0010)."""
+"""`gh`-Wrapper: frisches Identity-Token pro Call aus FABRIKANT_ENV_FILE (ADR 0010)."""
 
 import os
 import stat
@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from fabrik import gitops
+from fabrikant import gitops
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def fake_gh(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr(gitops, "GH_WRAPPER_DIR", tmp_path / "wrap")
     env_file = tmp_path / "env"
-    monkeypatch.setenv("FABRIK_ENV_FILE", str(env_file))
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", str(env_file))
     return env_file
 
 

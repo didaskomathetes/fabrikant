@@ -2,9 +2,9 @@
 
 import pytest
 
-from fabrik.backends.opencode import opencode_tokens
-from fabrik.steps.agent import _agent_usage
-from fabrik.tokens import TokenCounts, as_count, compact
+from fabrikant.backends.opencode import opencode_tokens
+from fabrikant.steps.agent import _agent_usage
+from fabrikant.tokens import TokenCounts, as_count, compact
 
 
 @pytest.mark.parametrize(("value", "expected"), [(7, 7), (0, 0), (-3, 0), (True, 0), ("5", 0), (2.5, 0), (None, 0)])

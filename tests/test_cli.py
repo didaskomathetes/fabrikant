@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from fabrik import cli, retry_chains
+from fabrikant import cli, retry_chains
 
 
 def _write_spec(projects_dir, name="p", root=None, loops=None):
@@ -15,7 +15,7 @@ def _write_spec(projects_dir, name="p", root=None, loops=None):
     root = root or projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
     loops = loops or {"l": {"steps": [{"type": "shell", "cmd": "true"}]}}
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n"
         + "\n".join(
             f"  {ln}:\n    steps:\n" + "\n".join(f"      - {json.dumps(s)}" for s in ldef["steps"])
@@ -42,7 +42,7 @@ def test_cmd_list(projects_dir, tmp_path, capsys):
 
 
 def test_cmd_list_with_error(projects_dir, capsys):
-    (projects_dir / "bad.fabrik.yaml").write_text("name: bad\nroot: /nonexistent-xyz\nloops: {}\n")
+    (projects_dir / "bad.fabrikant.yaml").write_text("name: bad\nroot: /nonexistent-xyz\nloops: {}\n")
     cli.cmd_list(None)
     out = capsys.readouterr().out
     assert "✖" in out
@@ -50,7 +50,7 @@ def test_cmd_list_with_error(projects_dir, capsys):
 
 # ---------------------------------------------------------------- validate
 def _validate_args(specs=None, offline=False):
-    """argparse-Namespace wie `fabrik validate` (main() setzt beide Attribute)."""
+    """argparse-Namespace wie `fabrikant validate` (main() setzt beide Attribute)."""
     return argparse.Namespace(specs=specs or [], offline=offline)
 
 
@@ -63,7 +63,7 @@ def test_cmd_validate_ok(projects_dir, tmp_path, capsys):
 
 
 def test_cmd_validate_error(projects_dir, capsys):
-    (projects_dir / "bad.fabrik.yaml").write_text("name: bad\nroot: /nonexistent-xyz\nloops: {}\n")
+    (projects_dir / "bad.fabrikant.yaml").write_text("name: bad\nroot: /nonexistent-xyz\nloops: {}\n")
     with pytest.raises(SystemExit) as e:
         cli.cmd_validate(_validate_args())
     assert e.value.code == 1
@@ -72,7 +72,7 @@ def test_cmd_validate_error(projects_dir, capsys):
 
 def test_cmd_validate_files_offline(tmp_path, capsys):
     """CI-Modus: nur die übergebenen Specs, root muss nicht existieren."""
-    spec = tmp_path / "ci.fabrik.yaml"
+    spec = tmp_path / "ci.fabrikant.yaml"
     spec.write_text("name: ci\nroot: /nonexistent-xyz\nloops:\n  l:\n    steps:\n      - {type: shell, cmd: 'true'}\n")
     with pytest.raises(SystemExit) as e:
         cli.main(["validate", "--offline", str(spec)])
@@ -81,7 +81,7 @@ def test_cmd_validate_files_offline(tmp_path, capsys):
 
 
 def test_cmd_validate_files_without_offline_checks_root(tmp_path, capsys):
-    spec = tmp_path / "ci.fabrik.yaml"
+    spec = tmp_path / "ci.fabrikant.yaml"
     spec.write_text("name: ci\nroot: /nonexistent-xyz\nloops:\n  l:\n    steps:\n      - {type: shell, cmd: 'true'}\n")
     with pytest.raises(SystemExit) as e:
         cli.main(["validate", str(spec)])
@@ -90,7 +90,7 @@ def test_cmd_validate_files_without_offline_checks_root(tmp_path, capsys):
 
 
 def _agent_spec(tmp_path, connection: str):
-    spec = tmp_path / "c.fabrik.yaml"
+    spec = tmp_path / "c.fabrikant.yaml"
     spec.write_text(
         f"name: c\nroot: {tmp_path}\nloops:\n  l:\n    steps:\n"
         f"      - {{type: agent, name: dev, connection: {connection}, prompt: x}}\n"
@@ -107,7 +107,7 @@ def test_cmd_validate_warns_on_unknown_connection(tmp_path, capsys):
 
 
 def test_cmd_validate_offline_skips_connection_check(tmp_path, capsys, monkeypatch):
-    from fabrik import connections
+    from fabrikant import connections
 
     monkeypatch.setattr(connections, "unknown_references", lambda spec: pytest.fail("offline: keine Host-Prüfung"))
     with pytest.raises(SystemExit) as e:
@@ -116,7 +116,7 @@ def test_cmd_validate_offline_skips_connection_check(tmp_path, capsys, monkeypat
 
 
 def test_cmd_validate_survives_unreachable_connection_store(tmp_path, capsys, monkeypatch):
-    from fabrik import connections
+    from fabrikant import connections
 
     def boom(spec):
         raise RuntimeError("db down")
@@ -322,10 +322,10 @@ def test_cmd_alert(monkeypatch, capsys):
 
 
 def test_cmd_agent_env_scrubs_secrets(monkeypatch, capsys):
-    """ADR 0050: `fabrik agent-env` druckt nur die Allowlist — keine Secrets."""
+    """ADR 0050: `fabrikant agent-env` druckt nur die Allowlist — keine Secrets."""
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
     monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.delenv("FABRIK_AGENT_ENV_EXTRA", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_ENV_EXTRA", raising=False)
     cli.cmd_agent_env(None)
     out = capsys.readouterr().out
     assert "PATH=/usr/bin" in out
@@ -333,7 +333,7 @@ def test_cmd_agent_env_scrubs_secrets(monkeypatch, capsys):
 
 
 def test_cmd_import_runs(runs_dir, monkeypatch, capsys):
-    monkeypatch.setattr("fabrik.sessionlog.import_runs", lambda d: 3)
+    monkeypatch.setattr("fabrikant.sessionlog.import_runs", lambda d: 3)
     cli.cmd_import_runs(None)
     assert "3 Runs importiert" in capsys.readouterr().out
 
@@ -386,9 +386,9 @@ def test_main_chat_run_records_cli_actor(monkeypatch, capsys):
     seen = {}
     monkeypatch.setattr(cli, "_cli_actor", lambda: "cli:anna")
     monkeypatch.setattr(
-        "fabrik.chat._chat_start_run", lambda *a, actor=None, **k: seen.update(actor=actor) or "gestartet"
+        "fabrikant.chat._chat_start_run", lambda *a, actor=None, **k: seen.update(actor=actor) or "gestartet"
     )
-    monkeypatch.setattr("fabrik.chat.load_projects", lambda: {"p": {"loops": {"l": {}}}})
+    monkeypatch.setattr("fabrikant.chat.load_projects", lambda: {"p": {"loops": {"l": {}}}})
     cli.main(["chat", "lauf", "p", "l"])
     assert seen["actor"] == "cli:anna"
 
@@ -426,7 +426,7 @@ def test_resume_sync_failed_resume_stays_decidable(runs_dir, projects_dir, tmp_p
 
 def test_cmd_agent_env_skips_values_with_newlines(monkeypatch, capsys):
     """Ein Zeilenumbruch im Wert würde EnvironmentFile/--env-file-Zeilen einschleusen."""
-    monkeypatch.setenv("FABRIK_AGENT_ENV_EXTRA", "BAD,GOOD")
+    monkeypatch.setenv("FABRIKANT_AGENT_ENV_EXTRA", "BAD,GOOD")
     monkeypatch.setenv("BAD", "x\nINJECTED=1")
     monkeypatch.setenv("GOOD", "ok")
     cli.cmd_agent_env(None)

@@ -12,27 +12,27 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "sonar-pr-report.py"
-KEY = "proj:fabrik:pr-7"
+KEY = "proj:fabrikant:pr-7"
 SHA = "c" * 40
 
-DIFF = """diff --git a/fabrik/src/a.py b/fabrik/src/a.py
---- a/fabrik/src/a.py
-+++ b/fabrik/src/a.py
+DIFF = """diff --git a/fabrikant/src/a.py b/fabrikant/src/a.py
+--- a/fabrikant/src/a.py
++++ b/fabrikant/src/a.py
 @@ -3,0 +4,2 @@ def f():
 +    x = 1
 +    y = 2
 @@ -10 +12 @@ def g():
 -    old
 +    new
-diff --git a/fabrik/src/gone.py b/fabrik/src/gone.py
---- a/fabrik/src/gone.py
+diff --git a/fabrikant/src/gone.py b/fabrikant/src/gone.py
+--- a/fabrikant/src/gone.py
 +++ /dev/null
 @@ -1,2 +0,0 @@
 -a
 -b
-diff --git a/fabrik/src/b.py b/fabrik/src/b.py
---- a/fabrik/src/b.py
-+++ b/fabrik/src/b.py
+diff --git a/fabrikant/src/b.py b/fabrikant/src/b.py
+--- a/fabrikant/src/b.py
++++ b/fabrikant/src/b.py
 @@ -5,2 +4,0 @@
 -x
 -y
@@ -64,12 +64,12 @@ def _issue(path, line, severity="MAJOR", rule="python:S1", **extra):
 
 # ---------------------------------------------------------------- Diff
 def test_parse_changed_lines(mod):
-    assert mod.parse_changed_lines(DIFF) == {"fabrik/src/a.py": {4, 5, 12}}
+    assert mod.parse_changed_lines(DIFF) == {"fabrikant/src/a.py": {4, 5, 12}}
 
 
 # ---------------------------------------------------------------- Filter + Sortierung
 def test_issues_filtered_to_changed_lines_and_sorted(mod):
-    changed = {"fabrik/src/a.py": {4, 5, 12}}
+    changed = {"fabrikant/src/a.py": {4, 5, 12}}
     raw = [
         _issue("src/a.py", 12, "MINOR"),
         _issue("src/a.py", 5, "CRITICAL", rule="python:S2"),
@@ -80,7 +80,7 @@ def test_issues_filtered_to_changed_lines_and_sorted(mod):
         {"component": "other:src/a.py", "line": 4},  # fremder Key
         _issue("src/a.py", 12, "WEIRD", message="a\nb"),
     ]
-    issues = mod.issues_on_changed_lines(raw, KEY, "fabrik/", changed)
+    issues = mod.issues_on_changed_lines(raw, KEY, "fabrikant/", changed)
     assert [(i.severity, i.line, i.rule) for i in issues] == [
         ("CRITICAL", 4, "python:S1"),
         ("CRITICAL", 5, "python:S2"),
@@ -124,20 +124,20 @@ def test_lint_issues_filtered_to_changed_lines_and_sorted(mod, monkeypatch):
         return outputs[tuple(cmd)]
 
     monkeypatch.setattr(mod, "_run", _run)
-    issues = mod.lint_issues({"fabrik/src/a.py": {4, 5, 12}}, "fabrik/")
+    issues = mod.lint_issues({"fabrikant/src/a.py": {4, 5, 12}}, "fabrikant/")
     assert [(i.severity, i.line, i.rule) for i in issues] == [
         ("error", 4, "ruff-format"),
         ("warning", 5, "ruff:F401"),
         ("error", 12, "mypy:return-value"),
         ("error", 12, "ruff:F841"),
     ]
-    assert all(i.type == "LINT" and i.path == "fabrik/src/a.py" for i in issues)
+    assert all(i.type == "LINT" and i.path == "fabrikant/src/a.py" for i in issues)
     assert next(i for i in issues if i.rule == "mypy:return-value").message == "Incompatible return"
 
 
 def test_lint_issues_tolerates_missing_or_broken_tools(mod, monkeypatch):
     monkeypatch.setattr(mod, "_run", lambda cmd: "" if cmd[0] == "ruff" else "not json")
-    assert mod.lint_issues({"fabrik/src/a.py": {4}}, "fabrik/") == []
+    assert mod.lint_issues({"fabrikant/src/a.py": {4}}, "fabrikant/") == []
 
 
 # ---------------------------------------------------------------- Rendering
@@ -146,21 +146,21 @@ def test_render_is_deterministic_and_ends_with_marker(mod):
         pr=7,
         sha=SHA,
         measures={"coverage": "81.0", "bugs": "0", "ignored": "x"},
-        issues=[mod.Issue("fabrik/src/a.py", 4, "MAJOR", "CODE_SMELL", "python:S1", "too complex")],
-        lint_issues=[mod.Issue("fabrik/src/a.py", 5, "warning", "LINT", "ruff:F401", "unused")],
+        issues=[mod.Issue("fabrikant/src/a.py", 4, "MAJOR", "CODE_SMELL", "python:S1", "too complex")],
+        lint_issues=[mod.Issue("fabrikant/src/a.py", 5, "warning", "LINT", "ruff:F401", "unused")],
         diff_coverage=66.6,
-        uncovered={"fabrik/src/b.py": [9], "fabrik/src/a.py": [5, 6]},
+        uncovered={"fabrikant/src/b.py": [9], "fabrikant/src/a.py": [5, 6]},
     )
     body = report.render()
     assert body == report.render()
-    assert body.splitlines()[-1] == f"<!-- fabrik-quality sha={SHA} -->"
+    assert body.splitlines()[-1] == f"<!-- fabrikant-quality sha={SHA} -->"
     assert mod.MARKER_RE.search(body).group(1) == SHA
     assert "Coverage geänderter Zeilen: **67 %**" in body
-    assert body.index("fabrik/src/a.py` Zeilen 5, 6") < body.index("fabrik/src/b.py` Zeilen 9")
+    assert body.index("fabrikant/src/a.py` Zeilen 5, 6") < body.index("fabrikant/src/b.py` Zeilen 9")
     assert "Kennzahlen (gesamter Stand): bugs=0, coverage=81.0" in body
-    assert "[MAJOR/CODE_SMELL] `fabrik/src/a.py:4` too complex (python:S1)" in body
+    assert "[MAJOR/CODE_SMELL] `fabrikant/src/a.py:4` too complex (python:S1)" in body
     assert "- Lint (ruff + mypy) auf geänderten Zeilen: **1**" in body
-    assert "[warning/LINT] `fabrik/src/a.py:5` unused (ruff:F401)" in body
+    assert "[warning/LINT] `fabrikant/src/a.py:5` unused (ruff:F401)" in body
 
 
 def test_render_without_data_and_with_overflow(mod):
@@ -236,10 +236,10 @@ def test_diff_coverage(mod, monkeypatch, tmp_path):
     data = {
         "total_num_lines": 10,
         "total_percent_covered": 80,
-        "src_stats": {"fabrik/src/a.py": {"violation_lines": [7, 3]}, "fabrik/src/b.py": {"violation_lines": []}},
+        "src_stats": {"fabrikant/src/a.py": {"violation_lines": [7, 3]}, "fabrikant/src/b.py": {"violation_lines": []}},
     }
     _fake_diff_cover(monkeypatch, mod, data)
-    assert mod.diff_coverage(tmp_path / "c.xml", "origin/main") == (80.0, {"fabrik/src/a.py": [3, 7]})
+    assert mod.diff_coverage(tmp_path / "c.xml", "origin/main") == (80.0, {"fabrikant/src/a.py": [3, 7]})
 
 
 def test_diff_coverage_without_measurable_lines(mod, monkeypatch, tmp_path):
@@ -279,7 +279,7 @@ def test_upsert_updates_existing_marker_comment_across_pages(mod, fake_gh, monke
     fake_gh["comments"] = [
         {"id": 1, "body": "a"},
         {"id": 2, "body": "b"},
-        {"id": 9, "body": f"old\n<!-- fabrik-quality sha={SHA} -->"},
+        {"id": 9, "body": f"old\n<!-- fabrikant-quality sha={SHA} -->"},
     ]
     assert mod.upsert_comment("o/r", 7, "new") == "updated"
     assert fake_gh["calls"][-1][0][:4] == ("api", "-X", "PATCH", "repos/o/r/issues/comments/9")
@@ -290,7 +290,7 @@ def test_main_builds_report_and_posts(mod, monkeypatch, tmp_path, capsys, fake_g
     git = {
         ("diff", "-U0", "origin/main...HEAD"): DIFF,
         ("merge-base", "origin/main", "HEAD"): "m" * 40 + "\n",
-        ("rev-parse", "--show-prefix"): "fabrik/\n",
+        ("rev-parse", "--show-prefix"): "fabrikant/\n",
         ("rev-parse", "HEAD"): SHA + "\n",
     }
     monkeypatch.setattr(mod, "_git", lambda *a: git[a])
@@ -299,7 +299,7 @@ def test_main_builds_report_and_posts(mod, monkeypatch, tmp_path, capsys, fake_g
     monkeypatch.setattr(
         mod,
         "lint_issues",
-        lambda changed, prefix: [mod.Issue("fabrik/src/a.py", 5, "warning", "LINT", "ruff:F401", "unused")],
+        lambda changed, prefix: [mod.Issue("fabrikant/src/a.py", 5, "warning", "LINT", "ruff:F401", "unused")],
     )
     cov = tmp_path / "coverage.xml"
     cov.write_text("<coverage/>")
@@ -307,7 +307,7 @@ def test_main_builds_report_and_posts(mod, monkeypatch, tmp_path, capsys, fake_g
     assert mod.main(["--pr", "7", "--project-key", KEY, "--coverage", str(cov), "--post"]) == 0
     out, err = capsys.readouterr()
     assert "Coverage geänderter Zeilen: **100 %**" in out
-    assert "`fabrik/src/a.py:4`" in out
+    assert "`fabrikant/src/a.py:4`" in out
     assert "- Lint (ruff + mypy) auf geänderten Zeilen: **1**" in out
     assert out.strip().endswith(f"sha={SHA} -->")
     assert "PR-Kommentar created" in err

@@ -14,9 +14,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from helpers import http_error, not_none
 
-from fabrik import config, pause, retry_chains, specs
-from fabrik.retry import RetryPolicy
-from fabrik.retry_chains import (
+from fabrikant import config, pause, retry_chains, specs
+from fabrikant.retry import RetryPolicy
+from fabrikant.retry_chains import (
     CHAIN_TRANSITIONS,
     BackfillSummary,
     ChainAction,
@@ -42,7 +42,7 @@ from fabrik.retry_chains import (
     trigger_key,
     validate_retry_cron,
 )
-from fabrik.runmodel import FailureKind, InvalidTransition, check_transition
+from fabrikant.runmodel import FailureKind, InvalidTransition, check_transition
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 FINISHED = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -969,8 +969,8 @@ def gh(monkeypatch):
             raise resp
         return resp
 
-    monkeypatch.setattr("fabrik.gitops._gh_token_safe", lambda role="dev": state["token"])
-    monkeypatch.setattr("fabrik.gitops._gh_api", api)
+    monkeypatch.setattr("fabrikant.gitops._gh_token_safe", lambda role="dev": state["token"])
+    monkeypatch.setattr("fabrikant.gitops._gh_api", api)
     state["calls"] = calls
     return state
 
@@ -1197,11 +1197,11 @@ def manual_env(store, monkeypatch, fake_now, runs_dir):
     monkeypatch.setattr(retry_chains, "load_projects", lambda: {"p": _spec(loop_retry={"max": 3})})
     spawned = []
     monkeypatch.setattr(
-        "fabrik.engine.spawn_priority_worker",
+        "fabrikant.engine.spawn_priority_worker",
         lambda project, loop, variables, *, work, **kw: spawned.append((variables, work)),
     )
     runs = []
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     return {"store": store, "spawned": spawned, "runs": runs, "run": lambda: spawned[0][1](_FakeClaim())}
 
 
@@ -1244,13 +1244,13 @@ def test_retry_now_passes_actor_to_run(manual_env):
 def test_retry_now_cannot_start_shelves_chain_and_records_error(manual_env, monkeypatch):
     """Start scheitert (z. B. Loop gelöscht): Kette wieder exhausted, und die
     gemeldete Run-Id zeigt auf einen error-Record mit dem Grund."""
-    from fabrik.failures import SetupError
-    from fabrik.runs import get_run
+    from fabrikant.failures import SetupError
+    from fabrikant.runs import get_run
 
     def boom(*a, **k):
         raise SetupError("Loop unbekannt: l")
 
-    monkeypatch.setattr("fabrik.engine.run_loop", boom)
+    monkeypatch.setattr("fabrikant.engine.run_loop", boom)
     store = manual_env["store"]
     _write_chain(store, state=ChainState.EXHAUSTED, last_run_id="r0")
     run_id = not_none(retry_now("p", "l", CRON_KEY, actor="alice"))
@@ -1263,7 +1263,7 @@ def test_retry_now_cannot_start_shelves_chain_and_records_error(manual_env, monk
 
 
 def test_retry_now_trigger_gone_dismisses_and_records_error(manual_env, monkeypatch):
-    from fabrik.runs import get_run
+    from fabrikant.runs import get_run
 
     monkeypatch.setattr(retry_chains, "_attempt_vars", lambda key, **kw: (None, False))
     _write_chain(manual_env["store"], key=ISSUE_KEY, state=ChainState.EXHAUSTED, last_run_id="r0")
@@ -1277,7 +1277,7 @@ def test_retry_now_worker_start_failure(manual_env, monkeypatch):
     def fail(*a, **k):
         raise RuntimeError("can't start new thread")
 
-    monkeypatch.setattr("fabrik.engine.spawn_priority_worker", fail)
+    monkeypatch.setattr("fabrikant.engine.spawn_priority_worker", fail)
     _write_chain(manual_env["store"], state=ChainState.EXHAUSTED, last_run_id="r0")
     with pytest.raises(RetryBlocked):
         retry_now("p", "l", CRON_KEY)
@@ -1366,7 +1366,7 @@ def test_release_stale_claims_ignores_unclaimed(store, monkeypatch, fake_now):
 
 def test_reaper_interrupted_run_opens_chain(store, monkeypatch, runs_dir, fake_now):
     """Neustart während Run 0: der Reaper eröffnet die Kette (on: [interrupted])."""
-    from fabrik import runs
+    from fabrikant import runs
 
     monkeypatch.setattr(retry_chains, "ChainStore", lambda: store)
     monkeypatch.setattr(retry_chains, "load_projects", lambda: {"p": _spec(loop_retry={"max": 3})})
@@ -1379,7 +1379,7 @@ def test_reaper_interrupted_run_opens_chain(store, monkeypatch, runs_dir, fake_n
 
 def test_reaper_interrupted_attempt_consumes_budget(store, monkeypatch, runs_dir, fake_now):
     """Neustart während Versuch n: Versuch verbraucht, nächster nach Backoff, last_run_id rückt vor."""
-    from fabrik import runs
+    from fabrikant import runs
 
     monkeypatch.setattr(retry_chains, "ChainStore", lambda: store)
     monkeypatch.setattr(retry_chains, "load_projects", lambda: {"p": _spec(loop_retry={"max": 3})})
@@ -1394,7 +1394,7 @@ def test_reaper_interrupted_attempt_consumes_budget(store, monkeypatch, runs_dir
 
 def test_reaper_loads_specs_once(store, monkeypatch, runs_dir, fake_now):
     """Mehrere verwaiste Runs: die Specs werden einmal geladen, nicht je Run."""
-    from fabrik import runs
+    from fabrikant import runs
 
     monkeypatch.setattr(retry_chains, "ChainStore", lambda: store)
     monkeypatch.setattr(retry_chains, "load_projects", lambda: {"p": _spec(loop_retry={"max": 3})})
@@ -1412,7 +1412,7 @@ def due_env(store, monkeypatch, fake_now):
     """Store, Pool und Projekt-Spec für start_due_attempts."""
     monkeypatch.setattr(retry_chains, "ChainStore", lambda: store)
     submitted = []
-    monkeypatch.setattr("fabrik.engine._get_run_pool", lambda: _FakePool(submitted))
+    monkeypatch.setattr("fabrikant.engine._get_run_pool", lambda: _FakePool(submitted))
     monkeypatch.setattr(retry_chains, "get_run", lambda rid, proj: None)
     projects = {"p": _spec(loop_retry={"max": 3})}
     monkeypatch.setattr(retry_chains, "load_projects", lambda: projects)
@@ -1532,8 +1532,8 @@ def test_start_due_attempts_derives_attempt_from_last_run(due_env, monkeypatch):
     store = due_env["store"]
     runs = []
     monkeypatch.setattr(retry_chains, "get_run", lambda rid, proj: {"attempt": 2})
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     _write_chain(store, next_attempt_at=_PAST, last_run_id="r2")
     started = start_due_attempts()
     due_env["submitted"][0]()
@@ -1547,8 +1547,8 @@ def test_start_due_attempts_fetches_github_once(due_env, monkeypatch):
     monkeypatch.setattr(
         retry_chains, "_attempt_vars", lambda key, **kw: fetches.append(key) or ({"issue_number": 42}, False)
     )
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     _write_chain(store, key=ISSUE_KEY, next_attempt_at=_PAST)
     start_due_attempts()
     due_env["submitted"][0]()
@@ -1565,8 +1565,8 @@ def test_start_due_attempts_pr_trigger_has_head_sha(due_env, monkeypatch):
     monkeypatch.setattr(
         retry_chains, "_attempt_vars", lambda key, **kw: ({"pr_number": 7, "pr_head_sha": "abc123"}, False)
     )
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     _write_chain(store, key=PR_KEY, next_attempt_at=_PAST)
     start_due_attempts()
     due_env["submitted"][0]()
@@ -1576,7 +1576,7 @@ def test_start_due_attempts_pr_trigger_has_head_sha(due_env, monkeypatch):
 def test_attempt_without_slot_is_deferred(due_env, monkeypatch):
     """Kein Slot: Claim frei, aber next_attempt_at verschoben — kein Claim-Sturm alle 2 s."""
     store = due_env["store"]
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: None)
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: None)
     _write_chain(store, next_attempt_at=_PAST)
     start_due_attempts()
     due_env["submitted"][0]()
@@ -1589,7 +1589,7 @@ def test_attempt_without_slot_is_deferred(due_env, monkeypatch):
 def test_attempt_paused_after_queueing_is_deferred(due_env, monkeypatch):
     store = due_env["store"]
     claims = []
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: claims.append(1))
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: claims.append(1))
     _write_chain(store, next_attempt_at=_PAST)
     start_due_attempts()
     monkeypatch.setattr(pause, "effective_state", lambda p, loop: "paused")
@@ -1601,12 +1601,12 @@ def test_attempt_paused_after_queueing_is_deferred(due_env, monkeypatch):
 
 def test_attempt_run_loop_error_releases_claim(due_env, monkeypatch):
     store = due_env["store"]
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
 
     def boom(*a, **k):
         raise RuntimeError("setup")
 
-    monkeypatch.setattr("fabrik.engine.run_loop", boom)
+    monkeypatch.setattr("fabrikant.engine.run_loop", boom)
     _write_chain(store, next_attempt_at=_PAST)
     start_due_attempts()
     due_env["submitted"][0]()
@@ -1617,17 +1617,17 @@ def test_attempt_crash_after_record_consumes_budget(due_env, monkeypatch, runs_d
     """run_loop scheitert nach dem Anlegen des Records (z. B. _persist):
     Record wird error, der Versuch zählt — sonst liefe ein dauerhafter
     Absturz endlos jede Minute."""
-    from fabrik.runs import get_run
+    from fabrikant.runs import get_run
 
     store = due_env["store"]
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
     monkeypatch.setattr(retry_chains, "get_run", get_run)
 
     def crash(project, loop, *, run_id, **k):
         _write_run(runs_dir, {"id": run_id, "status": "running", "trigger": "cron", "trigger_key": CRON_KEY})
         raise OSError("disk full")
 
-    monkeypatch.setattr("fabrik.engine.run_loop", crash)
+    monkeypatch.setattr("fabrikant.engine.run_loop", crash)
     _write_chain(store, next_attempt_at=_PAST, last_run_id="r0")
     run_id = start_due_attempts()[0]
     due_env["submitted"][0]()
@@ -1642,8 +1642,8 @@ def test_attempt_record_carries_chain_key(due_env, monkeypatch):
     sich der Cron-Ausdruck seitdem geändert hat."""
     store = due_env["store"]
     runs = []
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     _write_chain(store, key="cron:0 * * * *", next_attempt_at=_PAST)
     start_due_attempts()
     due_env["submitted"][0]()
@@ -1654,9 +1654,9 @@ def test_attempt_stops_when_claim_cleared(due_env, monkeypatch):
     """Verwerfen zwischen Claim und Start: der Versuch darf nicht starten
     (die Kette ist bereits beendet)."""
     store = due_env["store"]
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
     runs = []
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
     _write_chain(store, next_attempt_at=_PAST)
     start_due_attempts()
     store.set_state("p", "l", CRON_KEY, ChainState.DISMISSED, NOW)
@@ -1675,7 +1675,7 @@ def test_due_attempts_survive_restart(due_env, runs_dir):
     """Neustart (analog `requeue_queued_runs`): Ketten, die vor dem Neustart fällig
     wurden, startet der erste Tick — überfällige sofort, Versuchszahl aus dem letzten
     Run abgeleitet (ADR 0036, Entscheidung 5)."""
-    from fabrik import runs
+    from fabrikant import runs
 
     store = due_env["store"]
     _write_run(
@@ -1890,14 +1890,14 @@ def test_backfill_multiple_old_runs_get_full_budget(due_env, runs_dir, monkeypat
     """Mehrere gescheiterte Altruns (``attempt`` 0 bzw. fehlend) zählen nicht gegen
     das Budget: eine Kette mit dem letzten Run als ``last_run_id``, und der erste
     Versuch des ersten Ticks ist Versuch 1 — volles Budget von ``max``."""
-    from fabrik.runs import get_run
+    from fabrikant.runs import get_run
 
     store = due_env["store"]
     started = []
     monkeypatch.setattr(retry_chains, "get_run", get_run)  # Altruns wirklich lesen
     monkeypatch.setattr(retry_chains, "_attempt_vars", lambda key, **kw: ({"issue_number": 42}, False))
-    monkeypatch.setattr("fabrik.runs.claim_run", lambda *a, **k: _FakeClaim())
-    monkeypatch.setattr("fabrik.engine.run_loop", lambda *a, **k: started.append(k) or {})
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: started.append(k) or {})
     _write_run(
         runs_dir,
         {
@@ -2023,7 +2023,7 @@ class _FakeClaim:
 # ---------------------------------------------------------------- Engine: Ketten-Schlüssel im Record
 def test_init_record_prefers_chain_key(runs_dir, projects_dir):
     """Ein Versuch trägt den Schlüssel seiner Kette, nicht den aus der geänderten Spec."""
-    from fabrik import engine
+    from fabrikant import engine
 
     spec = {
         "_path": str(projects_dir / "none.yaml"),

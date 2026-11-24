@@ -8,7 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = ROOT  # Standalone-Repo: Repo-Root == Paket-Root; GitHub lädt nur <repo-root>/.github/workflows
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "fabrik-ci.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "fabrikant-ci.yml"
 
 
 def _steps(wf: dict[str, Any]) -> Iterator[dict[str, Any]]:
@@ -67,7 +67,7 @@ def test_workflow_at_repo_root_where_github_discovers_it():
 def test_quality_gates_present():
     """Coverage-Gate, JS-Lint und Dependency-Audit laufen in CI (AGENTS.md)."""
     runs = [s.get("run", "") for s in _steps(_load())]
-    assert any("--cov=fabrik" in r and "not browser" in r for r in runs)
+    assert any("--cov=fabrikant" in r and "not browser" in r for r in runs)
     assert any("biome" in r and "lint" in r for r in runs)
     assert any("pip-audit" in r for r in runs)
     assert "fail_under" in (ROOT / "pyproject.toml").read_text()

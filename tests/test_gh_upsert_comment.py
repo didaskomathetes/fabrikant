@@ -10,7 +10,7 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "gh-upsert-comment.sh"
 EX_CONFIG = 78
-MARKER = "<!-- fabrik-sonar -->"
+MARKER = "<!-- fabrikant-sonar -->"
 
 
 def _run(
@@ -41,10 +41,10 @@ def _run(
     env = {
         **os.environ,
         "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}",
-        "FABRIK_ENV_FILE": env_file if env_file is not None else str(tokens),
+        "FABRIKANT_ENV_FILE": env_file if env_file is not None else str(tokens),
     }
-    env.pop("FABRIK_PROJECT_ENV_FILE", None)
-    env.pop("FABRIK_REVIEWER_LOGIN", None)
+    env.pop("FABRIKANT_PROJECT_ENV_FILE", None)
+    env.pop("FABRIKANT_REVIEWER_LOGIN", None)
     argv = args if args is not None else ["o/r", "7", MARKER, str(body)]
     p = subprocess.run(["bash", str(SCRIPT), *argv], env=env, capture_output=True, text=True, timeout=30)
     return p, (log.read_text() if log.exists() else "")

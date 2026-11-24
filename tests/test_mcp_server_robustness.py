@@ -8,13 +8,13 @@ import json
 
 import pytest
 
-from fabrik import mcp_server as mcp
+from fabrikant import mcp_server as mcp
 
 
 def _write_spec(projects_dir, name="p"):
     root = projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f'name: {name}\nroot: {root}\nloops:\n  l:\n    steps:\n      - {{"type": "shell", "cmd": "true"}}\n'
     )
 
@@ -107,7 +107,7 @@ def test_handler_crash_becomes_tool_error_and_logs_to_stderr(monkeypatch):
 
 def test_prints_inside_handlers_do_not_corrupt_stdout(monkeypatch):
     def noisy(_args):
-        print("[fabrik] some engine log line")
+        print("[fabrikant] some engine log line")
         return {"ok": True}
 
     monkeypatch.setitem(next(t for t in mcp.TOOLS if t["name"] == "list_projects"), "handler", noisy)

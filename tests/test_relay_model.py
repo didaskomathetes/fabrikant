@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from helpers import not_none
 
-from fabrik.relay import status
-from fabrik.relay.model import (
+from fabrikant.relay import status
+from fabrikant.relay.model import (
     DEFAULT_MAX_SESSIONS,
     Action,
     Brief,
@@ -23,8 +23,8 @@ from fabrik.relay.model import (
     normalize_login,
     parse_time,
 )
-from fabrik.retry import RetryPolicy
-from fabrik.runmodel import FailureKind
+from fabrikant.retry import RetryPolicy
+from fabrikant.runmodel import FailureKind
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
 BODY = """Intro text.
@@ -257,10 +257,10 @@ def test_status_comment_roundtrips_state_and_shows_block_reason():
     h = handoff(session=3, progress="412/2300", last_session=NOW)
     h.block("checkpoint: approve first batch")
     state = StatusState(verify_pending="x", audit="pass", last_commit="abc1234", note="n", failures_seen="r1")
-    body = status.render("o/r", "fabrik/relay/7", ".fabrik/relay/7/HANDOFF.md", h, state, 12)
+    body = status.render("o/r", "fabrikant/relay/7", ".fabrikant/relay/7/HANDOFF.md", h, state, 12)
     assert body.startswith(status.STATUS_MARKER)
     assert "3 / 12" in body and "approve first batch" in body and "abc1234" in body
-    assert "https://github.com/o/r/blob/fabrik/relay/7/.fabrik/relay/7/HANDOFF.md" in body
+    assert "https://github.com/o/r/blob/fabrikant/relay/7/.fabrikant/relay/7/HANDOFF.md" in body
     assert status.parse_state(body) == state
 
 
@@ -268,7 +268,7 @@ def test_status_comment_without_handoff_and_broken_state():
     body = status.render("o/r", "b", "p", None, StatusState(), 30)
     assert "No session yet" in body
     assert status.parse_state("no state") == StatusState()
-    assert status.parse_state("<!-- fabrik-relay-state {broken} -->") == StatusState()
+    assert status.parse_state("<!-- fabrikant-relay-state {broken} -->") == StatusState()
     assert StatusState.from_dict("nope") == StatusState()
 
 
@@ -369,11 +369,11 @@ def test_set_section_replaces_inserts_before_log_and_removes():
 
 def test_status_comment_shows_result_and_audit_sections():
     h = handoff(session=2, status=Status.DONE)
-    h.set_section("Result", "44 findings, report at `.fabrik/relay/7/report.md`.")
+    h.set_section("Result", "44 findings, report at `.fabrikant/relay/7/report.md`.")
     h.set_section("Audit", "**pass** · details: `AUDIT.md`\n\nAll invariants hold.")
-    body = status.render("o/r", "fabrik/relay/7", ".fabrik/relay/7/HANDOFF.md", h, StatusState(audit="pass"), 8)
+    body = status.render("o/r", "fabrikant/relay/7", ".fabrikant/relay/7/HANDOFF.md", h, StatusState(audit="pass"), 8)
     assert "#### Result\n44 findings" in body and "#### Audit\n**pass**" in body
-    assert "pass · [AUDIT.md](https://github.com/o/r/blob/fabrik/relay/7/.fabrik/relay/7/AUDIT.md)" in body
+    assert "pass · [AUDIT.md](https://github.com/o/r/blob/fabrikant/relay/7/.fabrikant/relay/7/AUDIT.md)" in body
     long = handoff(status=Status.DONE)
     long.set_section("Result", "x" * (status.SECTION_MAX_CHARS + 50))
     rendered = status.render("o/r", "b", "p/HANDOFF.md", long, StatusState(), 8)

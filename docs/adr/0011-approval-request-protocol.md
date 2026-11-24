@@ -1,4 +1,4 @@
-# ADR 0011: Approval request protocol (ADR PR stacked on the original PR → human approves via fabrik → merge)
+# ADR 0011: Approval request protocol (ADR PR stacked on the original PR → human approves via fabrikant → merge)
 
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
@@ -43,7 +43,7 @@ that failed for two reasons:
 **The approval request IS the ADR PR:** the agent drafts the ADR and opens
 a **stacked ADR PR** (base = branch of the original PR, label
 `needs approval`). The `approval` loop (reconciling `on_pr` trigger) pauses
-at the approval gate; the human approves via the fabrik UI/CLI; the run merges the
+at the approval gate; the human approves via the fabrikant UI/CLI; the run merges the
 ADR PR. The approval thus applies to the concrete ADR content.
 
 **Protocol (3 phases):**
@@ -54,20 +54,20 @@ ADR PR. The approval thus applies to the concrete ADR content.
    - drafts the ADR (`docs/adr/NNN-…md`, next free number, style of the
      existing ADRs: context / decision / consequences),
    - opens a **stacked ADR PR** (base = original PR branch, labels
-     `fabrik` + `needs approval` — both labels are mandatory for the
+     `fabrikant` + `needs approval` — both labels are mandatory for the
       approval trigger, see below),
    - replies to the triggering PR comment with a pointer to the ADR PR
      and **does NOT attempt the change** on the original PR.
-2. **Pause** — the `approval` loop (trigger `on_pr` + labels `fabrik` +
+2. **Pause** — the `approval` loop (trigger `on_pr` + labels `fabrikant` +
     `needs approval` (AND) + `reconcile: true`) starts a run for the ADR PR
     that **pauses** at the `approval: true` gate of the `pr_merge` step. The run is
-    in `needs_approval` and visible in the fabrik UI (approve/reject).
-3. **Grant + merge** — the human approves via the **fabrik UI/CLI**
-   (`fabrik approve fabrik <run_id>`). The run resumes; the `pr_merge` step
+    in `needs_approval` and visible in the fabrikant UI (approve/reject).
+3. **Grant + merge** — the human approves via the **fabrikant UI/CLI**
+   (`fabrikant approve fabrikant <run_id>`). The run resumes; the `pr_merge` step
    squash-merges the ADR PR (stacked) with the developer token. The original PR
    can then be re-reviewed/merged.
 
-**Loop (`approval` in `projects/fabrik.fabrik.yaml`):**
+**Loop (`approval` in `projects/fabrikant.fabrikant.yaml`):**
 
 ```yaml
 approval:
@@ -75,7 +75,7 @@ approval:
   triggers:
     - type: on_pr
       repo: acme/my-app
-      labels: [fabrik, needs approval]   # AND semantics (client-side)
+      labels: [fabrikant, needs approval]   # AND semantics (client-side)
       reconcile: true
       poll: 300
   steps:
@@ -105,14 +105,14 @@ to be approved. Resume compatibility: runs already paused with the old
 - In addition: `on_pr` now supports `labels` filtering (previously ignored),
   with **AND semantics** (client-side): the PR must have *all* required labels.
   The GitHub API only filters server-side with OR — without the client-side
-  AND filter, `needs approval` alone would also hit non-fabrik PRs
+  AND filter, `needs approval` alone would also hit non-fabrikant PRs
   (the repo hosts several projects; field finding 2026-10-19:
   the loop fired on PRs #3/#4/#7 without any label).
 
 **Why `tier: 1`:** the loop does near-T4 work (merging an ADR PR). The
 control here comes from the **front** `approval: true` gate — the human
 approves the concrete ADR *before* merging — and from the cross-model review
-of the ADR PR (`fabrik` label → `review-pr` loop, ADR 0003/0010), not from a
+of the ADR PR (`fabrikant` label → `review-pr` loop, ADR 0003/0010), not from a
 synthetic tier gate at the end. `tier: 1` therefore sets no end gate; the
 T4 requirement "human gate, no auto-complete" (v1 draft §1.1) is
 met by front gate + review.
@@ -121,19 +121,19 @@ met by front gate + review.
 
 + The approval request comes **with the concrete ADR** (stacked PR) — the
   human approves the actual content
-+ The ADR PR is a **durable, visible artifact** (GitHub + fabrik UI),
++ The ADR PR is a **durable, visible artifact** (GitHub + fabrikant UI),
   not buried in comments
 + The reconciling trigger is **robust against restarts/spec reloads** —
   existing ADR PRs are picked up, no duplicate runs
-+ Approval via the **existing** fabrik mechanism (UI/CLI) — one
++ Approval via the **existing** fabrikant mechanism (UI/CLI) — one
   consistent approval path, no second protocol
-+ No deadlock: the agent drafts the ADR + opens a PR, the human approves, fabrik merges
-+ The ADR PR goes through the normal review pipeline (`fabrik` label →
++ No deadlock: the agent drafts the ADR + opens a PR, the human approves, fabrikant merges
++ The ADR PR goes through the normal review pipeline (`fabrikant` label →
   `review-pr`, `sonar-scan`)
 - An additional loop + one run per approval request
 - The ADR is **drafted** by the agent (builder model) — human
   approval is the gate; draft quality depends on the agent
-- On reject (`fabrik reject`) the run ends; the ADR PR stays open and is
+- On reject (`fabrikant reject`) the run ends; the ADR PR stays open and is
   closed manually
 - Stacked PR: the ADR PR must be merged **before** the original PR
   (base = PR branch)
@@ -150,7 +150,7 @@ met by front gate + review.
   approving an abstract description without ADR content is pointless. Failed
   in the field (issue #88).
 - **Approval via GitHub comment** (`approved` in the issue/PR): a second,
-  parallel approval protocol next to `fabrik approve` — inconsistent, two
+  parallel approval protocol next to `fabrikant approve` — inconsistent, two
   ways to the same approval.
 - **Only a PR comment with a marker:** exactly the problem we are solving
   (buried in comments, not actionable).

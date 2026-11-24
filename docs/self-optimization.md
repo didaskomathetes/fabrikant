@@ -7,7 +7,7 @@
 
 ## 1. Goal
 
-Let a fabrik operator ask the factory to **audit its own runs and propose
+Let a fabrikant operator ask the factory to **audit its own runs and propose
 improvements** — fewer errors, more efficient prompts, more secure or
 performant specs — such that every proposal is **falsifiable** before it is
 applied. The factory does not "learn" in the ML sense; it **ratchets**
@@ -20,7 +20,7 @@ The distinction is the whole safety model (see §7).
 
 - **The LLM never modifies the conductor.** Principle #1 ("the conductor is
   code, not an LLM") is preserved. The agent proposes changes to **specs,
-  loops, and prompts** — data the conductor runs — never to fabrik's own
+  loops, and prompts** — data the conductor runs — never to fabrikant's own
   orchestration code.
 - **No autonomous application.** A proposal is never applied without human
   approval through the existing approval gate (ADR 0011 approval-request
@@ -150,7 +150,7 @@ will thrash without these rules:
 
 ### Rollback, provenance, and optimizer cost
 
-- **Applied proposals are stored as a git commit to the `*.fabrik.yaml` spec
+- **Applied proposals are stored as a git commit to the `*.fabrikant.yaml` spec
   plus a proposal record** (id, tier, regime, evidence, approver(s),
   before/after eval) kept with the run data, so the ratchet history is
   auditable and reversible.
@@ -183,7 +183,7 @@ there is no baseline, so the loop is `zero-data` and the revert-on-regression
 claim does not apply. `high-data` = enough runs that the metric beats its
 variance (the graduation threshold is the §8 open question).
 
-The fabrik eval is the final gate *whenever it is feasible*; in the zero/low
+The fabrikant eval is the final gate *whenever it is feasible*; in the zero/low
 regime it usually is not, so the human + ratchet take over. The tradeoff to
 keep honest: **data-frugal ↔ less falsifiable.** A zero/low-data acceptance is
 a *low-confidence, qualitatively-justified* change, recorded as such — never
@@ -258,10 +258,10 @@ first-class feature.
 The full set, with a "why it matters here" note and a suggested reading order,
 is in the [companion reading list](self-optimization-reading-list.md).
 
-fabrik's deliberate differences:
+fabrikant's deliberate differences:
 
 1. **Modify the workflows, never the conductor.** The LLM proposes changes to
-   specs/loops/prompts (data), never to fabrik's orchestration code. This
+   specs/loops/prompts (data), never to fabrikant's orchestration code. This
    keeps principle #1 intact and removes the highest-risk surface.
 2. **Guardrails are acceptance criteria**, not an afterthought — the direct
    answer to the DGM gaming failure.
@@ -314,9 +314,9 @@ and the proof strengthens the claim later.
   pattern name.)
 - **Scope of "prompt efficiency."** Do we adopt a DSPy-style metric compiler
   for the prompt tier, or keep it to LLM-proposed rewrites validated by eval?
-  Current lean: use the fabrik eval harness as the source of truth; treat
+  Current lean: use the fabrikant eval harness as the source of truth; treat
   DSPy as a reference implementation (or a drop-in for the prompt tier only),
-  contingent on the fabrik eval proving too sparse to gate on alone.
+  contingent on the fabrikant eval proving too sparse to gate on alone.
 - **Typed `Proposal`.** Per AGENTS.md, the proposal object becomes a typed
   dataclass (with the JSON schema from #131 as its wire format) in the ADR —
   not a dict poked at procedurally. The conductor-computed fields (`tier`,

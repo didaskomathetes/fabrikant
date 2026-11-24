@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from fabrik import procs
+from fabrikant import procs
 
 # Grandchild im Hintergrund starten, PID ablegen, dann warten (hält die Gruppe am Leben).
 SPAWN_GRANDCHILD = 'sleep 30 & echo $! > "$PIDFILE"; wait'

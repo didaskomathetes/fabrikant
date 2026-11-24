@@ -18,11 +18,11 @@ from pathlib import Path
 import pytest
 from helpers import http_error, not_none
 
-from fabrik import apicommit, gitops
-from fabrik.apicommit import ApiPusher, Change, parse_diff_tree, push_branch, repo_from_remote
-from fabrik.failures import GitError
-from fabrik.hosting import HostingNotSupported, spec_context
-from fabrik.relay.workspace import Workspace, branch_name
+from fabrikant import apicommit, gitops
+from fabrikant.apicommit import ApiPusher, Change, parse_diff_tree, push_branch, repo_from_remote
+from fabrikant.failures import GitError
+from fabrikant.hosting import HostingNotSupported, spec_context
+from fabrikant.relay.workspace import Workspace, branch_name
 
 BOT = {"GIT_AUTHOR_NAME": "bot[bot]", "GIT_AUTHOR_EMAIL": "1+bot[bot]@users.noreply.github.com"}
 BOT |= {"GIT_COMMITTER_NAME": BOT["GIT_AUTHOR_NAME"], "GIT_COMMITTER_EMAIL": BOT["GIT_AUTHOR_EMAIL"]}
@@ -353,8 +353,8 @@ def test_push_branch_api_mode_non_github_refused_without_credentials(remote, mon
     """Nicht-GitHub-Host → klare HostingNotSupported, auch ohne Token (kein Credential-Fehler)."""
     repo, bare, _ = remote
     monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "")
-    monkeypatch.delenv("FABRIK_GITLAB_TOKEN", raising=False)
-    monkeypatch.setenv("FABRIK_GITLAB_TOKEN_FILE", "/nonexistent/token")
+    monkeypatch.delenv("FABRIKANT_GITLAB_TOKEN", raising=False)
+    monkeypatch.setenv("FABRIKANT_GITLAB_TOKEN_FILE", "/nonexistent/token")
     monkeypatch.setattr(
         apicommit.subprocess, "run", _remote_url_override(subprocess.run, "https://gitlab.example.com/o/r.git")
     )
@@ -424,7 +424,7 @@ def test_cli_pushes_current_branch(remote, monkeypatch, capsys):
 def test_cli_maps_errors_to_exit_codes(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)  # kein Git-Repo
     assert apicommit.main([]) != 0
-    assert "fabrik push" in capsys.readouterr().err
+    assert "fabrikant push" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------- Projekt-Einstellung
@@ -445,7 +445,7 @@ def test_project_github_exports_commit_via_to_subprocesses(monkeypatch):
 
 @pytest.mark.parametrize("value", ["ssh", 1, ""])
 def test_spec_rejects_unknown_commit_via(value):
-    from fabrik.specs import _validate_spec
+    from fabrikant.specs import _validate_spec
 
     with pytest.raises(ValueError, match="commit_via"):
         _validate_spec({"name": "x", "root": "/tmp", "loops": {}, "commit_via": value}, check_root=False)
@@ -453,7 +453,7 @@ def test_spec_rejects_unknown_commit_via(value):
 
 # ---------------------------------------------------------------- Aufrufer
 def test_git_step_pushes_via_push_branch(remote, monkeypatch):
-    from fabrik.steps import git as git_step
+    from fabrikant.steps import git as git_step
 
     repo, _, _ = remote
     seen = {}
@@ -474,7 +474,7 @@ def test_relay_workspace_push_uses_api_in_api_mode(remote, monkeypatch):
         ws.push("o/r", "tok")
     assert git(bare, "log", "--format=%an", "-1", branch_name(7)) == "bot[bot]"
     assert all(cmd == "fetch" for cmd, _ in fetched)
-    assert re.fullmatch(r"\+refs/heads/fabrik/relay/7:refs/remotes/origin/fabrik/relay/7", fetched[0][1][0])
+    assert re.fullmatch(r"\+refs/heads/fabrikant/relay/7:refs/remotes/origin/fabrikant/relay/7", fetched[0][1][0])
 
 
 def test_relay_workspace_push_uses_git_by_default(remote, monkeypatch):
@@ -490,7 +490,7 @@ def test_relay_workspace_push_uses_git_by_default(remote, monkeypatch):
 def test_push_module_runs_cli_without_runpy_warning(remote):
     repo, bare, _ = remote
     commit(repo, "one", **{"a.txt": "1\n"})
-    p = subprocess.run([sys.executable, "-m", "fabrik.push"], cwd=repo, capture_output=True, text=True)
+    p = subprocess.run([sys.executable, "-m", "fabrikant.push"], cwd=repo, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert "RuntimeWarning" not in p.stderr
     assert git(bare, "rev-parse", "feat") == git(repo, "rev-parse", "HEAD")

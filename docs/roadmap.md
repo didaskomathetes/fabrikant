@@ -1,6 +1,6 @@
 # Roadmap
 
-Living plan for fabrik. This document supersedes the phase plan of the
+Living plan for fabrikant. This document supersedes the phase plan of the
 archived v1.1 design draft
 ([`archive/framework-v1-draft.md`](archive/framework-v1-draft.md)): it keeps the
 draft's principles, its P0→P3 structure and its KPI definitions, reconciled
@@ -35,7 +35,7 @@ Statuses as of 2026-11-23.
    (issues, webhooks, scraped pages) is the primary prompt-injection surface
    of a workflow factory.
 
-## Factory KPIs (draft §5, the definitions fabrik aims to compute)
+## Factory KPIs (draft §5, the definitions fabrikant aims to compute)
 
 - **Cycle time:** intent → merged artifact
 - **Defect escape rate:** what is found after merge
@@ -56,12 +56,12 @@ open (P2).
 
 | Draft item | Status | Pointer |
 |---|---|---|
-| Step types `http`, `llm`, `notify` | shipped | `src/fabrik/steps/` |
+| Step types `http`, `llm`, `notify` | shipped | `src/fabrikant/steps/` |
 | Step type `issue` (native GitHub issue ops) | shipped | ADR 0018 |
 | Variable store + `[a-zA-Z0-9_]+` substitution, `vars`, loop templates | shipped | ADR 0047 |
 | Risk tier as spec data field + single mapping function | shipped | `tier` in specs, single mapping function |
 | Untrusted-input rules (marking, read-only research agent, deterministic triage mapping) | shipped | ADR 0008, ADR 0050 |
-| Stale-run check (~20 lines) | shipped | `FABRIK_STALE_HOURS` |
+| Stale-run check (~20 lines) | shipped | `FABRIKANT_STALE_HOURS` |
 | Spec hash in the run record | shipped | `sessionlog.py` (`spec_hash`) |
 | Token masking in logs | shipped | `secrets.py`, ADR 0026 (alert `log_tail`) |
 | Triggers `manual`, `cron`, `on_file`, `on_issue`, `on_pr` | shipped | `scheduler.py`, ADR 0014, ADR 0023 |
@@ -90,7 +90,7 @@ open (P2).
 
 ## Phase 2 — Control/worker separation + enterprise mechanics
 
-**Status: in progress.** The draft's P2 is a 6–12-month scope; fabrik took
+**Status: in progress.** The draft's P2 is a 6–12-month scope; fabrikant took
 its mechanics one by one, mostly on the homelab profile.
 
 | Draft item | Status | Pointer |
@@ -117,7 +117,7 @@ its mechanics one by one, mostly on the homelab profile.
 | Egress default-deny: agent internet access only via allowlist proxy | shipped | ADR 0051; per-loop network profiles open (issue #119, folded into ADR 0060 access profiles: #138) |
 | Deployment profiles (`homelab` \| `cloud`) with adapter registry | shipped | ADR 0056 |
 | Named connections (LLM providers, agent backends in the UI) | shipped | ADR 0052 |
-| Run launcher port/adapter (execution substrate, `FABRIK_LAUNCHER`) (beyond draft) | shipped | ADR 0057, PR #147 |
+| Run launcher port/adapter (execution substrate, `FABRIKANT_LAUNCHER`) (beyond draft) | shipped | ADR 0057, PR #147 |
 | Hosting provider port/adapter (GitHub, GitLab) + extensible registry (beyond draft) | shipped; GitLab write-flow verification open | ADR 0062, ADR 0063, PR #172; issue #171 |
 | Research fetcher + access profiles per loop/run, one-time grants (beyond draft) | partial | ADR 0060; stages 1–2 shipped (PR #181, issue #180), amendment draft PR #184; stages 3–5 open: #138, #139, #140 (also #119) |
 | Threat model (beyond draft) | shipped (draft) | PR #182 |
@@ -151,14 +151,14 @@ The current priorities, ahead of the open P2/P3 items. Status as of 2026-11-23.
 - Replay: deterministic re-execution of a run from pinned inputs — issue #129 (shipped, #170, ADR 0061)
 - Golden runs + eval harness ("this pipeline change did not regress my
   loops" as a provable statement) — issue #130 (core shipped, #177, ADR 0065; gaps: goldens are sidecar files
-  instead of run-store marks, CLI is `fabrik eval <project> <loop>`, opt-in CI
+  instead of run-store marks, CLI is `fabrikant eval <project> <loop>`, opt-in CI
   workflow still in `docs/ci/golden-eval.yml`, no user-facing docs)
 
 **3. Spec as a standard**
 
-- JSON schema for `*.fabrik.yaml`, single source of truth for validation
+- JSON schema for `*.fabrikant.yaml`, single source of truth for validation
   and docs — issue #131 (shipped, #169)
-- fabrik as an MCP server (runs, specs, approvals reachable from any
+- fabrikant as an MCP server (runs, specs, approvals reachable from any
   MCP-capable agent) — issue #132 (shipped, #178, ADR 0064, incl. the
   `validate_spec` tool; ADR 0064 amendment in draft PR #183)
 - Grow the template library (≥5 documented, versioned templates) — issue #133 (not started)
@@ -173,7 +173,7 @@ ADR 0049 and ADR 0051 have since been accepted and dropped from this list):
 
 | ADR | Feature | Evidence in code |
 |---|---|---|
-| 0037 | Relay tasks (status: Draft) | `src/fabrik/relay/`, `prompts/relay/`, [relay.md](relay.md) |
+| 0037 | Relay tasks (status: Draft) | `src/fabrikant/relay/`, `prompts/relay/`, [relay.md](relay.md) |
 | 0038 | Live log (SSE) + transcript in run modal | `server.py` (`text/event-stream`) |
 | 0039 | Convergent PR review rounds | `steps/pr_review.py` |
 | 0043 | Reconcile dedup (queued triggers, paused runs) | `engine.py` (`_safe_run`), `runs.py` |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SonarQube-Scan (Python via pysonar) — Default: das fabrik-Projekt; andere Projekte über SONAR_PROJECT_DIR & Co.
+# SonarQube-Scan (Python via pysonar) — Default: das fabrikant-Projekt; andere Projekte über SONAR_PROJECT_DIR & Co.
 #
 # Ablauf:
 #   1. SonarQube (compose.yaml) starten, falls nicht erreichbar
@@ -20,21 +20,21 @@
 #   SONAR_HOST_URL        (Default: http://127.0.0.1:9000)
 #   SONAR_ADMIN_USER      (Default: admin)
 #   SONAR_ADMIN_PASSWORD  (Default: admin — nur relevant, wenn kein Token gecacht ist)
-#   SONAR_COMPOSE_FILE    (Default: <fabrik>/compose.yaml)
-#   SONAR_PROJECT_KEY     (Default: fabrik)
-#   SONAR_PROJECT_DIR     zu scannendes Repo/Verzeichnis (Default: <fabrik>; relativ = zum Aufruf-cwd)
-#   SONAR_TEST_CMD        Tests + Coverage, `bash -c` im Projekt (Default: fabrik-pytest → coverage.xml);
+#   SONAR_COMPOSE_FILE    (Default: <fabrikant>/compose.yaml)
+#   SONAR_PROJECT_KEY     (Default: fabrikant)
+#   SONAR_PROJECT_DIR     zu scannendes Repo/Verzeichnis (Default: <fabrikant>; relativ = zum Aufruf-cwd)
+#   SONAR_TEST_CMD        Tests + Coverage, `bash -c` im Projekt (Default: fabrikant-pytest → coverage.xml);
 #                         Exit 1/2 = Tests rot
 #   SONAR_COVERAGE_PATHS  Cobertura-Reports für Sonar, Komma/Wildcards (Default: coverage.xml);
 #                         leer gesetzt = nicht übergeben (sonar-project.properties des Projekts gilt)
-#   SONAR_LINT_CMD        schreibt Analyzer-Reports nach $SONAR_LINT_DIR, `bash -c` im Projekt (Default für fabrik:
+#   SONAR_LINT_CMD        schreibt Analyzer-Reports nach $SONAR_LINT_DIR, `bash -c` im Projekt (Default für fabrikant:
 #                         scripts/lint.sh --reports; für fremde Projekte (SONAR_PROJECT_DIR) leer = kein Import).
 #                         Erkannte Dateien → Scanner-Parameter: ruff.json → sonar.python.ruff.reportPaths,
 #                         bandit.json → sonar.python.bandit.reportPaths, pyright-sonar.json (Generic Issue Format)
 #                         → sonar.externalIssuesReportPaths. Exit ≠ 0 = Setup-Fehler (Funde sind keiner).
-#   SONAR_LINT_DIR        Report-Verzeichnis, relativ zum Projekt (Default: .fabrik/sonar/lint; wird vorab geleert)
+#   SONAR_LINT_DIR        Report-Verzeichnis, relativ zum Projekt (Default: .fabrikant/sonar/lint; wird vorab geleert)
 #   SONAR_SCANNER         Scanner-Befehl (Default: `uv run pysonar` im Projekt; fremde Projekte ohne
-#                         pysonar-Dependency: <fabrik>/.venv/bin/pysonar; oder das eigene Scan-Skript des
+#                         pysonar-Dependency: <fabrikant>/.venv/bin/pysonar; oder das eigene Scan-Skript des
 #                         Projekts — es bekommt die -D-Parameter als Argumente und muss sie an den Scanner
 #                         reichen). Exit ≠ 0 NACH dem Upload (CE-Task im Output, z. B. Tests rot): Gate und
 #                         Report laufen trotzdem, Ergebnis Exit 1.
@@ -91,20 +91,20 @@ EX_SIGNAL_BASE=128
 # Unerwartet gescheiterter Befehl (set -e): sonst Exit 1 = „Gate/Tests rot“ (outcome) für einen Setup-Fehler.
 trap 'rc=$?; echo "[sonar-scan] FEHLER: unerwarteter Fehler (exit $rc, Zeile $LINENO)"; exit "$EX_CONFIG"' ERR
 
-FABRIK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FABRIKANT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOST_URL="${SONAR_HOST_URL:-http://127.0.0.1:9000}"
 ADMIN_USER="${SONAR_ADMIN_USER:-admin}"
 ADMIN_PASS="${SONAR_ADMIN_PASSWORD:-admin}"
-COMPOSE_FILE="${SONAR_COMPOSE_FILE:-$FABRIK_DIR/compose.yaml}"
-PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrik}"
-PROJECT_DIR="$(cd "${SONAR_PROJECT_DIR:-$FABRIK_DIR}" && pwd)"
+COMPOSE_FILE="${SONAR_COMPOSE_FILE:-$FABRIKANT_DIR/compose.yaml}"
+PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrikant}"
+PROJECT_DIR="$(cd "${SONAR_PROJECT_DIR:-$FABRIKANT_DIR}" && pwd)"
 DEFAULT_TEST_CMD='uv run pytest -m "not browser and not perf" --cov=src --cov-report=xml:coverage.xml -q'
 TEST_CMD="${SONAR_TEST_CMD:-$DEFAULT_TEST_CMD}"
 COVERAGE_PATHS="${SONAR_COVERAGE_PATHS-coverage.xml}"  # leer gesetzt = Projekt-Config gilt
 DEFAULT_LINT_CMD=""
-[ "$PROJECT_DIR" = "$FABRIK_DIR" ] && DEFAULT_LINT_CMD='bash scripts/lint.sh --reports "$SONAR_LINT_DIR"'
+[ "$PROJECT_DIR" = "$FABRIKANT_DIR" ] && DEFAULT_LINT_CMD='bash scripts/lint.sh --reports "$SONAR_LINT_DIR"'
 LINT_CMD="${SONAR_LINT_CMD-$DEFAULT_LINT_CMD}"  # leer gesetzt = keine Analyzer-Reports
-LINT_DIR="${SONAR_LINT_DIR:-.fabrik/sonar/lint}"
+LINT_DIR="${SONAR_LINT_DIR:-.fabrikant/sonar/lint}"
 # Report-Datei (von SONAR_LINT_CMD) → Scanner-Parameter, der sie importiert.
 LINT_REPORTS=(
   "ruff.json=sonar.python.ruff.reportPaths"
@@ -115,7 +115,7 @@ SCANNER="${SONAR_SCANNER:-}"
 read -ra EXTRA_SCANNER_ARGS <<< "${SONAR_SCANNER_ARGS:-}"
 # Token-File: über SONAR_TOKEN_FILE teilbar (z. B. Haupt-Repo statt Worktree,
 # damit Worktree-Runs denselben Token wiederverwenden und keine Token-Flut erzeugen).
-TOKEN_FILE="${SONAR_TOKEN_FILE:-$FABRIK_DIR/state/sonar-token.txt}"
+TOKEN_FILE="${SONAR_TOKEN_FILE:-$FABRIKANT_DIR/state/sonar-token.txt}"
 READY_TIMEOUT="${SONAR_READY_TIMEOUT:-180}"
 BRANCH="${SONAR_BRANCH:-}"
 PR="${SONAR_PR:-}"
@@ -185,7 +185,7 @@ else
   log "Erzeuge Scanner-Token (Admin-Creds: $ADMIN_USER) …"
   rc=0
   resp="$(curl -sf --max-time 10 -u "$ADMIN_USER:$ADMIN_PASS" \
-    -X POST "$HOST_URL/api/user_tokens/generate?name=fabrik-scanner")" || rc=$?
+    -X POST "$HOST_URL/api/user_tokens/generate?name=fabrikant-scanner")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # curl 22 = HTTP-Fehler (z. B. 401: Admin-Passwort geändert) → Mensch; sonst Netz/Timeout.
     log "FEHLER: Token-Erzeugung fehlgeschlagen (curl exit $rc)"
@@ -270,7 +270,7 @@ elif [ -n "$BRANCH" ]; then
 fi
 
 # 4) Tests + Coverage-Report (Cobertura-XML) — ohne Coverage-Daten scheitert der Quality Gate an
-#    new_coverage (Default: >= 80 %). fabrik-Default: perf-Tests ausgenommen (wie CI), ihr
+#    new_coverage (Default: >= 80 %). fabrikant-Default: perf-Tests ausgenommen (wie CI), ihr
 #    Wall-Clock-Budget bricht unter Coverage-Instrumentierung.
 cd "$PROJECT_DIR"
 # PR-Modus (advisory): frischer Coverage-Report (jünger als HEAD) wird wiederverwendet —
@@ -439,7 +439,7 @@ if [ -n "$REPORT_FILE" ]; then
   if [ -n "$COMMENT_FILE" ]; then
     report_args+=(--comment "$COMMENT_FILE" --link-base "${SONAR_LINK_BASE:?SONAR_LINK_BASE fehlt (für SONAR_COMMENT_FILE)}")
   fi
-  python3 "$FABRIK_DIR/scripts/sonar_report.py" "${report_args[@]}"
+  python3 "$FABRIKANT_DIR/scripts/sonar_report.py" "${report_args[@]}"
   rm -rf "$RAW_DIR"
   log "Report geschrieben: $REPORT_FILE${COMMENT_FILE:+ + Kommentar $COMMENT_FILE}"
 fi

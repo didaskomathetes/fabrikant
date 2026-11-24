@@ -8,14 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import llm, llm_cli
-from fabrik.backends._oneshot import OneShotCliBackend
+from fabrikant import llm, llm_cli
+from fabrikant.backends._oneshot import OneShotCliBackend
 
 
 @pytest.fixture
 def clean_llm_env(monkeypatch, tmp_path):
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
     monkeypatch.setattr(llm_cli, "_WORKDIR", tmp_path / "llm-cli")
@@ -26,11 +26,11 @@ def clean_llm_env(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- Registry
 def test_cli_provider_listed(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "claude,copilot")
-    monkeypatch.setenv("FABRIK_LLM_CLAUDE_CLI", "claude")
-    monkeypatch.setenv("FABRIK_LLM_CLAUDE_MODEL", "claude-sonnet-5-5")
-    monkeypatch.setenv("FABRIK_LLM_COPILOT_CLI", "copilot")
-    monkeypatch.setenv("FABRIK_LLM_COPILOT_MODEL", "gpt-5.6-luna")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "claude,copilot")
+    monkeypatch.setenv("FABRIKANT_LLM_CLAUDE_CLI", "claude")
+    monkeypatch.setenv("FABRIKANT_LLM_CLAUDE_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setenv("FABRIKANT_LLM_COPILOT_CLI", "copilot")
+    monkeypatch.setenv("FABRIKANT_LLM_COPILOT_MODEL", "gpt-5.6-luna")
     provs = {p["name"]: p for p in llm.list_providers()}
     assert provs["claude"] == {
         "name": "claude",
@@ -43,9 +43,9 @@ def test_cli_provider_listed(clean_llm_env, monkeypatch):
 
 
 def test_cli_provider_unknown_cli_skipped(clean_llm_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "x")
-    monkeypatch.setenv("FABRIK_LLM_X_CLI", "rm")
-    monkeypatch.setenv("FABRIK_LLM_X_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "x")
+    monkeypatch.setenv("FABRIKANT_LLM_X_CLI", "rm")
+    monkeypatch.setenv("FABRIKANT_LLM_X_MODEL", "m")
     assert llm.list_providers() == []
 
 

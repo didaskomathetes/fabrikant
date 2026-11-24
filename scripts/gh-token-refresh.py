@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""gh-token-refresh — GitHub-App-Installation-Token für fabrik erneuern (ADR 0010).
+"""gh-token-refresh — GitHub-App-Installation-Token für fabrikant erneuern (ADR 0010).
 
 Erzeugt ein frisches 1h-Installation-Token für eine GitHub-App und schreibt es
-in die FABRIK_ENV_FILE (Default ~/.config/fabrik/fabrik.env). fabrik liest die Datei pro
+in die FABRIKANT_ENV_FILE (Default ~/.config/fabrikant/fabrikant.env). fabrikant liest die Datei pro
 API-Call neu — kein Restart.
 
 Rollen (`--role`, Default dev) = die zwei Identitäten der Dual-Identity-Pipeline:
@@ -15,18 +15,18 @@ Rollen (`--role`, Default dev) = die zwei Identitäten der Dual-Identity-Pipelin
                        landet als `iss` im JWT
   <P>_APP_KEY_FILE     Pfad zum App-Private-Key (PEM, RSA)
   <P>_INSTALLATION_ID  Installation-ID im Ziel-Repo/-Org
-  FABRIK_ENV_FILE      Ziel-Datei (Default ~/.config/fabrik/fabrik.env)
-Config aus Env ODER fabrik.env neben diesem Script.
+  FABRIKANT_ENV_FILE      Ziel-Datei (Default ~/.config/fabrikant/fabrikant.env)
+Config aus Env ODER fabrikant.env neben diesem Script.
 
 Cron (alle 30 min, Token lebt 1h; eine Zeile pro Rolle):
-  */30 * * * * /path/to/.venv/bin/python /path/to/fabrik/scripts/gh-token-refresh.py >> /var/log/gh-token-refresh.log 2>&1
-  */30 * * * * /path/to/.venv/bin/python /path/to/fabrik/scripts/gh-token-refresh.py --role reviewer >> /var/log/gh-token-refresh.log 2>&1
+  */30 * * * * /path/to/.venv/bin/python /path/to/fabrikant/scripts/gh-token-refresh.py >> /var/log/gh-token-refresh.log 2>&1
+  */30 * * * * /path/to/.venv/bin/python /path/to/fabrikant/scripts/gh-token-refresh.py --role reviewer >> /var/log/gh-token-refresh.log 2>&1
 
 Exit 0 = Token geschrieben, != 0 = Fehler (Cron-Mail/Alert).
 
 Sicherheit:
-  - FABRIK_ENV_FILE wird mit 0600 geschrieben (nur Owner liest den Token).
-  - Ist FABRIK_ENV_FILE `chattr +i` (z. B. per Terraform), wird das Flag für
+  - FABRIKANT_ENV_FILE wird mit 0600 geschrieben (nur Owner liest den Token).
+  - Ist FABRIKANT_ENV_FILE `chattr +i` (z. B. per Terraform), wird das Flag für
     den Rename kurz aufgehoben und danach wieder gesetzt (braucht root;
     `lsattr`/`chattr` aus e2fsprogs).
   - Abhängigkeit: `openssl` (RS256-JWT-Signierung) muss im PATH sein —
@@ -51,8 +51,8 @@ from pathlib import Path
 
 API = "https://api.github.com"
 SCRIPT_DIR = Path(__file__).resolve().parent
-FABRIK_HOME = SCRIPT_DIR.parent
-DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrik" / "fabrik.env")
+FABRIKANT_HOME = SCRIPT_DIR.parent
+DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrikant" / "fabrikant.env")
 JWT_LIFETIME_S = 540  # 9 min — GitHub akzeptiert max. 10 min
 JWT_SKEW_S = 60  # iat in der Vergangenheit (Clock-Skew-Toleranz)
 SUBPROCESS_TIMEOUT_S = 30
@@ -72,16 +72,16 @@ class AppRole:
         return (f"{self.prefix}_APP_ID", f"{self.prefix}_APP_KEY_FILE", f"{self.prefix}_INSTALLATION_ID")
 
 
-# Rollen-Namen wie fabrik.gitops.GH_TOKEN_ENV (dev/reviewer).
+# Rollen-Namen wie fabrikant.gitops.GH_TOKEN_ENV (dev/reviewer).
 ROLES = {
     "dev": AppRole("BUILDER", "GITHUB_TOKEN"),
     "reviewer": AppRole("REVIEWER", "GITHUB_REVIEWER_TOKEN"),
 }
 
 
-def _load_fabrik_env() -> None:
-    """fabrik.env als Fallback-Config (os.environ gewinnt)."""
-    p = FABRIK_HOME / "fabrik.env"
+def _load_fabrikant_env() -> None:
+    """fabrikant.env als Fallback-Config (os.environ gewinnt)."""
+    p = FABRIKANT_HOME / "fabrikant.env"
     if not p.is_file():
         return
     for line in p.read_text().splitlines():
@@ -129,7 +129,7 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
-            "User-Agent": "fabrik-gh-token-refresh",
+            "User-Agent": "fabrikant-gh-token-refresh",
             "Content-Type": "application/json",
         },
     )
@@ -225,10 +225,10 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--role", choices=sorted(ROLES), default="dev")
     role = ROLES[p.parse_args(argv or []).role]
-    _load_fabrik_env()
+    _load_fabrikant_env()
     values = {k: os.environ.get(k, "").strip() for k in role.config_keys}
     app_id, key_file, installation_id = values.values()
-    env_file = Path(os.environ.get("FABRIK_ENV_FILE", DEFAULT_ENV_FILE))
+    env_file = Path(os.environ.get("FABRIKANT_ENV_FILE", DEFAULT_ENV_FILE))
     missing = [k for k, v in values.items() if not v]
     if missing:
         print(f"FEHLER: Config fehlt: {', '.join(missing)}", file=sys.stderr)

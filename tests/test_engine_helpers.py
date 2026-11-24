@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from fabrik import engine
+from fabrikant import engine
 
 
 def test_persist_writes_indented_json(runs_dir):
@@ -25,7 +25,7 @@ def test_persist_redacts(runs_dir, monkeypatch):
     def _fake_redact(r):
         r["note"] = "***"
 
-    monkeypatch.setattr("fabrik.runstore._redact_record", _fake_redact)
+    monkeypatch.setattr("fabrikant.runstore._redact_record", _fake_redact)
     engine._persist("p", "r2", {"id": "r2", "status": "running", "note": "secret"})
     assert json.loads((runs_dir / "p" / "r2.json").read_text())["note"] == "***"
 
@@ -38,7 +38,7 @@ def test_abort_status_mapping():
 def test_run_reaped_before_final_write_keeps_reaper_outcome(runs_dir, projects_dir, monkeypatch, cmd):
     """Reaper/Stale-Check beendet den Run vor dem finalen Write (running → error, Kette und
     Alerts dort gebucht): die Engine überschreibt den Record nicht und bucht nichts doppelt."""
-    (projects_dir / "reaped.fabrik.yaml").write_text(
+    (projects_dir / "reaped.fabrikant.yaml").write_text(
         f"name: reaped\nroot: /tmp\nloops:\n  t:\n    steps:\n      - type: shell\n        cmd: '{cmd}'\n"
     )
     real_finish = engine._finish_workdir
@@ -70,8 +70,8 @@ def test_fail_queued_record_leaves_started_run(runs_dir, monkeypatch):
 
 def test_dispatch_unknown_connection_fails_as_environment():
     """Step mit unbekannter `connection:` → Environment-Fehler statt Crash (ADR 0052)."""
-    from fabrik.engine import _dispatch_step
-    from fabrik.failures import FailureKind
+    from fabrikant.engine import _dispatch_step
+    from fabrikant.failures import FailureKind
 
     res = _dispatch_step({}, {"type": "agent", "connection": "gibt-es-nicht", "prompt": "x"}, lambda *_: None)
     assert res["ok"] is False and "unbekannt" in res["summary"]

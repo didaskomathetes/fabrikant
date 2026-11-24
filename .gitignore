@@ -7,7 +7,7 @@ __pycache__/
 .venv/
 coverage.xml
 coverage.json
-fabrik.env
+fabrikant.env
 selftest/reports/
-# GitHub-App-Private-Keys gehören nach ~/.config/fabrik/ (0600), nie ins Repo
+# GitHub-App-Private-Keys gehören nach ~/.config/fabrikant/ (0600), nie ins Repo
 *.pem

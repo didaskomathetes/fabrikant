@@ -2,7 +2,7 @@
 
 Covers `replay_run` (pinned inputs, terminal-status guard, spec/loop checks),
 `_pinned_vars` (derived-key filtering), `diff_runs` (report rendering) and the
-`fabrik replay` CLI command.
+`fabrikant replay` CLI command.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from fabrik import cli, replay
+from fabrikant import cli, replay
 
 
 def _write_spec(projects_dir, name="p", root=None, loops=None):
@@ -19,7 +19,7 @@ def _write_spec(projects_dir, name="p", root=None, loops=None):
     root = root or projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
     loops = loops or {"l": {"steps": [{"type": "shell", "cmd": "true"}]}}
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n"
         + "\n".join(
             f"  {ln}:\n    steps:\n" + "\n".join(f"      - {json.dumps(s)}" for s in ldef["steps"])
@@ -73,8 +73,8 @@ def test_pinned_vars_filters_derived_and_env():
             "loop": "l",
             "trigger": "on_issue:#42",
             "note": "n",
-            "fabrik_home": "/home",
-            "spec_path": "/x.fabrik.yaml",
+            "fabrikant_home": "/home",
+            "spec_path": "/x.fabrikant.yaml",
             "env_key": "from-env",
             "emitted": "value",
         }

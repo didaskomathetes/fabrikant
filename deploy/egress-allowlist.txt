@@ -1,6 +1,6 @@
-# fabrik: Egress-Allowlist (Default-Deny-Proxy, ADR 0051)
+# fabrikant: Egress-Allowlist (Default-Deny-Proxy, ADR 0051)
 #
-# Domänen, die Agent-Container (Sandbox-Netzwerk `fabrik-sandbox`) über den
+# Domänen, die Agent-Container (Sandbox-Netzwerk `fabrikant-sandbox`) über den
 # Proxy erreichen dürfen. Subdomänen sind inkludiert. Zeile pro Domain
 # (Hostname mit mind. zwei Labels; `com` oder IP-Adressen werden abgelehnt),
 # `#`-Kommentare erlaubt. Ohne diesen Eintrag erlaubt der Proxy NICHTS

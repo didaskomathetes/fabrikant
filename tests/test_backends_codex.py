@@ -1,6 +1,6 @@
 """Backends: codex (OpenAI Codex CLI, One-Shot `codex exec`).
 
-Die One-Shot-Mechanik (Popen/poll/cancel) lebt in `fabrik.backends._oneshot`
+Die One-Shot-Mechanik (Popen/poll/cancel) lebt in `fabrikant.backends._oneshot`
 — die Fakes patchen daher `subprocess.Popen` / `os.killpg` dort. Buffers sind
 Bytes (die Base schreibt `prompt.encode()` und dekodiert stdout/stderr).
 """
@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from fabrik.backends.codex import CodexBackend
+from fabrikant.backends.codex import CodexBackend
 
 _FAKE_EXIT_TIMEOUT_S = 2.0
 
@@ -83,7 +83,7 @@ def _mk(tmp_path, monkeypatch):
         calls.append(p)
         return p
 
-    monkeypatch.setattr("fabrik.backends._oneshot.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("fabrikant.backends._oneshot.subprocess.Popen", fake_popen)
     return CodexBackend(), calls
 
 
@@ -116,7 +116,7 @@ def test_send_prompt_model_flag(tmp_path, monkeypatch):
 
 
 def test_sandbox_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("FABRIK_CODEX_SANDBOX", "danger-full-access")
+    monkeypatch.setenv("FABRIKANT_CODEX_SANDBOX", "danger-full-access")
     be, calls = _mk(tmp_path, monkeypatch)
     sid = be.create_task("/wd", "t")
     be.send_prompt(sid, "p", "/wd")
@@ -160,8 +160,8 @@ def test_cancel_kills_process_group(tmp_path, monkeypatch):
     sid = be.create_task("/wd", "t")
     be.send_prompt(sid, "p", "/wd")
     killed = []
-    monkeypatch.setattr("fabrik.procs.os.getpgid", lambda pid: 555)
-    monkeypatch.setattr("fabrik.procs.os.killpg", lambda pg, sig: killed.append((pg, sig)))
+    monkeypatch.setattr("fabrikant.procs.os.getpgid", lambda pid: 555)
+    monkeypatch.setattr("fabrikant.procs.os.killpg", lambda pg, sig: killed.append((pg, sig)))
     be.cancel(sid, "/wd")
     assert killed == [(555, signal.SIGKILL)]
 
@@ -172,7 +172,7 @@ def test_cancel_after_exit_is_noop(tmp_path, monkeypatch):
     be.send_prompt(sid, "p", "/wd")
     calls[0].returncode = 0
     killed = []
-    monkeypatch.setattr("fabrik.procs.os.killpg", lambda pg, sig: killed.append((pg, sig)))
+    monkeypatch.setattr("fabrikant.procs.os.killpg", lambda pg, sig: killed.append((pg, sig)))
     be.cancel(sid, "/wd")
     assert killed == []
 
@@ -183,7 +183,7 @@ def test_cancel_unknown_session_is_noop(tmp_path, monkeypatch):
 
 
 def test_dispatch_agent_step_codex(tmp_path, monkeypatch):
-    from fabrik.steps.agent import _step_agent
+    from fabrikant.steps.agent import _step_agent
 
     _mk(tmp_path, monkeypatch)
     monkeypatch.setattr(FakePopen, "initial_returncode", 0)  # Prozess ist sofort fertig

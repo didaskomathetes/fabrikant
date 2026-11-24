@@ -922,7 +922,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fabrik"
+name = "fabrikant"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

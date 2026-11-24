@@ -10,7 +10,7 @@ import types
 
 import pytest
 
-from fabrik import config, engine, filelock, gitops
+from fabrikant import config, engine, filelock, gitops
 
 OTHER_PID = os.getpid() + 1
 
@@ -180,7 +180,9 @@ def orphan_env(tmp_path, monkeypatch):
     root = tmp_path / "root"
     root.mkdir()
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
-    monkeypatch.setattr("fabrik.specs.load_projects", lambda: {"proj": {"root": str(root), "repo": {"branch": "main"}}})
+    monkeypatch.setattr(
+        "fabrikant.specs.load_projects", lambda: {"proj": {"root": str(root), "repo": {"branch": "main"}}}
+    )
     removed = []
     monkeypatch.setattr(gitops, "remove_worktree", lambda r, wt: removed.append(wt.name) or True)
     for name in ("live", "stale", "paused", "plain"):
@@ -193,7 +195,9 @@ def test_cleanup_respects_leases_and_approval(orphan_env, monkeypatch, alive):
     _lease(proj / "live", OTHER_PID, time.time())
     _lease(proj / "stale", OTHER_PID, time.time() - config.WORKTREE_LEASE_TIMEOUT_S - 1)
     _lease(proj / "paused", OTHER_PID, 0)
-    monkeypatch.setattr("fabrik.runs.get_run", lambda rid, p: {"status": "needs_approval"} if rid == "paused" else None)
+    monkeypatch.setattr(
+        "fabrikant.runs.get_run", lambda rid, p: {"status": "needs_approval"} if rid == "paused" else None
+    )
     gitops.cleanup_orphaned_worktrees()
     assert sorted(removed) == ["plain", "stale"]
 
@@ -256,7 +260,7 @@ def test_renew_waits_while_cleanup_holds_lock(tmp_path):
 def test_cleanup_checks_under_lock_and_removes_outside(orphan_env, monkeypatch):
     """ADR 0028: Lease-Prüfung + Claim unter `lease_lock`, `remove_worktree` außerhalb."""
     proj, _ = orphan_env
-    monkeypatch.setattr("fabrik.runs.get_run", lambda rid, p: None)
+    monkeypatch.setattr("fabrikant.runs.get_run", lambda rid, p: None)
     lock_key = str(proj.with_name(proj.name + ".lock"))
     held: list[tuple[str, bool]] = []
     monkeypatch.setattr(
@@ -276,7 +280,7 @@ def test_cleanup_claims_lease_before_removal(orphan_env, monkeypatch, alive):
     """ADR 0028: Die Lease wird unter `lease_lock` entfernt (Claim), bevor `remove_worktree` läuft;
     eine frische Lease eines lebenden Prozesses bleibt unangetastet."""
     proj, _ = orphan_env
-    monkeypatch.setattr("fabrik.runs.get_run", lambda rid, p: None)
+    monkeypatch.setattr("fabrikant.runs.get_run", lambda rid, p: None)
     _lease(proj / "stale", OTHER_PID, time.time() - config.WORKTREE_LEASE_TIMEOUT_S - 1)
     _lease(proj / "live", OTHER_PID, time.time())
     seen: list[bool] = []
@@ -405,7 +409,7 @@ def test_remove_worktree_keeps_lease_renewed_meanwhile(tmp_path, monkeypatch):
 
 def test_cleanup_removes_orphaned_lease_files(orphan_env, monkeypatch, alive):
     proj, _ = orphan_env
-    monkeypatch.setattr("fabrik.runs.get_run", lambda rid, p: None)
+    monkeypatch.setattr("fabrikant.runs.get_run", lambda rid, p: None)
     _lease(proj / "gone-stale", OTHER_PID, time.time() - config.WORKTREE_LEASE_TIMEOUT_S - 1)
     _lease(proj / "starting", OTHER_PID, time.time())  # Run legt Worktree gerade an
     _lease(proj / "active", OTHER_PID, 1.0)

@@ -6,8 +6,8 @@ import json
 import subprocess
 import threading
 
-from fabrik import agent_state, config
-from fabrik.engine import run_loop
+from fabrikant import agent_state, config
+from fabrikant.engine import run_loop
 
 
 def _git(cwd, *a):
@@ -30,7 +30,7 @@ def _setup(projects_dir, tmp_path, monkeypatch, steps_yaml, name="wtp"):
     monkeypatch.setattr(config, "WORKTREES_DIR", tmp_path / "wt")
     monkeypatch.setattr(config, "STATE_DIR", tmp_path / "state")
     body = "\n".join("      " + ln for ln in steps_yaml.strip().splitlines())
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {repo}\nrepo: {{branch: main}}\nloops:\n  s:\n    steps:\n{body}\n"
     )
     return name
@@ -99,7 +99,7 @@ def _stored(runs_dir, name, rec):
 
 
 def test_worktree_cleanup_error_is_persisted_not_raised(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(projects_dir, tmp_path, monkeypatch, "- {name: w, type: shell, cmd: 'true'}")
 
@@ -117,7 +117,7 @@ def test_worktree_cleanup_error_is_persisted_not_raised(runs_dir, projects_dir, 
 
 def test_worktree_cleanup_incomplete_is_reported(runs_dir, projects_dir, tmp_path, monkeypatch):
     """Cleanup meldet „nicht entfernt“ (False) → Fehler im Record statt stillem Erfolg."""
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(projects_dir, tmp_path, monkeypatch, "- {name: w, type: shell, cmd: 'true'}")
     monkeypatch.setattr(engine, "cleanup_run_worktree", lambda *a, **k: False)
@@ -128,7 +128,7 @@ def test_worktree_cleanup_incomplete_is_reported(runs_dir, projects_dir, tmp_pat
 
 def test_unexpected_cleanup_error_is_not_swallowed(runs_dir, projects_dir, tmp_path, monkeypatch):
     """Kein breites except: ein Programmierfehler im Cleanup wird als Run-Fehler sichtbar."""
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(projects_dir, tmp_path, monkeypatch, "- {name: w, type: shell, cmd: 'true'}")
 
@@ -146,7 +146,7 @@ def test_unexpected_cleanup_error_is_not_swallowed(runs_dir, projects_dir, tmp_p
 
 def test_state_merge_error_is_persisted_and_keeps_worktree(runs_dir, projects_dir, tmp_path, monkeypatch):
     """Merge scheitert → Fehler im Record, Worktree (ungemergter Stand) bleibt, Cleanup wird nicht versucht."""
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(projects_dir, tmp_path, monkeypatch, "- {name: w, type: shell, cmd: 'true'}")
 
@@ -166,7 +166,7 @@ def test_state_merge_error_is_persisted_and_keeps_worktree(runs_dir, projects_di
 
 
 def test_cleanup_error_on_pause_is_persisted(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(
         projects_dir,
@@ -186,7 +186,7 @@ def test_cleanup_error_on_pause_is_persisted(runs_dir, projects_dir, tmp_path, m
 
 
 def test_cleanup_rejected_run_removes_worktree_and_reports_errors(runs_dir, projects_dir, tmp_path, monkeypatch):
-    from fabrik import engine
+    from fabrikant import engine
 
     name = _setup(projects_dir, tmp_path, monkeypatch, "- {name: gate, type: shell, cmd: 'true', approval: true}")
     rec = run_loop(name, "s")

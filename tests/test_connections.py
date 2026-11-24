@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from helpers import not_none
 
-from fabrik import config, connections, llm, secrets
-from fabrik.connections import Connection, ConnectionKind, InvalidConnection, Source
+from fabrikant import config, connections, llm, secrets
+from fabrikant.connections import Connection, ConnectionKind, InvalidConnection, Source
 
 AGENT = ConnectionKind.AGENT
 LLM = ConnectionKind.LLM
@@ -24,7 +24,7 @@ def _llm(name="local", **kw) -> Connection:
 
 @pytest.fixture(autouse=True)
 def _no_agent_env(monkeypatch):
-    for var in ("FABRIK_AGENT_BACKEND", "FABRIK_AGENT_ENDPOINT", "FABRIK_AGENT_MODEL", "FABRIK_SECRET_KEY"):
+    for var in ("FABRIKANT_AGENT_BACKEND", "FABRIKANT_AGENT_ENDPOINT", "FABRIKANT_AGENT_MODEL", "FABRIKANT_SECRET_KEY"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -81,7 +81,7 @@ def test_key_file_created_with_0600():
 def test_env_key_takes_precedence(monkeypatch):
     from cryptography.fernet import Fernet
 
-    monkeypatch.setenv("FABRIK_SECRET_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("FABRIKANT_SECRET_KEY", Fernet.generate_key().decode())
     connections.save_connection(_agent())
     assert not (config.STATE_DIR / connections.SECRET_KEY_FILE).exists()
     assert connections.get_connection("oc", AGENT).secret == "pw-secret-123"
@@ -91,7 +91,7 @@ def test_wrong_key_yields_empty_secret_not_crash(monkeypatch):
     from cryptography.fernet import Fernet
 
     connections.save_connection(_agent())
-    monkeypatch.setenv("FABRIK_SECRET_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("FABRIKANT_SECRET_KEY", Fernet.generate_key().decode())
     conn = connections.get_connection("oc", AGENT)
     assert conn.secret == "" and conn.secret_unreadable
     assert conn.public()["secret_set"] is True and conn.public()["secret_unreadable"] is True
@@ -101,7 +101,7 @@ def test_apply_rejects_unreadable_secret(monkeypatch):
     from cryptography.fernet import Fernet
 
     connections.save_connection(_agent())
-    monkeypatch.setenv("FABRIK_SECRET_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("FABRIKANT_SECRET_KEY", Fernet.generate_key().decode())
     with pytest.raises(connections.UndecryptableSecret):
         connections.apply_to_step({"type": "agent", "connection": "oc"})
 
@@ -170,26 +170,26 @@ def test_delete():
 
 # ---------------------------------------------------------------- Env-Merge
 def test_env_connections_are_read_only_sources(monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_BACKEND", "opencode")
-    monkeypatch.setenv("FABRIK_AGENT_ENDPOINT", "http://e:1")
-    monkeypatch.setenv("FABRIK_AGENT_MODEL", "p/m")
-    monkeypatch.setenv("FABRIK_LLM_URL", "http://l/v1")
-    monkeypatch.setenv("FABRIK_LLM_MODEL", "lm")
+    monkeypatch.setenv("FABRIKANT_AGENT_BACKEND", "opencode")
+    monkeypatch.setenv("FABRIKANT_AGENT_ENDPOINT", "http://e:1")
+    monkeypatch.setenv("FABRIKANT_AGENT_MODEL", "p/m")
+    monkeypatch.setenv("FABRIKANT_LLM_URL", "http://l/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_MODEL", "lm")
     by_name = {c.name: c for c in connections.list_connections()}
     assert by_name["env"].source is Source.ENV and by_name["env"].endpoint == "http://e:1"
     assert by_name["default"].kind is LLM and by_name["default"].source is Source.ENV
 
 
 def test_db_connection_overrides_env_of_same_name(monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_URL", "http://l/v1")
-    monkeypatch.setenv("FABRIK_LLM_MODEL", "lm")
+    monkeypatch.setenv("FABRIKANT_LLM_URL", "http://l/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_MODEL", "lm")
     connections.save_connection(_llm("default", model="from-ui"))
     assert [p["model"] for p in llm.list_providers() if p["name"] == "default"] == ["from-ui"]
 
 
 def test_ui_llm_connection_listed_and_default_selected(monkeypatch):
-    monkeypatch.setenv("FABRIK_LLM_URL", "http://l/v1")
-    monkeypatch.setenv("FABRIK_LLM_MODEL", "lm")
+    monkeypatch.setenv("FABRIKANT_LLM_URL", "http://l/v1")
+    monkeypatch.setenv("FABRIKANT_LLM_MODEL", "lm")
     connections.save_connection(_llm("local"))
     assert {p["name"] for p in llm.list_providers()} == {"default", "local"}
     assert llm.default_name() == "default"
@@ -242,9 +242,9 @@ def test_apply_without_any_connection_is_noop():
 
 
 def test_env_agent_connection_is_selectable_by_name(monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_BACKEND", "opencode")
-    monkeypatch.setenv("FABRIK_AGENT_ENDPOINT", "http://e:1")
-    monkeypatch.setenv("FABRIK_AGENT_MODEL", "p/m")
+    monkeypatch.setenv("FABRIKANT_AGENT_BACKEND", "opencode")
+    monkeypatch.setenv("FABRIKANT_AGENT_ENDPOINT", "http://e:1")
+    monkeypatch.setenv("FABRIKANT_AGENT_MODEL", "p/m")
     out = connections.apply_to_step({"type": "agent", "connection": "env"})
     assert out["endpoint"] == "http://e:1"
 
@@ -307,14 +307,14 @@ def test_apply_without_secret_skips_decrypt(monkeypatch):
     assert out["model"] == "llama/q" and "password" not in out
 
 
-# ---------------------------------------------------------------- fabrik validate
+# ---------------------------------------------------------------- fabrikant validate
 def _spec(*steps: dict) -> dict:
     return {"loops": {"dev": {"steps": list(steps)}}}
 
 
 def test_unknown_references_lists_only_missing_agent_connections(monkeypatch):
     connections.save_connection(_agent())
-    monkeypatch.setenv("FABRIK_AGENT_BACKEND", "claude_code")  # Env-Verbindung `env` zählt als bekannt
+    monkeypatch.setenv("FABRIKANT_AGENT_BACKEND", "claude_code")  # Env-Verbindung `env` zählt als bekannt
     spec = _spec(
         {"type": "agent", "name": "ok", "connection": "oc"},
         {"type": "review", "name": "envref", "connection": "env"},

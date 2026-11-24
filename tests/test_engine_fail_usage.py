@@ -2,7 +2,7 @@
 
 Ein fehlgeschlagener Step (``ok: False``) trägt sein Usage im ``step_done``-
 Event — die Summen aus diesen Events sind die einzige Total-Quelle
-(:func:`fabrik.sessionlog.session_totals`), damit geht die Kosten eines
+(:func:`fabrikant.sessionlog.session_totals`), damit geht die Kosten eines
 Fehlschlags nicht verloren.
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import json
 
-from fabrik import engine, sessionlog
-from fabrik.engine import run_loop
+from fabrikant import engine, sessionlog
+from fabrikant.engine import run_loop
 
 USAGE = {"prompt_tokens": 3, "completion_tokens": 4, "cost_usd": 0.5}
 
@@ -19,7 +19,7 @@ USAGE = {"prompt_tokens": 3, "completion_tokens": 4, "cost_usd": 0.5}
 def _write_spec(projects_dir, tmp_path, name):
     root = tmp_path / f"root-{name}"
     root.mkdir(parents=True, exist_ok=True)
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n  s:\n    steps:\n"
         "    - name: broken\n      type: agent\n      prompt: x\n"
     )

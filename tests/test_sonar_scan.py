@@ -269,7 +269,7 @@ def _git(cwd: Path, *args: str) -> str:
 
 @pytest.fixture
 def pr_repo(tmp_path) -> dict[str, Path | str]:
-    """origin (main + Branch `feat`) und ein Klon mit Kopie des Skripts unter ``fabrik/scripts/``."""
+    """origin (main + Branch `feat`) und ein Klon mit Kopie des Skripts unter ``fabrikant/scripts/``."""
     origin, clone = tmp_path / "origin", tmp_path / "clone"
     origin.mkdir()
     _git(origin, "init", "-q", "-b", "main")
@@ -284,7 +284,7 @@ def pr_repo(tmp_path) -> dict[str, Path | str]:
     main_sha = _git(origin, "rev-parse", "HEAD")
     _git(tmp_path, "clone", "-q", str(origin), str(clone))
     _git(clone, "checkout", "-q", "--detach", "origin/main")
-    script = clone / "fabrik" / "scripts" / "sonar-scan.sh"
+    script = clone / "fabrikant" / "scripts" / "sonar-scan.sh"
     script.parent.mkdir(parents=True)
     shutil.copy(SCRIPT, script)
     return {"clone": clone, "script": script, "feat": feat_sha, "main": main_sha}
@@ -437,7 +437,7 @@ _REPORT_API = {
                 "severity": "MINOR",
                 "impacts": [{"severity": "LOW"}, {"severity": "HIGH"}],
                 "message": "m",
-                "component": "fabrik:src/x.py",
+                "component": "fabrikant:src/x.py",
                 "line": 3,
             }
         ],
@@ -483,7 +483,7 @@ def test_report_file_is_written_even_when_gate_is_red(tmp_path):
                 "SONAR_REPORT_FILE": str(report),
                 "SONAR_COMMENT_FILE": str(comment),
                 "SONAR_LINK_BASE": "https://github.com/o/r/blob/abc",
-                "SONAR_PROJECT_KEY": "fabrik",
+                "SONAR_PROJECT_KEY": "fabrikant",
             },
         )
     assert p.returncode == EX_GATE_RED, p.stdout + p.stderr
@@ -494,7 +494,7 @@ def test_report_file_is_written_even_when_gate_is_red(tmp_path):
     issue = data["issues"][0]
     assert issue["path"] == "src/x.py"  # Repo-relativ (Standalone: kein Monorepo-Präfix), nicht Sonar-Component
     assert issue["severity"] == "HIGH"  # höchste Impact-Severity statt Legacy-MINOR
-    assert data["dashboard"].endswith("dashboard?id=fabrik")
+    assert data["dashboard"].endswith("dashboard?id=fabrikant")
     assert "[src/x.py:3](https://github.com/o/r/blob/abc/src/x.py#L3)" in comment.read_text()
 
 
@@ -503,7 +503,7 @@ def test_report_file_is_written_even_when_gate_is_red(tmp_path):
 
 @needs_curl
 def test_other_project_uses_its_dir_test_cmd_scanner_and_args(tmp_path, green_server):
-    """Merchant-Assistant & Co.: Tests/Scanner laufen im Projekt, nicht im fabrik-Verzeichnis."""
+    """Merchant-Assistant & Co.: Tests/Scanner laufen im Projekt, nicht im fabrikant-Verzeichnis."""
     project = tmp_path / "proj"
     project.mkdir()
     out = tmp_path / "scanner-call"
@@ -644,7 +644,7 @@ def test_lint_failure_maps_to_kind(tmp_path, green_server, lint_exit, expected):
 
 @needs_curl
 def test_other_project_has_no_default_lint_cmd(tmp_path, green_server):
-    """Ohne SONAR_LINT_CMD läuft für fremde Projekte kein fabrik-Lint (deren Tools/Config fehlen dort)."""
+    """Ohne SONAR_LINT_CMD läuft für fremde Projekte kein fabrikant-Lint (deren Tools/Config fehlen dort)."""
     project = tmp_path / "proj"
     project.mkdir()
     bindir = _bindir_with(tmp_path, scanner="exit 1")
@@ -660,8 +660,8 @@ def test_other_project_has_no_default_lint_cmd(tmp_path, green_server):
 
 
 @needs_curl
-def test_fabrik_default_lint_cmd_runs_lint_reports(tmp_path, green_server):
-    """Ohne SONAR_LINT_CMD ruft der fabrik-Scan `scripts/lint.sh --reports <SONAR_LINT_DIR>` im Projekt auf."""
+def test_fabrikant_default_lint_cmd_runs_lint_reports(tmp_path, green_server):
+    """Ohne SONAR_LINT_CMD ruft der fabrikant-Scan `scripts/lint.sh --reports <SONAR_LINT_DIR>` im Projekt auf."""
     scripts = tmp_path / "fab" / "scripts"
     scripts.mkdir(parents=True)
     script = scripts / "sonar-scan.sh"
@@ -672,5 +672,5 @@ def test_fabrik_default_lint_cmd_runs_lint_reports(tmp_path, green_server):
     env = {"SONAR_LINT_CMD": None, "SONAR_TEST_CMD": "true", "SONAR_SCANNER": "scanner", "SONAR_COVERAGE_PATHS": ""}
     p = _run(tmp_path, token="tok", host_url=green_server, bindir=bindir, script=script, extra_env=env)
     assert p.returncode == EX_TEMPFAIL, p.stdout + p.stderr  # gestubbter Upload-Fehler
-    assert out.read_text().split() == ["-Dsonar.python.ruff.reportPaths=.fabrik/sonar/lint/ruff.json"]
-    assert (tmp_path / "fab" / ".fabrik" / "sonar" / "lint" / "ruff.json").exists()
+    assert out.read_text().split() == ["-Dsonar.python.ruff.reportPaths=.fabrikant/sonar/lint/ruff.json"]
+    assert (tmp_path / "fab" / ".fabrikant" / "sonar" / "lint" / "ruff.json").exists()

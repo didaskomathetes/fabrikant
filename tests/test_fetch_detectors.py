@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik.fetch import detectors as d
-from fabrik.fetch import fetcher
-from fabrik.fetch.fetcher import Fetcher, Status
-from fabrik.fetch.scan import QUARANTINE, SUSPICIOUS, ScanFinding
+from fabrikant.fetch import detectors as d
+from fabrikant.fetch import fetcher
+from fabrikant.fetch.fetcher import Fetcher, Status
+from fabrikant.fetch.scan import QUARANTINE, SUSPICIOUS, ScanFinding
 
 
 class FakeScanner:

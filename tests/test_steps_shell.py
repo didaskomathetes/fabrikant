@@ -10,8 +10,8 @@ import os
 
 import pytest
 
-from fabrik import secrets
-from fabrik.steps import _step_shell
+from fabrikant import secrets
+from fabrikant.steps import _step_shell
 
 NOOP = lambda m: None  # noqa: E731
 
@@ -53,7 +53,7 @@ def test_shell_script_path_is_relative_to_spec(tmp_path):
     script.parent.mkdir(parents=True)
     script.write_text("#!/bin/sh\necho spec-script\n")
     res = _step_shell(
-        _ctx(tmp_path, spec_path=str(spec_dir / "fabrik.yaml")),
+        _ctx(tmp_path, spec_path=str(spec_dir / "fabrikant.yaml")),
         {"type": "shell", "cmd": "sh scripts/print-value.sh"},
         NOOP,
     )
@@ -71,7 +71,7 @@ def test_shell_timeout(tmp_path):
 
 def test_shell_timeout_kills_process_tree(tmp_path):
     """Timeout beendet auch vom Befehl gestartete Prozesse (Regression: verwaiste
-    `python -m fabrik.relay`/`git push` nach Ablauf, nur `sh` wurde getötet)."""
+    `python -m fabrikant.relay`/`git push` nach Ablauf, nur `sh` wurde getötet)."""
     import subprocess
     import time
 
@@ -283,12 +283,12 @@ def test_shell_redacts_secrets(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- mktemp-Cleanup (add-acceptance-Pattern)
 def _mktemp_step(tmp_path, extra: str = "") -> dict:
-    """add-acceptance-Pattern aus projects/fabrik.fabrik.yaml: mktemp + trap EXIT."""
+    """add-acceptance-Pattern aus projects/fabrikant.fabrikant.yaml: mktemp + trap EXIT."""
     return {
         "type": "shell",
         "env": {"acceptance_criteria": "{acceptance_criteria}"},
         "cmd": (
-            "body_file=$(mktemp /tmp/fabrik-triage-body.XXXXXX)\n"
+            "body_file=$(mktemp /tmp/fabrikant-triage-body.XXXXXX)\n"
             "trap 'rm -f \"$body_file\"' EXIT\n"
             'printf \'%s\\n\' "$acceptance_criteria" > "$body_file"\n'
             f'echo "$body_file" > {tmp_path / "path.txt"}\n' + extra
@@ -301,7 +301,7 @@ def test_shell_mktemp_body_file_cleaned_up(tmp_path):
     res = _step_shell(_ctx(tmp_path, acceptance_criteria="Kriterium 1"), _mktemp_step(tmp_path), NOOP)
     assert res["ok"] is True
     body_file = (tmp_path / "path.txt").read_text().strip()
-    assert body_file.startswith("/tmp/fabrik-triage-body.")
+    assert body_file.startswith("/tmp/fabrikant-triage-body.")
     assert not os.path.exists(body_file), "body_file muss nach der Ausführung entfernt sein"
 
 
@@ -345,11 +345,11 @@ def test_shell_inline_backticks_execute_commands(tmp_path):
 
 # ---------------------------------------------------------------- Verdikt
 def test_shell_verdict_line_becomes_field_and_leaves_output_and_summary(tmp_path):
-    cmd = "echo work; echo '::fabrik-verdict::fail'; echo 'relay #7 audit: fail'"
+    cmd = "echo work; echo '::fabrikant-verdict::fail'; echo 'relay #7 audit: fail'"
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
     assert res["ok"] is True and res["verdict"] == "fail"
     assert res["summary"] == "relay #7 audit: fail"
-    assert "fabrik-verdict" not in res["output"] and "work" in res["output"]
+    assert "fabrikant-verdict" not in res["output"] and "work" in res["output"]
 
 
 def test_shell_without_verdict_has_no_field(tmp_path):

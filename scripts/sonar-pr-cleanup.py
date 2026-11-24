@@ -24,8 +24,8 @@ Script endet immer mit Exit 0, damit der aufrufende main-Scan
 
 Env: SONAR_HOST_URL (Default http://127.0.0.1:9000), SONAR_TOKEN (sonst
 Token-File SONAR_TOKEN_FILE / state/sonar-token.txt), SONAR_PROJECT_KEY
-(Default fabrik:fabrik), GITHUB_REPOSITORY (Default
-didaskomathetes/fabrik).
+(Default fabrikant:fabrikant), GITHUB_REPOSITORY (Default
+didaskomathetes/fabrikant).
 """
 
 from __future__ import annotations
@@ -42,12 +42,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_REPO = "didaskomathetes/fabrik"
+DEFAULT_REPO = "didaskomathetes/fabrikant"
 DEFAULT_HOST_URL = "http://127.0.0.1:9000"
-DEFAULT_BASE_KEY = "fabrik:fabrik"
+DEFAULT_BASE_KEY = "fabrikant:fabrikant"
 PAGE_SIZE = 500  # api/projects/search: max. 500 pro Seite
 HTTP_TIMEOUT = 10  # Sekunden pro Sonar-Request
-FABRIK_DIR = Path(__file__).resolve().parent.parent
+FABRIKANT_DIR = Path(__file__).resolve().parent.parent
 
 
 def _log(msg: str) -> None:
@@ -158,7 +158,7 @@ def cleanup(host_url: str, token: str, repo: str, base_key: str, dry_run: bool =
 
 def read_token_file() -> str:
     """Scanner-Token aus SONAR_TOKEN_FILE bzw. state/sonar-token.txt, '' wenn nicht da."""
-    path = Path(os.environ.get("SONAR_TOKEN_FILE") or FABRIK_DIR / "state" / "sonar-token.txt")
+    path = Path(os.environ.get("SONAR_TOKEN_FILE") or FABRIKANT_DIR / "state" / "sonar-token.txt")
     try:
         return path.read_text().strip()
     except OSError:

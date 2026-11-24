@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import cli, profiles, runstore
-from fabrik.profiles import AdapterRegistry, Port, Profile, ProfileError
+from fabrikant import cli, profiles, runstore
+from fabrikant.profiles import AdapterRegistry, Port, Profile, ProfileError
 
 SRC = Path(profiles.__file__).parent
 # Einzige Module, die Profilnamen kennen dürfen: Profil-Mechanismus + Composition Root.

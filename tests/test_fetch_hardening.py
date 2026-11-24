@@ -11,9 +11,9 @@ import urllib.request
 
 import pytest
 
-from fabrik.fetch import clean, fetcher
-from fabrik.fetch.fetcher import Fetcher, Status, _is_blocked_ip, _SafeRedirectHandler, decode_body
-from fabrik.fetch.scan import scan
+from fabrikant.fetch import clean, fetcher
+from fabrikant.fetch.fetcher import Fetcher, Status, _is_blocked_ip, _SafeRedirectHandler, decode_body
+from fabrikant.fetch.scan import scan
 
 
 def _fetch(monkeypatch, body: bytes, ctype="text/html", **kw):

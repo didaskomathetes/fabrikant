@@ -10,8 +10,8 @@ import subprocess
 
 import pytest
 
-from fabrik import llm, run_loop
-from fabrik.engine import _dispatch_step
+from fabrikant import llm, run_loop
+from fabrikant.engine import _dispatch_step
 
 
 @pytest.fixture
@@ -20,12 +20,12 @@ def clean_llm(monkeypatch, tmp_path):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "test-model")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "test-model")
     llm.reset_cache()
     llm.set_active("dummy")
     yield
@@ -139,7 +139,7 @@ def test_failed_verify_lands_in_run_record(runs_dir, projects_dir, tmp_path):
     """Auch bei status=fail muss der 'verify'-Key mit Pro-Check-Daten im Record stehen."""
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "tverifyfail.fabrik.yaml").write_text(
+    (projects_dir / "tverifyfail.fabrikant.yaml").write_text(
         f"name: tverifyfail\nroot: {root}\nloops:\n  t:\n    steps:\n"
         "      - type: verify\n        name: check\n        checks:\n"
         '          - type: shell\n            name: bad\n            cmd: "exit 2"\n'
@@ -159,7 +159,7 @@ def test_verify_with_llm_subcheck(clean_llm, monkeypatch, runs_dir, projects_dir
     )
     root = tmp_path / "proj"
     root.mkdir()
-    (projects_dir / "tverifyllm.fabrik.yaml").write_text(
+    (projects_dir / "tverifyllm.fabrikant.yaml").write_text(
         f"name: tverifyllm\nroot: {root}\nloops:\n  t:\n    steps:\n"
         "      - type: verify\n        name: check\n        checks:\n"
         "          - type: llm\n            name: judge\n            prompt: ok?\n"
@@ -194,19 +194,21 @@ def test_unclassified_exception_stays_unknown(tmp_path, monkeypatch):
     def boom(*_a, **_k):
         raise subprocess.TimeoutExpired("sh", 1)
 
-    monkeypatch.setattr("fabrik.engine._step_shell", boom)
+    monkeypatch.setattr("fabrikant.engine._step_shell", boom)
     step = {"type": "verify", "checks": [{"name": "hängt", "type": "shell", "cmd": "sleep 9"}]}
     assert _dispatch_step(_ctx(tmp_path), step, lambda m: None)["failure_kind"] == "unknown"
 
 
 def test_interrupted_check_is_classified(tmp_path, monkeypatch):
     """Jede FailureKind hat einen Rang — ein abgebrochener Check lässt verify nicht selbst scheitern."""
-    from fabrik.failures import failed
-    from fabrik.runmodel import FailureKind
-    from fabrik.steps import verify
+    from fabrikant.failures import failed
+    from fabrikant.runmodel import FailureKind
+    from fabrikant.steps import verify
 
     assert set(verify._KIND_PRIORITY) == set(FailureKind)
-    monkeypatch.setattr("fabrik.engine._step_shell", lambda *_a, **_k: failed("abgebrochen", FailureKind.INTERRUPTED))
+    monkeypatch.setattr(
+        "fabrikant.engine._step_shell", lambda *_a, **_k: failed("abgebrochen", FailureKind.INTERRUPTED)
+    )
     checks = [{"name": "ac1", "type": "shell", "cmd": "exit 1"}]
     res = _dispatch_step(_ctx(tmp_path), {"type": "verify", "checks": checks}, lambda m: None)
     assert res["failure_kind"] == "interrupted"

@@ -6,16 +6,16 @@
 ## Kontext
 
 Die Engine (`engine.py`) führt Trigger-Runs in einem bounded Worker-Pool
-(`FABRIK_WORKERS`) und Vorrang-Runs in Daemon-Threads aus. Das
+(`FABRIKANT_WORKERS`) und Vorrang-Runs in Daemon-Threads aus. Das
 Ausführungs-Substrat ist im Core hart verdrahtet: Scheduling-Policy (Claim,
 Dedup, Vorrang, `queued`-Records) und Substrat (Threads) sind vermischt. Das
-geplante P3 (ECS/GKE, siehe Modul-Layout in `fabrik/__init__.py`) braucht
+geplante P3 (ECS/GKE, siehe Modul-Layout in `fabrikant/__init__.py`) braucht
 Remote-Ausführung (k8s-Jobs, ECS-Tasks) — ohne Trennung würde das als
 `if substrate == …`-Zweige in der Engine landen.
 
 ## Entscheidung
 
-1. **Port `RunLauncher` (`fabrik/launcher/port.py`).** Der Core definiert den
+1. **Port `RunLauncher` (`fabrikant/launcher/port.py`).** Der Core definiert den
    Vertrag für das Ausführungs-Substrat: `submit` (Fire-and-forget Work),
    `submit_priority` (isoliertes Kontext, darf auf Kapazität warten),
    `status` (Substrat-Beobachtbarkeit als `LauncherStatus`:
@@ -26,10 +26,10 @@ Remote-Ausführung (k8s-Jobs, ECS-Tasks) — ohne Trennung würde das als
    Wrapper um den bestehenden Worker-Pool und Daemon-Threads. Der Pool wird
    vom Core injiziert (`pool_factory`/`pool_or_none`), nicht vom Launcher
    besessen — kein Import-Zyklus, bestehende Tests bleiben gültig.
-3. **Registry + `FABRIK_LAUNCHER`.** `fabrik/launcher/registry.py` bildet
-   Substrat-Name → Adapter-Factory (analog `fabrik/backends/registry.py`). Der
+3. **Registry + `FABRIKANT_LAUNCHER`.** `fabrikant/launcher/registry.py` bildet
+   Substrat-Name → Adapter-Factory (analog `fabrikant/backends/registry.py`). Der
    Core importiert nur `create_launcher` und den Port, nie konkrete Adapter.
-   Das Substrat wählt `FABRIK_LAUNCHER` (Default `inprocess`); unbekannte
+   Das Substrat wählt `FABRIKANT_LAUNCHER` (Default `inprocess`); unbekannte
    Namen scheitern mit einer Meldung, die die verfügbaren Substrate nennt.
 4. **`shutdown()` ist ein vorgriffiger Vertrag.** Die Methode gehört zum Port,
    ist aber noch nicht an das Server-Shutdown angeschlossen — es gibt aktuell

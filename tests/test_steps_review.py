@@ -2,10 +2,10 @@
 
 import pytest
 
-import fabrik.steps.agent as agent_mod
-from fabrik.backends import registry
-from fabrik.engine import run_loop
-from fabrik.steps.review import _parse_verdict, _step_review
+import fabrikant.steps.agent as agent_mod
+from fabrikant.backends import registry
+from fabrikant.engine import run_loop
+from fabrikant.steps.review import _parse_verdict, _step_review
 
 
 def _ctx(**extra):
@@ -141,7 +141,9 @@ def _write_spec(projects_dir, tmp_path, name, steps_yaml):
     root = tmp_path / f"root-{name}"
     root.mkdir(parents=True, exist_ok=True)
     body = "\n".join("    " + ln for ln in steps_yaml.strip().splitlines())
-    (projects_dir / f"{name}.fabrik.yaml").write_text(f"name: {name}\nroot: {root}\nloops:\n  s:\n    steps:\n{body}\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
+        f"name: {name}\nroot: {root}\nloops:\n  s:\n    steps:\n{body}\n"
+    )
     return root
 
 
@@ -241,8 +243,8 @@ def test_engine_review_same_model_fails(fresh_projects, tmp_path, monkeypatch):
 @pytest.fixture
 def fresh_projects(projects_dir, tmp_path, monkeypatch):
     """Isoliertes Session-Log-File, damit Engine-Tests keinen Stray-DB hinterlassen."""
-    monkeypatch.setenv("FABRIK_SESSIONLOG", str(tmp_path / "sl" / "test.db"))
-    import fabrik.sessionlog as sl
+    monkeypatch.setenv("FABRIKANT_SESSIONLOG", str(tmp_path / "sl" / "test.db"))
+    import fabrikant.sessionlog as sl
 
     monkeypatch.setattr(sl, "_conn", None)
     yield projects_dir, tmp_path / "sl" / "test.db"

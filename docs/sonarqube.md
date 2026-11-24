@@ -11,7 +11,7 @@ docker compose up -d        # http://localhost:9000, Erst-Login admin/admin
 
 **Version pinnen:** Plugin-Version = SonarQube-Minor (z. B. Plugin 26.5 ↔ SonarQube 26.5.x).
 SonarQube kann seine DB nicht downgraden. Beim Upgrade (`SONARQUBE_TAG`) auch das Volume
-`fabrik_sonarqube_extensions` löschen, da es eine Kopie der Plugin-JAR enthält.
+`fabrikant_sonarqube_extensions` löschen, da es eine Kopie der Plugin-JAR enthält.
 
 ## Scannen
 
@@ -27,7 +27,7 @@ SonarQube kann seine DB nicht downgraden. Beim Upgrade (`SONARQUBE_TAG`) auch da
 `SONAR_REPORT_FILE=<pfad>` schreibt das Ergebnis (Gate, Kennzahlen, offene Issues) zusätzlich als
 JSON, auch bei rotem Gate.
 
-**Analyzer-Reports:** Vor dem Scan schreibt `scripts/lint.sh --reports .fabrik/sonar/lint` die Funde von
+**Analyzer-Reports:** Vor dem Scan schreibt `scripts/lint.sh --reports .fabrikant/sonar/lint` die Funde von
 Ruff, Bandit (SAST) und Pyright; Sonar zeigt sie als externe Issues (Quality Gate: zählen als New Issues).
 Ruff und Bandit importiert Sonar-Python nativ (`sonar.python.{ruff,bandit}.reportPaths`); Pyright kennt
 es nicht, daher konvertiert `scripts/pyright_sonar.py` ins Generic Issue Format
@@ -44,10 +44,10 @@ Ohne GitHub-Checks-Permission, über die vorhandenen GitHub-Apps (ADR 0010):
   `scripts/sonar_report.py` rendert Report und Kommentar aus den API-Antworten (Template, kein
   LLM) → `scripts/gh-upsert-comment.sh` postet ihn als **Reviewer-App** (`pull_requests: write`
   reicht). Pro PR genau ein Kommentar
-  (Marker `<!-- fabrik-sonar -->`), jeder Push aktualisiert ihn. Ein rotes Gate wird erst
+  (Marker `<!-- fabrikant-sonar -->`), jeder Push aktualisiert ihn. Ein rotes Gate wird erst
   kommentiert, dann schlägt der Run fehl (`outcome`).
 - **`token-refresh`** (alle 30 min + `on_start`): erneuert die 1h-Tokens beider Apps, solange der
-  fabrik-Server läuft. Ersetzt die Cron-Zeilen aus dem README.
+  fabrikant-Server läuft. Ersetzt die Cron-Zeilen aus dem README.
 
 Der Kommentar ist ein normaler PR-Kommentar, kein Review: Er setzt kein Verdikt und blockiert
 `review-pr` nicht. `pr-reply` sieht ihn einmal pro PR als neuen Kommentar.
@@ -63,7 +63,7 @@ beide.
 ## Andere Projekte
 
 `sonar-scan.sh` scannt per Env jedes Repo: `SONAR_PROJECT_DIR` (Worktree, z. B. `.`),
-`SONAR_PROJECT_KEY`, `SONAR_SCANNER` (`{fabrik_home}/.venv/bin/pysonar`, wenn das Projekt pysonar
+`SONAR_PROJECT_KEY`, `SONAR_SCANNER` (`{fabrikant_home}/.venv/bin/pysonar`, wenn das Projekt pysonar
 nicht als Dependency hat), `SONAR_SCANNER_ARGS` (`-Dsonar.…`, ersetzt `[tool.sonar]`),
 `SONAR_TEST_CMD` + `SONAR_COVERAGE_PATHS`, `SONAR_LINT_CMD` (schreibt `ruff.json`, `bandit.json`,
 `pyright-sonar.json` nach `$SONAR_LINT_DIR`; ohne Angabe für fremde Projekte kein Import). uv-Monorepos mit CI-Testmatrix: `scripts/ci-matrix-pytest.py
@@ -71,7 +71,7 @@ nicht als Dependency hat), `SONAR_SCANNER_ARGS` (`-Dsonar.…`, ersetzt `[tool.s
 
 Beispiel: die Loops `sonar-main` (täglich) und `sonar-pr` (Opt-in per PR-Label `sonar`, entprellt,
 Kommentar erst nach Freigabe)
-in einer Produktionsspec (`FABRIK_PROJECTS_PATH`). `gh-upsert-comment.sh` erkennt den eigenen
+in einer Produktionsspec (`FABRIKANT_PROJECTS_PATH`). `gh-upsert-comment.sh` erkennt den eigenen
 Kommentar am Login des Tokens (PAT) bzw. am Bot-Typ (App-Token).
 
 Bringt das Projekt ein eigenes Scan-Skript mit (eigene `sonar-project.properties`, Linter-Importe), ruft

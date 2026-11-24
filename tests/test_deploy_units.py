@@ -1,5 +1,5 @@
 """deploy/*.service|timer — keine hartkodierten Checkout-Pfade; Services lösen den
-Checkout über FABRIK_HOME aus ~/.config/fabrik/deploy.env auf (README, „Lokaler Betrieb")."""
+Checkout über FABRIKANT_HOME aus ~/.config/fabrikant/deploy.env auf (README, „Lokaler Betrieb")."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 DEPLOY_DIR = Path(__file__).resolve().parent.parent / "deploy"
-DEPLOY_ENV_FILE = "EnvironmentFile=-%h/.config/fabrik/deploy.env"
-CD_FABRIK_HOME = 'cd "$${FABRIK_HOME:?'
+DEPLOY_ENV_FILE = "EnvironmentFile=-%h/.config/fabrikant/deploy.env"
+CD_FABRIKANT_HOME = 'cd "$${FABRIKANT_HOME:?'
 # Absolute Home-/Maschinenpfade bzw. checkout-relative Annahmen unter %h.
 _HARDCODED_PATH_RE = re.compile(r"/home/|/root/|PycharmProjects")
 
@@ -27,17 +27,17 @@ def test_no_hardcoded_paths(unit: Path):
     hits = [
         f"{n}: {line}" for n, line in enumerate(unit.read_text().splitlines(), 1) if _HARDCODED_PATH_RE.search(line)
     ]
-    assert not hits, f"{unit.name}: hartkodierter Pfad (FABRIK_HOME nutzen): {hits}"
+    assert not hits, f"{unit.name}: hartkodierter Pfad (FABRIKANT_HOME nutzen): {hits}"
 
 
 @pytest.mark.parametrize("unit", SERVICES, ids=lambda p: p.name)
-def test_service_resolves_checkout_via_fabrik_home(unit: Path):
+def test_service_resolves_checkout_via_fabrikant_home(unit: Path):
     lines = unit.read_text().splitlines()
     assert DEPLOY_ENV_FILE in lines, f"{unit.name}: {DEPLOY_ENV_FILE} fehlt"
     assert not any(line.startswith("WorkingDirectory=") for line in lines), (
-        f"{unit.name}: WorkingDirectory= expandiert keine Variablen — per `cd $FABRIK_HOME` im ExecStart lösen"
+        f"{unit.name}: WorkingDirectory= expandiert keine Variablen — per `cd $FABRIKANT_HOME` im ExecStart lösen"
     )
     execs = [line for line in lines if line.startswith(("ExecStart=", "ExecStartPre="))]
     assert execs, f"{unit.name}: kein ExecStart"
-    bad = [line for line in execs if CD_FABRIK_HOME not in line]
-    assert not bad, f"{unit.name}: Exec ohne `cd $FABRIK_HOME`: {bad}"
+    bad = [line for line in execs if CD_FABRIKANT_HOME not in line]
+    assert not bad, f"{unit.name}: Exec ohne `cd $FABRIKANT_HOME`: {bad}"

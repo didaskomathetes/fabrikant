@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fabrik"
+name = "fabrikant"
 version = "0.1.0"
-description = "fabrik — a local software factory: agentic development loops as YAML specs"
+description = "fabrikant — a local software factory: agentic development loops as YAML specs"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
@@ -35,11 +35,11 @@ oidc = ["pyjwt[crypto]>=2.8"]
 injection-llm-guard = ["llm-guard>=0.3"]
 
 [project.scripts]
-fabrik = "fabrik.cli:main"
-fabrik-mcp = "fabrik.mcp_server:main"
+fabrikant = "fabrikant.cli:main"
+fabrikant-mcp = "fabrikant.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fabrik"]
+packages = ["src/fabrikant"]
 
 [dependency-groups]
 dev = [
@@ -59,7 +59,7 @@ dev = [
 [tool.sonar]
 # SonarQube-Projekt-Key (pysonar-Scanner, s. scripts/sonar-scan.sh + Loop `sonar-scan`).
 # sources/test sind KOMMA-getrennte Strings (SonarQube-Scanner-Format), keine Listen.
-projectKey = "fabrik:fabrik"
+projectKey = "fabrikant:fabrikant"
 projectName = "Fabrik"
 projectVersion = "0.1.0"
 sources = "src"

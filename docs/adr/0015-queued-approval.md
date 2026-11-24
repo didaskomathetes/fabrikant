@@ -29,5 +29,5 @@ fast immer belegt, die Freigabe war damit praktisch blockiert.
 - Freigaben gehen nicht mehr verloren. Die UI zeigt den Wartezustand an.
 - Ein wartender Worker blockiert einen Thread, bis der laufende Run endet.
   Hängt der Run, wartet die Freigabe mit (der Step-Timeout begrenzt das).
-- Der CLI-Pfad (`fabrik approve`, eigener Prozess) bleibt synchron. Sein Lock
+- Der CLI-Pfad (`fabrikant approve`, eigener Prozess) bleibt synchron. Sein Lock
   ist prozesslokal und von diesem Problem nicht betroffen.

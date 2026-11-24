@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from fabrik.steps.state import _step_state
+from fabrikant.steps.state import _step_state
 
 
 def _ctx(tmp_path, project="p"):
@@ -99,7 +99,7 @@ def test_custom_file(tmp_path):
 
 def test_no_partial_file_on_crash(tmp_path, monkeypatch):
     """Atomic-Write: ein Fehler beim Dump hinterlässt keine .tmp-Datei (Step re-raise, Engine fängt)."""
-    import fabrik.steps.state as st
+    import fabrikant.steps.state as st
 
     ctx = _ctx(tmp_path)
 

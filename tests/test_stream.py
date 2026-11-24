@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from fabrik import secrets, sessionlog, stream
+from fabrikant import secrets, sessionlog, stream
 
 RID = "20260101T000000Z-s"
 SECRET = "s3cr3t-value-123456"
@@ -35,7 +35,7 @@ def _parse(events):
 
 @pytest.fixture
 def fresh_db(tmp_path, monkeypatch):
-    monkeypatch.setenv("FABRIK_SESSIONLOG", str(tmp_path / "sl" / "t.db"))
+    monkeypatch.setenv("FABRIKANT_SESSIONLOG", str(tmp_path / "sl" / "t.db"))
     monkeypatch.setattr(sessionlog, "_conn", None)
     yield
     monkeypatch.setattr(sessionlog, "_conn", None)

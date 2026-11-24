@@ -1,6 +1,6 @@
 """Backend-i18n: Kataloge de/en haben dieselben Keys; Fallbacks."""
 
-from fabrik import i18n
+from fabrikant import i18n
 
 
 def test_catalogs_have_identical_keys():
@@ -18,11 +18,11 @@ def test_placeholders_match():
 
 
 def test_lang_selection_and_fallback(monkeypatch):
-    monkeypatch.delenv("FABRIK_LANG", raising=False)
+    monkeypatch.delenv("FABRIKANT_LANG", raising=False)
     assert i18n.current_lang() == "de"
-    monkeypatch.setenv("FABRIK_LANG", "EN")
+    monkeypatch.setenv("FABRIKANT_LANG", "EN")
     assert i18n.t("approval.why") == "why"
-    monkeypatch.setenv("FABRIK_LANG", "xx")
+    monkeypatch.setenv("FABRIKANT_LANG", "xx")
     assert i18n.current_lang() == "de"
     assert i18n.t("no.such.key") == "no.such.key"
     assert i18n.t("approval.tier_what", tier=2).startswith("Tier 2")
@@ -39,7 +39,7 @@ def test_all_used_keys_exist_and_no_unused_keys():
             continue
         used |= set(re.findall(r"\b_?t\(\s*[\"']([a-z0-9_.]+)[\"']", f.read_text(encoding="utf-8")))
         used |= set(re.findall(r"\bi18n\.t\(\s*[\"']([a-z0-9_.]+)[\"']", f.read_text(encoding="utf-8")))
-    from fabrik.approval import _TEXT_FIELDS
+    from fabrikant.approval import _TEXT_FIELDS
 
     used |= {f"approval.{name}" for name in _TEXT_FIELDS}  # built dynamically in approval.py
 

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fabrik.fetch import (
+from fabrikant.fetch import (
     ACCESS_TIMEOUT_HOURS,
     AccessRequest,
     PendingURL,
     bundle_access,
     results_to_pending,
 )
-from fabrik.fetch.fetcher import Fetcher
+from fabrikant.fetch.fetcher import Fetcher
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
 
@@ -175,7 +175,7 @@ def test_results_to_pending_only_not_fetched():
     assert pending[0].domain == "bad.example"
     assert pending[0].found_in == "search"
     # ein clean-Result würde gefiltert — hier simuliert:
-    from fabrik.fetch.fetcher import FetchResult
+    from fabrikant.fetch.fetcher import FetchResult
 
     mixed = res + [FetchResult(url="https://ok.example", status="clean", domain="ok.example")]
     assert len(results_to_pending(mixed)) == 2

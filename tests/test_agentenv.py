@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik.agentenv import AGENT_ENV_ALLOWLIST, build_agent_env, passthrough
+from fabrikant.agentenv import AGENT_ENV_ALLOWLIST, build_agent_env, passthrough
 
 
 @pytest.fixture
 def secret_env(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
     monkeypatch.setenv("GITHUB_REVIEWER_TOKEN", "ghs_reviewer")
-    monkeypatch.setenv("FABRIK_LLM_KEY", "sk-llm")
-    monkeypatch.setenv("FABRIK_ENV_FILE", "/root/.config/fabrik/fabrik.env")
+    monkeypatch.setenv("FABRIKANT_LLM_KEY", "sk-llm")
+    monkeypatch.setenv("FABRIKANT_ENV_FILE", "/root/.config/fabrikant/fabrikant.env")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("HOME", "/root")
 
@@ -21,7 +21,7 @@ def test_allowlist_keeps_only_safe_names(secret_env):
     env = build_agent_env()
     assert env["PATH"] == "/usr/bin"
     assert env["HOME"] == "/root"
-    for name in ("GITHUB_TOKEN", "GITHUB_REVIEWER_TOKEN", "FABRIK_LLM_KEY", "FABRIK_ENV_FILE"):
+    for name in ("GITHUB_TOKEN", "GITHUB_REVIEWER_TOKEN", "FABRIKANT_LLM_KEY", "FABRIKANT_ENV_FILE"):
         assert name not in env
 
 
@@ -33,7 +33,7 @@ def test_extra_env_overlays_allowlist(secret_env):
 
 
 def test_extra_allowlist_env_var(secret_env, monkeypatch):
-    monkeypatch.setenv("FABRIK_AGENT_ENV_EXTRA", "MY_CUSTOM_VAR,")
+    monkeypatch.setenv("FABRIKANT_AGENT_ENV_EXTRA", "MY_CUSTOM_VAR,")
     monkeypatch.setenv("MY_CUSTOM_VAR", "value")
     env = build_agent_env()
     assert env["MY_CUSTOM_VAR"] == "value"
@@ -62,16 +62,16 @@ def test_passthrough_returns_only_set_nonempty_names(monkeypatch):
 
 def test_backends_pass_only_their_own_auth(monkeypatch):
     """Jede CLI bekommt ihre eigene Auth — nie fabriks GITHUB_TOKEN/GH_TOKEN."""
-    from fabrik.backends.claude_code import ClaudeCodeBackend
-    from fabrik.backends.codex import CodexBackend
-    from fabrik.backends.copilot import CopilotBackend
+    from fabrikant.backends.claude_code import ClaudeCodeBackend
+    from fabrikant.backends.codex import CodexBackend
+    from fabrikant.backends.copilot import CopilotBackend
 
     for var, val in (
         ("ANTHROPIC_API_KEY", "a"),
         ("OPENAI_API_KEY", "o"),
         ("COPILOT_GITHUB_TOKEN", "c"),
-        ("GITHUB_TOKEN", "fabrik-api"),
-        ("GH_TOKEN", "fabrik-gh"),
+        ("GITHUB_TOKEN", "fabrikant-api"),
+        ("GH_TOKEN", "fabrikant-gh"),
     ):
         monkeypatch.setenv(var, val)
     assert ClaudeCodeBackend()._env() == {"ANTHROPIC_API_KEY": "a"}

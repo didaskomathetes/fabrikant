@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import gitops
-from fabrik.hosting import (
+from fabrikant import gitops
+from fabrikant.hosting import (
     BaseProvider,
     CompareResult,
     GitHubProvider,
@@ -24,8 +24,8 @@ from fabrik.hosting import (
     get_provider,
     spec_context,
 )
-from fabrik.hosting import gitlab as gitlab_mod
-from fabrik.hosting import registry as registry_mod
+from fabrikant.hosting import gitlab as gitlab_mod
+from fabrikant.hosting import registry as registry_mod
 
 # --------------------------------------------------------------------------- GitHub: parse_repo
 
@@ -97,7 +97,7 @@ class TestGitHubNormalization:
             "labels": [{"name": "a"}, {"name": "b"}],
             "html_url": "https://u/7",
         }
-        from fabrik.hosting.github import _issue_from
+        from fabrikant.hosting.github import _issue_from
 
         out = _issue_from(raw)
         assert out.number == 7
@@ -105,14 +105,14 @@ class TestGitHubNormalization:
         assert out.is_pr is False
 
     def test_pr_from(self):
-        from fabrik.hosting.github import _pr_from
+        from fabrikant.hosting.github import _pr_from
 
         raw = {
             "number": 3,
             "title": "pr",
             "body": "x",
             "state": "open",
-            "labels": [{"name": "fabrik"}],
+            "labels": [{"name": "fabrikant"}],
             "html_url": "https://u/pr/3",
             "head": {"ref": "feat", "sha": "abc"},
             "base": {"ref": "main"},
@@ -121,17 +121,17 @@ class TestGitHubNormalization:
         out = _pr_from(raw)
         assert (out.head_ref, out.head_sha, out.base_ref) == ("feat", "abc", "main")
         assert out.mergeable is True
-        assert out.labels == ["fabrik"]
+        assert out.labels == ["fabrikant"]
 
     def test_pr_from_missing_mergeable(self):
-        from fabrik.hosting.github import _pr_from
+        from fabrikant.hosting.github import _pr_from
 
         out = _pr_from({"number": 1, "head": {}, "base": {}})
         assert out.mergeable is None
         assert out.head_sha == ""
 
     def test_file_from(self):
-        from fabrik.hosting.github import _file_from
+        from fabrikant.hosting.github import _file_from
 
         out = _file_from({"filename": "a.py", "status": "modified", "additions": 2, "deletions": 1, "patch": "p"})
         assert (out.path, out.status, out.additions, out.deletions, out.patch) == ("a.py", "modified", 2, 1, "p")
@@ -139,7 +139,7 @@ class TestGitHubNormalization:
 
 class TestGitLabNormalization:
     def test_issue_from_labels_as_list(self):
-        from fabrik.hosting.gitlab import _issue_from
+        from fabrikant.hosting.gitlab import _issue_from
 
         out = _issue_from({"iid": 5, "title": "t", "description": "d", "state": "opened", "labels": ["x", "y"]})
         assert out.number == 5
@@ -147,13 +147,13 @@ class TestGitLabNormalization:
         assert out.is_pr is False
 
     def test_issue_from_labels_as_comma_string(self):
-        from fabrik.hosting.gitlab import _issue_from
+        from fabrikant.hosting.gitlab import _issue_from
 
         out = _issue_from({"iid": 5, "labels": "a, b,,c"})
         assert out.labels == ["a", "b", "c"]
 
     def test_pr_from(self):
-        from fabrik.hosting.gitlab import _pr_from
+        from fabrikant.hosting.gitlab import _pr_from
 
         raw = {
             "iid": 9,
@@ -171,7 +171,7 @@ class TestGitLabNormalization:
         assert out.mergeable is None  # GitLab does not report mergeable in the list/get payload
 
     def test_file_from_counts_and_status(self):
-        from fabrik.hosting.gitlab import _file_from
+        from fabrikant.hosting.gitlab import _file_from
 
         diff = "+++ b/a.py\n@@ -1 +1 @@\n-old\n+new\n+extra\n"
         out = _file_from({"new_path": "a.py", "diff": diff, "new_file": True})
@@ -180,7 +180,7 @@ class TestGitLabNormalization:
         assert out.deletions == 1
 
     def test_file_from_deleted(self):
-        from fabrik.hosting.gitlab import _file_from
+        from fabrikant.hosting.gitlab import _file_from
 
         assert _file_from({"new_path": "a.py", "diff": "", "deleted_file": True}).status == "removed"
 
@@ -521,17 +521,17 @@ class TestGitLabVersion:
         assert p._base == "http://localhost:8091/api/v4"  # trailing slash stripped
 
     def test_parse_version_ee(self):
-        from fabrik.hosting.gitlab import _parse_version
+        from fabrikant.hosting.gitlab import _parse_version
 
         assert _parse_version("19.5.8-ee") == (19, 5, 8)
 
     def test_parse_version_ce(self):
-        from fabrik.hosting.gitlab import _parse_version
+        from fabrikant.hosting.gitlab import _parse_version
 
         assert _parse_version("14.0.1-ce") == (14, 0, 1)
 
     def test_parse_version_empty(self):
-        from fabrik.hosting.gitlab import _parse_version
+        from fabrikant.hosting.gitlab import _parse_version
 
         assert _parse_version("") == (0,)
 
@@ -600,7 +600,7 @@ class TestGitLabVersion:
         assert [c["new_path"] for c in out] == ["a.py"]
 
     def test_mr_changes_polls_until_collected(self, monkeypatch):
-        import fabrik.hosting.gitlab as gl
+        import fabrikant.hosting.gitlab as gl
 
         monkeypatch.setattr(gl.time, "sleep", lambda s: None)
         state = {"n": 0}
@@ -620,18 +620,18 @@ class TestGitLabVersion:
 
 class TestGitLabNormalizationExtras:
     def test_comment_from_missing_author(self):
-        from fabrik.hosting.gitlab import _comment_from
+        from fabrikant.hosting.gitlab import _comment_from
 
         out = _comment_from({"id": 1, "body": "b"})
         assert out.author == ""
 
     def test_file_from_renamed(self):
-        from fabrik.hosting.gitlab import _file_from
+        from fabrikant.hosting.gitlab import _file_from
 
         assert _file_from({"new_path": "a.py", "diff": "", "renamed_file": True}).status == "renamed"
 
     def test_file_from_modified(self):
-        from fabrik.hosting.gitlab import _file_from
+        from fabrikant.hosting.gitlab import _file_from
 
         assert _file_from({"new_path": "a.py", "diff": ""}).status == "modified"
 
@@ -805,10 +805,10 @@ class TestRegistry:
         assert get_provider("o/n").has_credentials() is False
         monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "t")
         assert get_provider("o/n").has_credentials() is True
-        monkeypatch.setenv("FABRIK_GITLAB_TOKEN", "")
-        monkeypatch.setenv("FABRIK_GITLAB_TOKEN_FILE", "/nonexistent/token")
+        monkeypatch.setenv("FABRIKANT_GITLAB_TOKEN", "")
+        monkeypatch.setenv("FABRIKANT_GITLAB_TOKEN_FILE", "/nonexistent/token")
         assert get_provider("o/n", spec={"hosting": "gitlab"}).has_credentials() is False
-        monkeypatch.setenv("FABRIK_GITLAB_TOKEN", "x")
+        monkeypatch.setenv("FABRIKANT_GITLAB_TOKEN", "x")
         assert get_provider("o/n", spec={"hosting": "gitlab"}).has_credentials() is True
 
 

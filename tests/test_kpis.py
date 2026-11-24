@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from fabrik import config, kpis, metrics
-from fabrik.runmodel import FailureKind, ReviewResult, Run, RunStatus, Step, StepStatus, VerifyCheck
-from fabrik.runstore import STORE
+from fabrikant import config, kpis, metrics
+from fabrikant.runmodel import FailureKind, ReviewResult, Run, RunStatus, Step, StepStatus, VerifyCheck
+from fabrikant.runstore import STORE
 
 
 def _step(review=None, verify=()):
@@ -92,10 +92,10 @@ def test_render_prometheus_skips_undefined_values():
     text = kpis.render_prometheus(
         [_run("1", started="2026-01-01T10:00:00", finished="2026-01-01T10:00:05", loop='a"b')]
     )
-    assert "# TYPE fabrik_kpi_cycle_time_avg_seconds gauge" in text
-    assert 'fabrik_kpi_cycle_time_avg_seconds{project="p",loop="a\\"b"} 5.0' in text
-    assert 'fabrik_kpi_defects_caught{project="p",loop="a\\"b"} 0' in text
-    assert "fabrik_kpi_judge_veto_rate{" not in text  # kein Review → kein Sample
+    assert "# TYPE fabrikant_kpi_cycle_time_avg_seconds gauge" in text
+    assert 'fabrikant_kpi_cycle_time_avg_seconds{project="p",loop="a\\"b"} 5.0' in text
+    assert 'fabrikant_kpi_defects_caught{project="p",loop="a\\"b"} 0' in text
+    assert "fabrikant_kpi_judge_veto_rate{" not in text  # kein Review → kein Sample
     assert kpis.render_prometheus([]).count("# HELP") == len(kpis._PROM_GAUGES)
 
 
@@ -142,14 +142,14 @@ def test_kpis_report_rejects_bad_date(seeded):
 def test_prometheus_text_from_store(seeded):
     kpis.reset_prometheus_cache()
     text = kpis.prometheus_text()
-    assert 'fabrik_kpi_defects_escaped{project="p",loop="l"} 1' in text
-    assert 'fabrik_kpi_cycle_time_avg_seconds{project="q",loop="l"} 10.0' in text
+    assert 'fabrikant_kpi_defects_escaped{project="p",loop="l"} 1' in text
+    assert 'fabrikant_kpi_cycle_time_avg_seconds{project="q",loop="l"} 10.0' in text
 
 
 def _with_usage(run, cost, tokens=10):
     from dataclasses import replace
 
-    from fabrik.runmodel import Usage
+    from fabrikant.runmodel import Usage
 
     step = Step(
         name="a",
@@ -189,10 +189,10 @@ def test_runtime_cost_and_tokens_aggregate_and_merge():
 def test_prometheus_exports_ops_gauges():
     run = _with_usage(_run("1", started="2026-01-01T10:00:00", finished="2026-01-01T10:01:00"), 0.25, 7)
     text = kpis.render_prometheus([run])
-    assert 'fabrik_kpi_tokens_total{project="p",loop="l"} 7' in text
-    assert 'fabrik_kpi_cost_usd_total{project="p",loop="l"} 0.25' in text
-    assert 'fabrik_kpi_runtime_seconds_total{project="p",loop="l"} 60' in text
-    assert 'fabrik_kpi_runs_failed{project="p",loop="l"} 0' in text
+    assert 'fabrikant_kpi_tokens_total{project="p",loop="l"} 7' in text
+    assert 'fabrikant_kpi_cost_usd_total{project="p",loop="l"} 0.25' in text
+    assert 'fabrikant_kpi_runtime_seconds_total{project="p",loop="l"} 60' in text
+    assert 'fabrikant_kpi_runs_failed{project="p",loop="l"} 0' in text
 
 
 def test_prometheus_text_is_cached_within_ttl(monkeypatch):

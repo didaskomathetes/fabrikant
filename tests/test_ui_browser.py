@@ -1,6 +1,6 @@
-"""Browser-Tests (Playwright/Chromium) für die fabrik-UI.
+"""Browser-Tests (Playwright/Chromium) für die fabrikant-UI.
 
-Startet einen isolierten fabrik-HTTP-Server (eigene FABRIK_HOME mit Test-Spec +
+Startet einen isolierten fabrikant-HTTP-Server (eigene FABRIKANT_HOME mit Test-Spec +
 Fake-Run) und prüft die interaktiven UI-Verhalten, die in den letzten Iterationen
 repariert wurden:
 
@@ -23,7 +23,7 @@ import threading
 
 import pytest
 
-from fabrik import config
+from fabrikant import config
 
 pytestmark = pytest.mark.browser
 
@@ -160,12 +160,12 @@ XSS_BREAKOUT = "x');window.__pwned=1;('"
 
 
 @pytest.fixture
-def fabrik_home(tmp_path, monkeypatch):
-    """Isolierte FABRIK_HOME mit Test-Spec + Fake-Run (toucht echte Daten nicht)."""
-    home = tmp_path / "fabrik_home"
+def fabrikant_home(tmp_path, monkeypatch):
+    """Isolierte FABRIKANT_HOME mit Test-Spec + Fake-Run (toucht echte Daten nicht)."""
+    home = tmp_path / "fabrikant_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs" / "uitest").mkdir(parents=True)
-    (home / "projects" / "uitest.fabrik.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
+    (home / "projects" / "uitest.fabrikant.yaml").write_text(SPEC_YAML.replace("__ROOT__", str(home)))
     (home / "runs" / "uitest" / f"{RUN_ID}.json").write_text(json.dumps(RUN_RECORD))
     (home / "runs" / "uitest" / f"{RUN_ID_APPROVAL}.json").write_text(json.dumps(RUN_RECORD_APPROVAL))
     (home / "runs" / "uitest" / f"{RUN_ID_APPROVAL_OLD}.json").write_text(json.dumps(RUN_RECORD_APPROVAL_OLD))
@@ -180,13 +180,13 @@ def fabrik_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def fabrik_url(fabrik_home, live_server):
-    """fabrik-HTTP-Server auf einem freien Port (ohne Scheduler)."""
+def fabrikant_url(fabrikant_home, live_server):
+    """fabrikant-HTTP-Server auf einem freien Port (ohne Scheduler)."""
     return live_server()
 
 
 @pytest.fixture
-def page(fabrik_url):
+def page(fabrikant_url):
     """Chromium-Seite auf der UI (kleiner Viewport, damit Content überläuft;
     Browser-Sprache auf de-DE gepinnt, da die Assertions deutsche UI-Strings
     erwarten; i18n-Verhalten testet test_i18n_browser.py)."""
@@ -196,7 +196,7 @@ def page(fabrik_url):
         browser = p.chromium.launch()
         pg = browser.new_page(viewport={"width": 1280, "height": 560})
         pg.add_init_script("Object.defineProperty(navigator, 'language', {value: 'de-DE'});")
-        pg.goto(fabrik_url)
+        pg.goto(fabrikant_url)
         pg.wait_for_selector("#projects .project")
         yield pg
         browser.close()
@@ -284,13 +284,13 @@ def test_approval_list_tolerates_non_string_started(page):
     assert 'class="apprline"' in html
 
 
-def test_shelved_list_shows_exhausted_chain_with_actions(page, fabrik_home):
+def test_shelved_list_shows_exhausted_chain_with_actions(page, fabrikant_home):
     """ADR 0036: Erschöpfte Kette als „Abgelegt“-Badge in der Projekt-Liste; Badge-Klick
     zeigt Klasse, letzten Fehler, Versuchszahl und die Aktionen *jetzt erneut* /
     *verwerfen* (analog Freigaben)."""
-    (fabrik_home / "state").mkdir(exist_ok=True)
-    (fabrik_home / "runs" / "uitest" / f"{RUN_ID_SHELVED}.json").write_text(json.dumps(RUN_RECORD_SHELVED))
-    (fabrik_home / "state" / "retry-chains.json").write_text(
+    (fabrikant_home / "state").mkdir(exist_ok=True)
+    (fabrikant_home / "runs" / "uitest" / f"{RUN_ID_SHELVED}.json").write_text(json.dumps(RUN_RECORD_SHELVED))
+    (fabrikant_home / "state" / "retry-chains.json").write_text(
         json.dumps(
             {
                 "uitest::lint::issue:o/r#42": {
@@ -407,10 +407,10 @@ def test_run_modal_tabs_log_and_transcript(page):
     page.wait_for_function("document.querySelector('#runlog .runrawlog') === null")
 
 
-def test_run_modal_trace_tab(page, fabrik_home):
+def test_run_modal_trace_tab(page, fabrikant_home):
     """#128: Trace-Tab zeigt die chronologische Step-Timeline aus dem Session-Log:
     Step-Header (Status, Dauer, Usage), Agent-Events als Drill-down, Artefakt-Liste."""
-    from fabrik import sessionlog
+    from fabrikant import sessionlog
 
     lg = sessionlog.SessionLog(RUN_ID, "uitest", "lint")
     lg.start()
@@ -430,7 +430,7 @@ def test_run_modal_trace_tab(page, fabrik_home):
     lg.finish("pass")
 
     # Verdict lives in the run record (not the session log): give step-00 one.
-    rec_path = fabrik_home / "runs" / "uitest" / f"{RUN_ID}.json"
+    rec_path = fabrikant_home / "runs" / "uitest" / f"{RUN_ID}.json"
     rec = json.loads(rec_path.read_text())
     rec["steps"][0]["verdict"] = "pass"
     rec_path.write_text(json.dumps(rec))
@@ -453,10 +453,10 @@ def test_run_modal_trace_tab(page, fabrik_home):
     assert "/tmp/report.md" in page.eval_on_selector("#runlog .trace-artifact", "el => el.textContent")
 
 
-def test_run_log_live_update_and_follow_toggle(page, fabrik_home):
+def test_run_log_live_update_and_follow_toggle(page, fabrikant_home):
     """Neue Log-Zeilen eines laufenden Runs erscheinen ohne Reload; „folgen“ steuert Auto-Scroll."""
     rid = "20260103T000000Z-uitest-live"
-    d = fabrik_home / "runs" / "uitest"
+    d = fabrikant_home / "runs" / "uitest"
     log = d / f"{rid}.log"
     log.write_text("".join(f"early {i}\n" for i in range(200)))
     (d / f"{rid}.json").write_text(
@@ -514,7 +514,7 @@ def test_approve_follows_run_through_resume_race(page, monkeypatch):
     Run längst lief. Der Server meldet jetzt `resumed: true`, und das UI
     pollt bedingungslos (mit needs_approval-Grace).
     """
-    import fabrik.server as srv
+    import fabrikant.server as srv
 
     def fake_resume(proj, rid, approve, actor=None):
         # Simuliert das Race: der Worker schreibt "running" erst verzögert.
@@ -551,7 +551,7 @@ def test_approve_lock_busy_does_not_poll(page, monkeypatch):
     wird erst fortgesetzt, wenn das andere Run fertig ist) und zeigt die
     Begründung aus der Antwort im Chat.
     """
-    import fabrik.server as srv
+    import fabrikant.server as srv
 
     monkeypatch.setattr(srv, "_chat_resume", lambda proj, rid, approve, actor=None: ("⚠ uitest läuft bereits.", False))
     _select_project(page)
@@ -571,10 +571,10 @@ def _opacity(page, sel):
     return float(page.eval_on_selector(sel, js))
 
 
-def test_disabled_loop_keeps_state_buttons_visible(fabrik_home, page):
+def test_disabled_loop_keeps_state_buttons_visible(fabrikant_home, page):
     """Deaktivierter Loop: Inhalt abgeblendet, resume/pause bleiben voll sichtbar
     und klickbar; ▶ run ist gesperrt. resume aktiviert den Loop wieder."""
-    from fabrik import pause
+    from fabrikant import pause
 
     pause.set_state("uitest", "lint", "disabled", actor="test")
     page.reload()
@@ -594,10 +594,10 @@ def test_disabled_loop_keeps_state_buttons_visible(fabrik_home, page):
     assert pause.effective_state("uitest", "lint") == "active"
 
 
-def test_project_disabled_run_hint_points_to_project_resume(fabrik_home, page):
+def test_project_disabled_run_hint_points_to_project_resume(fabrikant_home, page):
     """Projekt deaktiviert, Loop selbst aktiv: der Hinweis am gesperrten ▶ run
     verweist auf den Projekt-Kopf (die Loop-Karte hat dann keinen resume-Button)."""
-    from fabrik import pause
+    from fabrikant import pause
 
     pause.set_state("uitest", None, "disabled", actor="test")
     page.reload()
@@ -658,7 +658,7 @@ def test_open_spec_survives_rerender(page):
     assert "hidden" in page.get_attribute("#loopspec-lint", "class")
 
 
-def test_history_refreshes_while_loop_spec_open(page, fabrik_home):
+def test_history_refreshes_while_loop_spec_open(page, fabrikant_home):
     """Run-History aktualisiert sich auch bei offener Loop-Spec (ohne sie zu schließen).
 
     Regression: Der Auto-Refresh übersprang bei offener Spec den ganzen
@@ -668,7 +668,7 @@ def test_history_refreshes_while_loop_spec_open(page, fabrik_home):
     _select_project(page)
     page.click("#loop-lint")
     page.wait_for_selector("#loopspec-lint .loopspec-step", timeout=5000)
-    rec_file = fabrik_home / "runs" / "uitest" / f"{RUN_ID}.json"
+    rec_file = fabrikant_home / "runs" / "uitest" / f"{RUN_ID}.json"
     rec_file.write_text(json.dumps({**RUN_RECORD, "status": "needs_approval"}))
     page.evaluate("refresh()")
     page.wait_for_selector(f"#h-list .histrow[data-run='{RUN_ID}'] .badge.needs_approval", timeout=5000)
@@ -710,9 +710,9 @@ def _open_history(page):
     page.wait_for_selector("#h-list .histrow")
 
 
-def _write_filler_runs(fabrik_home, n=60):
+def _write_filler_runs(fabrikant_home, n=60):
     """n zusätzliche lint-Runs (Dezember 2025); Run 3 trägt die Notiz 'needle-run'."""
-    d = fabrik_home / "runs" / "uitest"
+    d = fabrikant_home / "runs" / "uitest"
     for i in range(n):
         rid = f"20251201T{i:06d}Z-lint"
         rec = {**RUN_RECORD, "id": rid, "started": f"2025-12-01T00:{i // 60:02d}:{i % 60:02d}Z"}
@@ -733,9 +733,9 @@ def test_history_replaces_recent_runs_section(page):
     assert is_last
 
 
-def test_history_search_filter_and_load_more(page, fabrik_home):
+def test_history_search_filter_and_load_more(page, fabrikant_home):
     """Historie: Suche, Status-Filter und "mehr laden" erreichen auch Runs jenseits der ersten Seite."""
-    _write_filler_runs(fabrik_home)
+    _write_filler_runs(fabrikant_home)
     _open_history(page)
     assert _rows(page) == 20
     for n in (40, 60, 63):  # 60 + 3 Fixture-Runs
@@ -755,13 +755,13 @@ def test_history_search_filter_and_load_more(page, fabrik_home):
     page.wait_for_function("document.querySelectorAll('#h-list .histrow').length === 20")
 
 
-def test_history_refresh_keeps_loaded_pages_and_scroll(page, fabrik_home):
+def test_history_refresh_keeps_loaded_pages_and_scroll(page, fabrikant_home):
     """Auto-Refresh lädt die geladenen Seiten in-place nach statt auf Seite 1 zurückzusetzen.
 
     Regression: Nach "mehr laden" setzte der 5-s-Refresh die Liste auf die erste
     Seite zurück — die Liste schrumpfte und die Scroll-Position sprang in die Specs.
     """
-    _write_filler_runs(fabrik_home)
+    _write_filler_runs(fabrikant_home)
     _open_history(page)
     page.click("#h-more")
     page.wait_for_function("document.querySelectorAll('#h-list .histrow').length === 40")
@@ -769,7 +769,7 @@ def test_history_refresh_keeps_loaded_pages_and_scroll(page, fabrik_home):
     top = page.eval_on_selector("#detail", "el => el.scrollTop")
     # Statusänderung eines bereits geladenen Runs → muss nach dem Refresh sichtbar sein.
     rid = "20251201T000050Z-lint"
-    p = fabrik_home / "runs" / "uitest" / f"{rid}.json"
+    p = fabrikant_home / "runs" / "uitest" / f"{rid}.json"
     p.write_text(json.dumps({**json.loads(p.read_text()), "status": "fail"}))
     page.evaluate("refresh()")
     page.wait_for_selector(f"#h-list .histrow[data-run='{rid}'] .badge.fail", timeout=5000)
@@ -826,11 +826,11 @@ def test_history_reject_from_list_with_confirmation(page):
     assert json.loads((config.RUNS_DIR / "uitest" / f"{RUN_ID_APPROVAL}.json").read_text())["status"] == "rejected"
 
 
-def test_history_row_attributes_survive_quotes(page, fabrik_home):
+def test_history_row_attributes_survive_quotes(page, fabrikant_home):
     """Run-Ids mit Anführungszeichen bleiben im data-*-Attribut (esc maskiert Quotes)."""
     rid = 'x" data-pwned="1'
     rec = {**RUN_RECORD, "id": rid, "started": "2026-01-03T00:00:00Z"}
-    (fabrik_home / "runs" / "uitest" / "quoted.json").write_text(json.dumps(rec))
+    (fabrikant_home / "runs" / "uitest" / "quoted.json").write_text(json.dumps(rec))
     _open_history(page)
     assert page.locator("#h-list [data-pwned]").count() == 0
     assert page.locator("#h-list .histrow").first.get_attribute("data-run") == rid
@@ -873,12 +873,12 @@ def _write_failed_run(home, run_id, kind, started, steps=()):
     (home / "runs" / "uitest" / f"{run_id}.json").write_text(json.dumps(rec))
 
 
-def test_history_shows_and_filters_failure_kind(page, fabrik_home):
+def test_history_shows_and_filters_failure_kind(page, fabrikant_home):
     """Fehlerklasse (ADR 0035): Badge in Historie und Run-Modal, Filter nach Klasse; Altbestand = unknown."""
     step = {"name": "scan", "type": "shell", "status": "fail", "summary": "exit 127", "failure_kind": "environment"}
-    _write_failed_run(fabrik_home, "20260102T000000Z-uitest-env", "environment", "2026-01-02T00:00:00Z", [step])
-    _write_failed_run(fabrik_home, "20260103T000000Z-uitest-flaky", "transient", "2026-01-03T00:00:00Z")
-    _write_failed_run(fabrik_home, "20260104T000000Z-uitest-legacy", None, "2026-01-04T00:00:00Z")
+    _write_failed_run(fabrikant_home, "20260102T000000Z-uitest-env", "environment", "2026-01-02T00:00:00Z", [step])
+    _write_failed_run(fabrikant_home, "20260103T000000Z-uitest-flaky", "transient", "2026-01-03T00:00:00Z")
+    _write_failed_run(fabrikant_home, "20260104T000000Z-uitest-legacy", None, "2026-01-04T00:00:00Z")
     _open_history(page)
     page.wait_for_selector("#h-list .histrow[data-run='20260102T000000Z-uitest-env'] .badge.kind.environment")
     assert page.inner_text("#h-list .histrow[data-run='20260104T000000Z-uitest-legacy'] .badge.kind") == "unbekannt"
@@ -914,14 +914,14 @@ loops:
 
 @pytest.fixture
 def xss_home(tmp_path, monkeypatch):
-    """Isolierte FABRIK_HOME mit zwei Projekten, deren Namen Anführungszeichen
+    """Isolierte FABRIKANT_HOME mit zwei Projekten, deren Namen Anführungszeichen
     und < > enthalten (Projektname = Dateiname-Stamm, ADR 0047)."""
     home = tmp_path / "xss_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs").mkdir(parents=True)
     spec = _XSS_SPEC.replace("__ROOT__", str(home))
-    (home / "projects" / f"{XSS_PROJECT}.fabrik.yaml").write_text(spec, encoding="utf-8")
-    (home / "projects" / f"{XSS_BREAKOUT}.fabrik.yaml").write_text(spec, encoding="utf-8")
+    (home / "projects" / f"{XSS_PROJECT}.fabrikant.yaml").write_text(spec, encoding="utf-8")
+    (home / "projects" / f"{XSS_BREAKOUT}.fabrikant.yaml").write_text(spec, encoding="utf-8")
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "RUNS_DIR", home / "runs")
     monkeypatch.setattr(config, "STATE_DIR", home / "state")

@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from fabrik import egress
+from fabrikant import egress
 
 
 def test_parse_allowlist_strips_comments_and_dedupes():
@@ -259,9 +259,9 @@ def _fake_docker(monkeypatch, responses):
 
 
 def test_existing_network_with_wrong_config_is_rejected(monkeypatch):
-    """Ein vorhandenes `fabrik-sandbox` OHNE internal wäre stille Isolationslücke."""
+    """Ein vorhandenes `fabrikant-sandbox` OHNE internal wäre stille Isolationslücke."""
     _fake_docker(
-        monkeypatch, [(1, "", "network with name fabrik-egress already exists"), (0, "false 172.27.0.0/16 ", "")]
+        monkeypatch, [(1, "", "network with name fabrikant-egress already exists"), (0, "false 172.27.0.0/16 ", "")]
     )
     egress._ensure_network(egress.EGRESS_NET, egress.EGRESS_SUBNET, internal=False)  # passt → ok
     _fake_docker(monkeypatch, [(1, "", "already exists"), (0, "false 172.28.0.0/16 ", "")])

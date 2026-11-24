@@ -1,4 +1,4 @@
-"""fabrik.httpsafe: urlopen nur für http(s) (Bandit B310)."""
+"""fabrikant.httpsafe: urlopen nur für http(s) (Bandit B310)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import urllib.request
 
 import pytest
 
-from fabrik import httpsafe
-from fabrik.failures import ConfigError
-from fabrik.runmodel import FailureKind
+from fabrikant import httpsafe
+from fabrikant.failures import ConfigError
+from fabrikant.runmodel import FailureKind
 
 
 @pytest.mark.parametrize("url", ["http://x/a", "https://x/a", "HTTPS://x/a"])

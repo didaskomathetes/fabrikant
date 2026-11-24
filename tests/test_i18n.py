@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from fabrik import config
+from fabrikant import config
 
 WEB_DIR = config.WEB_DIR
 I18N_DIR = WEB_DIR / "i18n"

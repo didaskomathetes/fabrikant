@@ -1,6 +1,6 @@
 """run_meta: Issue/PR-Links aus Variablen, Approval-Kontext und Trigger."""
 
-from fabrik.runmeta import run_meta
+from fabrikant.runmeta import run_meta
 
 SPEC = {"github": "o/r"}
 

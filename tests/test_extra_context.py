@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from fabrik import context, gitops, spec_expand, specs
-from fabrik.steps import agent as agent_step
-from fabrik.steps import extra_context as xc
-from fabrik.steps import human_gate, pr_review
-from fabrik.steps import llm as llm_step
+from fabrikant import context, gitops, spec_expand, specs
+from fabrikant.steps import agent as agent_step
+from fabrikant.steps import extra_context as xc
+from fabrikant.steps import human_gate, pr_review
+from fabrikant.steps import llm as llm_step
 
 
 def _ctx(tmp_path, **extra):
@@ -129,7 +129,7 @@ def test_effective_step_applies_project_context_to_verify_checks():
     assert checks[1:] == verify["checks"][1:]
 
 
-TEMPLATES = Path(__file__).resolve().parent.parent / "src" / "fabrik" / "templates"
+TEMPLATES = Path(__file__).resolve().parent.parent / "src" / "fabrikant" / "templates"
 
 
 def test_loop_templates_pass_context_params_to_llm_steps():
@@ -142,7 +142,7 @@ def test_loop_templates_pass_context_params_to_llm_steps():
         "d0": {"use": "develop", "with": develop},
         "r": {"use": "review-pr", "with": {"repo": "o/r", "prompt_file": "p.md", "reviewer_model": "r"}},
     }
-    spec = spec_expand.expand_spec({"loops": loops}, TEMPLATES / "x.fabrik.yaml")
+    spec = spec_expand.expand_spec({"loops": loops}, TEMPLATES / "x.fabrikant.yaml")
     steps = {ln: {s["name"]: s for s in loop["steps"]} for ln, loop in spec["loops"].items()}
     assert steps["d"]["changes"][xc.KEY] == [agents]
     assert steps["d"]["review"][xc.KEY] == [agents]
@@ -220,7 +220,7 @@ def test_cmd_source_runs_with_process_env_identity(tmp_path, monkeypatch):
             [
                 {
                     "name": "env",
-                    "cmd": 'echo "$GH_TOKEN|$GITHUB_TOKEN|$GITHUB_REVIEWER_TOKEN|$FABRIK_ENV_FILE"',
+                    "cmd": 'echo "$GH_TOKEN|$GITHUB_TOKEN|$GITHUB_REVIEWER_TOKEN|$FABRIKANT_ENV_FILE"',
                     "trusted": True,
                 }
             ],

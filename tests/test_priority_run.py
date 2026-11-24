@@ -9,7 +9,7 @@ import time
 import pytest
 from helpers import not_none
 
-from fabrik import chat, engine, runs
+from fabrikant import chat, engine, runs
 
 
 class _FailingThread:

@@ -10,18 +10,18 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from fabrik import config, schedule
+from fabrikant import config, schedule
 
 
 @pytest.fixture
 def sched_home(tmp_path, monkeypatch):
-    home = tmp_path / "fabrik_home"
+    home = tmp_path / "fabrikant_home"
     (home / "projects").mkdir(parents=True)
     (home / "runs").mkdir(parents=True)
     (home / "state").mkdir(parents=True)
     (home / "web").mkdir(parents=True)
-    (home / "web" / "index.html").write_text("<html>fabrik</html>")
-    (home / "projects" / "sched.fabrik.yaml").write_text(
+    (home / "web" / "index.html").write_text("<html>fabrikant</html>")
+    (home / "projects" / "sched.fabrikant.yaml").write_text(
         "name: sched\nroot: /tmp\ndescription: d\nrepo:\n  branch: main\nmax_parallel: 1\nloops:\n"
         "  cronloop:\n"
         "    description: cron-loop\n"
@@ -187,7 +187,7 @@ def test_queue_shows_running_and_waiting(sched_url):
 
 def test_pool_queue_est_accounts_for_busy_workers(sched_url, monkeypatch):
     """Pool-Queue: `now` nur, solange belegte Worker + FIFO-Position < Pool-Größe."""
-    from fabrik import server
+    from fabrikant import server
 
     monkeypatch.setattr(server, "pool_status", lambda: {"workers": 2, "busy": 1, "queue": 2})
     monkeypatch.setattr(

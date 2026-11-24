@@ -25,12 +25,12 @@ def mod():
 
 @pytest.fixture(autouse=True)
 def _no_reviewer_login_override(mod, monkeypatch):
-    """Lokales fabrik.env (von config.py geladen) darf den Reviewer-Login der Tests nicht überschreiben."""
+    """Lokales fabrikant.env (von config.py geladen) darf den Reviewer-Login der Tests nicht überschreiben."""
     monkeypatch.delenv(mod.REVIEWER_LOGIN_ENV, raising=False)
 
 
 def _marker(verdict: str, sha: str = HEAD) -> str:
-    return f"Summary …\n<!-- fabrik-review verdict={verdict} sha={sha} -->"
+    return f"Summary …\n<!-- fabrikant-review verdict={verdict} sha={sha} -->"
 
 
 def _review(body: str = "", state: str = "COMMENTED", author: str = REVIEWER) -> dict:
@@ -48,7 +48,7 @@ def _pr(status: str = "CLEAN", reviews: list[dict] | None = None, labels: tuple[
 
 
 def _inline(n: int) -> dict:
-    return {"path": "fabrik/src/x.py", "line": n, "body": f"Nit {n}"}
+    return {"path": "fabrikant/src/x.py", "line": n, "body": f"Nit {n}"}
 
 
 # ── merge_decision ──
@@ -104,10 +104,10 @@ def test_merge_decision_explains_blocked_approval(mod, status, reason):
 @pytest.mark.parametrize(
     ("labels", "action"),
     [
-        (("fabrik", "needs approval"), "wait"),  # ADR-PR: nur der approval-Loop mergt (ADR 0011)
+        (("fabrikant", "needs approval"), "wait"),  # ADR-PR: nur der approval-Loop mergt (ADR 0011)
         (("needs approval",), "wait"),
-        (("fabrik",), "merge"),
-        (("fabrik", "needs approval-ish"), "merge"),  # exakter Label-Name, kein Teilstring
+        (("fabrikant",), "merge"),
+        (("fabrikant", "needs approval-ish"), "merge"),  # exakter Label-Name, kein Teilstring
     ],
 )
 def test_merge_decision_needs_approval_label_blocks_merge(mod, labels, action):
@@ -135,7 +135,7 @@ def test_merge_decision_latest_marker_wins(mod):
 
 
 def test_review_verdict_ignores_malformed_marker(mod):
-    assert mod.review_verdict([_review("<!-- fabrik-review verdict=approved sha=abc -->")], REVIEWER) is None
+    assert mod.review_verdict([_review("<!-- fabrikant-review verdict=approved sha=abc -->")], REVIEWER) is None
 
 
 # ── build_review / post_review ──
@@ -166,7 +166,7 @@ def test_build_review_caps_inline_and_keeps_marker_last(mod):
     assert len(req["comments"]) == mod.MAX_INLINE
     assert all(c["side"] == "RIGHT" for c in req["comments"])
     assert mod.OVERFLOW_HEADING in req["body"]
-    assert f"`fabrik/src/x.py:{mod.MAX_INLINE + 2}`" in req["body"]
+    assert f"`fabrikant/src/x.py:{mod.MAX_INLINE + 2}`" in req["body"]
     assert req["body"].rstrip().endswith(f"sha={HEAD} -->")
 
 
@@ -178,9 +178,9 @@ def test_build_review_without_inline_moves_all_to_body(mod):
     assert "Nit 1" in req["body"]
 
 
-DIFF = """diff --git a/fabrik/src/x.py b/fabrik/src/x.py
---- a/fabrik/src/x.py
-+++ b/fabrik/src/x.py
+DIFF = """diff --git a/fabrikant/src/x.py b/fabrikant/src/x.py
+--- a/fabrikant/src/x.py
++++ b/fabrikant/src/x.py
 @@ -1,3 +1,4 @@
  a
 -b
@@ -199,18 +199,18 @@ diff --git a/gone.py b/gone.py
 
 
 def test_diff_lines(mod):
-    assert mod.diff_lines(DIFF) == {"fabrik/src/x.py": [{1, 2, 3, 4}, {21, 22}], "": [set()]}
+    assert mod.diff_lines(DIFF) == {"fabrikant/src/x.py": [{1, 2, 3, 4}, {21, 22}], "": [set()]}
 
 
 @pytest.mark.parametrize(
     ("comment", "ok"),
     [
-        ({"path": "fabrik/src/x.py", "line": 3}, True),
-        ({"path": "fabrik/src/x.py", "line": 22, "start_line": 21}, True),
-        ({"path": "fabrik/src/x.py", "line": 10}, False),  # zwischen den Hunks
-        ({"path": "fabrik/src/x.py", "line": 21, "start_line": 4}, False),  # über Hunk-Grenze
+        ({"path": "fabrikant/src/x.py", "line": 3}, True),
+        ({"path": "fabrikant/src/x.py", "line": 22, "start_line": 21}, True),
+        ({"path": "fabrikant/src/x.py", "line": 10}, False),  # zwischen den Hunks
+        ({"path": "fabrikant/src/x.py", "line": 21, "start_line": 4}, False),  # über Hunk-Grenze
         ({"path": "other.py", "line": 1}, False),
-        ({"path": "fabrik/src/x.py"}, False),  # ohne Zeile
+        ({"path": "fabrikant/src/x.py"}, False),  # ohne Zeile
     ],
 )
 def test_in_diff(mod, comment, ok):
@@ -223,7 +223,7 @@ def test_build_review_moves_lines_outside_diff_to_body(mod):
         {"body": _marker("approved"), "comments": comments}, comment_only=True, hunks=mod.diff_lines(DIFF)
     )
     assert [c["line"] for c in req["comments"]] == [2]
-    assert "`fabrik/src/x.py:10`" in req["body"] and "`fabrik/src/x.py:2`" not in req["body"]
+    assert "`fabrikant/src/x.py:10`" in req["body"] and "`fabrikant/src/x.py:2`" not in req["body"]
 
 
 def test_insert_before_marker_without_marker_appends(mod):
@@ -356,7 +356,7 @@ def _setup_post(responses, reviews=(), author=REVIEWER, head=HEAD):
 
 def test_post_review_posts_once(mod, fake_gh):
     responses, calls = fake_gh
-    _setup_post(responses, author="fabrik-agent[bot]")
+    _setup_post(responses, author="fabrikant-agent[bot]")
     responses["--method POST"] = {"html_url": "https://x/r1"}
     out = mod.post_review(REPO, 124, {"body": _marker("approved"), "comments": [_inline(1)]})
     assert out == {"posted": True, "url": "https://x/r1", "inline": 1}
@@ -405,7 +405,7 @@ def test_post_review_falls_back_without_inline_on_422(mod, fake_gh):
     out = mod.post_review(REPO, 124, {"body": _marker("approved"), "comments": [_inline(3)]})
     assert out["inline"] == 0 and "fallback" in out
     sent = json.loads(calls[-1][1])
-    assert sent["event"] == "COMMENT" and "`fabrik/src/x.py:3`" in sent["body"]
+    assert sent["event"] == "COMMENT" and "`fabrikant/src/x.py:3`" in sent["body"]
 
 
 @pytest.mark.parametrize(
@@ -437,7 +437,7 @@ def test_cli_merge_check_waits_on_needs_approval_label(mod, fake_gh, capsys):
     """CLI fragt `labels` mit ab — sonst greift die ADR-0011-Sperre nie."""
     responses, calls = fake_gh
     responses["graphql"] = _threads_response([])
-    responses["pr view"] = _pr(reviews=[_review(_marker("approved"))], labels=("fabrik", "needs approval"))
+    responses["pr view"] = _pr(reviews=[_review(_marker("approved"))], labels=("fabrikant", "needs approval"))
     responses["api user"] = {"login": REVIEWER}
     assert mod.main(["merge-check", "124", "--repo", REPO]) == 0
     assert json.loads(capsys.readouterr().out)["action"] == "wait"
@@ -514,7 +514,7 @@ def test_gh_json_parses_stdout_and_passes_stdin(mod, monkeypatch):
 
 # ── ADR-Kollisionsprüfung (ADR 0032, aus PR #204) ──
 
-ADR = "fabrik/docs/adr"
+ADR = "fabrikant/docs/adr"
 
 
 def _adr_added(name: str, adr_dir: str = ADR) -> list[dict]:
@@ -531,7 +531,7 @@ def _adr_renamed(old: str, new: str) -> list[dict]:
 
 def _collision(mod, fake_gh, files: list[dict]):
     responses, _ = fake_gh
-    responses["contents/fabrik/docs/adr"] = [{"name": "0005-existing.md"}, {"name": "README.md"}]
+    responses["contents/fabrikant/docs/adr"] = [{"name": "0005-existing.md"}, {"name": "README.md"}]
     responses["pulls/7/files"] = files
     return mod.adr_collision(REPO, 7, {"baseRefName": "main"})
 
@@ -575,7 +575,7 @@ def test_adr_collision_without_base_skips_lookup(mod, fake_gh):
 def test_cli_merge_check_waits_on_adr_collision(mod, fake_gh, capsys):
     """Kollision schlägt jede Freigabe: kein Merge, bevor die Nummer repariert ist."""
     responses, _ = fake_gh
-    responses["contents/fabrik/docs/adr"] = [{"name": "0005-existing.md"}]
+    responses["contents/fabrikant/docs/adr"] = [{"name": "0005-existing.md"}]
     responses["pulls/124/files"] = _adr_added("0005-other.md")
     responses["pr view"] = {**_pr(reviews=[_review(_marker("approved"))]), "baseRefName": "main"}
     assert mod.main(["merge-check", "124", "--repo", REPO]) == 0
@@ -590,7 +590,7 @@ def test_adr_collision_api_error_waits_instead_of_crashing(mod, fake_gh):
     def boom(stdin):
         raise subprocess.CalledProcessError(1, ["gh"])
 
-    responses["contents/fabrik/docs/adr"] = boom
+    responses["contents/fabrikant/docs/adr"] = boom
     assert "fehlgeschlagen" in mod.adr_collision(REPO, 7, {"baseRefName": "main"})
 
 
@@ -598,7 +598,7 @@ def test_adr_collision_reads_all_file_pages(mod, fake_gh, monkeypatch):
     """Große PRs: die Dateiliste wird paginiert gelesen (kein `gh pr diff`)."""
     responses, _ = fake_gh
     monkeypatch.setattr(mod, "PAGE_SIZE", 1)
-    responses["contents/fabrik/docs/adr"] = [{"name": "0005-existing.md"}]
+    responses["contents/fabrikant/docs/adr"] = [{"name": "0005-existing.md"}]
     responses["files?per_page=1&page=1"] = _adr_modified("0001-a.md")
     responses["files?per_page=1&page=2"] = _adr_added("0005-late.md")
     responses["files?per_page=1&page=3"] = []
@@ -689,7 +689,7 @@ def test_escalation_decision_stalled(mod, reviews, commits, kind):
 
 
 def test_escalation_decision_stall_rounds_and_exhausted(mod):
-    fix = "fabrik: address review comments (PR #7)"
+    fix = "fabrikant: address review comments (PR #7)"
     commits = [_commit(C1), _commit(C2, message=fix), _commit(C3, message=fix)]
     reviews = [_cr(C1), _cr(C2), _cr(C3)]
     assert mod.escalation_decision(reviews, commits, reviewer=REVIEWER, head=C3)["action"] == "continue"
@@ -719,7 +719,7 @@ def test_cli_escalation_check_escalates_once(mod, fake_gh, capsys, monkeypatch):
     result = json.loads(capsys.readouterr().out)
     assert result["kind"] == "stalled" and result["escalated"] is True and result["url"] == "https://gh/esc"
     body = next(json.loads(stdin)["body"] for a, stdin in calls if stdin)
-    assert body.endswith("<!-- fabrik-escalate kind=stalled -->") and "Runden changes_requested" in body
+    assert body.endswith("<!-- fabrikant-escalate kind=stalled -->") and "Runden changes_requested" in body
 
     calls.clear()
     responses["pr view"] = {"headRefOid": C2, "reviews": [_cr(C1), _cr(C2)], "labels": [{"name": "needs human"}]}

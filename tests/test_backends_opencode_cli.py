@@ -7,11 +7,11 @@ import json
 
 import pytest
 
-from fabrik import connections, egress, sandbox
-from fabrik.backends import opencode_cli
-from fabrik.backends.opencode import OpenCodeBackend
-from fabrik.backends.opencode_cli import OpenCodeCliBackend, OpenCodeConfig, parse_events, permission_rules
-from fabrik.backends.registry import create_backend
+from fabrikant import connections, egress, sandbox
+from fabrikant.backends import opencode_cli
+from fabrikant.backends.opencode import OpenCodeBackend
+from fabrikant.backends.opencode_cli import OpenCodeCliBackend, OpenCodeConfig, parse_events, permission_rules
+from fabrikant.backends.registry import create_backend
 
 ENDPOINT = "https://llm.example/v1/chat/completions"
 

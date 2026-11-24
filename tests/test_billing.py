@@ -2,14 +2,14 @@
 
 import pytest
 
-from fabrik import billing, costs
-from fabrik.backends.claude_code import ClaudeCodeBackend
-from fabrik.backends.codex import CodexBackend
-from fabrik.backends.copilot import CopilotBackend
-from fabrik.billing import Billing
-from fabrik.failures import classify_agent_output
-from fabrik.runmodel import FailureKind, Run, RunStatus, Step, StepStatus, Usage
-from fabrik.steps.agent import _detected_billing
+from fabrikant import billing, costs
+from fabrikant.backends.claude_code import ClaudeCodeBackend
+from fabrikant.backends.codex import CodexBackend
+from fabrikant.backends.copilot import CopilotBackend
+from fabrikant.billing import Billing
+from fabrikant.failures import classify_agent_output
+from fabrikant.runmodel import FailureKind, Run, RunStatus, Step, StepStatus, Usage
+from fabrikant.steps.agent import _detected_billing
 
 _AUTH = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY", "CODEX_AUTH_JSON_B64")
 

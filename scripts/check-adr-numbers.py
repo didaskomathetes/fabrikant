@@ -22,7 +22,7 @@ nicht per Prompt-Logik:
 `check` vergleicht nur mit B (deterministisch, CI-tauglich). Offene PRs liest `gh`;
 ohne `gh`/Netz gilt mit Warnung nur B.
 
-Läuft im Paketverzeichnis (`fabrik/`); Pfade sind relativ zum cwd.
+Läuft im Paketverzeichnis (`fabrikant/`); Pfade sind relativ zum cwd.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from pathlib import Path
 
 ADR_DIR = "docs/adr"
 DEFAULT_BASE = "origin/main"
-DEFAULT_REPO = "didaskomathetes/fabrik"
+DEFAULT_REPO = "didaskomathetes/fabrikant"
 PR_LIMIT = 200  # offene PRs, deren Dateien gelesen werden
 # Laufzeitdaten/Umgebungen: `fix` schreibt dort nie (Run-Transkripte bleiben Historie).
 SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__", "runs", "state"})

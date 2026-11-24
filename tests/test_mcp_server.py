@@ -1,4 +1,4 @@
-"""MCP server (Roadmap #132): fabrik as a stdio MCP endpoint.
+"""MCP server (Roadmap #132): fabrikant as a stdio MCP endpoint.
 
 Covers the JSON-RPC layer (initialize / ping / tools-list / notifications /
 error codes), the tool handlers against real specs + run records, and a small
@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from fabrik import engine
-from fabrik import mcp_server as mcp
+from fabrikant import engine
+from fabrikant import mcp_server as mcp
 
 
 def _write_spec(projects_dir, name="p", root=None, loops=None):
@@ -23,7 +23,7 @@ def _write_spec(projects_dir, name="p", root=None, loops=None):
     root = root or projects_dir.parent / "proj"
     root.mkdir(parents=True, exist_ok=True)
     loops = loops or {"l": {"steps": [{"type": "shell", "cmd": "true"}]}}
-    (projects_dir / f"{name}.fabrik.yaml").write_text(
+    (projects_dir / f"{name}.fabrikant.yaml").write_text(
         f"name: {name}\nroot: {root}\nloops:\n"
         + "\n".join(
             f"  {ln}:\n    steps:\n" + "\n".join(f"      - {_json.dumps(s)}" for s in ldef["steps"])
@@ -54,7 +54,7 @@ def _write_run(runs_dir, project, rid, status="pass", loop="l", **extra):
 def test_initialize_returns_protocol_and_server_info():
     res = mcp._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert res["protocolVersion"] == "2025-03-26"
-    assert res["serverInfo"]["name"] == "fabrik"
+    assert res["serverInfo"]["name"] == "fabrikant"
     assert "tools" in res["capabilities"]
 
 
@@ -354,7 +354,7 @@ def test_stdio_initialize_then_tools_list(projects_dir):
         ]
     )
     by_id = {m["id"]: m for m in msgs if "id" in m}
-    assert by_id[1]["result"]["serverInfo"]["name"] == "fabrik"
+    assert by_id[1]["result"]["serverInfo"]["name"] == "fabrikant"
     assert len(by_id[2]["result"]["tools"]) == len(_DEFAULT_TOOLS)
     # notification produced no envelope
     assert len(msgs) == 2
@@ -409,7 +409,7 @@ def test_stdio_parse_error(capsys):
 
 
 def test_cli_registers_mcp_subcommand(monkeypatch):
-    import fabrik.cli as cli
+    import fabrikant.cli as cli
 
     # `mcp` must be a registered subcommand that routes to serve_stdio. Patch the
     # imported symbol so main() doesn't block reading stdin.

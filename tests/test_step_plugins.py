@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik import config, engine, sdk, specs
-from fabrik.steps import registry
-from fabrik.steps.registry import StepPlugin, StepRegistryError, register_step
+from fabrikant import config, engine, sdk, specs
+from fabrikant.steps import registry
+from fabrikant.steps.registry import StepPlugin, StepRegistryError, register_step
 
 
 @pytest.fixture(autouse=True)

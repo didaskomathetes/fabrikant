@@ -37,20 +37,20 @@ Doppel-Posts, Fehl-Merges). Dieses Script kapselt das über `gh`:
   resolve-thread <num> --repo R --comment-id <id>
       Den Review-Thread mit diesem Inline-Kommentar als erledigt markieren.
 
-Reviewer-Account: `FABRIK_REVIEWER_LOGIN` (Pflicht bei GitHub-App-Tokens — die dürfen
+Reviewer-Account: `FABRIKANT_REVIEWER_LOGIN` (Pflicht bei GitHub-App-Tokens — die dürfen
 `/user` nicht abfragen), sonst `gh api user`. Bot-Logins werden normalisiert
 (`app/<name>` aus gh-JSON ≡ `<name>[bot]` aus REST ≡ `<name>`).
 
 Marker (HTML-Kommentare, im gerenderten Text unsichtbar):
-  <!-- fabrik-review verdict=approved|changes_requested sha=<40 hex> -->
+  <!-- fabrikant-review verdict=approved|changes_requested sha=<40 hex> -->
       Verdikt im Review-Body. Gilt nur vom Reviewer-Account (`gh api user`) und
       nur für den aktuellen Head-SHA — neue Commits brauchen ein neues Review.
       Nötig, weil GitHub Approve/Request-Changes auf eigene PRs verbietet.
-  <!-- fabrik-reply -->
+  <!-- fabrikant-reply -->
       Antwort des pr-reply-Loops. Solche Kommentare sind nie "neu" (kein Self-Loop).
-  <!-- fabrik-escalate kind=<kind>[ re=<key>,…] -->
+  <!-- fabrikant-escalate kind=<kind>[ re=<key>,…] -->
       Eskalation an einen Menschen (ADR 0059); nur der Host schreibt ihn (Agent-Text wird
-      von allen fabrik-Markern bereinigt). Der escalation-Loop zeigt den letzten an.
+      von allen fabrikant-Markern bereinigt). Der escalation-Loop zeigt den letzten an.
 """
 
 from __future__ import annotations
@@ -63,8 +63,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-REVIEW_MARKER_RE = re.compile(r"<!-- fabrik-review verdict=(approved|changes_requested) sha=([0-9a-f]{40}) -->")
-REPLY_MARKER = "<!-- fabrik-reply -->"
+REVIEW_MARKER_RE = re.compile(r"<!-- fabrikant-review verdict=(approved|changes_requested) sha=([0-9a-f]{40}) -->")
+REPLY_MARKER = "<!-- fabrikant-reply -->"
 VERDICT_APPROVED = "approved"
 PAGE_SIZE = 100
 MAX_INLINE = 10  # mehr Inline-Kommentare = Rauschen; Rest landet in der Summary
@@ -92,7 +92,7 @@ APPROVAL_LABEL = "needs approval"
 HUMAN_LABEL = "needs human"
 ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 BUILDER_ESCALATION_KINDS = ("blocked", "scope")  # nur diese darf der Builder per Entwurf setzen
-ESCALATE_MARKER_RE = re.compile(r"<!-- fabrik-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
+ESCALATE_MARKER_RE = re.compile(r"<!-- fabrikant-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
 DEFAULT_STALL_ROUNDS = 2
 WAIT_STATES = {
     "BLOCKED": "Branch-Protection blockiert (Pflicht-Review/-Checks) — Mensch nötig",
@@ -139,7 +139,7 @@ def fetch_paged(path: str) -> list[dict]:
         page += 1
 
 
-REVIEWER_LOGIN_ENV = "FABRIK_REVIEWER_LOGIN"
+REVIEWER_LOGIN_ENV = "FABRIKANT_REVIEWER_LOGIN"
 BOT_PREFIX, BOT_SUFFIX = "app/", "[bot]"
 
 
@@ -160,7 +160,7 @@ def _login(obj: dict) -> str:
 
 # ── ADR-Nummern-Kollision (ADR 0032) ──
 
-ADR_DIR = "fabrik/docs/adr"  # repo-relativ, wie in `gh pr diff` und der Contents-API
+ADR_DIR = "fabrikant/docs/adr"  # repo-relativ, wie in `gh pr diff` und der Contents-API
 ADR_FILE_RE = re.compile(r"^(\d{4})-.+\.md$")
 
 
@@ -226,7 +226,7 @@ def review_verdict(reviews: list[dict], reviewer: str) -> tuple[str, str] | None
 
 
 def latest_plain_review_state(reviews: list[dict]) -> str:
-    """Entscheidender State der Reviews OHNE fabrik-Marker ('' wenn keine).
+    """Entscheidender State der Reviews OHNE fabrikant-Marker ('' wenn keine).
 
     Das sind Menschen oder der pr_review-Step (ADR 0010) — sie gelten zusätzlich.
     Pro Autor zählt nur dessen letzte entscheidende Review (wie GitHubs
@@ -348,7 +348,7 @@ def build_review(
     body = payload.get("body") or ""
     m = REVIEW_MARKER_RE.search(body)
     if not m:
-        raise ValueError("Review-Body ohne fabrik-review-Marker")
+        raise ValueError("Review-Body ohne fabrikant-review-Marker")
     verdict, sha = m.group(1), m.group(2)
     event = COMMENT_EVENT if comment_only else REVIEW_EVENTS[verdict]
 
@@ -491,7 +491,7 @@ def new_comments(items: list[dict], replied: dict) -> list[dict]:
 # ── Eskalation (ADR 0059) ──
 
 ESCALATE, CONTINUE = "escalate", "continue"
-FIX_COMMIT_PREFIX = "fabrik: address review"  # Commit-Message der Fix-Commits (Rundenzähler)
+FIX_COMMIT_PREFIX = "fabrikant: address review"  # Commit-Message der Fix-Commits (Rundenzähler)
 
 
 def _verdicts(reviews: list[dict], reviewer: str) -> list[tuple[str, str]]:
@@ -565,15 +565,15 @@ def escalation_decision(
 
 def escalate_marker(kind: str, re_keys: str = "") -> str:
     """Eskalations-Marker (ADR 0059); `re_keys` = kommagetrennte Kommentar-Keys (optional)."""
-    return f"<!-- fabrik-escalate kind={kind}{f' re={re_keys}' if re_keys else ''} -->"
+    return f"<!-- fabrikant-escalate kind={kind}{f' re={re_keys}' if re_keys else ''} -->"
 
 
 def escalation_comment(kind: str, why: str) -> str:
     """Text des Eskalations-Kommentars (sichtbar + Marker für den escalation-Loop)."""
     return (
-        f"**fabrik: an einen Menschen eskaliert** (`{kind}`)\n\n{why}\n\n"
+        f"**fabrikant: an einen Menschen eskaliert** (`{kind}`)\n\n{why}\n\n"
         "Review, Reply und Merge pausieren, bis das Label entfernt ist. "
-        "Entscheidung im fabrik-Gate: Fortsetzen, Neu zuschneiden oder Aufgeben.\n\n"
+        "Entscheidung im fabrikant-Gate: Fortsetzen, Neu zuschneiden oder Aufgeben.\n\n"
         f"{escalate_marker(kind)}"
     )
 

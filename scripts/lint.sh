@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Statische Checks der Fabrik — eine Quelle für CI (.github/workflows/fabrik-ci.yml), den Lint-Gate von
-# develop/refactor (`lint_cmd` in projects/fabrik.fabrik.yaml) und die Sonar-Reports (scripts/sonar-scan.sh).
+# Statische Checks der Fabrik — eine Quelle für CI (.github/workflows/fabrikant-ci.yml), den Lint-Gate von
+# develop/refactor (`lint_cmd` in projects/fabrikant.fabrikant.yaml) und die Sonar-Reports (scripts/sonar-scan.sh).
 #
 #   bash scripts/lint.sh                 Gate: ruff check + ruff format --check + pyright + bandit (ab medium).
 #                                        Läuft alle Checks durch, Exit 1 wenn einer rot ist.

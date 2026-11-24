@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from fabrik import cli, config, spec_expand, spec_sources, specs
-from fabrik.steps.agent import _step_agent
+from fabrikant import cli, config, spec_expand, spec_sources, specs
+from fabrikant.steps.agent import _step_agent
 
 LOOP = "loops:\n  l1:\n    steps:\n      - type: shell\n        cmd: echo hi\n"
 
@@ -29,10 +29,10 @@ def _spec_text(tmp_path, name=None) -> str:
 # ---------------------------------------------------------------- Suchpfad
 def test_search_order_env_then_data_then_registered_then_bundled(tmp_path, monkeypatch, projects_dir):
     env_dir, repo, bundled = tmp_path / "envdir", tmp_path / "repo", tmp_path / "_bundled-projects"
-    _write(env_dir / "a.fabrik.yaml", _spec_text(tmp_path))
-    _write(projects_dir / "b.fabrik.yaml", _spec_text(tmp_path))
-    _write(repo / ".fabrik" / "fabrik.yaml", _spec_text(tmp_path))
-    _write(bundled / "d.fabrik.yaml", _spec_text(tmp_path))
+    _write(env_dir / "a.fabrikant.yaml", _spec_text(tmp_path))
+    _write(projects_dir / "b.fabrikant.yaml", _spec_text(tmp_path))
+    _write(repo / ".fabrikant" / "fabrikant.yaml", _spec_text(tmp_path))
+    _write(bundled / "d.fabrikant.yaml", _spec_text(tmp_path))
     monkeypatch.setenv(config.PROJECTS_PATH_ENV, f"{env_dir}:")
     spec_sources.register_target(repo)
     names = [spec_sources.default_name(f) for f in spec_sources.spec_files()]
@@ -46,28 +46,28 @@ def test_search_dirs_dedupes_and_skips_empty_entries(tmp_path, monkeypatch, proj
 
 def test_env_entry_may_be_target_repo(tmp_path, monkeypatch):
     repo = tmp_path / "svc"
-    _write(repo / ".fabrik" / "fabrik.yaml", _spec_text(tmp_path))
+    _write(repo / ".fabrikant" / "fabrikant.yaml", _spec_text(tmp_path))
     monkeypatch.setenv(config.PROJECTS_PATH_ENV, str(repo))
-    assert spec_sources.spec_files() == [repo / ".fabrik" / "fabrik.yaml"]
+    assert spec_sources.spec_files() == [repo / ".fabrikant" / "fabrikant.yaml"]
 
 
 def test_json_specs_listed_after_yaml(tmp_path, projects_dir):
-    _write(projects_dir / "z.fabrik.yaml", "")
-    _write(projects_dir / "a.fabrik.json", "{}")
-    assert [f.name for f in spec_sources.spec_files()] == ["z.fabrik.yaml", "a.fabrik.json"]
+    _write(projects_dir / "z.fabrikant.yaml", "")
+    _write(projects_dir / "a.fabrikant.json", "{}")
+    assert [f.name for f in spec_sources.spec_files()] == ["z.fabrikant.yaml", "a.fabrikant.json"]
 
 
 # ---------------------------------------------------------------- Zielrepo-Spec + Registrierung
 def test_target_spec_defaults_name_and_root_to_repo(tmp_path):
     repo = tmp_path / "myapp"
-    f = _write(repo / ".fabrik" / "fabrik.yaml", LOOP)
+    f = _write(repo / ".fabrikant" / "fabrikant.yaml", LOOP)
     spec = specs.load_spec(f)
     assert spec["name"] == "myapp" and spec["root"] == str(repo)
 
 
 def test_register_target_is_idempotent_and_persisted(tmp_path):
     repo = tmp_path / "svc"
-    _write(repo / ".fabrik" / "fabrik.yaml", LOOP)
+    _write(repo / ".fabrikant" / "fabrikant.yaml", LOOP)
     spec_sources.register_target(repo)
     spec_sources.register_target(repo)
     assert spec_sources.registered_targets() == [repo.resolve()]
@@ -98,7 +98,7 @@ def test_register_target_write_is_atomic(tmp_path, monkeypatch):
     """Crash beim Schreiben (vor dem Rename) lässt das bestehende Register intakt."""
     first, second = tmp_path / "a", tmp_path / "b"
     for repo in (first, second):
-        _write(repo / ".fabrik" / "fabrik.yaml", LOOP)
+        _write(repo / ".fabrikant" / "fabrikant.yaml", LOOP)
     spec_sources.register_target(first)
     before = config.REGISTRY_FILE.read_text()
 
@@ -113,7 +113,7 @@ def test_register_target_write_is_atomic(tmp_path, monkeypatch):
 
 def test_cli_project_add(tmp_path, capsys):
     repo = tmp_path / "svc"
-    _write(repo / ".fabrik" / "fabrik.yaml", LOOP)
+    _write(repo / ".fabrikant" / "fabrikant.yaml", LOOP)
     cli.main(["project", "add", str(repo)])
     assert "registriert" in capsys.readouterr().out
     assert specs.load_projects()["svc"]["root"] == str(repo.resolve())
@@ -124,8 +124,8 @@ def test_cli_project_add(tmp_path, capsys):
 # ---------------------------------------------------------------- Konflikte
 def test_conflict_first_source_wins_and_is_reported(tmp_path, monkeypatch, projects_dir):
     env_dir = tmp_path / "envdir"
-    _write(env_dir / "dup.fabrik.yaml", _spec_text(tmp_path, "dup") + "description: env\n")
-    _write(projects_dir / "dup.fabrik.yaml", _spec_text(tmp_path, "dup") + "description: data\n")
+    _write(env_dir / "dup.fabrikant.yaml", _spec_text(tmp_path, "dup") + "description: env\n")
+    _write(projects_dir / "dup.fabrikant.yaml", _spec_text(tmp_path, "dup") + "description: data\n")
     monkeypatch.setenv(config.PROJECTS_PATH_ENV, str(env_dir))
     projects, conflicts = specs.collect_projects()
     assert projects["dup"]["description"] == "env"
@@ -134,8 +134,8 @@ def test_conflict_first_source_wins_and_is_reported(tmp_path, monkeypatch, proje
 
 def test_validate_exits_nonzero_on_conflict(tmp_path, monkeypatch, projects_dir, capsys):
     env_dir = tmp_path / "envdir"
-    _write(env_dir / "dup.fabrik.yaml", _spec_text(tmp_path, "dup"))
-    _write(projects_dir / "dup.fabrik.yaml", _spec_text(tmp_path, "dup"))
+    _write(env_dir / "dup.fabrikant.yaml", _spec_text(tmp_path, "dup"))
+    _write(projects_dir / "dup.fabrikant.yaml", _spec_text(tmp_path, "dup"))
     monkeypatch.setenv(config.PROJECTS_PATH_ENV, str(env_dir))
     with pytest.raises(SystemExit) as e:
         cli.cmd_validate(argparse.Namespace(specs=[], offline=False))
@@ -144,14 +144,14 @@ def test_validate_exits_nonzero_on_conflict(tmp_path, monkeypatch, projects_dir,
 
 
 def test_validate_ok_without_conflict(tmp_path, projects_dir, capsys):
-    _write(projects_dir / "ok.fabrik.yaml", _spec_text(tmp_path))
+    _write(projects_dir / "ok.fabrikant.yaml", _spec_text(tmp_path))
     with pytest.raises(SystemExit) as e:
         cli.cmd_validate(argparse.Namespace(specs=[], offline=False))
     assert e.value.code == 0 and "ok" in capsys.readouterr().out
 
 
 def test_broken_spec_is_kept_with_error(tmp_path, projects_dir):
-    _write(projects_dir / "bad.fabrik.yaml", "- nope\n")
+    _write(projects_dir / "bad.fabrikant.yaml", "- nope\n")
     assert "Mapping" in specs.load_projects()["bad"]["_error"]
 
 
@@ -159,8 +159,8 @@ def test_broken_spec_is_kept_with_error(tmp_path, projects_dir):
 def test_resolve_relative_prefers_spec_dir_then_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     _write(home / "prompts" / "p.md", "home")
-    monkeypatch.setattr(config, "FABRIK_HOME", home)
-    spec = tmp_path / "proj" / "x.fabrik.yaml"
+    monkeypatch.setattr(config, "FABRIKANT_HOME", home)
+    spec = tmp_path / "proj" / "x.fabrikant.yaml"
     assert spec_sources.resolve_relative("prompts/p.md", spec) == home / "prompts" / "p.md"
     local = _write(spec.parent / "prompts" / "p.md", "local")
     assert spec_sources.resolve_relative("prompts/p.md", spec) == local
@@ -169,9 +169,9 @@ def test_resolve_relative_prefers_spec_dir_then_home(tmp_path, monkeypatch):
 
 
 def test_agent_prompt_file_relative_to_spec(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "FABRIK_HOME", tmp_path / "home")
-    monkeypatch.delenv("FABRIK_AGENT_BACKEND", raising=False)
-    spec = tmp_path / "proj" / "x.fabrik.yaml"
+    monkeypatch.setattr(config, "FABRIKANT_HOME", tmp_path / "home")
+    monkeypatch.delenv("FABRIKANT_AGENT_BACKEND", raising=False)
+    spec = tmp_path / "proj" / "x.fabrikant.yaml"
     _write(spec.parent / "p.md", "Hallo {who}")
     ctx = {"spec_path": str(spec), "who": "Welt", "project": "p", "run_id": "r"}
     res = _step_agent(ctx, {"prompt_file": "p.md"}, lambda m: None)
@@ -179,8 +179,8 @@ def test_agent_prompt_file_relative_to_spec(tmp_path, monkeypatch):
 
 
 def test_agent_prompt_file_missing_reports_home_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "FABRIK_HOME", tmp_path / "home")
-    res = _step_agent({"spec_path": str(tmp_path / "x.fabrik.yaml")}, {"prompt_file": "nope.md"}, lambda m: None)
+    monkeypatch.setattr(config, "FABRIKANT_HOME", tmp_path / "home")
+    res = _step_agent({"spec_path": str(tmp_path / "x.fabrikant.yaml")}, {"prompt_file": "nope.md"}, lambda m: None)
     assert not res["ok"] and str(tmp_path / "home" / "nope.md") in res["summary"]
 
 
@@ -195,7 +195,7 @@ def test_substitute_only_known_keys_and_keeps_types():
 
 def test_vars_applied_to_whole_spec(tmp_path):
     f = _write(
-        tmp_path / "v.fabrik.yaml",
+        tmp_path / "v.fabrikant.yaml",
         f"vars: {{repo: o/r}}\nroot: {tmp_path}\ngithub: '{{repo}}'\n"
         "loops:\n  l1:\n    triggers: [{type: on_pr, repo: '{repo}'}]\n    steps:\n"
         "      - {type: shell, cmd: 'echo {repo} {issue_number}'}\n",
@@ -246,7 +246,7 @@ def _template(tmp_path, name="t", body=None) -> Path:
 
 def _expand(tmp_path, loops: str, extra="") -> dict:
     data = yaml.safe_load(f"{extra}\nloops:\n{loops}")
-    return spec_expand.expand_spec(data, tmp_path / "x.fabrik.yaml")["loops"]
+    return spec_expand.expand_spec(data, tmp_path / "x.fabrikant.yaml")["loops"]
 
 
 def test_template_params_precedence_with_over_vars_over_default(tmp_path):
@@ -372,7 +372,7 @@ def test_template_lookup_order(tmp_path, monkeypatch):
     bundled_t = _template(tmp_path / "bundled")
     monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_t.parent)
     monkeypatch.setattr(config, "TEMPLATES_DIR", bundled_t.parent)
-    spec = tmp_path / "spec" / "x.fabrik.yaml"
+    spec = tmp_path / "spec" / "x.fabrikant.yaml"
     assert spec_expand.find_template("t", spec) == spec_t
     assert spec_expand.find_template("t", None) == user_t
     user_t.unlink()
@@ -397,7 +397,7 @@ loops:
 def test_second_project_in_few_lines_uses_bundled_templates(tmp_path, monkeypatch):
     text = SECOND_PROJECT.format(root=tmp_path)
     assert len(text.splitlines()) <= 10 + 3  # Spec-Kern ≤ 10 Zeilen (+ name/root/github)
-    spec = specs.load_spec(_write(tmp_path / "app.fabrik.yaml", text))
+    spec = specs.load_spec(_write(tmp_path / "app.fabrikant.yaml", text))
     dev, rev = spec["loops"]["develop"], spec["loops"]["review-pr"]
     assert [s["name"] for s in dev["steps"]] == [
         "prepare", "changes", "lint", "test", "ship", "pr", "review", "gate", "merge",
@@ -407,7 +407,7 @@ def test_second_project_in_few_lines_uses_bundled_templates(tmp_path, monkeypatc
     assert dev["steps"][1]["model"] == "test-builder"
     assert "acme/app" not in rev["steps"][0]["prompt_file"]
     assert rev["triggers"][0] == {
-        "type": "on_pr", "repo": "acme/app", "labels": ["fabrik"], "exclude_labels": ["needs human"],
+        "type": "on_pr", "repo": "acme/app", "labels": ["fabrikant"], "exclude_labels": ["needs human"],
         "poll": 300, "reconcile": "head",
     }  # fmt: skip
 
@@ -417,15 +417,15 @@ def test_bundled_templates_missing_required_params_fail(tmp_path, monkeypatch):
         _expand(tmp_path, "  d: {use: develop}\n")
 
 
-def test_fabrik_spec_has_no_hardcoded_repo_outside_vars():
-    raw = yaml.safe_load((ROOT / "projects" / "fabrik.fabrik.yaml").read_text())
+def test_fabrikant_spec_has_no_hardcoded_repo_outside_vars():
+    raw = yaml.safe_load((ROOT / "projects" / "fabrikant.fabrikant.yaml").read_text())
     body = {k: v for k, v in raw.items() if k != "vars"}
-    assert "didaskomathetes/fabrik" not in json.dumps(body)
-    assert raw["vars"]["repo"] == "didaskomathetes/fabrik"
+    assert "didaskomathetes/fabrikant" not in json.dumps(body)
+    assert raw["vars"]["repo"] == "didaskomathetes/fabrikant"
 
 
-def test_fabrik_spec_expands_with_bundled_templates(monkeypatch):
-    path = ROOT / "projects" / "fabrik.fabrik.yaml"
+def test_fabrikant_spec_expands_with_bundled_templates(monkeypatch):
+    path = ROOT / "projects" / "fabrikant.fabrikant.yaml"
     raw = yaml.safe_load(path.read_text())
     spec = spec_expand.expand_spec(raw, path)
     assert [s["name"] for s in spec["loops"]["develop"]["steps"]][:4] == ["prepare", "changes", "check-adr", "lint"]
@@ -434,11 +434,11 @@ def test_fabrik_spec_expands_with_bundled_templates(monkeypatch):
     assert spec["loops"]["pr-reply"]["steps"][0]["model"] == spec["loops"]["develop"]["steps"][1]["model"]
 
 
-def test_fabrik_spec_builder_model_differs_from_reviewer_model():
+def test_fabrikant_spec_builder_model_differs_from_reviewer_model():
     """Cold Critic (ADR 0001/0003): Builder-Modell ≠ Reviewer-Modell — die
     Laufzeitprüfung in `pr_review`/`review` darf mit der Dogfooding-Konfiguration
     nicht anfallen. Der Reviewer läuft ohne Copilot (opencode + lokales Qwen)."""
-    raw = yaml.safe_load((ROOT / "projects" / "fabrik.fabrik.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "projects" / "fabrikant.fabrikant.yaml").read_text())
     v = raw["vars"]
     assert v["builder_model"].strip() != v["reviewer_model"].strip()
     assert v["reviewer_backend"] == "opencode"
@@ -447,12 +447,12 @@ def test_fabrik_spec_builder_model_differs_from_reviewer_model():
     assert raw["max_parallel"] == 1  # llama.cpp-Server verträgt nur eine Verbindung
 
 
-def test_fabrik_spec_review_steps_use_opencode_not_copilot(monkeypatch):
+def test_fabrikant_spec_review_steps_use_opencode_not_copilot(monkeypatch):
     """Die expandierten Review-Steps (develop/pr_review + review-pr) nutzen
     `reviewer_backend` (opencode), nicht den Template-Default `copilot` —
     Regression: `with:` übergibt nur `reviewer_model`, `reviewer_backend` kommt
     aus `vars` (ADR 0047: vars überschreiben Template-Defaults)."""
-    path = ROOT / "projects" / "fabrik.fabrik.yaml"
+    path = ROOT / "projects" / "fabrikant.fabrikant.yaml"
     raw = yaml.safe_load(path.read_text())
     spec = spec_expand.expand_spec(raw, path)
     review = [s for s in spec["loops"]["develop"]["steps"] if s["name"] == "review"][0]
@@ -470,18 +470,18 @@ def test_spec_path_reuses_given_projects(tmp_path, monkeypatch):
         raise AssertionError("load_projects darf nicht erneut laufen")
 
     monkeypatch.setattr(specs, "load_projects", no_reload)
-    spec = tmp_path / "a.fabrik.yaml"
+    spec = tmp_path / "a.fabrikant.yaml"
     assert specs.spec_path("a", {"a": {"_path": str(spec)}}) == spec
-    assert specs.spec_path("b", {}) == config.PROJECTS_DIR / "b.fabrik.yaml"
+    assert specs.spec_path("b", {}) == config.PROJECTS_DIR / "b.fabrikant.yaml"
 
 
-def test_fabrik_data_from_env_file(tmp_path):
-    """FABRIK_DATA aus fabrik.env wirkt auf die Pfad-Konstanten (Env-File vor den Konstanten geladen)."""
+def test_fabrikant_data_from_env_file(tmp_path):
+    """FABRIKANT_DATA aus fabrikant.env wirkt auf die Pfad-Konstanten (Env-File vor den Konstanten geladen)."""
     home, data = tmp_path / "home", tmp_path / "data"
-    _write(home / "fabrik.env", f"FABRIK_DATA={data}\n")
-    env = {k: v for k, v in os.environ.items() if k != "FABRIK_DATA"} | {"FABRIK_HOME": str(home)}
+    _write(home / "fabrikant.env", f"FABRIKANT_DATA={data}\n")
+    env = {k: v for k, v in os.environ.items() if k != "FABRIKANT_DATA"} | {"FABRIKANT_HOME": str(home)}
     out = subprocess.run(
-        [sys.executable, "-c", "from fabrik import config; print(config.PROJECTS_DIR)"],
+        [sys.executable, "-c", "from fabrikant import config; print(config.PROJECTS_DIR)"],
         env=env,
         capture_output=True,
         text=True,

@@ -23,7 +23,7 @@ ADR 0018 (`issue`-Step: Actions `list` und `block`; neue Felder für `create` un
    ändern die Relation in der GitHub-UI.
 2. **Refine-Loop:** `list-open → list-closed → classify → dependencies → refine-body →
    create-prerequisite → link-blockers → apply-label → promote → close-issue → report`.
-   - `list-open`/`list-closed` (`issue`-Action `list`): offene fabrik-Issues (≤ 100) und
+   - `list-open`/`list-closed` (`issue`-Action `list`): offene fabrikant-Issues (≤ 100) und
      die 30 zuletzt geschlossenen als Textliste `#N [Labels] Titel — Auszug`. Die
      Listen gelten als untrusted.
    - `classify` prüft Duplikate. Ein Duplikat führt zu `close` mit `close_kind` und
@@ -32,7 +32,7 @@ ADR 0018 (`issue`-Step: Actions `list` und `block`; neue Felder für `create` un
      (≤ 5 offene Issues; Tracking-Issues bündeln oft so viele Teil-Issues) und höchstens **eine** fehlende Voraussetzung
      (`prerequisite_title/body`): die kleinste Grundlage, die weder umgesetzt ist
      noch von einem offenen Issue abgedeckt wird.
-   - `create-prerequisite` legt die Voraussetzung als Issue mit Label `fabrik` an.
+   - `create-prerequisite` legt die Voraussetzung als Issue mit Label `fabrikant` an.
      Sie durchläuft damit selbst refine (Duplikat-Check, `needs approval` bei
      Architektur) und erbt die Priorität des abhängigen Issues (`inherit_labels`,
      Whitelist `p0–p3`, nie Status-Labels).
@@ -57,7 +57,7 @@ ADR 0018 (`issue`-Step: Actions `list` und `block`; neue Felder für `create` un
    belegen kein `max_per_poll`-Kontingent. Der Event-Modus ist ausgeschlossen
    (Spec-Validierung).
 5. **Einmaliger Backfill** (`deps-backfill`-Loop): dieselben Step-Bausteine (YAML-Anker
-   unter `x-shared-steps`), ohne Relabel/Close, einmal pro offenem fabrik-Issue.
+   unter `x-shared-steps`), ohne Relabel/Close, einmal pro offenem fabrikant-Issue.
    Er läuft mit 1 Run pro 120 s, damit ein Run die Voraussetzung des vorigen sieht.
    Ablauf: `develop` pausieren → Backlog abarbeiten → `deps-backfill` deaktivieren →
    `develop` fortsetzen.

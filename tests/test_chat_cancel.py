@@ -5,7 +5,7 @@ import threading
 import pytest
 from helpers import not_none
 
-from fabrik import chat, llm
+from fabrikant import chat, llm
 
 
 @pytest.fixture
@@ -14,12 +14,12 @@ def clean_llm(monkeypatch, tmp_path):
     import os
 
     for k in list(os.environ):
-        if k.startswith("FABRIK_LLM"):
+        if k.startswith("FABRIKANT_LLM"):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "_ACTIVE_FILE", tmp_path / "active_llm")
-    monkeypatch.setenv("FABRIK_LLM_PROVIDERS", "dummy")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
-    monkeypatch.setenv("FABRIK_LLM_DUMMY_MODEL", "m")
+    monkeypatch.setenv("FABRIKANT_LLM_PROVIDERS", "dummy")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_URL", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setenv("FABRIKANT_LLM_DUMMY_MODEL", "m")
     llm.reset_cache()
     llm.set_active("dummy")
     yield
@@ -144,5 +144,5 @@ def test_llm_chat_valid_proposal_registers_and_applies(clean_llm, monkeypatch, t
     assert "prop" in chat._pending_specs
     out = chat._chat("apply prop")
     assert "aktualisiert" in out
-    assert (projects_dir / "prop.fabrik.yaml").read_text().startswith("name: prop")
+    assert (projects_dir / "prop.fabrikant.yaml").read_text().startswith("name: prop")
     assert "prop" not in chat._pending_specs

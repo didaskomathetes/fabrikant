@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from fabrik.fetch.profiles import is_readonly_credential, is_write_credential
-from fabrik.fetch.scan import _strip_style_blocks, scan, verdict
+from fabrikant.fetch.profiles import is_readonly_credential, is_write_credential
+from fabrikant.fetch.scan import _strip_style_blocks, scan, verdict
 
 
 def _rules(text: str) -> set[str]:

@@ -16,7 +16,7 @@ run 15 min later would start fresh anyway.
 
 ## Decision
 
-The agent step (`src/fabrik/steps/agent.py`, `_step_agent_backend`) treats
+The agent step (`src/fabrikant/steps/agent.py`, `_step_agent_backend`) treats
 **transport errors during polling** as transient:
 
 - `be.poll()`/`be.transcript()` throw → the step does **not** kill the run,

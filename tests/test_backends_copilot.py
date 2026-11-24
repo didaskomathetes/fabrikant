@@ -10,8 +10,8 @@ import time
 
 import pytest
 
-from fabrik.backends import CopilotBackend
-from fabrik.steps.agent import _step_agent_backend
+from fabrikant.backends import CopilotBackend
+from fabrikant.steps.agent import _step_agent_backend
 
 _FAKE_EXIT_TIMEOUT_S = 2.0
 
@@ -279,10 +279,10 @@ def test_extract_result_complete_stream_with_result_event():
         '{"type":"session.start","data":{"sessionId":"x"}}\n'
         '{"type":"assistant.turn_start","data":{"turnId":"0"}}\n'
         '{"type":"assistant.message","data":{"content":"Zwischenstand"}}\n'
-        '{"type":"assistant.message","data":{"content":"nichts zu tun — keine offene fabrik-PR"}}\n'
+        '{"type":"assistant.message","data":{"content":"nichts zu tun — keine offene fabrikant-PR"}}\n'
         '{"type":"result","exitCode":0,"usage":{}}\n'
     )
-    assert CopilotBackend._extract_result(out) == ("nichts zu tun — keine offene fabrik-PR", True)
+    assert CopilotBackend._extract_result(out) == ("nichts zu tun — keine offene fabrikant-PR", True)
 
 
 def test_poll_failed_when_stream_truncated_without_result_event():
@@ -537,8 +537,8 @@ def test_agent_backend_copilot_is_known(monkeypatch):
     # copilot ist registriert → kein ValueError, model ist optional.
     import shutil
 
-    monkeypatch.delenv("FABRIK_AGENT_MODEL", raising=False)
-    monkeypatch.delenv("FABRIK_COPILOT_TOOLS", raising=False)
+    monkeypatch.delenv("FABRIKANT_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("FABRIKANT_COPILOT_TOOLS", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: None)  # health() → False
     r = _step_agent_backend({}, {}, lambda m: None, "copilot", "p")
     assert r["ok"] is False
@@ -580,7 +580,7 @@ class _Log:
 
 
 def test_record_cost_event_carries_premium_requests_only_when_reported():
-    from fabrik.steps.agent import _record_cost
+    from fabrikant.steps.agent import _record_cost
 
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
     lg = _Log()

@@ -10,14 +10,14 @@ import urllib.error
 import pytest
 from helpers import load_script
 
-import fabrik
-from fabrik import config, gitops
-from fabrik.approval import ApprovalRequest
-from fabrik.engine import run_loop
-from fabrik.failures import ConfigError
-from fabrik.hosting import get_provider
-from fabrik.specs import _validate_trigger
-from fabrik.steps import escalation
+import fabrikant
+from fabrikant import config, gitops
+from fabrikant.approval import ApprovalRequest
+from fabrikant.engine import run_loop
+from fabrikant.failures import ConfigError
+from fabrikant.hosting import get_provider
+from fabrikant.specs import _validate_trigger
+from fabrikant.steps import escalation
 
 PR_URL = "https://github.com/o/r/pull/7"
 LABEL = {"name": "needs human"}
@@ -54,20 +54,22 @@ def _fake_github(monkeypatch, item: dict, comments: list[dict], *, delete_status
 
 def test_latest_marker_wins_and_text_is_cleaned():
     comments = [
-        _comment("alt\n<!-- fabrik-escalate kind=stalled -->", 1),
+        _comment("alt\n<!-- fabrikant-escalate kind=stalled -->", 1),
         _comment("Fremder Kommentar", 2),
-        _comment("Braucht MAS-PR.\n\n<!-- fabrik-reply re=7-1 -->\n<!-- fabrik-escalate kind=blocked re=7-1 -->", 3),
+        _comment(
+            "Braucht MAS-PR.\n\n<!-- fabrikant-reply re=7-1 -->\n<!-- fabrikant-escalate kind=blocked re=7-1 -->", 3
+        ),
     ]
     esc = escalation.Escalation.from_comments(comments)
     assert esc == escalation.Escalation("blocked", "Braucht MAS-PR.", f"{PR_URL}#issuecomment-3")
 
 
 def test_unknown_kind_and_missing_marker_fall_back_to_blocked(monkeypatch):
-    assert escalation.Escalation.from_comments([_comment("<!-- fabrik-escalate kind=panic -->")]).kind == "blocked"
+    assert escalation.Escalation.from_comments([_comment("<!-- fabrikant-escalate kind=panic -->")]).kind == "blocked"
     manual = escalation.Escalation.from_comments([_comment("nur Text")])
     assert manual.kind == "blocked" and "von Hand" in manual.why
     monkeypatch.setattr(escalation, "MAX_WHY_CHARS", 5)
-    assert escalation.Escalation.from_comments([_comment("abcdefgh <!-- fabrik-escalate kind=scope -->")]).why == (
+    assert escalation.Escalation.from_comments([_comment("abcdefgh <!-- fabrikant-escalate kind=scope -->")]).why == (
         "abcde …"
     )
 
@@ -77,7 +79,7 @@ def test_unknown_kind_and_missing_marker_fall_back_to_blocked(monkeypatch):
 
 def test_step_pauses_with_escalation_request(monkeypatch):
     item = {"labels": [LABEL], "html_url": PR_URL, "title": "Fix X", "pull_request": {}}
-    _fake_github(monkeypatch, item, [_comment("Stillstand.\n<!-- fabrik-escalate kind=stalled -->")])
+    _fake_github(monkeypatch, item, [_comment("Stillstand.\n<!-- fabrikant-escalate kind=stalled -->")])
     ctx = _ctx()
     res = escalation._step_escalation(ctx, {"repo": "o/r"}, lambda _: None)
     assert res["needs_approval"] and ctx[escalation.RESUME_FLAG] == "true"
@@ -152,14 +154,14 @@ def test_comments_are_paginated(monkeypatch):
 
 def test_engine_pauses_and_resume_continues(runs_dir, projects_dir, tmp_path, monkeypatch):
     """Durch die Engine: Pause mit kind im Record, Resume entfernt das Label."""
-    from fabrik import engine
+    from fabrikant import engine
 
     item = {"labels": [LABEL], "html_url": PR_URL, "pull_request": {}}
-    calls = _fake_github(monkeypatch, item, [_comment("x <!-- fabrik-escalate kind=exhausted -->")])
+    calls = _fake_github(monkeypatch, item, [_comment("x <!-- fabrikant-escalate kind=exhausted -->")])
     monkeypatch.setattr(engine, "_step_escalation", escalation._step_escalation)
     root = tmp_path / "root"
     root.mkdir()
-    (projects_dir / "esc.fabrik.yaml").write_text(
+    (projects_dir / "esc.fabrikant.yaml").write_text(
         f"name: esc\nroot: {root}\nloops:\n  e:\n    worktree: false\n    steps:\n"
         "      - name: gate\n        type: escalation\n        repo: o/r\n        item: '7'\n"
     )
@@ -185,24 +187,26 @@ def test_approval_kind_round_trip_and_lines():
 
 def test_on_pr_exclude_labels(monkeypatch):
     prs = [
-        {"number": 1, "updated_at": "t", "labels": [{"name": "fabrik"}]},
-        {"number": 2, "updated_at": "t", "labels": [{"name": "fabrik"}, LABEL]},
+        {"number": 1, "updated_at": "t", "labels": [{"name": "fabrikant"}]},
+        {"number": 2, "updated_at": "t", "labels": [{"name": "fabrikant"}, LABEL]},
     ]
     fired = []
-    monkeypatch.setattr(fabrik.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
+    monkeypatch.setattr(fabrikant.scheduler, "_safe_run", lambda n, ln, t, **kw: fired.append(t))
     monkeypatch.setattr(gitops, "_gh_token", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_token_safe", lambda role="dev": "tok")
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t, payload=None: list(prs))
-    monkeypatch.setattr(fabrik.scheduler, "loop_run_triggers", lambda n, ln: set())
-    trig = {"repo": "o/r", "poll": 0, "labels": ["fabrik"], "exclude_labels": ["needs human"], "reconcile": True}
-    fabrik.Scheduler()._check_pr("p", "l", {"github": "o/r"}, trig)
+    monkeypatch.setattr(fabrikant.scheduler, "loop_run_triggers", lambda n, ln: set())
+    trig = {"repo": "o/r", "poll": 0, "labels": ["fabrikant"], "exclude_labels": ["needs human"], "reconcile": True}
+    fabrikant.Scheduler()._check_pr("p", "l", {"github": "o/r"}, trig)
     assert fired == ["on_pr:#1"]
 
 
 def test_unprocessed_issues_skip_excluded_without_using_quota(monkeypatch):
     issues = [{"number": 1, "labels": [LABEL]}, {"number": 2, "labels": []}]
-    monkeypatch.setattr(fabrik.scheduler, "_iter_open_issues_oldest_first", lambda repo, provider, labels: iter(issues))
-    todo = fabrik.scheduler._unprocessed_issues("o/r", get_provider("o/r"), [], set(), 1, exclude=["needs human"])
+    monkeypatch.setattr(
+        fabrikant.scheduler, "_iter_open_issues_oldest_first", lambda repo, provider, labels: iter(issues)
+    )
+    todo = fabrikant.scheduler._unprocessed_issues("o/r", get_provider("o/r"), [], set(), 1, exclude=["needs human"])
     assert [it["number"] for it in todo] == [2]
 
 

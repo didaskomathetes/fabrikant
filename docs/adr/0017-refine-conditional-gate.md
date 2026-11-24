@@ -64,8 +64,8 @@ approval_when:
 promote (approval_when: needs approval) → close-issue (approval_when: close proposed) →
 report`. Der Classify-Prompt sagt explizit, dass `ready for development` ohne
 Freigabe in die Entwicklung geht. Die Kriterien für `needs approval` stehen im
-classify-Prompt (`projects/fabrik.fabrik.yaml`) und werden von
-`tests/test_fabrik_spec.py` festgehalten; im Zweifel `ready for development`.
+classify-Prompt (`projects/fabrikant.fabrikant.yaml`) und werden von
+`tests/test_fabrikant_spec.py` festgehalten; im Zweifel `ready for development`.
 
 ## Begründung
 
@@ -99,13 +99,13 @@ classify-Prompt (`projects/fabrik.fabrik.yaml`) und werden von
 - **Bedingung in Shell (`exit` + Step-Result):** Shell-Steps können nicht
   pausieren; ein eigener Step-Typ nur dafür wäre mehr Fläche als ein Feld.
 - **`needs approval` weiterhin nur labeln (ohne Pause):** dann gäbe es keinen
-  Freigabeweg in der fabrik-UI; der Mensch müsste auf GitHub suchen.
+  Freigabeweg in der fabrikant-UI; der Mensch müsste auf GitHub suchen.
 
 ## Änderung 2026-10-21 (Akzeptiert)
 
 **Kontext:** Der classify-Prompt nannte Themen statt Gründe und endete mit
 „im Zweifel: `needs approval`" — fast jedes Issue mit Engine-Bezug wurde gegated
-(z. B. #241, #237). Ein gegateter Close war nur in der fabrik-UI sichtbar, nicht
+(z. B. #241, #237). Ein gegateter Close war nur in der fabrikant-UI sichtbar, nicht
 auf GitHub.
 
 **Entscheidung:**

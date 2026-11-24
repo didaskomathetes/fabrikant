@@ -21,11 +21,11 @@ from test_relay_commands import (
     starter,
 )
 
-from fabrik.relay import archive, commands, status
-from fabrik.relay.config import LOOP_SESSION, RelayConfig, TrailArchiveConfig
-from fabrik.relay.model import Status, StatusState, TrailRef
-from fabrik.relay.workspace import Workspace, handoff_path, relay_dir
-from fabrik.runmodel import FailureKind
+from fabrikant.relay import archive, commands, status
+from fabrikant.relay.config import LOOP_SESSION, RelayConfig, TrailArchiveConfig
+from fabrikant.relay.model import Status, StatusState, TrailRef
+from fabrikant.relay.workspace import Workspace, handoff_path, relay_dir
+from fabrikant.runmodel import FailureKind
 
 PASS = "## Summary\nAll good.\n\n<!-- relay-audit verdict=pass -->"
 FAIL = "## Summary\nBroken.\n\n<!-- relay-audit verdict=fail -->\n"
@@ -124,7 +124,7 @@ def test_pass_with_git_ref_archives_audit_commit_then_strips_trail(repo):
     state = gh.states[ISSUE]
     ref = not_none(state.archive)
     audit_commit = git(repo, "rev-parse", "HEAD~1").strip()
-    assert gh.refs == {f"refs/fabrik/relay/{ISSUE}/audit-1": audit_commit} and ref.commit == audit_commit
+    assert gh.refs == {f"refs/fabrikant/relay/{ISSUE}/audit-1": audit_commit} and ref.commit == audit_commit
     assert ref.sha256 == state.trail_sha256
     # Audit-Commit enthält den Trail inkl. Hash-Zeile; der Lösch-Commit danach nichts mehr davon.
     report = git(repo, "show", f"{audit_commit}:{TRAIL}/AUDIT.md")
@@ -150,10 +150,10 @@ def test_pass_with_local_archive_writes_manifest_and_files(repo, local_base):
 
 def test_existing_archive_number_is_never_overwritten(repo):
     gh = finished(repo)
-    gh.refs[f"refs/fabrik/relay/{ISSUE}/audit-1"] = "0" * 40
+    gh.refs[f"refs/fabrikant/relay/{ISSUE}/audit-1"] = "0" * 40
     audit(repo, gh, trail_archive=GIT_REF)
     assert not_none(gh.states[ISSUE].archive).index == 2
-    assert gh.refs[f"refs/fabrik/relay/{ISSUE}/audit-1"] == "0" * 40
+    assert gh.refs[f"refs/fabrikant/relay/{ISSUE}/audit-1"] == "0" * 40
 
 
 def test_failed_archive_keeps_trail_and_warns(repo, monkeypatch):
@@ -188,7 +188,7 @@ def test_fail_verdict_archives_nothing(repo):
 
 def test_without_config_warns_when_a_pr_contains_the_trail(repo):
     gh = finished(repo)
-    gh.prs[f"fabrik/relay/{ISSUE}"] = 42
+    gh.prs[f"fabrikant/relay/{ISSUE}"] = 42
     audit(repo, gh)
     assert "PR #42 still contains the relay trail" in gh.states[ISSUE].trail_warning
     assert f"{TRAIL}/AUDIT.md" in tracked(repo)
@@ -203,7 +203,7 @@ def test_without_config_and_without_pr_there_is_no_warning(repo):
 # ── Trail-Link im PR-Body ────────────────────────────────────────────────────
 
 PR = 42
-BRANCH = f"fabrik/relay/{ISSUE}"
+BRANCH = f"fabrikant/relay/{ISSUE}"
 
 
 def test_pass_links_the_archive_in_the_pr_body_and_keeps_its_text(repo):
@@ -213,9 +213,9 @@ def test_pass_links_the_archive_in_the_pr_body_and_keeps_its_text(repo):
     ref = not_none(gh.states[ISSUE].archive)
     body = gh.pr_bodies[PR]
     assert body.startswith("## Included\n| boto3 |\n\n" + status.PR_TRAIL_START)
-    assert f"[`audit-1`]({ref.uri})" in body and f"`refs/fabrik/relay/{ISSUE}/audit-1`" in body
+    assert f"[`audit-1`]({ref.uri})" in body and f"`refs/fabrikant/relay/{ISSUE}/audit-1`" in body
     assert f"blob/{ref.commit}/{TRAIL}/AUDIT.md" in body and ref.sha256 in body
-    assert f"git fetch origin refs/fabrik/relay/{ISSUE}/audit-1" in body
+    assert f"git fetch origin refs/fabrikant/relay/{ISSUE}/audit-1" in body
     assert f"PR #{PR}: Trail-Link gesetzt" in summary
 
 
@@ -342,7 +342,7 @@ def test_git_ref_restore_fetches_a_missing_commit(tmp_path):
     gh = FakeGitHub([])
     with pytest.raises(archive.ArchiveError):  # Fetch ist ein Fake: Commit bleibt unbekannt
         archive.GitRefArchive(gh, "o/r", root, fetch).restore(ref)
-    assert fetched == [f"+refs/fabrik/relay/{ISSUE}/audit-1:refs/fabrik/relay/{ISSUE}/audit-1"]
+    assert fetched == [f"+refs/fabrikant/relay/{ISSUE}/audit-1:refs/fabrikant/relay/{ISSUE}/audit-1"]
     with pytest.raises(archive.ArchiveError, match="kein Fetch"):
         archive.GitRefArchive(gh, "o/r", root).restore(ref)
 

@@ -1,9 +1,9 @@
-"""Worker pool: bounded concurrency (FABRIK_WORKERS) for local dev."""
+"""Worker pool: bounded concurrency (FABRIKANT_WORKERS) for local dev."""
 
 import threading
 import time
 
-import fabrik
+import fabrikant
 
 
 def _concurrency_probe(n_tasks, sleep_s):
@@ -25,7 +25,7 @@ def _concurrency_probe(n_tasks, sleep_s):
 
 
 def test_one_worker_runs_serially():
-    pool = fabrik._WorkerPool(1)
+    pool = fabrikant._WorkerPool(1)
     try:
         task, read = _concurrency_probe(5, 0.05)
         for _ in range(5):
@@ -37,7 +37,7 @@ def test_one_worker_runs_serially():
 
 
 def test_n_workers_bounds_concurrency():
-    pool = fabrik._WorkerPool(3)
+    pool = fabrikant._WorkerPool(3)
     try:
         task, read = _concurrency_probe(6, 0.1)
         for _ in range(6):
@@ -49,24 +49,24 @@ def test_n_workers_bounds_concurrency():
 
 
 def test_pool_size_floor_is_one():
-    assert fabrik._WorkerPool(0).size == 1
-    assert fabrik._WorkerPool(-5).size == 1
+    assert fabrikant._WorkerPool(0).size == 1
+    assert fabrikant._WorkerPool(-5).size == 1
 
 
 def test_get_run_pool_respects_env(monkeypatch):
-    monkeypatch.setattr(fabrik.engine, "_run_pool", None)
-    monkeypatch.setenv("FABRIK_WORKERS", "2")
-    pool = fabrik._get_run_pool()
+    monkeypatch.setattr(fabrikant.engine, "_run_pool", None)
+    monkeypatch.setenv("FABRIKANT_WORKERS", "2")
+    pool = fabrikant._get_run_pool()
     assert pool.size == 2
     pool.shutdown()
-    monkeypatch.setattr(fabrik.engine, "_run_pool", None)
+    monkeypatch.setattr(fabrikant.engine, "_run_pool", None)
 
 
 def test_get_run_pool_is_singleton(monkeypatch):
-    monkeypatch.setattr(fabrik.engine, "_run_pool", None)
-    monkeypatch.setenv("FABRIK_WORKERS", "1")
-    a = fabrik._get_run_pool()
-    b = fabrik._get_run_pool()
+    monkeypatch.setattr(fabrikant.engine, "_run_pool", None)
+    monkeypatch.setenv("FABRIKANT_WORKERS", "1")
+    a = fabrikant._get_run_pool()
+    b = fabrikant._get_run_pool()
     assert a is b
     a.shutdown()
-    monkeypatch.setattr(fabrik.engine, "_run_pool", None)
+    monkeypatch.setattr(fabrikant.engine, "_run_pool", None)

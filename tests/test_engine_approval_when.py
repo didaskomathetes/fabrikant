@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from fabrik.engine import _approval_condition, run_loop
+from fabrikant.engine import _approval_condition, run_loop
 
 
 def _write_spec(projects_dir, tmp_path, name, steps_yaml, tier=None):
@@ -20,7 +20,7 @@ def _write_spec(projects_dir, tmp_path, name, steps_yaml, tier=None):
     if tier is not None:
         lines.append(f"    tier: {tier}")
     lines += ["    steps:", body]
-    (projects_dir / f"{name}.fabrik.yaml").write_text("\n".join(lines) + "\n")
+    (projects_dir / f"{name}.fabrikant.yaml").write_text("\n".join(lines) + "\n")
 
 
 _STEPS = (
