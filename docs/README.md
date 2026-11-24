@@ -13,7 +13,8 @@ Current documentation for the fabrik framework. Architecture decisions are in
 |---|---|
 | [roadmap.md](roadmap.md) | The plan: P0→P3 phases with a status per item (shipped / in-flight / open / deferred / dropped), the first wins, and known contradictions. |
 | [backends.md](backends.md) | Agent backends (`opencode`, `claude_code`, `codex`, `copilot`): interface, transports, models, permissions, auth. |
-| [ci.md](ci.md) | GitHub CI workflow (`test`, `browser` jobs), secrets handling, artifact-leak rules. |
+| [ci.md](ci.md) | GitHub CI workflow (`test`, `package`, `browser` jobs; `release.yml` for tags), secrets handling, artifact-leak rules. |
+| [plugins.md](plugins.md) | Installing fabrik (pip/Docker), `fabrik init`, writing step plugins (ADR 0069). |
 | [relay.md](relay.md) | Relay tasks: how to write a brief, the session/audit flow, and how to intervene. |
 | [sonarqube.md](sonarqube.md) | Local SonarQube setup, `sonar-scan.sh` usage, PR comments via fabrik loops. |
 | [screenshots/](screenshots/) | UI screenshots. |

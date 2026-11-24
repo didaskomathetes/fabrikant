@@ -19,9 +19,21 @@ projects, loops, runs, live logs and a chat interface.
   explicitly marked critical steps (`approval: true`) pause the run
   until a human approves
 
+## Install
+
+```bash
+pip install fabrik                 # Python 3.11+; or: docker run -p 8321:8321 -v fabrik-data:/data <image>
+mkdir my-factory && cd my-factory && fabrik init
+fabrik serve                       # your specs live in ./projects, custom steps in ./plugins
+```
+
+Your own work is only specs (`projects/*.fabrik.yaml`) and optional custom step packages registered via the
+`fabrik.steps` entry point — see [docs/plugins.md](docs/plugins.md) and ADR 0069.
+
 ## Getting started
 
 ```bash
+fabrik init [DIR]       # scaffold a project directory (specs, fabrik.env, plugin skeleton)
 fabrik serve            # engine + UI + scheduler, 127.0.0.1:8321
 fabrik list             # projects + loops
 fabrik validate         # check specs (--offline [SPEC…]: without root check, e.g. CI)
