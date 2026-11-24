@@ -1,6 +1,6 @@
 # ADR 0069: Distribution and Plugin Contract — `pip install fabrik`, Docker, Step Plugins
 
-**Status:** Proposed (2026-11-24)
+**Status:** Accepted (2026-11-24, merged to main)
 **Affects:** ADR 0047 (spec sources, templates), ADR 0056 (adapter registry), ADR 0063 (provider
 registry, entry-point pattern), ADR 0034 (storage).
 

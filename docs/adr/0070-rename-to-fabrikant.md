@@ -1,6 +1,6 @@
 # ADR 0070: Rename to fabrikant
 
-**Status:** Proposed (2026-11-24)
+**Status:** Accepted (2026-11-24, merged to main)
 **Affects:** ADR 0069 (distribution and plugin contract), ADR 0047 (spec sources), ADR 0063 (provider registry).
 
 ## Context
