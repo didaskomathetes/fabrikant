@@ -1,6 +1,6 @@
 # ADR 0068: Golden Runs — Run-Store Mark + `eval --golden`
 
-**Status:** Draft (2026-11-25)
+**Status:** Accepted (2026-11-24)
 **Relates to:** ADR 0065 (Golden Runs, `fabrikant eval`), ADR 0034 (run store, JSON + SQL), `docs/roadmap.md` First win 2 (#130)
 
 ## Context

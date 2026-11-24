@@ -4,9 +4,9 @@
 a control changes, and link the ADR that made the change. Individual decisions stay in
 ADRs; this page is the map that connects them.
 
-**Reviewed against:** ADRs 0008, 0010, 0026, 0030, 0050, 0051, 0054, 0060 (plus the
-MCP server, golden/eval and fetcher, since merged). Items marked *(verify)* were
-derived from ADR text and not checked against the code.
+**Reviewed against:** ADRs 0008, 0010, 0026, 0030, 0050, 0051, 0054, 0060 (incl. its
+stage-C amendment), 0064, 0065, 0066. Items marked *(verify)* were derived from ADR text
+and not checked against the code.
 
 ## 1. What is being protected
 
@@ -87,11 +87,11 @@ Boundaries that matter, in order of how much they carry:
 | Dual identity: builder ≠ reviewer | 2 | ADR 0010 | Accepted |
 | Pattern-based secret redaction in alert log tails | 1 | ADR 0026 | Accepted |
 | Local users, roles (`viewer`/`operator`/`admin`), CSRF, loopback bind, audit fields | 3 | ADR 0030 | Accepted; default mode `none` |
-| Agent env allowlist — agents do not inherit `os.environ` | 1 | ADR 0050 | ADR says Proposed *(verify: appears shipped)* |
+| Agent env allowlist — agents do not inherit `os.environ` | 1 | ADR 0050 | ADR says Proposed; shipped (`agentenv.build_agent_env`, used by the one-shot backends) |
 | Egress default-deny via allowlist proxy; internal sandbox network | 1 | ADR 0051 | Accepted, implemented |
 | Per-run agent container (cap-drop, read-only, limits) | 1, 2 | ADR 0054 | Opt-in; image/host-exec points open |
-| Fetcher: approval by domain/URL, SSRF guard, scan stages A/B, quarantine, ledger | 4 | ADR 0060 | Accepted (2026-11-19) |
-| MCP server: stdio only; `--read-only` wins over every opt-in; approve/reject (`--allow-approvals`) and spec-write proposals (`--allow-spec-write`) are off by default; secret-looking values masked; spec changes only via human-applied proposals | 3 | ADR 0064 | Accepted (amended 2026-11-23) |
+| Fetcher: approval by domain/URL, SSRF guard, scan stages A/B/C (C = in-process detector; scan is signal only, a verdict never grants capability), quarantine, ledger | 4 | ADR 0060 | Accepted (2026-11-19) |
+| MCP server: stdio only; `--read-only` wins over every opt-in; approve/reject (`--allow-approvals`) and spec-write proposals (`--allow-spec-write`) are off by default; secret-looking values masked; spec changes only via human-applied proposals. Other mutating tools (e.g. `start_run`) are on by default unless `--read-only` | 3 | ADR 0064 | Accepted (amended 2026-11-23) |
 
 ## 6. Known gaps and residual risk
 
