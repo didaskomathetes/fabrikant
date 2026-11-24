@@ -8,6 +8,17 @@ version = "0.1.0"
 description = "fabrik — a local software factory: agentic development loops as YAML specs"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Operating System :: POSIX",
+]
 dependencies = [
     "alembic>=1.13",
     "cryptography>=50.0.2",

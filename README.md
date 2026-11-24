@@ -1059,6 +1059,19 @@ gh label delete "ready to develop" --repo OWNER/REPO --yes   # optional, afterwa
 - `echochamber` — meeting pipeline (lint/smoke, worktree on the M3 branch)
 - `gods-last-garden` (private, `FABRIK_DATA`) — Godot FPS (lint=import, test=headless battery)
 
+## Licensing
+
+**Open core** (Dagster-style):
+
+- **Core — Apache 2.0** (this repo): engine, CLI, web UI, spec format and the
+  plugin contract. Free to use, modify and redistribute, including
+  commercially.
+- **Closed / enterprise features** — separate packages built on the
+  `fabrik.steps` plugin contract (ADR 0069), under a commercial license and
+  distributed outside this repo. The core never requires them.
+- **SaaS** — fabrik as a hosted service is a service offering and is not
+  covered by this repository's license.
+
 ## Roadmap
 
 - [x] `agent` steps with the opencode backend (P1; SPIKE: `docs/spike-opencode.md`)

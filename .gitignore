@@ -14,3 +14,5 @@ selftest/reports/
 # Dienstliche Projekt-Specs/Prompts bleiben lokal (privates Repo, keine Firmendetails)
 projects/ai-lab-*.fabrik.yaml
 prompts/ailab-*.prompt.md
+projects/gods-last-garden.fabrik.yaml
+projects/echochamber.fabrik.yaml
