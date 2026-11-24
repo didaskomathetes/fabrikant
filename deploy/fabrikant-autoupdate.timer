@@ -1,5 +1,5 @@
-# Alle 5 min — Merges kommen frühestens im Minutentakt; pr-reply läuft alle 5 min,
-# Leerlauf-Fenster zum Neustarten gibt es daher regelmäßig.
+# Every 5 min — merges arrive at most once per minute; pr-reply runs every 5 min,
+# so idle windows for restarting occur regularly.
 
 [Unit]
 Description=Fabrikant — autoupdate every 5 min

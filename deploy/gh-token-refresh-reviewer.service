@@ -1,8 +1,8 @@
-# gh-token-refresh (reviewer) — GitHub-App-Installation-Token für fabrikant erneuern (ADR 0010).
+# gh-token-refresh (reviewer) — renew the GitHub App installation token for fabrikant (ADR 0010).
 #
-# Mintet alle 30 min ein frisches 1h-Installation-Token für die
-# fabrikant-reviewer-App (--role reviewer) und schreibt es nach $FABRIKANT_ENV_FILE
-# (state/github.env). fabrikant liest die Datei pro API-Call neu — kein Restart.
+# Mints a fresh 1h installation token every 30 min for the
+# fabrikant-reviewer app (--role reviewer) and writes it to $FABRIKANT_ENV_FILE
+# (state/github.env). fabrikant re-reads the file on every API call — no restart.
 #
 # Install:
 #   cp deploy/gh-token-refresh-reviewer.{service,timer} ~/.config/systemd/user/
@@ -13,18 +13,18 @@
 #   systemctl --user status gh-token-refresh-reviewer.timer
 #   journalctl --user -u gh-token-refresh-reviewer.service -f
 #
-# Config (REVIEWER_APP_ID, REVIEWER_APP_KEY_FILE, REVIEWER_INSTALLATION_ID) kommt
-# aus fabrikant/fabrikant.env — das Script lädt es selbst als Fallback.
+# Config (REVIEWER_APP_ID, REVIEWER_APP_KEY_FILE, REVIEWER_INSTALLATION_ID) comes
+# from fabrikant/fabrikant.env — the script loads it itself as a fallback.
 #
-# Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
+# Path: FABRIKANT_HOME (= the fabrikant/ directory of the checkout) comes from
+# ~/.config/fabrikant/deploy.env — see docs/operations.md, "Local operation".
 
 [Unit]
-Description=Fabrikant — GitHub-App-Installation-Token refresh (fabrikant-reviewer)
+Description=Fabrikant — GitHub App installation token refresh (fabrikant-reviewer)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 EnvironmentFile=-%h/.config/fabrikant/deploy.env
-ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && exec .venv/bin/python scripts/gh-token-refresh.py --role reviewer'
+ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME missing, see ~/.config/fabrikant/deploy.env}" && exec .venv/bin/python scripts/gh-token-refresh.py --role reviewer'

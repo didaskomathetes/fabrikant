@@ -1,19 +1,19 @@
-# Loop-Vorlage `review-pr`: Cross-Model-Code-Review neuer/aktualisierter PRs mit Label.
-# Einbindung (ADR 0047):  review-pr: {use: review-pr, with: {prompt_file: ..., model: ...}}
-# `params`: Defaults; `null` = Pflicht (per `with:` oder Spec-`vars:`).
+# Loop template `review-pr`: cross-model code review of new/updated PRs with a label.
+# Usage (ADR 0047):  review-pr: {use: review-pr, with: {prompt_file: ..., model: ...}}
+# `params`: defaults; `null` = required (via `with:` or spec `vars:`).
 params:
   repo: null
-  prompt_file: null  # Review-Prompt (relativ zur Spec, Fallback FABRIKANT_HOME)
-  reviewer_model: null  # ≠ Builder-Modell (Leitprinzip 4)
+  prompt_file: null  # review prompt (relative to the spec, falls back to FABRIKANT_HOME)
+  reviewer_model: null  # ≠ builder model (guiding principle 4)
   reviewer_backend: copilot
-  pr_label: fabrikant  # manuelle/Refactor-PRs; develop-PRs tragen `fabrikant-develop` (kein Doppel-Review, ADR 0010)
+  pr_label: fabrikant  # manual/refactor PRs; develop PRs carry `fabrikant-develop` (no double review, ADR 0010)
   poll: 300
   timeout: 1800
-  review_context: []  # extra_context des Review-Steps
-  human_label: needs human  # eskalierte PRs (ADR 0059) nicht reviewen
-  stall_rounds: 2  # so viele changes_requested-Runden ohne Builder-Commit → Eskalation `stalled`
+  review_context: []  # extra_context of the review step
+  human_label: needs human  # do not review escalated PRs (ADR 0059)
+  stall_rounds: 2  # this many changes_requested rounds without a builder commit → escalation `stalled`
 loop:
-  description: "Code-Review neuer/aktualisierter PRs mit Label {pr_label} — Reviewer {reviewer_model} via {reviewer_backend} (Builder ≠ Reviewer)"
+  description: "Code review of new/updated PRs with label {pr_label} — reviewer {reviewer_model} via {reviewer_backend} (builder ≠ reviewer)"
   tier: 1
   triggers:
     - type: on_pr
@@ -21,8 +21,8 @@ loop:
       labels: ["{pr_label}"]
       exclude_labels: ["{human_label}"]
       poll: "{poll}"
-      # Pro Head-SHA reconcilen (ADR 0023): ein wegen belegtem Projekt-Lock verworfener
-      # Trigger wird nachgeholt; Kommentare ohne Push lösen keinen Re-Review aus.
+      # Reconcile per head SHA (ADR 0023): a trigger dropped because the project lock was
+      # busy is caught up; comments without a push do not trigger a re-review.
       reconcile: head
   steps:
     - name: review
@@ -32,11 +32,11 @@ loop:
       prompt_file: "{prompt_file}"
       extra_context: "{review_context}"
       timeout: "{timeout}"
-    # Deterministisch auf dem Host (ADR 0059 §4): Stillstand → Label + Eskalations-Kommentar.
+    # Deterministic on the host (ADR 0059 §4): stall → label + escalation comment.
     - name: escalation-check
       type: shell
       cmd: >-
         python3 {fabrikant_home}/scripts/pr-status.py escalation-check {pr_number} --repo {repo}
         --stall-rounds {stall_rounds} --human-label "{human_label}" --escalate
       timeout: 120
-      gate: false  # Prüf-Hänger dürfen das Review nicht scheitern lassen (kein Retry der Session)
+      gate: false  # check hangs must not fail the review (no session retry)

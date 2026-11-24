@@ -1,23 +1,23 @@
-# Loop-Vorlage `escalation` (ADR 0059): Items mit Label `needs human` → wartender Gate-Run in der
-# fabrikant-UI/CLI. Freigeben = Fortsetzen (Label weg, Loops laufen weiter), Ablehnen = Aufgeben
-# (Label bleibt). Das Label setzt `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`).
-# Einbindung (ADR 0047):  escalation: {use: escalation}
+# Loop template `escalation` (ADR 0059): items with the label `needs human` → waiting gate run in the
+# fabrikant UI/CLI. Approve = resume (label removed, loops continue), reject = give up
+# (label stays). The label is set by `scripts/pr-status.py` (`escalate`, `escalation-check --escalate`).
+# Usage (ADR 0047):  escalation: {use: escalation}
 params:
   repo: null
-  item_label: fabrikant  # nur fabrikant-PRs (AND mit human_label)
+  item_label: fabrikant  # fabrikant PRs only (AND with human_label)
   human_label: needs human
   poll: 60
 loop:
-  description: "Eskalation (ADR 0059): PR mit '{human_label}' → Pause mit Begründung → Mensch setzt fort oder gibt auf"
+  description: "Escalation (ADR 0059): PR with '{human_label}' → pause with reasoning → human resumes or gives up"
   tier: 1
-  worktree: false  # nur GitHub-API (ADR 0020)
+  worktree: false  # GitHub API only (ADR 0020)
   triggers:
     - type: on_pr
       repo: "{repo}"
       labels: ["{item_label}", "{human_label}"]
       poll: "{poll}"
-      # Pro Head-SHA reconcilen (ADR 0023): eine erneute Eskalation nach „Fortsetzen“ feuert, sobald
-      # der Builder gepusht hat. Solange ein Run pausiert, blockiert der Claim weitere Runs (ADR 0043).
+      # Reconcile per head SHA (ADR 0023): a renewed escalation after "resume" fires as soon as
+      # the builder has pushed. While a run is paused, the claim blocks further runs (ADR 0043).
       reconcile: head
   steps:
     - name: wait-for-human

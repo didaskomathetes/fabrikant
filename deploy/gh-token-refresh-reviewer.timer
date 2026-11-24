@@ -1,5 +1,5 @@
-# Alle 30 min — das Installation-Token lebt 1h (Faktor 2 Puffer).
-# RandomizedDelaySec: DNS/Netz-Flakes nicht synchron mit anderen Timern.
+# Every 30 min — the installation token lives 1h (2x buffer).
+# RandomizedDelaySec: DNS/network flakes do not hit in sync with other timers.
 
 [Unit]
 Description=Fabrikant — gh-token-refresh (reviewer) every 30 min

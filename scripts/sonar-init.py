@@ -1,15 +1,15 @@
-"""Einmalige SonarQube-Initialisierung via Playwright (First-Login + Token).
+"""One-off SonarQube initialization via Playwright (first login + token).
 
-Ein frische SonarQube-Community-Instanz sperrt die API, bis der Default-Admin
-(admin/admin) das Passwort über das Web-UI geändert hat (First-Login-Flow).
-Das ist ein SPA — per curl nicht machbar. Dieses Skript:
+A fresh SonarQube Community instance locks the API until the default admin
+(admin/admin) has changed the password via the web UI (first-login flow).
+That is an SPA — not doable with curl. This script:
 
-  1. Loggt sich mit admin/admin ein
-  2. Führt den erzwungenen Passwort-Wechsel durch (→ SONAR_ADMIN_PASSWORD)
-  3. Erzeugt einen Scanner-Token über die Browser-Session
-  4. Schreibt den Token nach state/sonar-token.txt (0600, wird von sonar-scan.sh genutzt)
+  1. Logs in with admin/admin
+  2. Performs the forced password change (→ SONAR_ADMIN_PASSWORD)
+  3. Creates a scanner token via the browser session
+  4. Writes the token to state/sonar-token.txt (0600, used by sonar-scan.sh)
 
-Nur beim ersten Setup nötig. Danach reicht `scripts/sonar-scan.sh`.
+Only needed for the first setup. Afterwards `scripts/sonar-scan.sh` is enough.
 """
 
 from __future__ import annotations
@@ -36,11 +36,11 @@ def _fill_login(page):
 
 
 def _complete_password_change(page) -> bool:
-    """First-Login: erzwungenes Passwort-Wechsel-Formular ausfüllen. True, wenn es da war."""
+    """First login: fill in the forced password change form. True if it was present."""
     try:
         page.wait_for_selector('input[name="passwordConfirmation"]', timeout=8000)
     except Exception:
-        return False  # kein Passwort-Wechsel nötig
+        return False  # no password change needed
     page.fill('input[name="password"]', NEW_PASS)
     page.fill('input[name="passwordConfirmation"]', NEW_PASS)
     page.click('button[type="submit"]')
@@ -56,19 +56,19 @@ def main() -> int:
         _fill_login(page)
 
         if _complete_password_change(page):
-            # Kein Passwort-Wert im Log (Secret-Leak) — nur Bestätigung.
-            print("[sonar-init] Admin-Passwort geändert (First-Login)")
-            # Nach dem Wechsel ggf. erneut einloggen
+            # No password value in the log (secret leak) — confirmation only.
+            print("[sonar-init] Admin password changed (first login)")
+            # Log in again after the change if necessary
             page.goto(HOST_URL, wait_until="networkidle")
             if page.is_visible('input[name="login"]'):
                 page.fill('input[name="login"]', ADMIN_USER)
                 page.fill('input[name="password"]', NEW_PASS)
                 page.click('button[type="submit"]')
 
-        # Auf das Dashboard warten (Login-Formular verschwunden)
+        # Wait for the dashboard (login form gone)
         page.wait_for_timeout(3000)
 
-        # Token über die Browser-Session erzeugen (nutzt das Session-Cookie)
+        # Create the token via the browser session (uses the session cookie)
         resp = page.evaluate(
             """async () => {
                 const r = await fetch('/api/user_tokens/generate?name=fabrikant-scanner', {method: 'POST'});
@@ -76,7 +76,7 @@ def main() -> int:
             }"""
         )
         if resp["status"] != 200:
-            print(f"[sonar-init] FEHLER: Token-Generierung HTTP {resp['status']}: {resp['body'][:200]}")
+            print(f"[sonar-init] ERROR: token generation HTTP {resp['status']}: {resp['body'][:200]}")
             browser.close()
             return 1
         token = json.loads(resp["body"])["token"]
@@ -84,7 +84,7 @@ def main() -> int:
 
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(token)
-    os.chmod(TOKEN_FILE, 0o600)  # Token ist ein Secret → nur Owner lesbar
+    os.chmod(TOKEN_FILE, 0o600)  # token is a secret → owner-readable only
     print(f"[sonar-init] Token erzeugt → {TOKEN_FILE}")
     return 0
 

@@ -1,8 +1,8 @@
-# Fabrikant — Software-Fabrik (Engine + UI + Scheduler) als systemd-User-Service.
+# Fabrikant — software factory (engine + UI + scheduler) as a systemd user service.
 #
-# Ohne diesen Service lebt der Scheduler NUR im `fabrikant serve`-Prozess —
-# Terminal zu / Reboot → keine cron-Trigger mehr (Regression: review-pr
-# 2026-10-18, cron lief nicht, weil der Foreground-Prozess gestorben war).
+# Without this service the scheduler lives ONLY in the `fabrikant serve` process —
+# terminal closed / reboot → no more cron triggers (regression: review-pr
+# 2026-10-18, cron did not run because the foreground process had died).
 #
 # Install:
 #   cp deploy/fabrikant.service ~/.config/systemd/user/fabrikant.service
@@ -13,26 +13,26 @@
 #   systemctl --user status fabrikant
 #   journalctl --user -u fabrikant -f
 #
-# Auto-Update nach Merges: fabrikant-autoupdate.{service,timer}.
-# ExecStartPre merkt sich den gestarteten Commit (state/serve-commit), daran
-# erkennt scripts/fabrikant-autoupdate.py, ob ein Neustart fällig ist.
+# Auto-update after merges: fabrikant-autoupdate.{service,timer}.
+# ExecStartPre records the started commit (state/serve-commit), which
+# scripts/fabrikant-autoupdate.py uses to detect whether a restart is due.
 #
-# Alle Secrets kommen aus fabrikant/fabrikant.env (wird von config.py geladen) —
-# keine Shell-Env-Variablen nötig.
+# All secrets come from fabrikant/fabrikant.env (loaded by config.py) —
+# no shell env variables needed.
 #
-# Pfad: FABRIKANT_HOME (= fabrikant/-Verzeichnis des Checkouts) kommt aus
-# ~/.config/fabrikant/deploy.env — siehe docs/operations.md, "Local operation".
+# Path: FABRIKANT_HOME (= the fabrikant/ directory of the checkout) comes from
+# ~/.config/fabrikant/deploy.env — see docs/operations.md, "Local operation".
 
 [Unit]
-Description=Fabrikant — Software-Fabrik (Engine + UI + Scheduler)
+Description=Fabrikant — software factory (engine + UI + scheduler)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 EnvironmentFile=-%h/.config/fabrikant/deploy.env
-ExecStartPre=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && mkdir -p state && git rev-parse HEAD > state/serve-commit'
-ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME fehlt, siehe ~/.config/fabrikant/deploy.env}" && exec .venv/bin/fabrikant serve'
+ExecStartPre=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME missing, see ~/.config/fabrikant/deploy.env}" && mkdir -p state && git rev-parse HEAD > state/serve-commit'
+ExecStart=/bin/sh -c 'cd "$${FABRIKANT_HOME:?FABRIKANT_HOME missing, see ~/.config/fabrikant/deploy.env}" && exec .venv/bin/fabrikant serve'
 Restart=on-failure
 RestartSec=10
 

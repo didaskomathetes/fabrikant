@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""sonar_report — SonarQube-API-Antworten → Report-JSON und PR-Kommentar (Markdown), ohne LLM.
+"""sonar_report — SonarQube API responses → report JSON and PR comment (Markdown), without an LLM.
 
-Aufruf aus scripts/sonar-scan.sh (Schritt 6b); die Antworten kommen als Dateien:
+Called from scripts/sonar-scan.sh (step 6b); the responses arrive as files:
 
     sonar_report.py --gate G.json --measures M.json --issues I.json --project-key K \\
         --repo-prefix fabrikant/ --dashboard URL --report out.json \\
         [--comment out.md --link-base https://github.com/<repo>/blob/<sha>]
 
-Nur Standardbibliothek (läuft mit dem System-Python wie die übrigen Skripte).
+Standard library only (runs with the system Python like the other scripts).
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 SEVERITY_ORDER = ("INFO", "LOW", "MEDIUM", "HIGH", "BLOCKER")
-# Legacy-Severities (vor dem Clean-Code-Modell) → Impact-Severity, für Issues ohne `impacts`.
+# Legacy severities (before the Clean Code model) → impact severity, for issues without `impacts`.
 LEGACY_SEVERITY = {"INFO": "INFO", "MINOR": "LOW", "MAJOR": "MEDIUM", "CRITICAL": "HIGH", "BLOCKER": "BLOCKER"}
 GATE_HEADLINE = {"OK": "✅ passed", "ERROR": "❌ failed", "WARN": "⚠️ warning"}
 MAX_LISTED_ISSUES = 15
 MISSING = "–"
-# (Metrik, Beschriftung, Prozentwert?) — Reihenfolge = Tabellenzeilen.
+# (metric, label, percentage?) — order = table rows.
 METRIC_ROWS = (
     ("new_violations", "New issues", False),
     ("new_coverage", "Coverage on new code", True),
@@ -34,7 +34,7 @@ METRIC_ROWS = (
 
 @dataclass(frozen=True)
 class Issue:
-    """Offenes Issue, Pfad relativ zur Repo-Wurzel (nicht zur Sonar-Projekt-Basis)."""
+    """Open issue, path relative to the repo root (not to the Sonar project base)."""
 
     rule: str
     severity: str
@@ -60,7 +60,7 @@ class Issue:
 
 @dataclass(frozen=True)
 class Report:
-    """Ergebnis einer Analyse: Gate, Kennzahlen, offene Issues."""
+    """Result of an analysis: gate, metrics, open issues."""
 
     status: str
     dashboard: str
@@ -77,7 +77,7 @@ class Report:
             status=status["status"],
             dashboard=dashboard,
             conditions=status.get("conditions", []),
-            # PR-/Branch-Analysen liefern new_*-Werte teils nur unter `period`.
+            # PR/branch analyses sometimes deliver new_* values only under `period`.
             measures={
                 m["metric"]: m.get("value", (m.get("period") or {}).get("value"))
                 for m in measures["component"].get("measures", [])
@@ -111,7 +111,7 @@ class Report:
 
 
 def _severity(raw: dict) -> str:
-    """Höchste Impact-Severity; Fallback: Legacy-`severity`, auf das Impact-Modell abgebildet."""
+    """Highest impact severity; fallback: legacy `severity`, mapped onto the impact model."""
     impacts = [i["severity"] for i in raw.get("impacts") or [] if i.get("severity") in SEVERITY_ORDER]
     if impacts:
         return max(impacts, key=SEVERITY_ORDER.index)

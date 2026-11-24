@@ -1,56 +1,56 @@
 #!/usr/bin/env python3
-"""pr-status — deterministische PR-Entscheidungen für review-pr/pr-reply (ADR 0024).
+"""pr-status — deterministic PR decisions for review-pr/pr-reply (ADR 0024).
 
-Die Loop-Agents sollen Reviews nicht selbst zusammenbauen und Merge-Freigabe
-bzw. "neue Kommentare" nicht aus Roh-JSON ableiten (LLM-Raten = Self-Loops,
-Doppel-Posts, Fehl-Merges). Dieses Script kapselt das über `gh`:
+The loop agents should not assemble reviews themselves nor derive merge approval
+or "new comments" from raw JSON (LLM guessing = self-loops,
+double posts, wrong merges). This script encapsulates that via `gh`:
 
   post-review <num> --repo R --payload state/review-<num>.json [--comment-only]
-      Ein GitHub-Review (Summary + Inline-Kommentare) posten — nur für den
-      aktuellen Head-SHA, idempotent pro SHA, max. MAX_INLINE Inline-Kommentare.
-      `--comment-only`: immer COMMENT statt APPROVE/REQUEST_CHANGES — für Repos, in
-      denen das Verdikt beratend bleibt und Menschen approven (Team-Repos mit CODEOWNERS).
-      Inline-Zeilen außerhalb der Diff-Hunks wandern vorab in die Summary;
-      422 von GitHub → Fallback ganz ohne Inline.
+      Post one GitHub review (summary + inline comments) — only for the
+      current head SHA, idempotent per SHA, at most MAX_INLINE inline comments.
+      `--comment-only`: always COMMENT instead of APPROVE/REQUEST_CHANGES — for repos in
+      which the verdict stays advisory and humans approve (team repos with CODEOWNERS).
+      Inline lines outside the diff hunks are moved into the summary beforehand;
+      422 from GitHub → fallback without any inline comments.
   merge-check <num> --repo R
       → {"action": "merge" | "resolve_conflicts" | "wait", "reason": "..."}
-      (mergeStateStatus-Zuordnung explizit: MERGE_STATES / REBASE_STATES / WAIT_STATES).
-      Legt der PR eine ADR mit einer auf der Base schon vergebenen Nummer an → "wait"
-      (ADR 0032; Reparatur: `scripts/check-adr-numbers.py fix`). Label
-      'needs approval' → "wait": solche PRs mergt nur der approval-Loop (ADR 0011).
-      Label `needs human` (`--human-label`) → "wait": eskaliert (ADR 0059).
+      (mergeStateStatus mapping is explicit: MERGE_STATES / REBASE_STATES / WAIT_STATES).
+      If the PR adds an ADR with a number already taken on the base → "wait"
+      (ADR 0032; repair: `scripts/check-adr-numbers.py fix`). Label
+      'needs approval' → "wait": such PRs are merged only by the approval loop (ADR 0011).
+      Label `needs human` (`--human-label`) → "wait": escalated (ADR 0059).
   new-comments <num> --repo R --state state/replied-comments.json
-      → [{"key", "kind", "id", "author", "created", "body", ...}] (chronologisch)
+      → [{"key", "kind", "id", "author", "created", "body", ...}] (chronological)
   escalation-check <num> --repo R [--stall-rounds N] [--max-rounds N] [--escalate] [--human-label L]
-      Deterministische Eskalation (ADR 0059, kein LLM): `stalled` = die letzten N Verdikte des
-      Reviewers sind `changes_requested`, ohne dass dazwischen ein Nicht-Merge-Commit kam;
-      `exhausted` = `--max-rounds` Fix-Commits verbraucht und weiter `changes_requested` am Head.
-      → {"action": "escalate" | "continue", "kind": "...", "reason": "..."}; `--escalate` setzt
-      dann Label + Marker-Kommentar (siehe `escalate`).
+      Deterministic escalation (ADR 0059, no LLM): `stalled` = the last N verdicts of the
+      reviewer are `changes_requested` without a non-merge commit in between;
+      `exhausted` = `--max-rounds` fix commits used up and still `changes_requested` at the head.
+      → {"action": "escalate" | "continue", "kind": "...", "reason": "..."}; `--escalate` then
+      sets label + marker comment (see `escalate`).
   escalate <num> --repo R --kind K --why TEXT [--human-label L] [--builder]
-      Eskalation an einen Menschen (ADR 0059): Kommentar mit Marker + Label L (Default
-      `needs human`). Idempotent: trägt das Item das Label schon, passiert nichts.
-      `--builder` (Builder-Entwurf, ADR 0059 §3): `--kind` nur aus BUILDER_ESCALATION_KINDS
-      (`blocked`/`scope`) — nur der Host darf `stalled`/`exhausted`/`access` setzen.
+      Escalation to a human (ADR 0059): comment with marker + label L (default
+      `needs human`). Idempotent: if the item already has the label, nothing happens.
+      `--builder` (builder draft, ADR 0059 §3): `--kind` only from BUILDER_ESCALATION_KINDS
+      (`blocked`/`scope`) — only the host may set `stalled`/`exhausted`/`access`.
   threads <num> --repo R
-      → offene (unresolved) Review-Threads
+      → open (unresolved) review threads
   resolve-thread <num> --repo R --comment-id <id>
-      Den Review-Thread mit diesem Inline-Kommentar als erledigt markieren.
+      Mark the review thread containing this inline comment as resolved.
 
-Reviewer-Account: `FABRIKANT_REVIEWER_LOGIN` (Pflicht bei GitHub-App-Tokens — die dürfen
-`/user` nicht abfragen), sonst `gh api user`. Bot-Logins werden normalisiert
-(`app/<name>` aus gh-JSON ≡ `<name>[bot]` aus REST ≡ `<name>`).
+Reviewer account: `FABRIKANT_REVIEWER_LOGIN` (required for GitHub App tokens — they may not
+query `/user`), otherwise `gh api user`. Bot logins are normalized
+(`app/<name>` from gh JSON ≡ `<name>[bot]` from REST ≡ `<name>`).
 
-Marker (HTML-Kommentare, im gerenderten Text unsichtbar):
+Markers (HTML comments, invisible in the rendered text):
   <!-- fabrikant-review verdict=approved|changes_requested sha=<40 hex> -->
-      Verdikt im Review-Body. Gilt nur vom Reviewer-Account (`gh api user`) und
-      nur für den aktuellen Head-SHA — neue Commits brauchen ein neues Review.
-      Nötig, weil GitHub Approve/Request-Changes auf eigene PRs verbietet.
+      Verdict in the review body. Valid only from the reviewer account (`gh api user`) and
+      only for the current head SHA — new commits need a new review.
+      Needed because GitHub forbids approve/request-changes on one's own PRs.
   <!-- fabrikant-reply -->
-      Antwort des pr-reply-Loops. Solche Kommentare sind nie "neu" (kein Self-Loop).
+      Reply of the pr-reply loop. Such comments are never "new" (no self-loop).
   <!-- fabrikant-escalate kind=<kind>[ re=<key>,…] -->
-      Eskalation an einen Menschen (ADR 0059); nur der Host schreibt ihn (Agent-Text wird
-      von allen fabrikant-Markern bereinigt). Der escalation-Loop zeigt den letzten an.
+      Escalation to a human (ADR 0059); only the host writes it (agent text is
+      stripped of all fabrikant markers). The escalation loop shows the latest one.
 """
 
 from __future__ import annotations
@@ -67,31 +67,31 @@ REVIEW_MARKER_RE = re.compile(r"<!-- fabrikant-review verdict=(approved|changes_
 REPLY_MARKER = "<!-- fabrikant-reply -->"
 VERDICT_APPROVED = "approved"
 PAGE_SIZE = 100
-MAX_INLINE = 10  # mehr Inline-Kommentare = Rauschen; Rest landet in der Summary
-THREADS_LIMIT = 100  # GraphQL-Seite; mehr offene Threads pro PR sind kein realistischer Fall
+MAX_INLINE = 10  # more inline comments = noise; the rest ends up in the summary
+THREADS_LIMIT = 100  # GraphQL page; more open threads per PR is not a realistic case
 HTTP_UNPROCESSABLE = "HTTP 422"
-# Review-States, die eine Entscheidung tragen (COMMENTED/DISMISSED/PENDING nicht).
+# Review states that carry a decision (COMMENTED/DISMISSED/PENDING do not).
 DECISIVE_REVIEW_STATES = ("APPROVED", "CHANGES_REQUESTED")
 REVIEW_EVENTS = {VERDICT_APPROVED: "APPROVE", "changes_requested": "REQUEST_CHANGES"}
-COMMENT_EVENT = "COMMENT"  # eigene PRs (GitHub erlaubt nur Kommentar-Reviews) oder --comment-only
+COMMENT_EVENT = "COMMENT"  # own PRs (GitHub only allows comment reviews) or --comment-only
 OVERFLOW_HEADING = "### Weitere Anmerkungen (nicht inline)"
 HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
-# mergeStateStatus (GitHub GraphQL) → Aktion. Jeder bekannte Status ist explizit
-# zugeordnet; unbekannte (neue GitHub-Werte) → wait mit eigenem Grund.
+# mergeStateStatus (GitHub GraphQL) → action. Every known status is mapped
+# explicitly; unknown ones (new GitHub values) → wait with its own reason.
 ACTION_MERGE, ACTION_REBASE, ACTION_WAIT = "merge", "resolve_conflicts", "wait"
-MERGE_STATES = ("CLEAN", "HAS_HOOKS")  # mergebar, Checks grün (HAS_HOOKS: nur Pre-Receive-Hooks)
+MERGE_STATES = ("CLEAN", "HAS_HOOKS")  # mergeable, checks green (HAS_HOOKS: pre-receive hooks only)
 REBASE_STATES = {
     "DIRTY": "Merge-Konflikt",
     "BEHIND": "Branch hinter Base (Rebase nötig)",
 }
-# ADR-PRs mit diesem Label mergt nur der approval-Loop nach menschlicher Freigabe
-# (ADR 0011) — pr-reply darf sie trotz Review-Approve nicht mergen.
+# ADR PRs with this label are merged only by the approval loop after human approval
+# (ADR 0011) — pr-reply must not merge them despite a review approve.
 APPROVAL_LABEL = "needs approval"
-# Eskalation an einen Menschen (ADR 0059): Label stoppt review-pr/pr-reply/develop und Merge.
+# Escalation to a human (ADR 0059): the label stops review-pr/pr-reply/develop and merge.
 HUMAN_LABEL = "needs human"
 ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
-BUILDER_ESCALATION_KINDS = ("blocked", "scope")  # nur diese darf der Builder per Entwurf setzen
+BUILDER_ESCALATION_KINDS = ("blocked", "scope")  # only these may be set by the builder via draft
 ESCALATE_MARKER_RE = re.compile(r"<!-- fabrikant-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
 DEFAULT_STALL_ROUNDS = 2
 WAIT_STATES = {
@@ -118,17 +118,17 @@ RESOLVE_MUTATION = "mutation($id: ID!) { resolveReviewThread(input: {threadId: $
 
 
 def _gh_text(*args: str, stdin: str | None = None) -> str:
-    """`gh <args>` ausführen und stdout zurückgeben (Fehler → CalledProcessError)."""
+    """Run `gh <args>` and return stdout (error → CalledProcessError)."""
     return subprocess.run(["gh", *args], check=True, capture_output=True, text=True, input=stdin).stdout
 
 
 def _gh_json(*args: str, stdin: str | None = None):
-    """Wie _gh_text, stdout als JSON geparst."""
+    """Like _gh_text, stdout parsed as JSON."""
     return json.loads(_gh_text(*args, stdin=stdin))
 
 
 def fetch_paged(path: str) -> list[dict]:
-    """Alle Einträge einer paginierten REST-Liste (`?per_page=&page=`)."""
+    """All entries of a paginated REST list (`?per_page=&page=`)."""
     items: list[dict] = []
     page = 1
     while True:
@@ -144,7 +144,7 @@ BOT_PREFIX, BOT_SUFFIX = "app/", "[bot]"
 
 
 def normalize_login(login: str) -> str:
-    """Bot-Logins vergleichbar machen: `app/x` (gh-JSON) und `x[bot]` (REST) → `x`."""
+    """Make bot logins comparable: `app/x` (gh JSON) and `x[bot]` (REST) → `x`."""
     return login.removeprefix(BOT_PREFIX).removesuffix(BOT_SUFFIX)
 
 
@@ -154,25 +154,25 @@ def reviewer_login() -> str:
 
 
 def _login(obj: dict) -> str:
-    """Autor-Login (normalisiert) aus REST (`user`) oder GraphQL/gh-JSON (`author`)."""
+    """Author login (normalized) from REST (`user`) or GraphQL/gh JSON (`author`)."""
     return normalize_login((obj.get("user") or obj.get("author") or {}).get("login", ""))
 
 
-# ── ADR-Nummern-Kollision (ADR 0032) ──
+# ── ADR number collision (ADR 0032) ──
 
-ADR_DIR = "fabrikant/docs/adr"  # repo-relativ, wie in `gh pr diff` und der Contents-API
+ADR_DIR = "fabrikant/docs/adr"  # repo-relative, as in `gh pr diff` and the contents API
 ADR_FILE_RE = re.compile(r"^(\d{4})-.+\.md$")
 
 
 def _adr_number(path: str) -> int | None:
-    """Nummer einer ADR-Datei unter ADR_DIR (`…/0013-foo.md` → 13), sonst None."""
+    """Number of an ADR file under ADR_DIR (`…/0013-foo.md` → 13), otherwise None."""
     match = ADR_FILE_RE.match(Path(path).name) if Path(path).parent.as_posix() == ADR_DIR else None
     return int(match.group(1)) if match else None
 
 
 def _added_adr_numbers(files: list[dict]) -> list[int]:
-    """Nummern neu angelegter ADRs aus `GET pulls/{n}/files`. Änderungen und Umbenennungen
-    mit gleicher Nummer zählen nicht; eine Umbenennung auf eine andere Nummer zählt als neu."""
+    """Numbers of newly created ADRs from `GET pulls/{n}/files`. Changes and renames
+    with the same number do not count; a rename to a different number counts as new."""
     numbers: list[int] = []
     for f in files:
         number = _adr_number(f.get("filename", ""))
@@ -185,13 +185,13 @@ def _added_adr_numbers(files: list[dict]) -> list[int]:
 
 
 def adr_collision(repo: str, num: int, pr: dict) -> str | None:
-    """Kollisionsbeschreibung, wenn PR `num` eine ADR mit auf der Base vergebener (oder im
-    PR doppelter) Nummer anlegt — fängt auch PR-gegen-PR-Kollisionen: Ist der erste PR
-    gemergt, liegt seine Nummer auf der Base. Ohne `baseRefName` → None.
+    """Collision description if PR `num` adds an ADR with a number taken on the base (or
+    duplicated within the PR) — also catches PR-vs-PR collisions: once the first PR is
+    merged, its number is on the base. Without `baseRefName` → None.
 
-    Dateiliste per paginierter REST-API (kein `gh pr diff`: GitHub lehnt Diffs sehr
-    großer PRs ab). Schlägt die Prüfung fehl → Beschreibung des Fehlers (fail closed:
-    merge-check wartet, statt mit Traceback abzubrechen)."""
+    File list via the paginated REST API (no `gh pr diff`: GitHub rejects diffs of very
+    large PRs). If the check fails → description of the error (fail closed:
+    merge-check waits instead of aborting with a traceback)."""
     base = pr.get("baseRefName")
     if not base:
         return None
@@ -209,14 +209,14 @@ def adr_collision(repo: str, num: int, pr: dict) -> str | None:
     return None
 
 
-# ── Verdikt / Merge ──
+# ── Verdict / merge ──
 
 
 def review_verdict(reviews: list[dict], reviewer: str) -> tuple[str, str] | None:
-    """Letztes (verdict, sha) aus Review-Markern des Reviewer-Accounts, sonst None.
+    """Latest (verdict, sha) from review markers of the reviewer account, otherwise None.
 
-    Marker anderer Autoren werden ignoriert — sonst könnte jeder Kommentator
-    eine Freigabe vortäuschen."""
+    Markers from other authors are ignored — otherwise any commenter could
+    fake an approval."""
     verdict = None
     for r in reviews:
         m = REVIEW_MARKER_RE.search(r.get("body") or "")
@@ -226,15 +226,15 @@ def review_verdict(reviews: list[dict], reviewer: str) -> tuple[str, str] | None
 
 
 def latest_plain_review_state(reviews: list[dict]) -> str:
-    """Entscheidender State der Reviews OHNE fabrikant-Marker ('' wenn keine).
+    """Decisive state of the reviews WITHOUT fabrikant marker ('' if none).
 
-    Das sind Menschen oder der pr_review-Step (ADR 0010) — sie gelten zusätzlich.
-    Pro Autor zählt nur dessen letzte entscheidende Review (wie GitHubs
-    reviewDecision): ein früheres CHANGES_REQUESTED ist überholt, sobald derselbe
-    Autor danach — mit oder ohne Marker — erneut entscheidend reviewt. Sonst
-    blockiert ein altes pr_review-Verdikt die PR für immer, weil alle späteren
-    Reviews desselben Accounts Marker tragen. CHANGES_REQUESTED eines Autors
-    schlägt APPROVED eines anderen."""
+    These are humans or the pr_review step (ADR 0010) — they count additionally.
+    Per author only their latest decisive review counts (like GitHub's
+    reviewDecision): an earlier CHANGES_REQUESTED is superseded as soon as the same
+    author reviews decisively again afterwards — with or without a marker. Otherwise
+    an old pr_review verdict would block the PR forever, because all later
+    reviews of the same account carry markers. CHANGES_REQUESTED from one author
+    beats APPROVED from another."""
     latest: dict[str, dict] = {}
     for r in reviews:
         if r.get("state") in DECISIVE_REVIEW_STATES:
@@ -247,19 +247,19 @@ def latest_plain_review_state(reviews: list[dict]) -> str:
 
 
 def has_label(item: dict, label: str) -> bool:
-    """Trägt PR/Issue (gh-JSON oder REST, `labels: [{name}]`) das Label?"""
+    """Does the PR/issue (gh JSON or REST, `labels: [{name}]`) carry the label?"""
     return label in {str(lbl.get("name", "")) for lbl in item.get("labels") or []}
 
 
 def merge_decision(pr: dict, reviewer: str, open_threads: int, human_label: str = HUMAN_LABEL) -> dict:
-    """Merge-Entscheidung aus `gh pr view --json mergeStateStatus,headRefOid,reviews,labels`.
+    """Merge decision from `gh pr view --json mergeStateStatus,headRefOid,reviews,labels`.
 
-    Freigabe = Review-Marker 'approved' für den aktuellen Head-SHA, sonst eine
-    GitHub-Review APPROVED. Blockiert durch CHANGES_REQUESTED ohne Marker
-    (Mensch/pr_review-Step) und durch offene Review-Threads. Konflikt/Rückstand
-    (REBASE_STATES) → resolve_conflicts unabhängig von der Freigabe. Label
-    APPROVAL_LABEL → immer wait (Merge nur über den approval-Loop, ADR 0011); `human_label`
-    → wait (eskaliert, ADR 0059)."""
+    Approval = review marker 'approved' for the current head SHA, otherwise a
+    GitHub review APPROVED. Blocked by CHANGES_REQUESTED without marker
+    (human/pr_review step) and by open review threads. Conflict/behind
+    (REBASE_STATES) → resolve_conflicts regardless of approval. Label
+    APPROVAL_LABEL → always wait (merge only via the approval loop, ADR 0011); `human_label`
+    → wait (escalated, ADR 0059)."""
     status = pr.get("mergeStateStatus", "")
     if status in REBASE_STATES:
         return {"action": ACTION_REBASE, "reason": f"{REBASE_STATES[status]} (mergeStateStatus={status})"}
@@ -296,7 +296,7 @@ def merge_decision(pr: dict, reviewer: str, open_threads: int, human_label: str 
     return {"action": ACTION_WAIT, "reason": f"{why}, aber {blocker} (mergeStateStatus={status})"}
 
 
-# ── Review posten ──
+# ── Posting a review ──
 
 
 def _overflow_section(comments: list[dict]) -> str:
@@ -305,7 +305,7 @@ def _overflow_section(comments: list[dict]) -> str:
 
 
 def _insert_before_marker(body: str, section: str) -> str:
-    """Abschnitt vor dem Verdikt-Marker einfügen (Marker bleibt letzte Zeile)."""
+    """Insert a section before the verdict marker (the marker stays the last line)."""
     m = REVIEW_MARKER_RE.search(body)
     if not m:
         return f"{body}\n\n{section}"
@@ -313,8 +313,8 @@ def _insert_before_marker(body: str, section: str) -> str:
 
 
 def diff_lines(diff: str) -> dict[str, list[set[int]]]:
-    """Kommentierbare Zeilen (neuer Stand, RIGHT) aus einem Unified Diff: pro Datei
-    eine Zeilenmenge je Hunk (`+`- und Kontextzeilen)."""
+    """Commentable lines (new state, RIGHT) from a unified diff: per file
+    a set of lines per hunk (`+` and context lines)."""
     hunks: dict[str, list[set[int]]] = {}
     path, lineno, current = "", 0, None
     for line in diff.splitlines():
@@ -331,7 +331,7 @@ def diff_lines(diff: str) -> dict[str, list[set[int]]]:
 
 
 def in_diff(comment: dict, hunks: dict[str, list[set[int]]]) -> bool:
-    """Liegen `line` (und ggf. `start_line`) im selben Hunk der Datei?"""
+    """Do `line` (and, if given, `start_line`) lie in the same hunk of the file?"""
     wanted = {comment.get("line"), comment.get("start_line", comment.get("line"))}
     return any(wanted <= hunk for hunk in hunks.get(comment.get("path") or "", []))
 
@@ -339,12 +339,12 @@ def in_diff(comment: dict, hunks: dict[str, list[set[int]]]) -> bool:
 def build_review(
     payload: dict, *, comment_only: bool, inline: bool = True, hunks: dict[str, list[set[int]]] | None = None
 ) -> dict:
-    """GitHub-Review-Request aus dem Agent-Payload `{"body", "comments"}`.
+    """GitHub review request from the agent payload `{"body", "comments"}`.
 
-    - Marker im Body ist Pflicht (Verdikt + reviewter SHA = `commit_id`).
-    - Event: `comment_only` (eigene PR oder --comment-only) → COMMENT, sonst APPROVE/REQUEST_CHANGES.
-    - Inline-Kommentare: nur Zeilen in `hunks` (falls gegeben, siehe diff_lines),
-      max. MAX_INLINE; Rest (oder alle bei inline=False) als Liste in die Summary."""
+    - The marker in the body is mandatory (verdict + reviewed SHA = `commit_id`).
+    - Event: `comment_only` (own PR or --comment-only) → COMMENT, otherwise APPROVE/REQUEST_CHANGES.
+    - Inline comments: only lines in `hunks` (if given, see diff_lines),
+      at most MAX_INLINE; the rest (or all with inline=False) goes into the summary as a list."""
     body = payload.get("body") or ""
     m = REVIEW_MARKER_RE.search(body)
     if not m:
@@ -364,7 +364,7 @@ def build_review(
 
 
 def already_reviewed(reviews: list[dict], reviewer: str, sha: str) -> bool:
-    """Gibt es schon ein Review des Reviewers mit Marker für diesen SHA? (Retry-Schutz)"""
+    """Is there already a review by the reviewer with a marker for this SHA? (retry protection)"""
     return any(
         _login(r) == reviewer and (m := REVIEW_MARKER_RE.search(r.get("body") or "")) and m.group(2) == sha
         for r in reviews
@@ -372,9 +372,9 @@ def already_reviewed(reviews: list[dict], reviewer: str, sha: str) -> bool:
 
 
 def post_review(repo: str, num: int, payload: dict, *, comment_only: bool = False) -> dict:
-    """Review posten (siehe build_review); nur für den aktuellen Head-SHA,
-    idempotent pro SHA, Inline außerhalb des Diffs → Summary, 422 → ohne Inline.
-    `comment_only` erzwingt ein COMMENT-Review (eigene PRs bekommen es immer)."""
+    """Post a review (see build_review); only for the current head SHA,
+    idempotent per SHA, inline outside the diff → summary, 422 → without inline.
+    `comment_only` forces a COMMENT review (own PRs always get one)."""
     reviewer = reviewer_login()
     pr = _gh_json("pr", "view", str(num), "--repo", repo, "--json", "author,reviews,headRefOid")
     comment_only = comment_only or _login(pr) == reviewer
@@ -382,7 +382,7 @@ def post_review(repo: str, num: int, payload: dict, *, comment_only: bool = Fals
     request = build_review(payload, comment_only=comment_only, hunks=hunks)
     sha, head = request["commit_id"], pr.get("headRefOid", "")
     if sha != head:
-        # Payload zu altem Commit: weder posten noch per Idempotenz "erledigt" melden.
+        # Payload for an old commit: neither post nor report "done" via idempotency.
         return {"posted": False, "stale": True, "reason": f"Marker-SHA {sha[:7]} ≠ Head {head[:7]} — neu reviewen"}
     if already_reviewed(pr.get("reviews") or [], reviewer, head):
         return {"posted": False, "reason": f"Review für {head[:7]} existiert bereits"}
@@ -422,7 +422,7 @@ def fetch_threads(repo: str, num: int) -> list[dict]:
 
 
 def open_threads(threads: list[dict]) -> list[dict]:
-    """Offene Threads kompakt: id, path, line, Autor + Text des ersten Kommentars."""
+    """Open threads compactly: id, path, line, author + text of the first comment."""
     out = []
     for t in threads:
         if t.get("isResolved"):
@@ -442,18 +442,18 @@ def open_threads(threads: list[dict]) -> list[dict]:
 
 
 def thread_for_comment(threads: list[dict], comment_id: int) -> dict | None:
-    """Thread, der den Inline-Kommentar (REST-ID = GraphQL databaseId) enthält."""
+    """Thread containing the inline comment (REST ID = GraphQL databaseId)."""
     for t in threads:
         if any(c.get("databaseId") == comment_id for c in t.get("comments", {}).get("nodes") or []):
             return t
     return None
 
 
-# ── Neue Kommentare ──
+# ── New comments ──
 
 
 def load_replied(path: Path) -> dict:
-    """State `{"<key>": true}`; fehlend/kaputt → {}."""
+    """State `{"<key>": true}`; missing/broken → {}."""
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
@@ -462,15 +462,15 @@ def load_replied(path: Path) -> dict:
 
 
 def collect_comments(num: int, issue: list[dict], reviews: list[dict], inline: list[dict]) -> list[dict]:
-    """Alle drei Kommentar-Quellen normalisiert. State-Keys: `<num>-<id>` (PR-Kommentar,
-    kompatibel zum alten State), `<num>-review-<id>`, `<num>-inline-<id>`."""
+    """All three comment sources normalized. State keys: `<num>-<id>` (PR comment,
+    compatible with the old state), `<num>-review-<id>`, `<num>-inline-<id>`."""
     items = [
         {"key": f"{num}-{c['id']}", "kind": "comment", "created": c.get("created_at", ""), "src": c} for c in issue
     ]
     items += [
         {"key": f"{num}-review-{r['id']}", "kind": "review", "created": r.get("submitted_at", ""), "src": r}
         for r in reviews
-        if (r.get("body") or "").strip()  # Reviews nur mit Inline-Kommentaren haben keinen eigenen Text
+        if (r.get("body") or "").strip()  # reviews with inline comments only have no text of their own
     ]
     for c in inline:
         item = {"key": f"{num}-inline-{c['id']}", "kind": "inline", "created": c.get("created_at", ""), "src": c}
@@ -484,18 +484,18 @@ def collect_comments(num: int, issue: list[dict], reviews: list[dict], inline: l
 
 
 def new_comments(items: list[dict], replied: dict) -> list[dict]:
-    """Unbeantwortete fremde Kommentare: nicht im State, keine eigene Reply (Marker)."""
+    """Unanswered foreign comments: not in the state, not our own reply (marker)."""
     return [i for i in items if i["key"] not in replied and REPLY_MARKER not in i["body"]]
 
 
-# ── Eskalation (ADR 0059) ──
+# ── Escalation (ADR 0059) ──
 
 ESCALATE, CONTINUE = "escalate", "continue"
-FIX_COMMIT_PREFIX = "fabrikant: address review"  # Commit-Message der Fix-Commits (Rundenzähler)
+FIX_COMMIT_PREFIX = "fabrikant: address review"  # commit message of the fix commits (round counter)
 
 
 def _verdicts(reviews: list[dict], reviewer: str) -> list[tuple[str, str]]:
-    """Alle (verdict, sha) aus Marker-Reviews des Reviewer-Accounts, chronologisch."""
+    """All (verdict, sha) from marker reviews of the reviewer account, chronological."""
     out = []
     for r in reviews:
         m = REVIEW_MARKER_RE.search(r.get("body") or "")
@@ -505,10 +505,10 @@ def _verdicts(reviews: list[dict], reviewer: str) -> list[tuple[str, str]]:
 
 
 def _builder_changed(commits: list[dict], since: str, until: str) -> bool:
-    """Gibt es zwischen `since` (exklusiv) und `until` (inklusiv) einen Nicht-Merge-Commit?
-    `commits` = `GET pulls/{n}/commits` (chronologisch). Base-Syncs (`update-branch`) sind
-    Merge-Commits und zählen nicht als Änderung durch den Builder. Unbekannte SHAs (Force-Push)
-    → True, damit ein umgeschriebener Branch nie als Stillstand gilt."""
+    """Is there a non-merge commit between `since` (exclusive) and `until` (inclusive)?
+    `commits` = `GET pulls/{n}/commits` (chronological). Base syncs (`update-branch`) are
+    merge commits and do not count as a change by the builder. Unknown SHAs (force push)
+    → True, so that a rewritten branch never counts as a stall."""
     shas = [str(c.get("sha", "")) for c in commits]
     if since not in shas or until not in shas:
         return True
@@ -525,13 +525,13 @@ def escalation_decision(
     stall_rounds: int = DEFAULT_STALL_ROUNDS,
     max_rounds: int = 0,
 ) -> dict:
-    """Deterministische Eskalation aus Review-Markern und PR-Commits (ADR 0059 §4).
+    """Deterministic escalation from review markers and PR commits (ADR 0059 §4).
 
-    stalled:   die letzten `stall_rounds` Verdikte sind `changes_requested`, und der Builder hat
-               dazwischen — und auch nach dem letzten Verdikt bis zum Head — keinen Code geändert
-               (siehe _builder_changed).
-    exhausted: `max_rounds` > 0 Fix-Commits (`FIX_COMMIT_PREFIX`) verbraucht und das Verdikt
-               am aktuellen Head ist weiter `changes_requested`."""
+    stalled:   the last `stall_rounds` verdicts are `changes_requested`, and the builder has
+               changed no code in between — nor after the last verdict up to the head
+               (see _builder_changed).
+    exhausted: `max_rounds` > 0 fix commits (`FIX_COMMIT_PREFIX`) used up and the verdict
+               at the current head is still `changes_requested`."""
     verdicts = _verdicts(reviews, reviewer)
     if not verdicts or verdicts[-1][0] == VERDICT_APPROVED:
         return {"action": CONTINUE, "reason": "kein offenes changes_requested"}
@@ -541,9 +541,9 @@ def escalation_decision(
         len(tail) == rounds
         and all(v == "changes_requested" for v, _ in tail)
         and not any(_builder_changed(commits, a, b) for (_, a), (_, b) in zip(tail, tail[1:], strict=False))
-        # Auch NACH dem letzten Verdikt: hat der Builder seitdem gepusht (Review ausstehend),
-        # ist er aktiv — kein Stillstand (konsistent mit `exhausted` unten, das ebenfalls
-        # den aktuellen Head prüft).
+        # Also AFTER the last verdict: if the builder has pushed since (review pending),
+        # it is active — no stall (consistent with `exhausted` below, which also
+        # checks the current head).
         and not _builder_changed(commits, tail[-1][1], head)
     )
     if stuck:
@@ -564,12 +564,12 @@ def escalation_decision(
 
 
 def escalate_marker(kind: str, re_keys: str = "") -> str:
-    """Eskalations-Marker (ADR 0059); `re_keys` = kommagetrennte Kommentar-Keys (optional)."""
+    """Escalation marker (ADR 0059); `re_keys` = comma-separated comment keys (optional)."""
     return f"<!-- fabrikant-escalate kind={kind}{f' re={re_keys}' if re_keys else ''} -->"
 
 
 def escalation_comment(kind: str, why: str) -> str:
-    """Text des Eskalations-Kommentars (sichtbar + Marker für den escalation-Loop)."""
+    """Text of the escalation comment (visible + marker for the escalation loop)."""
     return (
         f"**fabrikant: an einen Menschen eskaliert** (`{kind}`)\n\n{why}\n\n"
         "Review, Reply und Merge pausieren, bis das Label entfernt ist. "
@@ -581,11 +581,11 @@ def escalation_comment(kind: str, why: str) -> str:
 def escalate(
     repo: str, num: int, kind: str, why: str, human_label: str = HUMAN_LABEL, *, builder: bool = False
 ) -> dict:
-    """Kommentar mit Marker posten und Label setzen; idempotent über das Label.
+    """Post a comment with marker and set the label; idempotent via the label.
 
-    `builder=True` (Builder-Entwurf, ADR 0059 §3) beschränkt `kind` auf
-    BUILDER_ESCALATION_KINDS — nur der Host darf `stalled`/`exhausted`/`access` setzen.
-    Der Agent erhält dadurch keine zusätzlichen Rechte."""
+    `builder=True` (builder draft, ADR 0059 §3) restricts `kind` to
+    BUILDER_ESCALATION_KINDS — only the host may set `stalled`/`exhausted`/`access`.
+    This gives the agent no additional rights."""
     allowed = BUILDER_ESCALATION_KINDS if builder else ESCALATION_KINDS
     if kind not in allowed:
         raise ValueError(f"unbekannte Eskalationsart {kind!r} (erlaubt: {allowed})")
@@ -608,7 +608,7 @@ def escalate(
 def escalation_check(
     repo: str, num: int, *, stall_rounds: int, max_rounds: int, apply: bool, human_label: str = HUMAN_LABEL
 ) -> dict:
-    """`escalation-check`: Entscheidung aus dem PR-Stand, mit `apply` gleich eskalieren."""
+    """`escalation-check`: decision from the PR state, escalate right away with `apply`."""
     pr = _gh_json("pr", "view", str(num), "--repo", repo, "--json", "headRefOid,reviews,labels")
     if human_label and has_label(pr, human_label):
         return {"action": CONTINUE, "reason": f"Label '{human_label}' schon gesetzt"}
@@ -651,16 +651,16 @@ def main(argv: list[str] | None = None) -> int:
     cmds["new-comments"].add_argument("--state", type=Path, required=True)
     cmds["resolve-thread"].add_argument("--comment-id", type=int, required=True)
     for name in ("merge-check", "escalation-check", "escalate"):
-        cmds[name].add_argument("--human-label", default=HUMAN_LABEL, help="Eskalations-Label (ADR 0059)")
+        cmds[name].add_argument("--human-label", default=HUMAN_LABEL, help="Escalation label (ADR 0059)")
     cmds["escalation-check"].add_argument("--stall-rounds", type=int, default=DEFAULT_STALL_ROUNDS)
-    cmds["escalation-check"].add_argument("--max-rounds", type=int, default=0, help="0 = keine exhausted-Prüfung")
-    cmds["escalation-check"].add_argument("--escalate", action="store_true", help="bei Treffer Label + Kommentar")
+    cmds["escalation-check"].add_argument("--max-rounds", type=int, default=0, help="0 = no exhausted check")
+    cmds["escalation-check"].add_argument("--escalate", action="store_true", help="on a hit, label + comment")
     cmds["escalate"].add_argument("--kind", required=True, choices=ESCALATION_KINDS)
     cmds["escalate"].add_argument("--why", required=True)
     cmds["escalate"].add_argument(
         "--builder",
         action="store_true",
-        help="Builder-Entwurf (ADR 0059 §3): --kind nur aus BUILDER_ESCALATION_KINDS",
+        help="Builder draft (ADR 0059 §3): --kind only from BUILDER_ESCALATION_KINDS",
     )
     args = p.parse_args(argv)
     repo, num = args.repo, args.num

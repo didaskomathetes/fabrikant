@@ -1,84 +1,84 @@
 #!/usr/bin/env bash
-# SonarQube-Scan (Python via pysonar) — Default: das fabrikant-Projekt; andere Projekte über SONAR_PROJECT_DIR & Co.
+# SonarQube scan (Python via pysonar) — default: the fabrikant project; other projects via SONAR_PROJECT_DIR & co.
 #
-# Ablauf:
-#   1. SonarQube (compose.yaml) starten, falls nicht erreichbar
-#   2. Scanner-Token laden/erzeugen (cachen; Admin-Creds nur für den Erstlauf)
-#   3. Auf Readiness warten (api/system/health → GREEN, Auth via Token)
-#   3b. Bei PR-Runs (SONAR_PR_HEAD_REF) den PR-Head im Worktree auschecken (detached)
-#   4. Tests + Coverage-Report (SONAR_TEST_CMD → Cobertura-XML)
-#   4b. Analyzer-Reports (SONAR_LINT_CMD: ruff, bandit, pyright → externe Issues in Sonar)
-#   5. Scanner ausführen (pysonar liest [tool.sonar] aus pyproject.toml, SONAR_SCANNER_ARGS ergänzen;
-#      Coverage via sonar.python.coverage.reportPaths)
-#   6. Quality Gate prüfen (warte auf Analyse-Completion, Status muss OK sein)
-#   7. (nur main-Scan, SONAR_PR leer) Verwaiste Legacy-PR-Projekte aufräumen (ADR 0053, advisory):
-#      `scripts/sonar-pr-cleanup.py` löscht `<PROJECT_KEY>:pr-<n>`-Projekte aus der Zeit vor
-#      der nativen PR-Analyse, deren PR gemergt/geschlossen ist. Fehlschlag = nur Warnung —
-#      der Exit-Code des Scans (Quality Gate) bleibt unberührt.
+# Flow:
+#   1. Start SonarQube (compose.yaml) if not reachable
+#   2. Load/create the scanner token (cache it; admin creds only for the first run)
+#   3. Wait for readiness (api/system/health → GREEN, auth via token)
+#   3b. For PR runs (SONAR_PR_HEAD_REF) check out the PR head in the worktree (detached)
+#   4. Tests + coverage report (SONAR_TEST_CMD → Cobertura XML)
+#   4b. Analyzer reports (SONAR_LINT_CMD: ruff, bandit, pyright → external issues in Sonar)
+#   5. Run the scanner (pysonar reads [tool.sonar] from pyproject.toml, SONAR_SCANNER_ARGS add to it;
+#      coverage via sonar.python.coverage.reportPaths)
+#   6. Check the quality gate (wait for analysis completion, status must be OK)
+#   7. (main scan only, SONAR_PR empty) Clean up orphaned legacy PR projects (ADR 0053, advisory):
+#      `scripts/sonar-pr-cleanup.py` deletes `<PROJECT_KEY>:pr-<n>` projects from the time before
+#      native PR analysis whose PR is merged/closed. Failure = warning only —
+#      the exit code of the scan (quality gate) is unaffected.
 #
-# Env-Overrides:
-#   SONAR_HOST_URL        (Default: http://127.0.0.1:9000)
-#   SONAR_ADMIN_USER      (Default: admin)
-#   SONAR_ADMIN_PASSWORD  (Default: admin — nur relevant, wenn kein Token gecacht ist)
-#   SONAR_COMPOSE_FILE    (Default: <fabrikant>/compose.yaml)
-#   SONAR_PROJECT_KEY     (Default: fabrikant)
-#   SONAR_PROJECT_DIR     zu scannendes Repo/Verzeichnis (Default: <fabrikant>; relativ = zum Aufruf-cwd)
-#   SONAR_TEST_CMD        Tests + Coverage, `bash -c` im Projekt (Default: fabrikant-pytest → coverage.xml);
-#                         Exit 1/2 = Tests rot
-#   SONAR_COVERAGE_PATHS  Cobertura-Reports für Sonar, Komma/Wildcards (Default: coverage.xml);
-#                         leer gesetzt = nicht übergeben (sonar-project.properties des Projekts gilt)
-#   SONAR_LINT_CMD        schreibt Analyzer-Reports nach $SONAR_LINT_DIR, `bash -c` im Projekt (Default für fabrikant:
-#                         scripts/lint.sh --reports; für fremde Projekte (SONAR_PROJECT_DIR) leer = kein Import).
-#                         Erkannte Dateien → Scanner-Parameter: ruff.json → sonar.python.ruff.reportPaths,
-#                         bandit.json → sonar.python.bandit.reportPaths, pyright-sonar.json (Generic Issue Format)
-#                         → sonar.externalIssuesReportPaths. Exit ≠ 0 = Setup-Fehler (Funde sind keiner).
-#   SONAR_LINT_DIR        Report-Verzeichnis, relativ zum Projekt (Default: .fabrikant/sonar/lint; wird vorab geleert)
-#   SONAR_SCANNER         Scanner-Befehl (Default: `uv run pysonar` im Projekt; fremde Projekte ohne
-#                         pysonar-Dependency: <fabrikant>/.venv/bin/pysonar; oder das eigene Scan-Skript des
-#                         Projekts — es bekommt die -D-Parameter als Argumente und muss sie an den Scanner
-#                         reichen). Exit ≠ 0 NACH dem Upload (CE-Task im Output, z. B. Tests rot): Gate und
-#                         Report laufen trotzdem, Ergebnis Exit 1.
-#   SONAR_SCANNER_ARGS    zusätzliche `-Dsonar.…=…`-Parameter, durch Leerzeichen getrennt (ohne
-#                         [tool.sonar]: mind. -Dsonar.projectKey=… -Dsonar.sources=…)
-#   SONAR_READY_TIMEOUT   (Default: 180 s)
-#   SONAR_PR_HEAD_REF     (Branch des PR-Heads, vom on_pr-Trigger via `env:` gesetzt; leer oder
-#                          ein unaufgelöster Platzhalter `{…}` (Cron-Run) = kein PR → Default-Checkout)
-#   SONAR_BRANCH          Branch-Analyse (Community-Branch-Plugin, compose.yaml):
-#                         Branch-Name oder `auto` (= aktueller Git-Branch). Default: leer → Main-Branch.
-#   SONAR_PR              PR-Analyse: PR-Nummer oder `auto` (= PR des aktuellen Branches, via gh).
-#                         Ist das Projekt an eine GitHub-App gebunden (scripts/sonar-github-setup.sh),
-#                         dekoriert SonarQube den PR (Check Run + Summary-Kommentar; braucht Checks-Permission).
-#                         Hat Vorrang vor SONAR_BRANCH. Der lokale HEAD sollte dem PR-Head entsprechen.
-#                         Unaufgelöste Platzhalter `{…}` (Cron-Run) gelten bei beiden als nicht gesetzt.
-#   SONAR_REPORT_FILE     Ergebnis (Gate, Kennzahlen, offene Issues) zusätzlich als JSON schreiben —
-#                         auch bei rotem Gate.
-#   SONAR_COMMENT_FILE    mit SONAR_REPORT_FILE: zusätzlich den PR-Kommentar als Markdown rendern
-#   SONAR_LINK_BASE       Pflicht zu SONAR_COMMENT_FILE: https://github.com/<repo>/blob/<sha> (Issue-Links)
+# Env overrides:
+#   SONAR_HOST_URL        (default: http://127.0.0.1:9000)
+#   SONAR_ADMIN_USER      (default: admin)
+#   SONAR_ADMIN_PASSWORD  (default: admin — only relevant if no token is cached)
+#   SONAR_COMPOSE_FILE    (default: <fabrikant>/compose.yaml)
+#   SONAR_PROJECT_KEY     (default: fabrikant)
+#   SONAR_PROJECT_DIR     repo/directory to scan (default: <fabrikant>; relative = to the calling cwd)
+#   SONAR_TEST_CMD        tests + coverage, `bash -c` in the project (default: fabrikant-pytest → coverage.xml);
+#                         exit 1/2 = tests red
+#   SONAR_COVERAGE_PATHS  Cobertura reports for Sonar, comma/wildcards (default: coverage.xml);
+#                         set empty = not passed (the project's sonar-project.properties applies)
+#   SONAR_LINT_CMD        writes analyzer reports to $SONAR_LINT_DIR, `bash -c` in the project (default for fabrikant:
+#                         scripts/lint.sh --reports; for foreign projects (SONAR_PROJECT_DIR) empty = no import).
+#                         Recognized files → scanner parameters: ruff.json → sonar.python.ruff.reportPaths,
+#                         bandit.json → sonar.python.bandit.reportPaths, pyright-sonar.json (generic issue format)
+#                         → sonar.externalIssuesReportPaths. Exit ≠ 0 = setup error (findings are not one).
+#   SONAR_LINT_DIR        report directory, relative to the project (default: .fabrikant/sonar/lint; emptied beforehand)
+#   SONAR_SCANNER         scanner command (default: `uv run pysonar` in the project; foreign projects without a
+#                         pysonar dependency: <fabrikant>/.venv/bin/pysonar; or the project's own scan script —
+#                         it receives the -D parameters as arguments and must pass them on to the
+#                         scanner). Exit ≠ 0 AFTER the upload (CE task in the output, e.g. tests red): gate and
+#                         report still run, result exit 1.
+#   SONAR_SCANNER_ARGS    additional `-Dsonar.…=…` parameters, separated by spaces (without
+#                         [tool.sonar]: at least -Dsonar.projectKey=… -Dsonar.sources=…)
+#   SONAR_READY_TIMEOUT   (default: 180 s)
+#   SONAR_PR_HEAD_REF     (branch of the PR head, set by the on_pr trigger via `env:`; empty or
+#                          an unresolved placeholder `{…}` (cron run) = no PR → default checkout)
+#   SONAR_BRANCH          branch analysis (community branch plugin, compose.yaml):
+#                         branch name or `auto` (= current git branch). Default: empty → main branch.
+#   SONAR_PR              PR analysis: PR number or `auto` (= PR of the current branch, via gh).
+#                         If the project is bound to a GitHub App (scripts/sonar-github-setup.sh),
+#                         SonarQube decorates the PR (check run + summary comment; needs checks permission).
+#                         Takes precedence over SONAR_BRANCH. The local HEAD should match the PR head.
+#                         Unresolved placeholders `{…}` (cron run) count as unset for both.
+#   SONAR_REPORT_FILE     additionally write the result (gate, metrics, open issues) as JSON —
+#                         even with a red gate.
+#   SONAR_COMMENT_FILE    with SONAR_REPORT_FILE: additionally render the PR comment as Markdown
+#   SONAR_LINK_BASE       required with SONAR_COMMENT_FILE: https://github.com/<repo>/blob/<sha> (issue links)
 #
-# Beispiele:
-#   SONAR_BRANCH=auto bash scripts/sonar-scan.sh   # lokal vor dem Push
-#   SONAR_PR=42 bash scripts/sonar-scan.sh         # Review von PR #42 (vorher `gh pr checkout 42`)
+# Examples:
+#   SONAR_BRANCH=auto bash scripts/sonar-scan.sh   # locally before pushing
+#   SONAR_PR=42 bash scripts/sonar-scan.sh         # review of PR #42 (first `gh pr checkout 42`)
 #
-# PR-Modus (advisory, für extra_context in pr_review):
+# PR mode (advisory, for extra_context in pr_review):
 #   sonar-scan.sh --pr <n> [--post] [--base <branch>]
-#   Scan der aktuellen Workdir unter eigenem Key <PROJECT_KEY>:pr-<n> (Community
-#   Edition kann keine PR-Analyse; die main-Analyse bleibt unberührt). Ein
-#   coverage.xml, das jünger als der HEAD-Commit ist, wird wiederverwendet. Statt
-#   des Quality Gates (auf einem frischen Key bedeutungslos) schreibt
-#   scripts/sonar-pr-report.py den Report nach stdout (Sonar-Issues, Lint via
-#   ruff + mypy und Diff-Coverage — jeweils nur auf den geänderten Zeilen);
-#   --post legt ihn zusätzlich als PR-Kommentar an bzw. aktualisiert ihn.
+#   Scan of the current workdir under its own key <PROJECT_KEY>:pr-<n> (Community
+#   Edition cannot do PR analysis; the main analysis stays untouched). A
+#   coverage.xml younger than the HEAD commit is reused. Instead of
+#   the quality gate (meaningless on a fresh key),
+#   scripts/sonar-pr-report.py writes the report to stdout (Sonar issues, lint via
+#   ruff + mypy and diff coverage — each only on the changed lines);
+#   --post additionally creates it as a PR comment or updates it.
 #
-# Logs gehen nach stderr, stdout trägt nur den PR-Report.
+# Logs go to stderr, stdout carries only the PR report.
 #
-# Exit-Codes (Fehlerklasse nach ADR 0035, sysexits.h):
-#   0  Quality Gate OK (main) bzw. Report erzeugt (PR-Modus)
-#   1  Quality Gate != OK oder Tests rot (Spec: failure_kind: outcome)
-#   75 EX_TEMPFAIL — SonarQube nicht erreichbar/bereit, Analyse abgebrochen, PR-Head nicht abrufbar (→ transient)
-#   78 EX_CONFIG   — Docker-Start, Admin-Creds, Scanner-Token oder Scanner-Output passen nicht, sonstiger
-#                    unerwarteter Skriptfehler (→ environment)
-#   126/127        — Tool nicht ausführbar/fehlt (z. B. pysonar) (→ environment)
-#   >128           — pytest/pysonar durch Signal beendet (→ unknown)
+# Exit codes (error class per ADR 0035, sysexits.h):
+#   0  quality gate OK (main) or report generated (PR mode)
+#   1  quality gate != OK or tests red (spec: failure_kind: outcome)
+#   75 EX_TEMPFAIL — SonarQube not reachable/ready, analysis aborted, PR head not fetchable (→ transient)
+#   78 EX_CONFIG   — docker start, admin creds, scanner token or scanner output do not fit, other
+#                    unexpected script error (→ environment)
+#   126/127        — tool not executable/missing (e.g. pysonar) (→ environment)
+#   >128           — pytest/pysonar terminated by a signal (→ unknown)
 set -euo pipefail
 
 EX_GATE_RED=1
@@ -88,7 +88,7 @@ EX_NOEXEC=126
 EX_NOTFOUND=127
 EX_SIGNAL_BASE=128
 
-# Unerwartet gescheiterter Befehl (set -e): sonst Exit 1 = „Gate/Tests rot“ (outcome) für einen Setup-Fehler.
+# Unexpectedly failed command (set -e): otherwise exit 1 = "gate/tests red" (outcome) for a setup error.
 trap 'rc=$?; echo "[sonar-scan] FEHLER: unerwarteter Fehler (exit $rc, Zeile $LINENO)"; exit "$EX_CONFIG"' ERR
 
 FABRIKANT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -100,12 +100,12 @@ PROJECT_KEY="${SONAR_PROJECT_KEY:-fabrikant}"
 PROJECT_DIR="$(cd "${SONAR_PROJECT_DIR:-$FABRIKANT_DIR}" && pwd)"
 DEFAULT_TEST_CMD='uv run pytest -m "not browser and not perf" --cov=src --cov-report=xml:coverage.xml -q'
 TEST_CMD="${SONAR_TEST_CMD:-$DEFAULT_TEST_CMD}"
-COVERAGE_PATHS="${SONAR_COVERAGE_PATHS-coverage.xml}"  # leer gesetzt = Projekt-Config gilt
+COVERAGE_PATHS="${SONAR_COVERAGE_PATHS-coverage.xml}"  # set empty = project config applies
 DEFAULT_LINT_CMD=""
 [ "$PROJECT_DIR" = "$FABRIKANT_DIR" ] && DEFAULT_LINT_CMD='bash scripts/lint.sh --reports "$SONAR_LINT_DIR"'
-LINT_CMD="${SONAR_LINT_CMD-$DEFAULT_LINT_CMD}"  # leer gesetzt = keine Analyzer-Reports
+LINT_CMD="${SONAR_LINT_CMD-$DEFAULT_LINT_CMD}"  # set empty = no analyzer reports
 LINT_DIR="${SONAR_LINT_DIR:-.fabrikant/sonar/lint}"
-# Report-Datei (von SONAR_LINT_CMD) → Scanner-Parameter, der sie importiert.
+# Report file (from SONAR_LINT_CMD) → scanner parameter that imports it.
 LINT_REPORTS=(
   "ruff.json=sonar.python.ruff.reportPaths"
   "bandit.json=sonar.python.bandit.reportPaths"
@@ -113,8 +113,8 @@ LINT_REPORTS=(
 )
 SCANNER="${SONAR_SCANNER:-}"
 read -ra EXTRA_SCANNER_ARGS <<< "${SONAR_SCANNER_ARGS:-}"
-# Token-File: über SONAR_TOKEN_FILE teilbar (z. B. Haupt-Repo statt Worktree,
-# damit Worktree-Runs denselben Token wiederverwenden und keine Token-Flut erzeugen).
+# Token file: shareable via SONAR_TOKEN_FILE (e.g. main repo instead of worktree,
+# so that worktree runs reuse the same token and do not create a flood of tokens).
 TOKEN_FILE="${SONAR_TOKEN_FILE:-$FABRIKANT_DIR/state/sonar-token.txt}"
 READY_TIMEOUT="${SONAR_READY_TIMEOUT:-180}"
 BRANCH="${SONAR_BRANCH:-}"
@@ -124,12 +124,12 @@ REPORT_FILE="${SONAR_REPORT_FILE:-}"
 COMMENT_FILE="${SONAR_COMMENT_FILE:-}"
 REPORT_METRICS="new_coverage,new_duplicated_lines_density,new_violations,new_security_hotspots,coverage"
 REPORT_MAX_ISSUES=100
-# Unaufgelöste Spec-Platzhalter (`{pr_number}` im Cron-Run) heißen „nicht gesetzt“.
+# Unresolved spec placeholders (`{pr_number}` in a cron run) mean "unset".
 case "$BRANCH" in "{"*) BRANCH="" ;; esac
 case "$PR" in "{"*) PR="" ;; esac
 
-# PR-Modus (advisory, CLI): --pr <n> [--post] [--base <branch>] — eigener Key, Report statt Gate.
-# Unabhängig von SONAR_PR (native PR-Analyse): CLI-Modus scannt unter <PROJECT_KEY>:pr-<n>.
+# PR mode (advisory, CLI): --pr <n> [--post] [--base <branch>] — own key, report instead of gate.
+# Independent of SONAR_PR (native PR analysis): CLI mode scans under <PROJECT_KEY>:pr-<n>.
 CLI_PR=""
 POST=""
 BASE="main"
@@ -154,7 +154,7 @@ if [ -n "$CLI_PR" ]; then
   PROJECT_KEY="$PROJECT_KEY:pr-$CLI_PR"
 fi
 
-# PR-Modus: Logs nach stderr (stdout trägt nur den PR-Report); Default: stdout (wie main).
+# PR mode: logs to stderr (stdout carries only the PR report); default: stdout (as for main).
 log() {
   if [ -n "$CLI_PR" ]; then
     echo "[sonar-scan] $*" >&2
@@ -163,8 +163,8 @@ log() {
   fi
 }
 
-# 1) SonarQube starten (falls nicht up)
-# (api/system/status braucht keine Auth — api/system/health antwortet ohne Token immer 401.)
+# 1) Start SonarQube (if not up)
+# (api/system/status needs no auth — api/system/health always answers 401 without a token.)
 if ! curl -sf -o /dev/null --max-time 3 "$HOST_URL/api/system/status"; then
   log "SonarQube nicht erreichbar → docker compose up -d ($COMPOSE_FILE)"
   if ! docker compose -f "$COMPOSE_FILE" up -d; then
@@ -173,10 +173,10 @@ if ! curl -sf -o /dev/null --max-time 3 "$HOST_URL/api/system/status"; then
   fi
 fi
 
-# 2) Token (cachen, sonst neu erzeugen).
-#    Vor der Readiness-Prüfung, damit der gecachte Token auch als Auth-Quelle
-#    dient — das Admin-Passwort ändert sich nach dem First-Login und ist
-#    danach (und z. B. in Worktrees) nicht mehr bekannt.
+# 2) Token (cache it, otherwise create a new one).
+#    Before the readiness check, so that the cached token also serves as the auth
+#    source — the admin password changes after the first login and is
+#    no longer known afterwards (and e.g. in worktrees).
 mkdir -p "$(dirname "$TOKEN_FILE")"
 if [ -s "$TOKEN_FILE" ]; then
   TOKEN="$(cat "$TOKEN_FILE")"
@@ -187,7 +187,7 @@ else
   resp="$(curl -sf --max-time 10 -u "$ADMIN_USER:$ADMIN_PASS" \
     -X POST "$HOST_URL/api/user_tokens/generate?name=fabrikant-scanner")" || rc=$?
   if [ "$rc" -ne 0 ]; then
-    # curl 22 = HTTP-Fehler (z. B. 401: Admin-Passwort geändert) → Mensch; sonst Netz/Timeout.
+    # curl 22 = HTTP error (e.g. 401: admin password changed) → human; otherwise network/timeout.
     log "FEHLER: Token-Erzeugung fehlgeschlagen (curl exit $rc)"
     if [ "$rc" -eq 22 ]; then exit "$EX_CONFIG"; fi
     exit "$EX_TEMPFAIL"
@@ -200,8 +200,8 @@ else
   log "Token erzeugt"
 fi
 
-# 3) Auf Readiness warten (health=GREEN, Basic-Auth mit Scanner-Token).
-#    401/403: Token widerrufen bzw. SonarQube zurückgesetzt — Warten heilt das nicht (→ environment).
+# 3) Wait for readiness (health=GREEN, basic auth with scanner token).
+#    401/403: token revoked or SonarQube reset — waiting does not heal that (→ environment).
 log "Warte auf SonarQube-Readiness (max. ${READY_TIMEOUT}s) …"
 status=""
 for i in $(seq 1 "$READY_TIMEOUT"); do
@@ -224,8 +224,8 @@ for i in $(seq 1 "$READY_TIMEOUT"); do
   sleep 1
 done
 
-# 3b) PR-Run: Run-Worktrees stehen detached auf origin/<repo.branch> — ohne Checkout würde der PR-Trigger
-#     main scannen. Leer oder mit `{` beginnend (unaufgelöster Platzhalter, Cron) = kein PR.
+# 3b) PR run: run worktrees are detached on origin/<repo.branch> — without a checkout the PR trigger
+#     would scan main. Empty or starting with `{` (unresolved placeholder, cron) = no PR.
 PR_HEAD_REF="${SONAR_PR_HEAD_REF:-}"
 case "$PR_HEAD_REF" in "{"*) PR_HEAD_REF="" ;; esac
 if [ -n "$PR_HEAD_REF" ]; then
@@ -237,8 +237,8 @@ if [ -n "$PR_HEAD_REF" ]; then
   fi
 fi
 
-# Analyse-Ziel auflösen → SCAN_ARGS (pysonar-Parameter) + GATE_QUERY (Filter für project_status).
-# Nach dem PR-Head-Checkout (3b, HEAD-Vergleich) und vor dem teuren Testlauf (Aufruffehler früh).
+# Resolve the analysis target → SCAN_ARGS (pysonar parameters) + GATE_QUERY (filter for project_status).
+# After the PR head checkout (3b, HEAD comparison) and before the expensive test run (call errors early).
 SCAN_ARGS=()
 GATE_QUERY=""
 if [ "$BRANCH" = "$AUTO" ] || [ "$PR" = "$AUTO" ]; then
@@ -269,21 +269,21 @@ elif [ -n "$BRANCH" ]; then
   log "Ziel: Branch $BRANCH"
 fi
 
-# 4) Tests + Coverage-Report (Cobertura-XML) — ohne Coverage-Daten scheitert der Quality Gate an
-#    new_coverage (Default: >= 80 %). fabrikant-Default: perf-Tests ausgenommen (wie CI), ihr
-#    Wall-Clock-Budget bricht unter Coverage-Instrumentierung.
+# 4) Tests + coverage report (Cobertura XML) — without coverage data the quality gate fails on
+#    new_coverage (default: >= 80 %). fabrikant default: perf tests excluded (as in CI), their
+#    wall-clock budget breaks under coverage instrumentation.
 cd "$PROJECT_DIR"
-# PR-Modus (advisory): frischer Coverage-Report (jünger als HEAD) wird wiederverwendet —
-# der teure Testlauf entfällt, der Scan läuft nur für den Report. `git log` nur im
-# PR-Modus (Bedingung): in fremden Projekt-Dirs ohne Git-Repo würde es sonst fehlschlagen.
+# PR mode (advisory): a fresh coverage report (younger than HEAD) is reused —
+# the expensive test run is skipped, the scan only runs for the report. `git log` only in
+# PR mode (condition): in foreign project dirs without a git repo it would otherwise fail.
 if [ -n "$CLI_PR" ] && [ -f coverage.xml ] && [ "$(stat -c %Y coverage.xml)" -ge "$(git log -1 --format=%ct)" ]; then
   log "Nutze vorhandenen Coverage-Report (jünger als HEAD) — Tests übersprungen"
 else
   log "Tests + Coverage-Report ($TEST_CMD) …"
   rc=0
   bash -c "$TEST_CMD" || rc=$?
-  # pytest: 1 = Tests rot, 2 = Collection-Fehler/abgebrochen (Code-Ergebnis); 3–5 = interner/Aufruf-Fehler,
-  # keine Tests (Setup); Signal (>128) unverändert weiterreichen.
+  # pytest: 1 = tests red, 2 = collection error/aborted (code result); 3–5 = internal/usage error,
+  # no tests (setup); pass signals (>128) through unchanged.
   case "$rc" in
     0) ;;
     1|2) log "FEHLER: Tests rot (pytest exit $rc)"; exit "$EX_GATE_RED" ;;
@@ -295,8 +295,8 @@ else
   esac
 fi
 
-# Keine Coverage-Datei → Sonar meldet 0 % nur als Analyse-Warnung; hier sichtbar machen. Kein Fehler:
-# ein PR ohne betroffenes Testpaket erzeugt legitim keine.
+# No coverage file → Sonar reports 0 % only as an analysis warning; make it visible here. Not an error:
+# a PR without an affected test package legitimately produces none.
 COVERAGE_ARGS=()
 if [ -n "$COVERAGE_PATHS" ]; then
   COVERAGE_ARGS=("-Dsonar.python.coverage.reportPaths=$COVERAGE_PATHS")
@@ -308,7 +308,7 @@ if [ -n "$COVERAGE_PATHS" ]; then
   [ -n "$cov_found" ] || log "WARNUNG: kein Coverage-Report für '$COVERAGE_PATHS' in $PROJECT_DIR"
 fi
 
-# 4b) Analyzer-Reports (ruff/bandit/pyright) → externe Issues. Vorab leeren: kein Upload veralteter Reports.
+# 4b) Analyzer reports (ruff/bandit/pyright) → external issues. Empty beforehand: no upload of stale reports.
 LINT_ARGS=()
 if [ -n "$LINT_CMD" ]; then
   rm -rf "$LINT_DIR"
@@ -318,7 +318,7 @@ if [ -n "$LINT_CMD" ]; then
   SONAR_LINT_DIR="$LINT_DIR" bash -c "$LINT_CMD" || rc=$?
   if [ "$rc" -ne 0 ]; then
     log "FEHLER: Analyzer-Reports fehlgeschlagen (exit $rc)"
-    # 126/127 (Tool fehlt) und Signale unverändert; sonst Setup-Fehler — Funde selbst sind kein Exit ≠ 0.
+    # 126/127 (tool missing) and signals unchanged; otherwise setup error — findings themselves are not an exit ≠ 0.
     if [ "$rc" -eq "$EX_NOEXEC" ] || [ "$rc" -eq "$EX_NOTFOUND" ] || [ "$rc" -gt "$EX_SIGNAL_BASE" ]; then exit "$rc"; fi
     exit "$EX_CONFIG"
   fi
@@ -329,14 +329,14 @@ if [ -n "$LINT_CMD" ]; then
   log "Analyzer-Reports: ${#LINT_ARGS[@]} von ${#LINT_REPORTS[@]} gefunden"
 fi
 
-# 5) Scan (pysonar liest [tool.sonar] aus pyproject.toml im PROJECT_DIR, falls vorhanden).
-#    Output wird mitgeteet, damit wir die CE-Task-ID für Step 6 extrahieren
-#    können (pysonar druckt: …/api/ce/task?id=<uuid>).
+# 5) Scan (pysonar reads [tool.sonar] from pyproject.toml in PROJECT_DIR, if present).
+#    Output is tee'd so that we can extract the CE task ID for step 6
+#    (pysonar prints: …/api/ce/task?id=<uuid>).
 export SONAR_HOST_URL="$HOST_URL"
 export SONAR_TOKEN="$TOKEN"
 log "Führe Scanner aus (projectKey=$PROJECT_KEY) …"
-# Scanner vorab prüfen: `uv run` meldet ein fehlendes Kommando mit Exit 2 — unten sähe das wie ein
-# gescheiterter Upload (75, transient) aus statt wie ein Umgebungsfehler (127, ADR 0035).
+# Check the scanner beforehand: `uv run` reports a missing command with exit 2 — below that would look like a
+# failed upload (75, transient) instead of an environment error (127, ADR 0035).
 if [ -n "$SCANNER" ]; then
   read -ra SCANNER_CMD <<< "$SCANNER"
   if ! command -v "${SCANNER_CMD[0]}" >/dev/null 2>&1; then
@@ -353,7 +353,7 @@ SCAN_LOG="$(mktemp)"
 trap 'rm -f "$SCAN_LOG"' EXIT
 rc=0
 if [ -n "$CLI_PR" ]; then
-  # PR-Modus: Logs nach stderr, stdout trägt nur den PR-Report (sonar-pr-report.py).
+  # PR mode: logs to stderr, stdout carries only the PR report (sonar-pr-report.py).
   "${SCANNER_CMD[@]}" "${COVERAGE_ARGS[@]}" "${LINT_ARGS[@]}" "${EXTRA_SCANNER_ARGS[@]}" "${SCAN_ARGS[@]}" 2>&1 \
     | tee "$SCAN_LOG" >&2 || rc=$?
 else
@@ -363,25 +363,25 @@ fi
 TASK_ID="$(grep -oE 'api/ce/task\?id=[a-f0-9-]+' "$SCAN_LOG" | tail -1 | cut -d= -f2 || true)"
 SCANNER_RC=0
 if [ "$rc" -ne 0 ] && [ -n "$TASK_ID" ]; then
-  # Upload gelungen, das Scan-Skript des Projekts meldet danach einen Fehler (z. B. Tests rot):
-  # Gate + Report trotzdem (PR-Kommentar), am Ende Exit 1 statt „transient“.
+  # Upload succeeded, the project's scan script then reports an error (e.g. tests red):
+  # gate + report anyway (PR comment), exit 1 at the end instead of "transient".
   SCANNER_RC="$rc"
   log "WARNUNG: Scanner meldet exit $rc nach dem Upload — Analyse wird ausgewertet, Ergebnis rot"
 elif [ "$rc" -ne 0 ]; then
   log "FEHLER: Scanner fehlgeschlagen (exit $rc)"
-  # 126/127: Scanner nicht ausführbar (environment); Signal: unknown; sonst scheitert der Upload an SonarQube.
+  # 126/127: scanner not executable (environment); signal: unknown; otherwise the upload to SonarQube fails.
   if [ "$rc" -eq "$EX_NOEXEC" ] || [ "$rc" -eq "$EX_NOTFOUND" ] || [ "$rc" -gt "$EX_SIGNAL_BASE" ]; then exit "$rc"; fi
   exit "$EX_TEMPFAIL"
 fi
 
-# 6) Quality Gate prüfen.
-#    WICHTIG: Zuerst auf CE-Task-Completion warten. Sonst liest die erste
-#    Gate-Prüfung den STALEN Status der VORHERIGEN Analyse (Race: Upload ist
-#    synchron, Processing asynchron) → falsches 'ERROR' trotz grünem Ergebnis.
-#    Nach CE-SUCCESS ist der Gate-Status der aktuellen Analyse definitv.
+# 6) Check the quality gate.
+#    IMPORTANT: first wait for CE task completion. Otherwise the first
+#    gate check reads the STALE status of the PREVIOUS analysis (race: upload is
+#    synchronous, processing asynchronous) → false 'ERROR' despite a green result.
+#    After CE SUCCESS the gate status of the current analysis is definitive.
 if [ -z "$TASK_ID" ]; then
   log "FEHLER: keine CE-Task-ID im pysonar-Output gefunden"
-  exit "$EX_CONFIG"  # Scanner-Output passt nicht zum Skript
+  exit "$EX_CONFIG"  # scanner output does not match the script
 fi
 log "Warte auf Analyse-Completion (CE-Task $TASK_ID) …"
 task_status=""
@@ -395,17 +395,17 @@ done
 log "CE-Task: $task_status"
 if [ "$task_status" != "SUCCESS" ]; then
   log "FEHLER: Analyse-Task nicht SUCCESS ($task_status)"
-  exit "$EX_TEMPFAIL"  # FAILED/CANCELED/nicht abrufbar: Server-Seite, kein Code-Ergebnis
+  exit "$EX_TEMPFAIL"  # FAILED/CANCELED/not retrievable: server side, no code result
 fi
 
-# PR-Modus (advisory, CLI): Report statt Gate.
+# PR mode (advisory, CLI): report instead of gate.
 if [ -n "$CLI_PR" ]; then
   git fetch -q origin "$BASE" >&2 || log "WARN: git fetch origin $BASE fehlgeschlagen — nutze lokalen Stand"
   uv run python scripts/sonar-pr-report.py --pr "$CLI_PR" --project-key "$PROJECT_KEY" --base "$BASE" $POST
   exit 0
 fi
 
-# Gate-Status (nach CE-Completion definitv; transiente Werte: UNKNOWN/NONE).
+# Gate status (definitive after CE completion; transient values: UNKNOWN/NONE).
 log "Prüfe Quality Gate …"
 gate="UNKNOWN"
 for i in $(seq 1 60); do
@@ -421,9 +421,9 @@ if [ "$gate" = "UNKNOWN" ]; then
   exit "$EX_TEMPFAIL"
 fi
 
-# 6b) Ergebnis-Report (SONAR_REPORT_FILE, optional SONAR_COMMENT_FILE) — vor der Gate-Bewertung, damit
-#     auch ein rotes Gate im PR landet (Loop `sonar-pr`). Rendering: scripts/sonar_report.py (kein LLM).
-#     Folge-Steps brauchen so keinen Sonar-Token.
+# 6b) Result report (SONAR_REPORT_FILE, optionally SONAR_COMMENT_FILE) — before the gate evaluation, so that
+#     a red gate also lands in the PR (loop `sonar-pr`). Rendering: scripts/sonar_report.py (no LLM).
+#     Follow-up steps thus need no Sonar token.
 if [ -n "$REPORT_FILE" ]; then
   RAW_DIR="$(mktemp -d)"
   sonar_get() { curl -sf --max-time 10 -u "$TOKEN:" -o "$RAW_DIR/$1.json" "$HOST_URL/api/$2"; }
@@ -458,12 +458,12 @@ if [ "$SCANNER_RC" -ne 0 ]; then
 fi
 log "SonarQube-Scan erfolgreich (Quality Gate OK)"
 
-# 7) Verwaiste Legacy-PR-Projekte aufräumen (ADR 0053, advisory) — nur im main-Scan
-#    (SONAR_PR leer), nicht bei PR-Scans: `<PROJECT_KEY>:pr-<n>`-Projekte aus der Zeit vor
-#    der nativen PR-Analyse löschen, deren PR gemergt/geschlossen ist. Das Script ist
-#    fail-safe (unbestimmbarer PR-Status → kein Löschen) und endet bei Fehlern mit Exit 0;
-#    die zusätzliche `if !`-Wächterung stellt sicher, dass kein Fehlschlag den erfolgreichen
-#    Scan bricht.
+# 7) Clean up orphaned legacy PR projects (ADR 0053, advisory) — only in the main scan
+#    (SONAR_PR empty), not in PR scans: delete `<PROJECT_KEY>:pr-<n>` projects from the time before
+#    native PR analysis whose PR is merged/closed. The script is
+#    fail-safe (undeterminable PR status → no deletion) and ends with exit 0 on errors;
+#    the additional `if !` guard ensures that no failure breaks the successful
+#    scan.
 if [ -z "$PR" ]; then
   log "Räume verwaiste Sonar-PR-Projekte auf …"
   if ! uv run python scripts/sonar-pr-cleanup.py; then

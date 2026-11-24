@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""fabrikant-autoupdate — `main` nachziehen und `fabrikant serve` nach Merges neu starten.
+"""fabrikant-autoupdate — pull `main` and restart `fabrikant serve` after merges.
 
-Läuft periodisch (systemd-Timer `fabrikant-autoupdate.timer`) im Haupt-Checkout:
+Runs periodically (systemd timer `fabrikant-autoupdate.timer`) in the main checkout:
 
-  1. `git fetch origin main` + `git merge --ff-only origin/main` — nur auf Branch
-     `main`; ein nicht fast-forwardbarer Stand (lokale Commits, Konflikte mit
-     getrackten Änderungen) bricht ab, nichts wird überschrieben.
-  2. Haben sich `pyproject.toml`/`uv.lock` geändert → `uv sync`.
-  3. Neustart nötig, wenn sich unter `fabrikant/` seit dem Commit geändert hat, mit
-     dem der Dienst gestartet wurde (`state/serve-commit`, schreibt die
-     `ExecStartPre` von `fabrikant.service`). Fehlt die Datei → Neustart.
-  4. Neustart nur im Leerlauf: läuft/wartet ein Run (`running`/`queued`), wird
-     übersprungen — der nächste Timer-Tick versucht es erneut. Ein Restart
-     mitten im Run würde ihn verwaisen lassen (`reap_orphaned_runs` → `error`,
-     kein Auto-Retry, ADR 0014). `needs_approval` blockiert nicht (überlebt Restarts).
+  1. `git fetch origin main` + `git merge --ff-only origin/main` — only on branch
+     `main`; a state that cannot be fast-forwarded (local commits, conflicts with
+     tracked changes) aborts, nothing is overwritten.
+  2. If `pyproject.toml`/`uv.lock` changed → `uv sync`.
+  3. Restart needed if anything under `fabrikant/` changed since the commit with
+     which the service was started (`state/serve-commit`, written by the
+     `ExecStartPre` of `fabrikant.service`). If the file is missing → restart.
+  4. Restart only when idle: if a run is running/waiting (`running`/`queued`), it is
+     skipped — the next timer tick tries again. A restart
+     in the middle of a run would orphan it (`reap_orphaned_runs` → `error`,
+     no auto-retry, ADR 0014). `needs_approval` does not block (survives restarts).
 
-Exit 0 = aktuell oder neu gestartet oder auf Leerlauf vertagt; != 0 = Fehler
-(z. B. ff-only nicht möglich) → sichtbar in `systemctl --user status`.
+Exit 0 = up to date or restarted or deferred until idle; != 0 = error
+(e.g. ff-only not possible) → visible in `systemctl --user status`.
 """
 
 from __future__ import annotations
@@ -33,12 +33,12 @@ REMOTE = "origin"
 BRANCH = "main"
 SERVICE = "fabrikant.service"
 DEPENDENCY_FILES = ("pyproject.toml", "uv.lock")
-# Runs, die ein Restart abbrechen bzw. verwerfen würde.
+# Runs that a restart would abort or discard.
 BUSY_STATUSES = frozenset({"running", "queued"})
 
 
 def run(*cmd: str) -> str:
-    """Befehl im fabrikant-Verzeichnis ausführen; stdout (gestrippt) oder CalledProcessError."""
+    """Run a command in the fabrikant directory; stdout (stripped) or CalledProcessError."""
     return subprocess.run(cmd, cwd=FABRIKANT_HOME, check=True, capture_output=True, text=True).stdout.strip()
 
 
@@ -47,10 +47,10 @@ def git(*args: str) -> str:
 
 
 def pull() -> tuple[str, str]:
-    """`main` per fast-forward auf `origin/main` ziehen; gibt (HEAD vorher, HEAD nachher) zurück."""
+    """Fast-forward `main` to `origin/main`; returns (HEAD before, HEAD after)."""
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
     if branch != BRANCH:
-        raise RuntimeError(f"Checkout steht auf {branch!r}, nicht {BRANCH!r} — kein Update")
+        raise RuntimeError(f"Checkout is on {branch!r}, not {BRANCH!r} — no update")
     before = git("rev-parse", "HEAD")
     git("fetch", "--quiet", REMOTE, BRANCH)
     git("merge", "--ff-only", "--quiet", f"{REMOTE}/{BRANCH}")
@@ -58,14 +58,14 @@ def pull() -> tuple[str, str]:
 
 
 def changed(old: str, new: str, *paths: str) -> bool:
-    """Gibt es zwischen `old` und `new` Änderungen unter `paths` (relativ zu fabrikant/)?"""
+    """Are there changes between `old` and `new` under `paths` (relative to fabrikant/)?"""
     if old == new:
         return False
     return subprocess.run(["git", "diff", "--quiet", old, new, "--", *paths], cwd=FABRIKANT_HOME).returncode != 0
 
 
 def serve_commit() -> str | None:
-    """Commit, mit dem der laufende Dienst gestartet wurde (None = unbekannt)."""
+    """Commit with which the running service was started (None = unknown)."""
     try:
         return SERVE_COMMIT_FILE.read_text().strip() or None
     except FileNotFoundError:
@@ -73,7 +73,7 @@ def serve_commit() -> str | None:
 
 
 def busy_runs(runs_dir: Path | None = None) -> list[str]:
-    """Run-Ids mit Status aus BUSY_STATUSES (Default: RUNS_DIR); kaputte Records werden ignoriert."""
+    """Run IDs with a status from BUSY_STATUSES (default: RUNS_DIR); broken records are ignored."""
     busy = []
     for f in (runs_dir or RUNS_DIR).glob("*/*.json"):
         try:
@@ -90,21 +90,21 @@ def main() -> int:
         before, head = pull()
     except (RuntimeError, subprocess.CalledProcessError) as e:
         detail = getattr(e, "stderr", "") or ""
-        print(f"[autoupdate] Update fehlgeschlagen: {e} {detail}".strip(), file=sys.stderr)
+        print(f"[autoupdate] Update failed: {e} {detail}".strip(), file=sys.stderr)
         return 1
     if before != head:
         print(f"[autoupdate] main: {before[:10]} → {head[:10]}")
         if changed(before, head, *DEPENDENCY_FILES):
-            print("[autoupdate] Abhängigkeiten geändert → uv sync")
+            print("[autoupdate] Dependencies changed → uv sync")
             run("uv", "sync", "--quiet")
     started = serve_commit()
     if started is not None and not changed(started, head, "."):
         return 0
     busy = busy_runs()
     if busy:
-        print(f"[autoupdate] Neustart vertagt — aktive Runs: {', '.join(sorted(busy))}")
+        print(f"[autoupdate] Restart deferred — active runs: {', '.join(sorted(busy))}")
         return 0
-    print(f"[autoupdate] Neustart {SERVICE} ({(started or '?')[:10]} → {head[:10]})")
+    print(f"[autoupdate] Restarting {SERVICE} ({(started or '?')[:10]} → {head[:10]})")
     run("systemctl", "--user", "restart", SERVICE)
     return 0
 

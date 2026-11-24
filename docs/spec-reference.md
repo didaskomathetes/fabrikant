@@ -1,20 +1,20 @@
-# Spec-Referenz
+# Spec reference
 
-Maschinenlesbare Single Source of Truth: [`src/fabrikant/fabrikant-spec.schema.json`](../src/fabrikant/fabrikant-spec.schema.json).
-Diese Seite wird daraus generiert (`scripts/generate-spec-reference.py`) — nicht von Hand editieren.
+Machine-readable single source of truth: [`src/fabrikant/fabrikant-spec.schema.json`](../src/fabrikant/fabrikant-spec.schema.json).
+This page is generated from it (`scripts/generate-spec-reference.py`) — do not edit by hand.
 
-Das Schema prüft die **Struktur** (Typen, Enums, Pflichtfelder, Bereiche) der *expandierten* Spec
-(nach `vars:`/Template-/Relay-Expansion). Semantische Prüfungen (Backend-Registry,
-Cron-vs-Retry-Intervalle, Alert-Route-Zyklen, Template-Parameter) laufen zusätzlich in
-`src/fabrikant/specs.py`. `fabrikant validate` beides.
+The schema checks the **structure** (types, enums, required fields, ranges) of the *expanded* spec
+(after `vars:`/template/relay expansion). Semantic checks (backend registry,
+cron-vs-retry intervals, alert route cycles, template parameters) additionally run in
+`src/fabrikant/specs.py`. `fabrikant validate` runs both.
 
-Legende: **Pflicht** = required, *kursiv* = optional. Typen in ``Code``.
+Legend: **required** = mandatory, *italic* = optional. Types in ``code``.
 
 ## Top-Level
 
-Eine Projekt-Spec (`*.fabrikant.yaml` / `*.fabrikant.json`) definiert Loops, die auf dem Projekt-`root` laufen. `loops` ist das einzige Pflichtfeld; alle anderen Felder sind optional.
+A project spec (`*.fabrikant.yaml` / `*.fabrikant.json`) defines loops that run on the project `root`. `loops` is the only required field; all other fields are optional.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
 | `name` | string | optional | Project name. Defaults to the file name without suffix. Must not contain '::' (lock-key separator). |
 | `root` | string | optional | Path of the project root the loops operate on (~ and env vars are expanded). Required for validation; defaults to the repo root for specs in .fabrikant/fabrikant.yaml. |
@@ -33,16 +33,16 @@ Eine Projekt-Spec (`*.fabrikant.yaml` / `*.fabrikant.json`) definiert Loops, die
 | `retry` | → `retry` | optional | Retry policy for failed runs (ADR 0036). max: 0 disables retry. Loop-level retry overrides the project-level block. |
 | `vars` | object | optional | Spec-level variables substituted as {name} in all strings (ADR 0047). Keys must be identifiers and must not shadow reserved runtime variables (project, root, issue_number, ...). |
 | `relay` | → `relay` | optional | Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. Generates the loops relay-dispatch, relay-session and relay-audit. |
-| `loops` | object | Pflicht | Loop name -> loop definition. At least one loop is required. |
+| `loops` | object | required | Loop name -> loop definition. At least one loop is required. |
 
 ## Loop
 
 A loop: a chain of steps started by triggers. Concrete loops need steps; template loops (pre-expansion) use use:/with:/insert: instead (ADR 0047).
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
 | `description` | string | optional | Human-readable loop description (UI). |
-| `steps` | list of → `step` | Pflicht | Ordered step chain. Every step stops the run on failure by default. |
+| `steps` | list of → `step` | required | Ordered step chain. Every step stops the run on failure by default. |
 | `triggers` | list of → `trigger` | optional | What starts the loop (manual, cron, on_file, on_issue, on_pr, on_webhook, on_alert, on_slack). |
 | `worktree` | boolean | optional | false = no git worktree, empty scratch dir per run (ADR 0020); only allowed without worktree-requiring steps (git, pr, agent, review, pr_review). |
 | `tier` | integer | optional | Risk tier as spec data (1 = lowest, 4 = highest); mapped to gates/approvals by a single mapping function. |
@@ -55,9 +55,9 @@ A loop: a chain of steps started by triggers. Concrete loops need steps; templat
 
 One step of a loop. `type` selects the step kind; the per-type fields are listed under that type. Common fields (name, gate, approval, ...) apply to all types.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
-| `type` | string | Pflicht | Step kind: a built-in (shell, git, pr, agent, report, http, llm, notify, state, verify, review, pr_review, pr_merge, issue, human_gate, alert_route, escalation) or a plugin registered via the `fabrikant.steps` entry point (ADR 0069); membership is checked at load time. |
+| `type` | string | required | Step kind: a built-in (shell, git, pr, agent, report, http, llm, notify, state, verify, review, pr_review, pr_merge, issue, human_gate, alert_route, escalation) or a plugin registered via the `fabrikant.steps` entry point (ADR 0069); membership is checked at load time. |
 | `name` | string | optional | Step name (run log, insert anchors, reports). |
 | `gate` | boolean | optional | false = a failure of this step does NOT stop the run (default true). |
 | `approval` | boolean | optional | true = pause the run for human approval before this step (ADR 0015). |
@@ -155,9 +155,9 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 
 What starts a loop. `type` selects the trigger kind; the per-type fields are listed under that type.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
-| `type` | `manual` \| `cron` \| `on_file` \| `on_issue` \| `on_pr` \| `on_webhook` \| `on_alert` \| `on_slack` | Pflicht | Trigger kind. |
+| `type` | `manual` \| `cron` \| `on_file` \| `on_issue` \| `on_pr` \| `on_webhook` \| `on_alert` \| `on_slack` | required | Trigger kind. |
 | `cron` | string | optional | cron: 5-field cron expression (local time). |
 | `on_start` | boolean | optional | cron: fire once when the scheduler starts (default false). |
 | `glob` | string | optional | on_file: glob pattern relative to the project root (default *). |
@@ -181,24 +181,24 @@ What starts a loop. `type` selects the trigger kind; the per-type fields are lis
 | `max_pages` | → `numeric` | optional | on_slack: history pages per channel and poll (integer >= 1, default 20). |
 | `max_alert_chars` | → `numeric` | optional | on_slack: alert_text is truncated beyond this (integer >= 1, default 4000). |
 
-## Retry-Block
+## Retry block
 
 Retry policy for failed runs (ADR 0036). max: 0 disables retry. Loop-level retry overrides the project-level block.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
 | `max` | → `numeric` | optional | Number of ADDITIONAL attempts after the first run (integer >= 0, default 3). |
 | `backoff` | list of → `duration` | optional | Wait before attempt 1..n; the last value applies to all further attempts (default 5m, 30m, 2h). |
 | `on` | list of `interrupted` \| `transient` | optional | Failure kinds (ADR 0035) that may be retried (default: interrupted, transient). |
 | `max_wait` | string | optional | Cap for a reported retry_after (default 24h). |
 
-## extra_context-Eintrag
+## extra_context entry
 
 One prompt context source (extra_context entry): exactly one of file/cmd/value (ADR 0008). Untrusted by default; trusted: true only for repo-owned files and tool output.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
-| `name` | string | Pflicht | Variable name of the context block. |
+| `name` | string | required | Variable name of the context block. |
 | `file` | string | optional | File path relative to the step workdir (must not escape it). |
 | `cmd` | string | optional | Shell command (sh -c) in the step workdir; only stdout counts. |
 | `value` | string | optional | Template with {variables}. |
@@ -206,15 +206,15 @@ One prompt context source (extra_context entry): exactly one of file/cmd/value (
 | `timeout` | → `numeric` | optional | cmd timeout in seconds (>= 0, default 300). |
 | `max_chars` | → `numeric` | optional | Per-source character cap (integer >= 1, default 50000). |
 
-## Relay-Block
+## Relay block
 
 Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. Generates the loops relay-dispatch, relay-session and relay-audit.
 
-| Feld | Typ | Status | Beschreibung |
+| Field | Type | Status | Description |
 |---|---|---|---|
 | `repo` | string | optional | GitHub repo as owner/name (default: project-level github:). |
-| `allowed` | list of string | Pflicht | GitHub logins allowed to file relay tasks (briefs are agent instructions). |
-| `bot_login` | string | Pflicht | Pinned bot identity for status comments (required). |
+| `allowed` | list of string | required | GitHub logins allowed to file relay tasks (briefs are agent instructions). |
+| `bot_login` | string | required | Pinned bot identity for status comments (required). |
 | `base` | string | optional | Base branch (default main). |
 | `label` | string | optional | Issue label marking relay tasks (default: relay task). |
 | `forbid` | list of string | optional | Labels that forbid a task. |
@@ -228,9 +228,9 @@ Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. 
 | `retry` | → `retry` | optional | Retry policy for failed runs (ADR 0036). max: 0 disables retry. Loop-level retry overrides the project-level block. |
 | `trail_archive` | object | optional | Where the session trail is archived before the branch goes (ADR 0037). |
 
-## Step-Typen: Pflichtfelder
+## Step types: required fields
 
-| Typ | Pflichtfelder |
+| Type | Required fields |
 |---|---|
 | `shell` | `cmd` |
 | `http` | `url` |
@@ -241,12 +241,12 @@ Relay tasks (ADR 0037): long-running work as a chain of short audited sessions. 
 | `pr_review` | `repo`, `model` |
 | `alert_route` | `routes` |
 
-## Trigger-Typen: Pflichtfelder
+## Trigger types: required fields
 
-| Typ | Pflichtfelder |
+| Type | Required fields |
 |---|---|
 | `on_webhook` | `secret_env` |
 | `on_alert` | `source`, `secret_env` |
 | `on_slack` | `token_env`, `channels` |
 
-_Generiert aus `src/fabrikant/fabrikant-spec.schema.json` — Änderungen bitte am Schema vornehmen und dieses Skript neu laufen lassen._
+_Generated from `src/fabrikant/fabrikant-spec.schema.json` — please make changes in the schema and re-run this script._

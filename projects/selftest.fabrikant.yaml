@@ -1,13 +1,13 @@
-# P0-Proof: general-purpose Workflows (Research + Admin)
-# Research = read-only, externer Content ist untrusted markiert (Leitprinzip 7)
+# P0 proof: general-purpose workflows (research + admin)
+# Research = read-only, external content is marked untrusted (guiding principle 7)
 name: selftest
-description: "P0-Proof — general-purpose Workflows (research, admin)"
-root: ~/PycharmProjects/fabrikant
+description: "P0 proof — general-purpose workflows (research, admin)"
+root: ~/src/fabrikant  # adjust to your local checkout
 env:
   topic: "fabrikant P0 selftest"
 loops:
   research:
-    description: "Topic/Issue → Triage → Fetch → Synthese → Report (read-only, T2)"
+    description: "Topic/issue → triage → fetch → synthesis → report (read-only, T2)"
     tier: 2
     triggers:
       - {type: on_issue, repo: didaskomathetes/fabrikant, labels: [fabrikant-research], poll: 300}
@@ -15,11 +15,11 @@ loops:
       - name: triage
         type: llm
         prompt: |
-          Klassifiziere das Thema/Issue. Antworte NUR mit JSON, ohne Markdown.
-          Themen-Hinweis: {topic}
-          Issue-Titel: {issue_title}
+          Classify the topic/issue. Answer ONLY with JSON, without Markdown.
+          Topic hint: {topic}
+          Issue title: {issue_title}
           Issue: {issue_body}
-          Antwort-Schema: {"class": "research|config|bug|other", "priority": "low|medium|high", "topic": "<kurzes Thema>"}
+          Answer schema: {"class": "research|config|bug|other", "priority": "low|medium|high", "topic": "<short topic>"}
         untrusted: [issue_title, issue_body]
         schema:
           class: string
@@ -32,11 +32,11 @@ loops:
         emit:
           page: body
         timeout: 30
-      - name: synthese
+      - name: synthesis
         type: llm
         prompt: |
-          Fasse die untrusted Web-Daten zum Thema '{topic}' in max. 4 Sätzen (Deutsch) zusammen.
-          Antworte NUR mit JSON. Antwort-Schema: {"summary": "..."}
+          Summarize the untrusted web data on the topic '{topic}' in at most 4 sentences (German).
+          Answer ONLY with JSON. Answer schema: {"summary": "..."}
         untrusted: [page]
         schema:
           summary: string
@@ -44,17 +44,17 @@ loops:
         type: report
         write: reports/{run_id}-{class}.md
         text: |
-          # Research-Report {run_id}
-          - Class: {class} · Priority: {priority} · Thema: {topic}
-          - Quelle: example.com
+          # Research report {run_id}
+          - Class: {class} · Priority: {priority} · Topic: {topic}
+          - Source: example.com
 
-          ## Zusammenfassung
+          ## Summary
           {summary}
       - name: notify
         type: notify
         message: "fabrikant: research {run_id} — {class}/{priority}: {topic}"
   admin-backup-check:
-    description: "Backup-Frische verifizieren (T1: auto nach Checks)"
+    description: "Verify backup freshness (T1: auto after checks)"
     tier: 1
     triggers:
       - {type: cron, cron: "0 7 * * *"}
@@ -66,12 +66,12 @@ loops:
         timeout: 30
       - name: report
         type: report
-        text: "Backup-Check {run_id}: ok (frische Dateien in /data/backup)"
+        text: "Backup check {run_id}: ok (fresh files in /data/backup)"
       - name: notify
         type: notify
         message: "fabrikant: backup-check {run_id} ok"
   agent-smoke:
-    description: "P1-Proof: Agent-Backend (opencode) schreibt Datei im isolierten Workdir (T2)"
+    description: "P1 proof: agent backend (opencode) writes a file in an isolated workdir (T2)"
     tier: 2
     steps:
       - name: cleanup
@@ -83,9 +83,9 @@ loops:
         backend: opencode
         workdir: /tmp/fabrikant-agent-smoke
         prompt: |
-          Erstelle mit dem write-Tool die Datei /tmp/fabrikant-agent-smoke/smoke.txt
-          mit dem Inhalt: fabrikant agent ok.
-          Nutze den ABSOLUTEN Pfad, wie angegeben. Antworte am Ende in einem Satz.
+          Use the write tool to create the file /tmp/fabrikant-agent-smoke/smoke.txt
+          with the content: fabrikant agent ok.
+          Use the ABSOLUTE path as given. At the end, answer in one sentence.
         timeout: 1800
       - name: verify
         type: shell

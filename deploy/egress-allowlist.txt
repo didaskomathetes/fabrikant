@@ -1,22 +1,22 @@
 # fabrikant: Egress-Allowlist (Default-Deny-Proxy, ADR 0051)
 #
-# Domänen, die Agent-Container (Sandbox-Netzwerk `fabrikant-sandbox`) über den
-# Proxy erreichen dürfen. Subdomänen sind inkludiert. Zeile pro Domain
-# (Hostname mit mind. zwei Labels; `com` oder IP-Adressen werden abgelehnt),
-# `#`-Kommentare erlaubt. Ohne diesen Eintrag erlaubt der Proxy NICHTS
-# (Default-Deny). Die Builtins (github.com — inkl. `api.github.com` via
-# Subdomänen-Matching —, models.dev) kommen zusätzlich dazu —
-# siehe `egress.BUILTIN_ALLOWLIST`.
+# Domains that agent containers (sandbox network `fabrikant-sandbox`) may reach
+# through the proxy. Subdomains are included. One domain per line
+# (hostname with at least two labels; `com` or IP addresses are rejected),
+# `#` comments allowed. Without an entry here the proxy allows NOTHING
+# (default deny). The builtins (github.com — incl. `api.github.com` via
+# subdomain matching —, models.dev) are added on top —
+# see `egress.BUILTIN_ALLOWLIST`.
 #
-# Typische Ergänzungen (Model-Provider):
+# Typical additions (model providers):
 # huggingface.co
 # inference.example.com
 #
-# Self-hosted GitLab (ADR 0062): Host des GitLab-Instances, den das Projekt nutzt
-# (API + Clone). github.com ist Builtin; ein eigener GitLab-Host muss hier ergänzt
-# werden, sonst blockt der Default-Deny-Proxy den Agent-Zugriff.
+# Self-hosted GitLab (ADR 0062): host of the GitLab instance the project uses
+# (API + clone). github.com is a builtin; a custom GitLab host must be added
+# here, otherwise the default-deny proxy blocks agent access.
 # gitlab.example.com
 #
-# Python-Pakete (`uv lock`/`uv sync`; nur lesend, Hashes prüft uv):
+# Python packages (`uv lock`/`uv sync`; read-only, uv verifies hashes):
 # pypi.org
 # files.pythonhosted.org

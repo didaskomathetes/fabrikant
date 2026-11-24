@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""gh-token-refresh — GitHub-App-Installation-Token für fabrikant erneuern (ADR 0010).
+"""gh-token-refresh — renew the GitHub App installation token for fabrikant (ADR 0010).
 
-Erzeugt ein frisches 1h-Installation-Token für eine GitHub-App und schreibt es
-in die FABRIKANT_ENV_FILE (Default ~/.config/fabrikant/fabrikant.env). fabrikant liest die Datei pro
-API-Call neu — kein Restart.
+Creates a fresh 1h installation token for a GitHub App and writes it
+to FABRIKANT_ENV_FILE (default ~/.config/fabrikant/fabrikant.env). fabrikant re-reads the file on every
+API call — no restart.
 
-Rollen (`--role`, Default dev) = die zwei Identitäten der Dual-Identity-Pipeline:
-  dev       Builder-App (erstellt PRs, pusht)  → GITHUB_TOKEN
+Roles (`--role`, default dev) = the two identities of the dual-identity pipeline:
+  dev       builder app (creates PRs, pushes)  → GITHUB_TOKEN
             Config: BUILDER_APP_ID, BUILDER_APP_KEY_FILE, BUILDER_INSTALLATION_ID
-  reviewer  QA-App (reviewt, kommentiert)      → GITHUB_REVIEWER_TOKEN
+  reviewer  QA app (reviews, comments)         → GITHUB_REVIEWER_TOKEN
             Config: REVIEWER_APP_ID, REVIEWER_APP_KEY_FILE, REVIEWER_INSTALLATION_ID
 
-  <P>_APP_ID           Client-ID (`Iv23…`, von GitHub empfohlen) oder numerische App-ID —
-                       landet als `iss` im JWT
-  <P>_APP_KEY_FILE     Pfad zum App-Private-Key (PEM, RSA)
-  <P>_INSTALLATION_ID  Installation-ID im Ziel-Repo/-Org
-  FABRIKANT_ENV_FILE      Ziel-Datei (Default ~/.config/fabrikant/fabrikant.env)
-Config aus Env ODER fabrikant.env neben diesem Script.
+  <P>_APP_ID           client ID (`Iv23…`, recommended by GitHub) or numeric app ID —
+                       ends up as `iss` in the JWT
+  <P>_APP_KEY_FILE     path to the app private key (PEM, RSA)
+  <P>_INSTALLATION_ID  installation ID in the target repo/org
+  FABRIKANT_ENV_FILE      target file (default ~/.config/fabrikant/fabrikant.env)
+Config from env OR fabrikant.env next to this script.
 
-Cron (alle 30 min, Token lebt 1h; eine Zeile pro Rolle):
+Cron (every 30 min, token lives 1h; one line per role):
   */30 * * * * /path/to/.venv/bin/python /path/to/fabrikant/scripts/gh-token-refresh.py >> /var/log/gh-token-refresh.log 2>&1
   */30 * * * * /path/to/.venv/bin/python /path/to/fabrikant/scripts/gh-token-refresh.py --role reviewer >> /var/log/gh-token-refresh.log 2>&1
 
-Exit 0 = Token geschrieben, != 0 = Fehler (Cron-Mail/Alert).
+Exit 0 = token written, != 0 = error (cron mail/alert).
 
-Sicherheit:
-  - FABRIKANT_ENV_FILE wird mit 0600 geschrieben (nur Owner liest den Token).
-  - Ist FABRIKANT_ENV_FILE `chattr +i` (z. B. per Terraform), wird das Flag für
-    den Rename kurz aufgehoben und danach wieder gesetzt (braucht root;
-    `lsattr`/`chattr` aus e2fsprogs).
-  - Abhängigkeit: `openssl` (RS256-JWT-Signierung) muss im PATH sein —
-    auch in CI/Deployment-Images, die die Tests/Script ausführen.
+Security:
+  - FABRIKANT_ENV_FILE is written with 0600 (only the owner can read the token).
+  - If FABRIKANT_ENV_FILE is `chattr +i` (e.g. via Terraform), the flag is briefly lifted
+    for the rename and set again afterwards (needs root;
+    `lsattr`/`chattr` from e2fsprogs).
+  - Dependency: `openssl` (RS256 JWT signing) must be on the PATH —
+    also in CI/deployment images that run the tests/script.
 """
 
 from __future__ import annotations
@@ -53,16 +53,16 @@ API = "https://api.github.com"
 SCRIPT_DIR = Path(__file__).resolve().parent
 FABRIKANT_HOME = SCRIPT_DIR.parent
 DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrikant" / "fabrikant.env")
-JWT_LIFETIME_S = 540  # 9 min — GitHub akzeptiert max. 10 min
-JWT_SKEW_S = 60  # iat in der Vergangenheit (Clock-Skew-Toleranz)
+JWT_LIFETIME_S = 540  # 9 min — GitHub accepts max. 10 min
+JWT_SKEW_S = 60  # iat in the past (clock-skew tolerance)
 SUBPROCESS_TIMEOUT_S = 30
 HTTP_TIMEOUT_S = 30
-IMMUTABLE_ATTR = "i"  # ext-Attribut-Flag von `chattr +i` / Spalte in `lsattr`
+IMMUTABLE_ATTR = "i"  # ext attribute flag of `chattr +i` / column in `lsattr`
 
 
 @dataclass(frozen=True)
 class AppRole:
-    """Eine App-Identität: Präfix ihrer Config-Keys + Ziel-Key in der Env-Datei."""
+    """An app identity: prefix of its config keys + target key in the env file."""
 
     prefix: str
     token_key: str
@@ -72,7 +72,7 @@ class AppRole:
         return (f"{self.prefix}_APP_ID", f"{self.prefix}_APP_KEY_FILE", f"{self.prefix}_INSTALLATION_ID")
 
 
-# Rollen-Namen wie fabrikant.gitops.GH_TOKEN_ENV (dev/reviewer).
+# Role names as in fabrikant.gitops.GH_TOKEN_ENV (dev/reviewer).
 ROLES = {
     "dev": AppRole("BUILDER", "GITHUB_TOKEN"),
     "reviewer": AppRole("REVIEWER", "GITHUB_REVIEWER_TOKEN"),
@@ -80,7 +80,7 @@ ROLES = {
 
 
 def _load_fabrikant_env() -> None:
-    """fabrikant.env als Fallback-Config (os.environ gewinnt)."""
+    """fabrikant.env as fallback config (os.environ wins)."""
     p = FABRIKANT_HOME / "fabrikant.env"
     if not p.is_file():
         return
@@ -97,10 +97,10 @@ def _b64url(data: bytes) -> str:
 
 
 def _make_jwt(app_id: str, key_path: Path) -> str:
-    """RS256-JWT für die App-Authentifizierung (GitHub akzeptiert NUR RS256).
+    """RS256 JWT for app authentication (GitHub accepts ONLY RS256).
 
-    Signierung via `openssl` (Stdlib hat kein RSA; openssl ist auf dem
-    Deployment-Host vorhanden)."""
+    Signing via `openssl` (the stdlib has no RSA; openssl is on the
+    deployment host)."""
     header = _b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
     now = int(time.time())
     payload = _b64url(json.dumps({"iat": now - JWT_SKEW_S, "exp": now + JWT_LIFETIME_S, "iss": app_id}).encode())
@@ -112,7 +112,7 @@ def _make_jwt(app_id: str, key_path: Path) -> str:
         timeout=SUBPROCESS_TIMEOUT_S,
     )
     if p.returncode != 0:
-        raise RuntimeError(f"openssl-Signierung fehlgeschlagen: {p.stderr.decode()[:200]}")
+        raise RuntimeError(f"openssl signing failed: {p.stderr.decode()[:200]}")
     return f"{header}.{payload}.{_b64url(p.stdout)}"
 
 
@@ -121,7 +121,7 @@ RETRY_DELAY_S = 2.0
 
 
 def _http(method: str, url: str, token: str, payload: dict | None = None) -> dict:
-    """GitHub-REST-Call mit Retry bei transienten Netzwerkfehlern (DNS-Flakes)."""
+    """GitHub REST call with retry on transient network errors (DNS flakes)."""
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode() if payload is not None else None,
@@ -139,7 +139,7 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
                 body = r.read().decode()
                 return json.loads(body) if body else {}
         except urllib.error.HTTPError:
-            raise  # Antwort, kein Flake
+            raise  # a response, not a flake
         except (urllib.error.URLError, ConnectionError, TimeoutError):
             if attempt >= RETRIES - 1:
                 raise
@@ -148,10 +148,10 @@ def _http(method: str, url: str, token: str, payload: dict | None = None) -> dic
 
 
 def _is_immutable(path: Path) -> bool:
-    """True, wenn `path` das immutable-Attribut (`chattr +i`) trägt.
+    """True if `path` carries the immutable attribute (`chattr +i`).
 
-    Fehlt `lsattr` (kein Linux/e2fsprogs) oder kann das FS keine Attribute
-    (tmpfs, overlayfs, …), gilt die Datei als NICHT immutable."""
+    If `lsattr` is missing (not Linux/e2fsprogs) or the FS cannot do attributes
+    (tmpfs, overlayfs, …), the file counts as NOT immutable."""
     try:
         p = subprocess.run(
             ["lsattr", "-d", str(path)],
@@ -167,7 +167,7 @@ def _is_immutable(path: Path) -> bool:
 
 
 def _chattr(path: Path, op: str) -> None:
-    """`chattr <op> path` (z.B. `-i`/`+i`); RuntimeError bei Fehlschlag (braucht root/CAP_LINUX_IMMUTABLE)."""
+    """`chattr <op> path` (e.g. `-i`/`+i`); RuntimeError on failure (needs root/CAP_LINUX_IMMUTABLE)."""
     p = subprocess.run(
         ["chattr", op, str(path)],
         capture_output=True,
@@ -176,17 +176,17 @@ def _chattr(path: Path, op: str) -> None:
         check=False,
     )
     if p.returncode != 0:
-        raise RuntimeError(f"chattr {op} {path} fehlgeschlagen: {p.stderr.strip()[:200]}")
+        raise RuntimeError(f"chattr {op} {path} failed: {p.stderr.strip()[:200]}")
 
 
 @contextmanager
 def _immutable_lifted(path: Path) -> Iterator[None]:
-    """Immutable-Flag von `path` für die Dauer des Blocks aufheben.
+    """Lift the immutable flag of `path` for the duration of the block.
 
-    Ist die Env-Datei per Terraform `chattr +i` (immutable), schlägt
-    `os.replace` darauf sonst mit EPERM fehl. Das Flag wird nur
-    angefasst, wenn es vorher gesetzt war, und im `finally` wiederhergestellt
-    (auch wenn der Block wirft) — auf dem neuen Inode nach dem Rename."""
+    If the env file is `chattr +i` (immutable) via Terraform, `os.replace`
+    on it otherwise fails with EPERM. The flag is only
+    touched if it was set beforehand, and restored in `finally`
+    (even if the block raises) — on the new inode after the rename."""
     if not path.exists() or not _is_immutable(path):
         yield
         return
@@ -198,11 +198,11 @@ def _immutable_lifted(path: Path) -> Iterator[None]:
 
 
 def _write_token(env_file: Path, token: str, key: str = "GITHUB_TOKEN") -> None:
-    """`key`-Zeile ersetzen (oder anhängen), atomar via Temp-File+Rename.
+    """Replace (or append) the `key` line, atomically via temp file + rename.
 
-    Die Datei erhält 0600 (nur Owner liest den Token) — chmod auf dem
-    Temp-File VOR dem Rename, damit der finale Pfad nie lockerer ist.
-    Ein gesetztes immutable-Attribut (`chattr +i`) bleibt erhalten."""
+    The file gets 0600 (only the owner can read the token) — chmod on the
+    temp file BEFORE the rename so the final path is never more permissive.
+    An existing immutable attribute (`chattr +i`) is preserved."""
     lines = env_file.read_text().splitlines() if env_file.is_file() else []
     out, replaced = [], False
     for line in lines:
@@ -245,8 +245,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FEHLER: Token-Request HTTP {e.code}: {e.read().decode()[:300]}", file=sys.stderr)
         return 1
     except (urllib.error.URLError, ConnectionError, TimeoutError, json.JSONDecodeError) as e:
-        # Gezielt: transiente Netzwerkfehler (nach Retries) + defekte Antwort.
-        # Fail-closed: kein Token → Exit != 0 → Cron-Alert, altes Token läuft aus.
+        # Targeted: transient network errors (after retries) + broken response.
+        # Fail closed: no token → exit != 0 → cron alert, old token expires.
         print(f"FEHLER: Token-Request: {e}", file=sys.stderr)
         return 1
     token = res.get("token", "")
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     _write_token(env_file, token, role.token_key)
     expires = res.get("expires_at", "?")
-    print(f"OK: {role.token_key} nach {env_file} geschrieben (gültig bis {expires})")
+    print(f"OK: {role.token_key} written to {env_file} (valid until {expires})")
     return 0
 
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """pyright_sonar — Pyright-JSON (`pyright --outputjson`) → SonarQube Generic Issue Import Format.
 
-Sonar-Python importiert Ruff/Bandit/Mypy nativ, Pyright nicht; dieser Report geht über
+Sonar-Python imports Ruff/Bandit/Mypy natively, Pyright it does not; this report goes through
 `sonar.externalIssuesReportPaths` (scripts/lint.sh --reports, scripts/sonar-scan.sh):
 
     pyright_sonar.py pyright.json pyright-sonar.json [--base DIR]
 
-Pfade werden relativ zu `--base` (Default: cwd = Sonar-Projektbasis). Nur Zeilen, keine Spalten:
-eine Spalte jenseits des Zeilenendes ließe Sonar den ganzen Report verwerfen.
-Nur Standardbibliothek (läuft mit dem System-Python wie die übrigen Skripte).
+Paths are made relative to `--base` (default: cwd = Sonar project base). Lines only, no columns:
+a column beyond the end of the line would make Sonar discard the whole report.
+Standard library only (runs with the system Python like the other scripts).
 """
 
 from __future__ import annotations
@@ -20,14 +20,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ENGINE_ID = "pyright"
-# Diagnosen ohne Regel (Syntaxfehler, unaufgelöste Imports o. Ä.).
+# Diagnostics without a rule (syntax errors, unresolved imports, etc.).
 FALLBACK_RULE = "pyright"
 DOCS_URL = "https://microsoft.github.io/pyright/#/configuration?id=type-check-diagnostics-settings"
 
 
 @dataclass(frozen=True)
 class SeverityMapping:
-    """Pyright-Severity → Sonar-Regel-Attribute (Standard-Experience- und MQR-Modus)."""
+    """Pyright severity → Sonar rule attributes (standard experience and MQR mode)."""
 
     rank: int
     type: str
@@ -45,7 +45,7 @@ SEVERITIES = {
 
 @dataclass(frozen=True)
 class Diagnostic:
-    """Eine Pyright-Diagnose; `line` 1-basiert (Pyright zählt ab 0)."""
+    """A Pyright diagnostic; `line` is 1-based (Pyright counts from 0)."""
 
     rule: str
     severity: str
@@ -86,8 +86,8 @@ def _rule(rule_id: str, severity: str) -> dict:
 
 
 def convert(pyright: dict, base: Path) -> dict:
-    """Pyright-Output → Generic-Issue-Report. Eine Regel pro Pyright-Regel, mit der schwersten
-    beobachteten Severity (Sonar kennt die Severity nur pro Regel)."""
+    """Pyright output → generic issue report. One rule per Pyright rule, with the most severe
+    observed severity (Sonar only knows severity per rule)."""
     diagnostics = [Diagnostic.from_pyright(d, base) for d in pyright.get("generalDiagnostics", [])]
     worst: dict[str, str] = {}
     for d in diagnostics:

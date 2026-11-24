@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""check-adr-numbers — ADR-Nummern-Kollisionen zwischen parallelen Branches.
+"""check-adr-numbers — ADR number collisions between parallel branches.
 
-Agents wählen die ADR-Nummer relativ zum eigenen Branch-Stand; parallele Branches
-kollidieren dadurch zwangsläufig (ADR 0032).
-Dieses Script prüft deterministisch gegen eine Base (Default `origin/main`) —
-nicht per Prompt-Logik:
+Agents pick the ADR number relative to their own branch state; parallel branches
+therefore inevitably collide (ADR 0032).
+This script checks deterministically against a base (default `origin/main`) —
+not via prompt logic:
 
   check [--base B] [--head H]
-      Neue ADRs (im Branch hinzugefügt), deren Nummer auf B schon vergeben ist
-      (oder die untereinander doppelt sind) → Liste auf stdout, Exit 1.
-      Ohne --head: Arbeitsstand (HEAD + uncommitted + untracked), sonst `B...H`.
+      New ADRs (added in the branch) whose number is already taken on B
+      (or that duplicate each other) → list on stdout, exit 1.
+      Without --head: working state (HEAD + uncommitted + untracked), otherwise `B...H`.
   next [--base B] [--repo R] [--no-prs]
-      Nächste freie Nummer laut B UND allen offenen PRs von R (höchste vergebene + 1;
-      Lücken werden nicht gefüllt). Der PR des aktuellen Branches zählt nicht.
+      Next free number according to B AND all open PRs of R (highest taken + 1;
+      gaps are not filled). The PR of the current branch does not count.
   fix [--base B] [--repo R] [--no-prs]
-      Kollidierende NEUE ADRs auf die nächsten freien Nummern umbenennen (auch an
-      offenen PRs vorbei): Dateiname, Titelzeile `# ADR NNNN`, Dateipfad-Verweise sowie
-      `ADR NNNN` in vom Branch hinzugefügten Zeilen. ADRs, die auf B liegen, werden nie
-      angefasst.
+      Rename colliding NEW ADRs to the next free numbers (also in
+      open PRs too): file name, title line `# ADR NNNN`, file path references as well as
+      `ADR NNNN` in lines added by the branch. ADRs that exist on B are never
+      touched.
 
-`check` vergleicht nur mit B (deterministisch, CI-tauglich). Offene PRs liest `gh`;
-ohne `gh`/Netz gilt mit Warnung nur B.
+`check` only compares with B (deterministic, CI-friendly). Open PRs are read via `gh`;
+without `gh`/network only B counts, with a warning.
 
-Läuft im Paketverzeichnis (`fabrikant/`); Pfade sind relativ zum cwd.
+Runs in the package directory (`fabrikant/`); paths are relative to the cwd.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from pathlib import Path
 ADR_DIR = "docs/adr"
 DEFAULT_BASE = "origin/main"
 DEFAULT_REPO = "didaskomathetes/fabrikant"
-PR_LIMIT = 200  # offene PRs, deren Dateien gelesen werden
+PR_LIMIT = 200  # open PRs whose files are read
 # Laufzeitdaten/Umgebungen: `fix` schreibt dort nie (Run-Transkripte bleiben Historie).
 SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__", "runs", "state"})
 ADR_FILE_RE = re.compile(r"^(\d{4})-.+\.md$")
@@ -50,16 +50,16 @@ def _git(*args: str) -> str:
 
 
 def adr_number(path: str) -> int | None:
-    """ADR-Nummer aus dem Dateinamen (`0013-foo.md` → 13), None für Nicht-ADRs (README)."""
+    """ADR number from the file name (`0013-foo.md` → 13), None for non-ADRs (README)."""
     m = ADR_FILE_RE.match(Path(path).name)
     return int(m.group(1)) if m else None
 
 
 def _new_adr_number(path: str) -> int:
-    """Nummer eines Pfads aus `new_adrs` (dort auf ADRs gefiltert, also nie None)."""
+    """Number of a path from `new_adrs` (filtered to ADRs there, so never None)."""
     n = adr_number(path)
     if n is None:
-        raise ValueError(f"kein ADR-Dateiname: {path}")
+        raise ValueError(f"not an ADR file name: {path}")
     return n
 
 
@@ -83,7 +83,7 @@ def _working_diffs(base: str, *args: str) -> list[str]:
 
 
 def new_adrs(base: str, head: str | None = None) -> list[str]:
-    """Im Branch neu hinzugefügte ADR-Dateien (sortiert nach Nummer, dann Name)."""
+    """ADR files newly added in the branch (sorted by number, then name)."""
     if head is None:
         diffs = _working_diffs(base, "--name-status", "--no-renames", "--diff-filter=A")
         untracked = _git("ls-files", "--others", "--exclude-standard", "--", f"{ADR_DIR}/")
@@ -96,7 +96,7 @@ def new_adrs(base: str, head: str | None = None) -> list[str]:
 
 
 def collisions(base: str, head: str | None = None) -> list[str]:
-    """Neue ADRs mit bereits vergebener Nummer (auf base oder durch ein anderes neues ADR)."""
+    """New ADRs whose number is already taken (on base or by another new ADR)."""
     taken = base_numbers(base)
     seen: set[int] = set()
     clashing = []
@@ -127,10 +127,10 @@ def _gh_open_prs(repo: str) -> list[dict]:
 
 
 def pr_numbers(repo: str) -> set[int]:
-    """In offenen PRs belegte ADR-Nummern, ohne den PR des aktuellen Branches (sonst würde
-    `fix` das eigene ADR immer weiter verschieben). PR-Pfade sind repo-relativ.
+    """ADR numbers taken in open PRs, excluding the PR of the current branch (otherwise
+    `fix` would keep moving its own ADR). PR paths are repo-relative.
 
-    Ohne `gh`/Netz: Warnung auf stderr, leere Menge (es gilt dann nur die Base)."""
+    Without `gh`/network: warning on stderr, empty set (then only the base counts)."""
     try:
         prs = _gh_open_prs(repo)
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as e:
@@ -148,7 +148,7 @@ def pr_numbers(repo: str) -> set[int]:
 
 
 def next_free(taken: set[int]) -> int:
-    """Höchste vergebene Nummer + 1 (Lücken bleiben Lücken)."""
+    """Highest taken number + 1 (gaps stay gaps)."""
     return max(taken, default=0) + 1
 
 
@@ -157,19 +157,19 @@ def _stem(path: str) -> str:
 
 
 def renumbered_name(path: str, number: int) -> str:
-    """Dateiname mit neuer Nummer (`0013-foo.md`, 14 → `0014-foo.md`)."""
+    """File name with a new number (`0013-foo.md`, 14 → `0014-foo.md`)."""
     return f"{number:0{NUMBER_WIDTH}d}{Path(path).name[NUMBER_WIDTH:]}"
 
 
 def added_lines(base: str) -> dict[str, set[int] | None]:
-    """Vom Branch (inkl. Arbeitsstand) geänderte Dateien → hinzugefügte Zeilennummern.
+    """Files changed by the branch (incl. working state) → added line numbers.
 
-    None = ganze Datei neu (alle Zeilen).
+    None = whole file is new (all lines).
 
-    Enthalten sind gegenüber der Merge-Base geänderte Dateien (committet, gestaget oder
-    im Arbeitsstand) sowie ganze untracked/ignorierte Dateien (außer SKIP_DIRS);
-    unveränderte getrackte Dateien bleiben unberührt. Bestehende ADRs der Base schließt
-    ``fix`` zusätzlich aus.
+    Includes files changed relative to the merge base (committed, staged or
+    in the working state) as well as whole untracked/ignored files (except SKIP_DIRS);
+    unchanged tracked files are left alone. ``fix`` additionally excludes existing
+    ADRs of the base.
     """
     out: dict[str, set[int] | None] = {}
     tracked = set(_git("ls-files", "--cached").splitlines())
@@ -197,11 +197,11 @@ def _working_files() -> set[str]:
 
 
 def rewrite_text(text: str, renames: dict[str, tuple[int, int]], lines: set[int] | None, is_adr: bool) -> str:
-    """Verweise auf umbenannte ADRs nachziehen.
+    """Update references to renamed ADRs.
 
-    Dateinamen/Stems überall; `ADR NNNN` (alte Nummer) nur in hinzugefügten Zeilen
-    (`lines`; None = alle) — der Rest der Datei gehört dem Stand auf base. Im
-    umbenannten ADR selbst (`is_adr`) gilt das für alle Zeilen."""
+    File names/stems everywhere; `ADR NNNN` (old number) only in added lines
+    (`lines`; None = all) — the rest of the file belongs to the state on base. In the
+    renamed ADR itself (`is_adr`) this applies to all lines."""
     out = []
     for i, line in enumerate(text.splitlines(keepends=True), start=1):
         for old_stem, (old, new) in renames.items():
@@ -214,7 +214,7 @@ def rewrite_text(text: str, renames: dict[str, tuple[int, int]], lines: set[int]
 
 
 def _move(old_path: str, new_path: str) -> None:
-    """Datei umbenennen; bei getrackten/gestageten Dateien per `git mv`, damit der Index konsistent bleibt."""
+    """Rename a file; for tracked/staged files via `git mv` so the index stays consistent."""
     if _git("ls-files", "--cached", "--", old_path).strip():
         _git("mv", old_path, new_path)
     else:
@@ -224,7 +224,7 @@ def _move(old_path: str, new_path: str) -> None:
 def fix(base: str, reserved: frozenset[int] = frozenset()) -> list[tuple[str, str]]:
     """Kollidierende neue ADRs umbenennen; liefert [(alter Pfad, neuer Pfad)].
 
-    `reserved`: zusätzlich belegte Nummern (offene PRs), die neue Nummern überspringen."""
+    `reserved`: additionally taken numbers (open PRs) that new numbers skip."""
     clashing = collisions(base)
     if not clashing:
         return []
@@ -246,7 +246,7 @@ def fix(base: str, reserved: frozenset[int] = frozenset()) -> list[tuple[str, st
     for path, lines in touched.items():
         p = Path(path)
         if not p.is_file() or (path.startswith(f"{ADR_DIR}/") and path not in moved and adr_number(path) is not None):
-            continue  # bestehende ADRs (base) bleiben unberührt
+            continue  # existing ADRs (base) stay untouched
         try:
             text = p.read_text()
         except UnicodeDecodeError:
@@ -265,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--base", default=DEFAULT_BASE)
         if name != "check":
             sp.add_argument("--repo", default=DEFAULT_REPO)
-            sp.add_argument("--no-prs", action="store_true", help="offene PRs nicht berücksichtigen")
+            sp.add_argument("--no-prs", action="store_true", help="ignore open PRs")
     sub.choices["check"].add_argument("--head", default=None)
     args = p.parse_args(argv)
 
@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         clashing = collisions(args.base, args.head)
         for path in clashing:
-            print(f"ADR-Nummer {adr_number(path):04d} kollidiert mit {args.base}: {path}")
+            print(f"ADR number {adr_number(path):04d} collides with {args.base}: {path}")
         return 1 if clashing else 0
     return 0
 
