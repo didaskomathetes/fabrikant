@@ -57,7 +57,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 
 | Feld | Typ | Status | Beschreibung |
 |---|---|---|---|
-| `type` | `shell` \| `git` \| `pr` \| `agent` \| `report` \| `http` \| `llm` \| `notify` \| `state` \| `verify` \| `review` \| `pr_review` \| `pr_merge` \| `issue` \| `human_gate` \| `alert_route` \| `escalation` | Pflicht | Step kind. |
+| `type` | string | Pflicht | Step kind: a built-in (shell, git, pr, agent, report, http, llm, notify, state, verify, review, pr_review, pr_merge, issue, human_gate, alert_route, escalation) or a plugin registered via the `fabrik.steps` entry point (ADR 0069); membership is checked at load time. |
 | `name` | string | optional | Step name (run log, insert anchors, reports). |
 | `gate` | boolean | optional | false = a failure of this step does NOT stop the run (default true). |
 | `approval` | boolean | optional | true = pause the run for human approval before this step (ADR 0015). |

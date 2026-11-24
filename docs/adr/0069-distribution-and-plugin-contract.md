@@ -31,16 +31,18 @@ entry point; fabrik itself is installed from PyPI or run from a Docker image.
 3. **`fabrik init [DIR]`** scaffolds a user project directory (`projects/`, `templates/`,
    `fabrik.env.example`, a starter spec, a plugin skeleton hint) so the first run needs no repo.
 4. **Step registry (`fabrik.steps.registry`).** `register_step(type, handler, *, schema=None,
-   replace=False)`. Built-in steps register through the same API. The engine dispatches via the
-   registry; unknown types fail with the list of known types. Third parties register through the
-   `fabrik.steps` entry-point group (same loader pattern as ADR 0063). Handler signature:
-   `(ctx: dict, step: dict, emit: Callable[[str], None]) -> dict` returning the existing result
-   dict (`ok`, `summary`, optional `failure_kind`).
-5. **Spec validation** takes the allowed step `type` values from the registry (built-ins +
-   plugins) instead of a schema enum. A plugin may provide a JSON-schema fragment for its own
-   step fields, validated when present.
+   needs_worktree=False, replace=False)` holds *third-party* step types; built-ins stay dispatched
+   by the engine and **cannot be shadowed** by a plugin. The engine falls back to the registry for
+   non-built-in types and fails unknown types with the list of known ones. Plugins are discovered
+   through the `fabrik.steps` entry-point group (same loader pattern as ADR 0063; a broken entry
+   point is logged and skipped). Handler signature: `(ctx: dict, step: dict, emit: Callable[[str],
+   None]) -> dict` returning the existing result dict (`ok`, `summary`, optional failure fields).
+5. **Spec validation** checks the step `type` against the registry (built-ins + plugins) at load
+   time instead of via a schema enum (the schema only requires a string). A plugin may provide a
+   JSON-schema fragment for its step mapping, validated when present; `verify` checks may use
+   plugin types too.
 6. **Public SDK surface (`fabrik.sdk`).** Re-exports the only API plugins may rely on:
-   `register_step`, `StepHandler`, `failed`/`ok` result helpers, `FailureKind`. Semver applies to
+   `register_step`, `StepHandler`, `StepPlugin`, `ok`/`failed` result helpers, `FailureKind`, `substitute`. Semver applies to
    this module (and the entry-point group names); everything else is internal.
 7. **Docker.** A multi-stage image installs the wheel, runs as non-root, stores data in the
    `/data` volume (`FABRIK_HOME=/data`). Users extend with `FROM … && pip install their-plugins`.

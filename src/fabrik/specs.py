@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
 from ruamel.yaml import YAML
 
 from .i18n import t as _t
@@ -34,6 +35,7 @@ from .relay.config import expand_loops as expand_relay_loops
 from .runs import LOCK_KEY_SEP
 from .spec_expand import expand_spec
 from .steps import extra_context
+from .steps import registry as step_registry
 
 
 class SpecConflict(ValueError):
@@ -267,7 +269,7 @@ def _worktree_types(steps: list) -> set[str]:
     for st in steps:
         if not isinstance(st, dict):
             continue
-        if st.get("type") in config.WORKTREE_STEP_TYPES:
+        if st.get("type") in step_registry.worktree_types():
             found.add(st["type"])
         checks = st.get("checks")
         if isinstance(checks, list):
@@ -400,8 +402,8 @@ def _validate_step_verify(st: dict, where: str, spec: dict) -> list[str]:
     for j, chk in enumerate(checks):
         cwhere = f"{where}: verify-Check {j}"
         t = chk.get("type") if isinstance(chk, dict) else None
-        if t not in config.STEP_TYPES:
-            errs.append(_t("specs.needs_type_in_is", cwhere=cwhere, v2=list(config.STEP_TYPES), t=t))
+        if t not in step_registry.known_types():
+            errs.append(_t("specs.needs_type_in_is", cwhere=cwhere, v2=list(step_registry.known_types()), t=t))
         # extra_context also applies to checks (effective_step, ADR 0008): only for LLM step types.
         if isinstance(chk, dict) and extra_context.KEY in chk:
             errs += extra_context.validate(chk[extra_context.KEY], cwhere, t)
@@ -475,6 +477,26 @@ _STEP_VALIDATORS: dict[str, Callable[[dict, str, dict], list[str]]] = {
 }
 
 
+def _validate_step_type(stype: object, where: str) -> list[str]:
+    """The step type must be built in or a registered plugin (ADR 0069); the schema only checks `string`."""
+    if not isinstance(stype, str) or stype in step_registry.known_types():
+        return []
+    return [_t("specs.needs_type_in_is", cwhere=where, v2=list(step_registry.known_types()), t=stype)]
+
+
+def _validate_plugin_step(st: dict, where: str) -> list[str]:
+    """Validate a plugin step against the JSON-schema fragment its plugin registered (if any)."""
+    stype = st.get("type")
+    plugin = step_registry.get_step(stype) if isinstance(stype, str) else None
+    if plugin is None or plugin.schema is None:
+        return []
+    validator = Draft202012Validator(plugin.schema)
+    return [
+        f"{where}: {'/'.join(str(p) for p in e.absolute_path) or '<step>'}: {e.message}"
+        for e in sorted(validator.iter_errors(st), key=lambda e: list(e.absolute_path))
+    ]
+
+
 def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
     errs = []
     # Structural schema (issue #131): types/enums/required fields from
@@ -531,7 +553,6 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                 errs += _validate_retry_block(ldef["retry"], f"loop {lname}.retry")
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
-                # The schema checks the step type enum (no duplicate here).
                 if isinstance(st, dict):
                     where = f"loop {lname} step {i}"
                     errs += _validate_approval_when(st, where)
@@ -542,9 +563,11 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
                     stype = st.get("type")
+                    errs += _validate_step_type(stype, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None
                     if validator is not None:
                         errs += validator(st, where, spec)
+                    errs += _validate_plugin_step(st, where)
     if errs:
         raise ValueError(_t("specs.spec_invalid") + "\n  ".join(errs))
 

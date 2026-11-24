@@ -75,7 +75,8 @@ def test_validate_bad_tier(tmp_path):
 
 
 def test_validate_bad_step_type(tmp_path):
-    with pytest.raises(ValueError, match="steps/0/type: .* is not (one of|of type)"):
+    # Membership is a semantic check (built-ins + plugins, ADR 0069), not a schema enum.
+    with pytest.raises(ValueError, match=r"loop l1 step 0.*'bogus'"):
         specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "bogus"}))
 
 
