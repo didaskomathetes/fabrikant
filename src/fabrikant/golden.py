@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import re
 import tempfile
@@ -28,6 +29,8 @@ from typing import Any
 from . import config, replay
 from .filelock import locked
 from .runmodel import TERMINAL_RUN_STATUSES, StepStatus
+
+log = logging.getLogger("fabrikant.golden")
 
 GOLDEN_SCHEMA = 1
 
@@ -210,6 +213,7 @@ def save_golden(project: str, name: str, golden: dict) -> Path:
     p.parent.mkdir(parents=True, exist_ok=True)
     with locked(p):
         data: dict[str, Any] = {"schema": GOLDEN_SCHEMA, "goldens": load_goldens(project)}
+        previous = (data["goldens"].get(name) or {}).get("baseline_run", "")
         data["goldens"][name] = golden
         fd = tempfile.NamedTemporaryFile(  # noqa: SIM115 - closed explicitly below
             "w", encoding="utf-8", dir=p.parent, prefix=p.name + ".", suffix=".tmp", delete=False
@@ -224,7 +228,10 @@ def save_golden(project: str, name: str, golden: dict) -> Path:
             with contextlib.suppress(OSError):
                 os.unlink(fd.name)
             raise
-    mark_baseline(project, golden.get("baseline_run", ""), name)
+    new_run = golden.get("baseline_run", "")
+    if previous and previous != new_run:
+        unmark_baseline(project, previous, name)  # a re-capture must not leave two runs marked
+    mark_baseline(project, new_run, name)
     return p
 
 
@@ -242,6 +249,25 @@ def mark_baseline(project: str, run_id: str, name: str) -> bool:
         STORE.update_fields(project, run_id, {"golden": name})
         return True
     except Exception:  # noqa: BLE001 - best-effort by design, see docstring
+        log.debug("golden mark %r on run %s/%s skipped", name, project, run_id, exc_info=True)
+        return False
+
+
+def unmark_baseline(project: str, run_id: str, name: str) -> bool:
+    """Clear the golden mark ``name`` from a run that stops being the baseline (best-effort).
+
+    Only a mark equal to ``name`` is cleared, so a run that is the baseline of another golden
+    keeps that mark. Returns ``True`` if a mark was removed."""
+    try:
+        from .runstore import STORE  # local: keep golden importable without the store
+
+        record = STORE.get_record(run_id, project)
+        if record is None or record.get("golden") != name:
+            return False
+        STORE.update_fields(project, run_id, {"golden": ""})
+        return True
+    except Exception:  # noqa: BLE001 - best-effort, same as mark_baseline
+        log.debug("golden unmark %r on run %s/%s skipped", name, project, run_id, exc_info=True)
         return False
 
 

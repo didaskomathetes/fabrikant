@@ -586,3 +586,56 @@ def test_cmd_eval_missing_project_loop_and_golden(projects_dir, capsys):
         cli.cmd_eval(type("A", (), {"project": None, "loop": None, "name": None, "golden_run": None, "yes": True})())
     assert e.value.code == cli.EXIT_ERROR
     assert "--golden" in capsys.readouterr().out
+
+
+def test_recapture_clears_the_previous_baseline_mark(projects_dir, runs_dir):
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", steps=_STEPS)
+    _write_run(runs_dir, "p", "orig-2", status="pass", loop="l", steps=_STEPS)
+    golden.save_golden("p", "l", golden.capture_golden("p", "l", "orig-1"))
+    golden.save_golden("p", "l", golden.capture_golden("p", "l", "orig-2"))
+    assert golden.golden_for_run("orig-1") is None
+    assert golden.golden_for_run("orig-2") == ("p", "l")
+
+
+def test_recapture_keeps_a_mark_that_belongs_to_another_golden(projects_dir, runs_dir):
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", steps=_STEPS)
+    _write_run(runs_dir, "p", "orig-2", status="pass", loop="l", steps=_STEPS)
+    golden.save_golden("p", "a", golden.capture_golden("p", "l", "orig-1"))
+    golden.save_golden("p", "b", golden.capture_golden("p", "l", "orig-1"))  # orig-1 now marked "b"
+    golden.save_golden("p", "a", golden.capture_golden("p", "l", "orig-2"))  # re-capture "a"
+    assert golden.golden_for_run("orig-1") == ("p", "b")  # not cleared: its mark is not "a"
+
+
+def test_unmark_baseline_missing_run_is_a_noop(projects_dir, runs_dir):
+    assert golden.unmark_baseline("p", "gone", "l") is False
+
+
+def test_cmd_eval_golden_with_stale_mark_is_refused(projects_dir, runs_dir, capsys):
+    # orig-1 still carries the mark (e.g. written by an older version) but the golden moved on.
+    _write_golden(
+        projects_dir, "p", "l", {"loop": "l", "baseline_run": "orig-2", "expect": {"status": "pass", "steps": []}}
+    )
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="l")
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(
+            type("A", (), {"project": None, "loop": None, "name": None, "golden_run": "orig-1", "yes": True})()
+        )
+    assert e.value.code == cli.EXIT_ERROR
+    assert "no longer the baseline" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("extra", [{"project": "p"}, {"loop": "l"}, {"name": "n"}])
+def test_cmd_eval_golden_cannot_be_combined_with_positionals(projects_dir, capsys, extra):
+    args = {"project": None, "loop": None, "name": None, "golden_run": "orig-1", "yes": True} | extra
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(type("A", (), args)())
+    assert e.value.code == cli.EXIT_ERROR
+    assert "do not combine" in capsys.readouterr().out
+
+
+def test_mark_baseline_failure_is_logged_not_raised(projects_dir, runs_dir, caplog):
+    with caplog.at_level("DEBUG", logger="fabrikant.golden"):
+        assert golden.mark_baseline("p", "gone", "l") is False
+    assert "skipped" in caplog.text

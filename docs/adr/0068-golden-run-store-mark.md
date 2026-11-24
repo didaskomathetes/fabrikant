@@ -1,72 +1,78 @@
-# ADR 0068: Golden Runs — Run-Store-Markierung + `eval --golden`
+# ADR 0068: Golden Runs — Run-Store Mark + `eval --golden`
 
 **Status:** Draft; proposed on the `feat/golden-runs-store` branch
 **Betrifft:** ADR 0065 (Golden Runs, `fabrikant eval`), ADR 0034 (run store, JSON + SQL), `docs/roadmap.md` First win 2 (#130)
 
 ## Context
 
-ADR 0065 gibt uns die Golden-Baseline und den Eval: `fabrikant eval <project>
-<loop> [--name N]`. Die drei Parameter muss werfend manuell kennen. In der
-Praxis weiß man aber meist nur *welcher Run* der bekannte Gute war — „der
-Run, den wir letzte Woche abgenickt haben" — und will darauf hin die
-Eval laufen lassen, nicht Project/Loop/Name rekonstruieren.
+ADR 0065 gives us the golden baseline and the eval: `fabrikant eval <project>
+<loop> [--name N]`. The three parameters have to be known by heart. In practice
+you usually only know *which run* was the known-good one — "the run we signed
+off last week" — and want to run the eval against it, not reconstruct
+project/loop/name.
 
-Die Lücke (#130, Gaps 1+2): Der Run-Store (ADR 0034) weiß nicht, ob ein Run
-als Golden-Baseline markiert ist. Die Markierung lebt nur in der
-Sidecar-Datei `projects/<projekt>.golden.json` (`baseline_run`), die neben
-der Spec liegt und nichts mit dem Run-Record selbst zu tun hat.
+The gap (#130, gaps 1+2): the run store (ADR 0034) does not know whether a run
+is marked as a golden baseline. The mark lives only in the sidecar file
+`projects/<project>.golden.json` (`baseline_run`), which sits next to the spec
+and has nothing to do with the run record itself.
 
 ## Decision
 
-**Gap 1 — Markierung im Run-Store.** Der Run-Record bekommt ein Feld
-`golden` (Text, nullable): den *Namen* der Golden-Baseline, aus der dieser
-Run als Baseline gefangen wurde.
+**Gap 1 — mark in the run store.** The run record gets a field `golden` (text,
+nullable): the *name* of the golden baseline this run was captured as.
 
-- `Run.golden: str = ""` im Modell (`runmodel.py`), in `parse_run` (JSON) und
-  in `_RUN_FIELDS` + dem deklarativen `runs`-Table (`runschema.py`) +
-  Alembic-Migration `0007` (SQL).
-- `save_golden(project, name, golden)` markiert **best-effort** den
-  `baseline_run`: `mark_baseline(project, run_id, name)` setzt
-  `golden = name` auf dem Run-Record. Fehlender Run (z. B. CI mit leeren
-  `runs/`) ist kein Fehler — die markierung wird übersprungen, die
-  Sidecar-Datei bleibt die committed Review-Quelle.
-- Die Sidecar-Datei `projects/<projekt>.golden.json` bleibt unverändert die
-  *Quell- und Review-Quelle*. `golden` im Store ist nur eine *Beziehung*
-  (Run → Baseline-Name), keine zweite Kopie der Baseline.
+- `Run.golden: str = ""` in the model (`runmodel.py`), in `parse_run` (JSON) and
+  in `_RUN_FIELDS` + the declarative `runs` table (`runschema.py`) + Alembic
+  migration `0007` (SQL).
+- `save_golden(project, name, golden)` marks the `baseline_run` **best-effort**:
+  `mark_baseline(project, run_id, name)` sets `golden = name` on the run record.
+  A missing run (e.g. CI with an empty `runs/`) is not an error — the mark is
+  skipped (and logged at debug level); the sidecar file stays the committed
+  review source.
+- **One baseline run per golden name.** When a golden is re-captured with a
+  different run, the previous baseline run loses its mark
+  (`unmark_baseline`; only a mark equal to the name is cleared, so a run that is
+  the baseline of another golden keeps that one).
+- The sidecar file `projects/<project>.golden.json` remains the *source of
+  truth and review source*. `golden` in the store is only a *relation*
+  (run → baseline name), not a second copy of the baseline.
 
-**Gap 2 — `eval --golden <run-id>`.** Die Eval lässt sich jetzt über den Run
-starten, dessen Markierung Project/Loop/Name auflöst:
+**Gap 2 — `eval --golden <run-id>`.** The eval can now be started from the run
+whose mark resolves project/loop/name:
 
-- `golden_for_run(run_id)` → `(project, name)` oder `None` (unbekannt oder
-  nicht markiert).
-- `fabrikant eval --golden <run-id> [--yes]` — löst über die Markierung auf und
-  läuft dann exakt wie `fabrikant eval <project> <loop> [--name N]`. Die
-  klassischen Positional-Argumente werden optional (`nargs="?"`); ohne
-  `--golden` und ohne `project loop` → Usage-Error.
-- Exit-Contract unverändert: **0 = keine Regression**, 1 = Regression, 2 =
-  Fehler/inkonklusiv.
+- `golden_for_run(run_id)` → `(project, name)` or `None` (unknown or not marked).
+- `fabrikant eval --golden <run-id> [--yes]` resolves via the mark and then runs
+  exactly like `fabrikant eval <project> <loop> [--name N]`. The classic
+  positional arguments become optional (`nargs="?"`); without `--golden` and
+  without `project loop` it is a usage error, and combining `--golden` with
+  `project`, `loop` or `--name` is a usage error too (no silently ignored
+  arguments).
+- A stale mark is refused: if the golden's current `baseline_run` is not the
+  given run (the golden was re-captured since), the eval stops instead of
+  comparing against a different baseline than the one named.
+- Exit contract unchanged: **0 = no regression**, 1 = regression, 2 =
+  error/inconclusive.
 
-**Gap 3 — CI-Workflow.** Bleibt wie in ADR 0065: das Workflow-File liegt
-staged unter `docs/ci/golden-eval.yml` und wird erst nach Freigabe der
-`workflows`-Write-Permission der contributing App nach
-`.github/workflows/` gezogen. Von der Code-Seite nicht machbar — hier nicht
-weiterverfolgt.
+**Gap 3 — CI workflow.** Stays as in ADR 0065: the workflow file is staged
+under `docs/ci/golden-eval.yml` and is only moved to `.github/workflows/` once
+the contributing App gets the `workflows` write permission. Not doable from
+the code side — not pursued here.
 
-**Gap 4 — Nutzer-Doku.** `docs/golden-evals.md` dokumentiert den kompletten
-Workflow (capture → mark → eval, beide CLI-Formen, Exit-Codes, CI-Opt-in).
+**Gap 4 — user docs.** `docs/golden-evals.md` documents the whole workflow
+(capture → mark → eval, both CLI forms, exit codes, CI opt-in).
 
 ## Consequences
 
-- Ein bekannter Run ist jetzt direkt eval-ierbar (`fabrikant eval --golden
-  <run-id>`) — Project/Loop/Name sind aus dem Store auflösbar, nicht aus
-  dem Kopf.
-- Die Markierung ist *best-effort* und *abgeleitet*: sie fehlt in
-  Umgebungen ohne Run-Store (reine CI-Runners ohne `runs/`) und bricht
-  nichts. Die committed Sidecar-Datei bleibt die Single Source of Truth.
-- `golden` im Store ist ein Text (Name), kein Boolean — mehrere Runs können
-  denselben Baseline-Namen tragen, und der Name adressiert die konkrete
-  Baseline in der Sidecar-Datei.
-- Migration `0007` ist additiv (`ADD COLUMN golden TEXT`, nullable) —
-  bestehende DBs werden ohne Datenverlust upgraded; die `compare_metadata`-
-  Prüfung (Schema ↔ `runschema`) bleibt grün, weil das deklarativen Table-
-  Objekt und die Migration zusammen wachsen.
+- A known run can be evaluated directly (`fabrikant eval --golden <run-id>`) —
+  project/loop/name are resolved from the store, not from memory.
+- The mark is *best-effort* and *derived*: it is missing in environments
+  without a run store (plain CI runners without `runs/`) and breaks nothing.
+  The committed sidecar file remains the single source of truth.
+- `golden` in the store is a text (the name), not a boolean; the name addresses
+  the concrete baseline in the sidecar file. At most one run carries a given
+  name; older marks (written before this rule) are caught by the stale-mark
+  check of `eval --golden`.
+- Migration `0007` is additive (`ADD COLUMN golden TEXT`, nullable) — existing
+  DBs are upgraded without data loss; the `compare_metadata` check (schema ↔
+  `runschema`) stays green because the declarative table object and the
+  migration grow together.
