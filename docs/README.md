@@ -23,11 +23,10 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [cli.md](cli.md) | CLI command reference. |
 | [operations.md](operations.md) | systemd units, auto-update, worker pool, parallel runs and worktrees. |
 | [development.md](development.md) | Dev setup, tests, lint gate. |
-| [licensing.md](licensing.md) | Open-core licensing model. |
 | [backends.md](backends.md) | Agent backends (`opencode`, `claude_code`, `codex`, `copilot`): interface, transports, models, permissions, auth, sandbox/egress layers. |
 | [ci.md](ci.md) | GitHub CI workflow (`test`, `package`, `browser` jobs; `release.yml` for tags), secrets handling, artifact-leak rules. |
 | [plugins.md](plugins.md) | Installing fabrikant (pip/Docker), `fabrikant init`, writing step plugins (ADR 0069). |
-| [releasing.md](releasing.md) | Release checklist: PyPI Trusted Publisher, GHCR image, tagging (ADR 0069/0070). |
+| [releasing.md](releasing.md) | Release process: tag-driven PyPI + GHCR publish (ADR 0069/0070). |
 | [relay.md](relay.md) | Relay tasks: spec config, how to write a brief, the session/audit flow, and how to intervene. |
 | [sonarqube.md](sonarqube.md) | Local SonarQube setup, `sonar-scan.sh` usage (incl. PR mode), PR comments via fabrikant loops. |
 | [migration-fabrikant.md](migration-fabrikant.md) | Migrating from the legacy `fabrik` names (ADR 0070). |
