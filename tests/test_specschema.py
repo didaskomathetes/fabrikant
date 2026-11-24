@@ -242,9 +242,10 @@ def test_extra_context_exactly_one_source():
     assert validate_spec(spec)
 
 
-def test_unknown_step_type():
-    errs = validate_spec(_with_step({"type": "bogus"}))
-    assert any("bogus" in e for e in errs)
+def test_step_type_must_be_a_string_but_membership_is_semantic():
+    """Plugins extend the step types (ADR 0069): the schema checks the kind, `specs` checks membership."""
+    assert validate_spec(_with_step({"type": "bogus"})) == []
+    assert validate_spec(_with_step({"type": 7}))
 
 
 def test_unknown_trigger_type():

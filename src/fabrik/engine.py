@@ -72,6 +72,7 @@ from .steps import (
     _step_state,
     _step_verify,
 )
+from .steps import registry as step_registry
 from .steps.extra_context import effective_step
 
 
@@ -951,32 +952,40 @@ def _run_loop(
     return record
 
 
+def _builtin_handlers() -> dict[str, Callable[[dict, dict, Callable[[str], None]], dict]]:
+    """Built-in step type → handler with the uniform ``(ctx, step, emit)`` signature.
+
+    Resolved per call from this module's globals (tests patch ``engine._step_*``). `report` is inline
+    in :func:`_dispatch_step`; third-party types live in :mod:`fabrik.steps.registry`."""
+    return {
+        "shell": _step_shell,
+        "git": lambda ctx, step, _emit: _step_git(ctx, step),
+        "pr": lambda ctx, step, _emit: _step_pr(ctx, step),
+        "agent": _step_agent,
+        "review": _step_review,
+        "pr_review": _step_pr_review,
+        "pr_merge": lambda ctx, step, _emit: _step_pr_merge(ctx, step),
+        "issue": lambda ctx, step, _emit: _step_issue(ctx, step),
+        "human_gate": _step_human_gate,
+        "escalation": _step_escalation,
+        "http": _step_http,
+        "llm": _step_llm,
+        "notify": _step_notify,
+        "state": _step_state,
+        "verify": _step_verify,
+        "alert_route": _step_alert_route,
+    }
+
+
 def _dispatch_step(ctx: dict, step: dict, emit) -> dict:
     t = step["type"]
     try:
         step = connections.apply_to_step(step)  # benannte/Default-Verbindung (ADR 0052)
     except connections.InvalidConnection as e:
         return failed(str(e), FailureKind.ENVIRONMENT)
-    if t == "shell":
-        return _step_shell(ctx, step, emit)
-    if t == "git":
-        return _step_git(ctx, step)
-    if t == "pr":
-        return _step_pr(ctx, step)
-    if t == "agent":
-        return _step_agent(ctx, step, emit)
-    if t == "review":
-        return _step_review(ctx, step, emit)
-    if t == "pr_review":
-        return _step_pr_review(ctx, step, emit)
-    if t == "pr_merge":
-        return _step_pr_merge(ctx, step)
-    if t == "issue":
-        return _step_issue(ctx, step)
-    if t == "human_gate":
-        return _step_human_gate(ctx, step, emit)
-    if t == "escalation":
-        return _step_escalation(ctx, step, emit)
+    builtin = _builtin_handlers().get(t)
+    if builtin is not None:
+        return builtin(ctx, step, emit)
     if t == "report":
         text = _substitute(step.get("text", ""), ctx)
         w = step.get("write")
@@ -997,18 +1006,9 @@ def _dispatch_step(ctx: dict, step: dict, emit) -> dict:
             return {"ok": True, "summary": f"Report: {p}"}
         emit(f"ℹ {text}")
         return {"ok": True, "summary": text}
-    if t == "http":
-        return _step_http(ctx, step, emit)
-    if t == "llm":
-        return _step_llm(ctx, step, emit)
-    if t == "notify":
-        return _step_notify(ctx, step, emit)
-    if t == "state":
-        return _step_state(ctx, step, emit)
-    if t == "verify":
-        return _step_verify(ctx, step, emit)
-    if t == "alert_route":
-        return _step_alert_route(ctx, step, emit)
+    plugin = step_registry.get_step(t)
+    if plugin is not None:
+        return plugin.handler(ctx, step, emit)
     raise ValueError(f"Unbekannter Step-Typ: {t}")
 
 
