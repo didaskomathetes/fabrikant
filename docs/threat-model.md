@@ -5,7 +5,7 @@ a control changes, and link the ADR that made the change. Individual decisions s
 ADRs; this page is the map that connects them.
 
 **Reviewed against:** ADRs 0008, 0010, 0026, 0030, 0050, 0051, 0054, 0060 (plus the
-unmerged MCP server, golden/eval and fetcher branches). Items marked *(verify)* were
+MCP server, golden/eval and fetcher, since merged). Items marked *(verify)* were
 derived from ADR text and not checked against the code.
 
 ## 1. What is being protected
@@ -90,8 +90,8 @@ Boundaries that matter, in order of how much they carry:
 | Agent env allowlist — agents do not inherit `os.environ` | 1 | ADR 0050 | ADR says Proposed *(verify: appears shipped)* |
 | Egress default-deny via allowlist proxy; internal sandbox network | 1 | ADR 0051 | Accepted, implemented |
 | Per-run agent container (cap-drop, read-only, limits) | 1, 2 | ADR 0054 | Opt-in; image/host-exec points open |
-| Fetcher: approval by domain/URL, SSRF guard, scan stages A/B, quarantine, ledger | 4 | ADR 0060 | Proposed; unmerged branch |
-| MCP server: stdio only, optional `--read-only` | 3 | ADR 0064 (branch) | Unmerged |
+| Fetcher: approval by domain/URL, SSRF guard, scan stages A/B, quarantine, ledger | 4 | ADR 0060 | Accepted (2026-11-19) |
+| MCP server: stdio only; `--read-only` wins over every opt-in; approve/reject (`--allow-approvals`) and spec-write proposals (`--allow-spec-write`) are off by default; secret-looking values masked; spec changes only via human-applied proposals | 3 | ADR 0064 | Accepted (amended 2026-11-23) |
 
 ## 6. Known gaps and residual risk
 
@@ -107,7 +107,8 @@ Ordered by how much damage they allow.
      identity per client, RBAC reusing the ADR 0030 roles (`viewer` read tools,
      `operator` start/approve/reject, `admin` the rest), the real identity in the audit
      actor instead of the constant `mcp`, and a refusal to start without auth.
-   - *Today:* only the local profile exists; the hosted profile is not built.
+   - *Today:* only the local profile exists; the hosted profile is not built. Approve/reject
+     are opt-in (`--allow-approvals`), and spec changes go through proposals a human applies.
 2. **Auth mode defaults to `none`.** Safe only while bound to loopback and used by one
    person. Any shared deployment must set `local`/`oidc`.
 3. **Fetcher auto-approves URLs that came from search results.** The search engine is

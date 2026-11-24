@@ -1,6 +1,6 @@
 # ADR 0066: Spec-Proposal Review in the Web UI
 
-**Status:** Proposed (2026-11-23)
+**Status:** Accepted (2026-11-24; proposed 2026-11-23)
 **Relates to:** ADR 0064 (MCP server, spec proposals), ADR 0030 (auth/roles/CSRF), ADR 0055 (UI event handling)
 
 ## Context
