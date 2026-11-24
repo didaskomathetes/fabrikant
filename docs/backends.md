@@ -1,14 +1,13 @@
-# Agent-Backends
+# Agent backends
 
-Agent-Steps (`backend:` im Step) nutzen ein pluggables Backend-Interface
-(implizit, keine Base-Class): `name`, `health()`, `create_task(workdir, title, permissions) → session_id`,
-`send_prompt(session_id, prompt, directory)`, `poll(session_id, directory) → {status, text, tokens, cost, tools}`,
-`cancel(session_id, directory)`. Dispatch: `steps/agent.py` (`_step_agent_backend`) —
-`step.backend` (oder `FABRIKANT_AGENT_BACKEND`) wählt, `model`/`endpoint` kommen aus
-Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
-(eigene CLI via Shell).
+Agent steps (`backend:` in the step) use a pluggable backend interface (implicit, no base class): `name`,
+`health()`, `create_task(workdir, title, permissions) → session_id`, `send_prompt(session_id, prompt, directory)`,
+`poll(session_id, directory) → {status, text, tokens, cost, tools}`, `cancel(session_id, directory)`. Dispatch:
+`steps/agent.py` (`_step_agent_backend`) — `step.backend` (or `FABRIKANT_AGENT_BACKEND`) selects the backend;
+`model`/`endpoint` come from the step or the environment. Legacy paths (without `backend`) are unaffected:
+`step.cmd` (your own CLI via shell).
 
-## Design notes (English)
+## Design notes
 
 - **Model routing.** Cost follows the difficulty: small models for
   triage, strong models for the build, and a *different* model with fresh
@@ -58,89 +57,74 @@ Step oder Env. Legacy-Wege (ohne `backend`) bleiben unberührt: `step.cmd`
   reached workspace/member limit or depleted credits as an error, which is
   classified as `environment` (no announced reset).
 
-One-Shot-CLI-Backends (`claude_code`, `codex`, `copilot`) leeren stdout/stderr ab dem
-Spawn per Hintergrund-Thread (`_oneshot.py`, `_PipeDrain`): Eine erst nach Prozessende
-gelesene Pipe läuft nach ~64 KiB voll — die CLI blockiert bzw. verwirft beim Shutdown den
-Rest des Streams (copilot: exit 0, JSONL ohne `result`-Event; #153).
+One-shot CLI backends (`claude_code`, `codex`, `copilot`) drain stdout/stderr from spawn on via a background
+thread (`_oneshot.py`, `_PipeDrain`): a pipe that is only read after the process ends fills up at ~64 KiB, and the
+CLI then blocks or drops the rest of the stream on shutdown (copilot: exit 0, JSONL without a `result` event;
+#153).
 
-| Backend | Transport | Modell | Besonderes |
+| Backend | Transport | Model | Notes |
 |---|---|---|---|
-| `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIKANT_AGENT_MODEL` (provider/id) | `FABRIKANT_AGENT_ENDPOINT` nötig; Session-API, Polling; Containment via edit/bash-Permissions (relativ zur Workdir) |
-| `claude_code` | CLI (`claude -p`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (sonnet/opus) | CLI muss im PATH sein; Prompt über **Stdin**; JSON-Output mit Usage/Cost; `endpoint` wird ignoriert |
-| `codex` | CLI (`codex exec`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--sandbox` Default `workspace-write`, Override `step.sandbox` / `FABRIKANT_CODEX_SANDBOX` |
-| `copilot` | CLI (`copilot -p`, One-Shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI muss im PATH sein; Prompt über **stdin**; `--allow-all-tools` Default, Override `step.tools` / `FABRIKANT_COPILOT_TOOLS`; Auth via `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` |
+| `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIKANT_AGENT_MODEL` (provider/id) | needs `FABRIKANT_AGENT_ENDPOINT`; session API, polling; containment via edit/bash permissions (relative to the workdir) |
+| `claude_code` | CLI (`claude -p`, one-shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (sonnet/opus) | CLI must be on PATH; prompt via **stdin**; JSON output with usage/cost; `endpoint` is ignored |
+| `codex` | CLI (`codex exec`, one-shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI must be on PATH; prompt via **stdin**; `--sandbox` defaults to `workspace-write`, override with `step.sandbox` / `FABRIKANT_CODEX_SANDBOX` |
+| `copilot` | CLI (`copilot -p`, one-shot) | `step.model` / `FABRIKANT_AGENT_MODEL` (optional) | CLI must be on PATH; prompt via **stdin**; `--allow-all-tools` by default, override with `step.tools` / `FABRIKANT_COPILOT_TOOLS`; auth via `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` |
 
 ## opencode (P1)
 
-Langlaufender HTTP-Server (`opencode serve`), persistente Sessions, Polling über
-`GET /session/{id}/message`. 
+Long-running HTTP server (`opencode serve`), persistent sessions, polling via `GET /session/{id}/message`.
 
-**Modelle** sind `provider/id` — der Provider muss in der opencode-Config
-(`~/.config/opencode/opencode.jsonc`) des serve-Prozesses existieren.
-Konfigurierte Provider:
-
-- Any OpenAI-compatible endpoint, e.g. a local llama.cpp server (`llama/<model>`) or a hosted inference
-  provider (`<provider>/<model>`). API keys belong in a file outside the repo (e.g.
-  `~/.config/opencode/secrets/<provider>-token`), never in the spec.
+**Models** are `provider/id` — the provider must exist in the opencode config (`~/.config/opencode/opencode.jsonc`)
+of the serve process. Any OpenAI-compatible endpoint works, e.g. a local llama.cpp server (`llama/<model>`) or a
+hosted inference provider (`<provider>/<model>`). API keys belong in a file outside the repo (e.g.
+`~/.config/opencode/secrets/<provider>-token`), never in the spec.
 
 ## claude_code
 
-One-Shot-Subprozess: jede Task = ein `claude -p` (Claude Code CLI, headless
-Print-Mode). `send_prompt` startet den Prozess, der Prompt geht via **Stdin**
-(kein ARG_MAX bei langen Prompts), das Ergebnis ist ein finales JSON auf Stdout
-(`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, `is_error`).
-`poll` meldet `running`, bis der Prozess endet, dann `done`/`failed`.
+One-shot subprocess: each task = one `claude -p` (Claude Code CLI, headless print mode). `send_prompt` starts the
+process and passes the prompt via **stdin** (no ARG_MAX issue with long prompts); the result is a final JSON on
+stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, `is_error`). `poll` reports
+`running` until the process ends, then `done`/`failed`.
 
-- **Model:** `--model <alias|name>` (z. B. `sonnet`, `claude-sonnet-4-5`); ein
-  `anthropic/`-Prefix (opencode-Konvention) wird abgestreift.
-- **Permissions:** Default `--permission-mode acceptEdits` + `--allowedTools Bash`
-  (Agent editiert Dateien, darf Shell). Echte Isolation (non-root/Container/VM)
-  ist Deployment-Voraussetzung, keine Config-Option.
-- **`endpoint` wird ignoriert** (Interface-Kompatibilität) — nur `model` ist nötig.
-- **Staleness:** nicht anwendbar wie bei opencode (kein inaktiver Server-State);
-  der Step-Timeout ist der Backstop.
+- **Model:** `--model <alias|name>` (e.g. `sonnet`, `claude-sonnet-4-5`); an `anthropic/` prefix (opencode
+  convention) is stripped.
+- **Permissions:** default `--permission-mode acceptEdits` + `--allowedTools Bash` (the agent edits files and may
+  use the shell). Real isolation (non-root/container/VM) is a deployment prerequisite, not a config option.
+- **`endpoint` is ignored** (interface compatibility) — only `model` is needed.
+- **Staleness:** doesn't apply as with opencode (no idle server state); the step timeout is the backstop.
 
 ## codex (OpenAI Codex CLI)
 
-One-Shot: `send_prompt` startet `codex exec --sandbox … [--model …]` im Workdir,
-Prompt über stdin (keine ARG-Limits, keine Shell-Interpolation). `poll` wartet auf
-den Exit — Exit 0 = `done` (stdout als Text), sonst `failed` (stderr). `cancel`
-killed die Prozessgruppe (killpg) — keine Orphans.
+One-shot: `send_prompt` starts `codex exec --sandbox … [--model …]` in the workdir, prompt via stdin (no argument
+limits, no shell interpolation). `poll` waits for the exit — exit 0 = `done` (stdout as text), otherwise `failed`
+(stderr). `cancel` kills the process group (killpg) — no orphans.
 
-- **Sandbox:** Default `workspace-write` (bubblewrap). In Gateway-/Service-Kontexten
-  ohne bubblewrap: `FABRIKANT_CODEX_SANDBOX=danger-full-access` — Containment dann über
-  User/VM/Container, nicht über die Sandbox.
-- **Tokens ja, Kosten nein:** `codex exec --json` liefert Tokens je Turn (inkl.
-  `cached_input_tokens`), aber keine USD-Kosten — der Step zählt als `unpriced`.
-- **Auth:** Codex-CLI-Login (ChatGPT-Plan oder `FABRIKANT…`/`OPENAI_API_KEY` via
-  `codex login`) — gehört in die Deployment-Umgebung, nicht in die Spec.
+- **Sandbox:** default `workspace-write` (bubblewrap). In gateway/service contexts without bubblewrap:
+  `FABRIKANT_CODEX_SANDBOX=danger-full-access` — containment then comes from the user/VM/container, not the
+  sandbox.
+- **Tokens yes, cost no:** `codex exec --json` reports tokens per turn (incl. `cached_input_tokens`) but no USD
+  cost — the step counts as `unpriced`.
+- **Auth:** Codex CLI login (ChatGPT plan or `OPENAI_API_KEY` via `codex login`) — belongs in the deployment
+  environment, not the spec.
 
 ## copilot (GitHub Copilot CLI)
 
-One-Shot: `send_prompt` startet `copilot --output-format json --no-ask-user
-[--model …]` im Workdir, Prompt über **stdin** (`echo … | copilot` — keine
-ARG-Limits, keine Shell-Interpolation; `-p` würde an `MAX_ARG_STRLEN` stoßen).
-`poll` wartet auf den Exit — Exit 0 = `done` (finale Antwort aus dem JSONL
-extrahiert), sonst `failed` (stderr). `cancel` killed die Prozessgruppe
-(killpg) — keine Orphans.
+One-shot: `send_prompt` starts `copilot --output-format json --no-ask-user [--model …]` in the workdir, prompt via
+**stdin** (`echo … | copilot` — no argument limits, no shell interpolation; `-p` would hit `MAX_ARG_STRLEN`).
+`poll` waits for the exit — exit 0 = `done` (final answer extracted from the JSONL), otherwise `failed` (stderr).
+`cancel` kills the process group (killpg) — no orphans.
 
-- **Permissions:** Default `--allow-all-tools` (Agent editiert Dateien +
-  Shell). Override `step.tools` / `FABRIKANT_COPILOT_TOOLS` (z. B. `shell,write`)
-  → `--allow-tool=<list>`. Echte Isolation (non-root/Container/VM) ist
-  Deployment-Voraussetzung, keine Config-Option.
-- **Model:** `--model <name>` (z. B. `gpt-5.3-codex`, `claude-haiku-4.5`);
-  optional — die CLI hat ein Default-Modell. Ein `anthropic/`-Prefix
-  (opencode-Konvention) wird abgestreift.
-- **Output:** `--output-format json` → JSONL (eine JSON-Zeile pro Event). Das
-  Schema ist nicht vollständig dokumentiert, daher defensive Extraktion:
-  `result`-Feld > letzter Assistant-Text > roher stdout (Fallback).
-- **Keine Token-/Cost-Daten:** Copilot rechnet mit Premium Requests/AI-Credits,
-  die CLI liefert kein Usage — die Step-Summary zeigt 0 tokens (wie codex).
-- **Auth:** `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (fine-grained
-  PAT mit "Copilot Requests") — gehört in die Deployment-Umgebung, nicht in
-  die Spec. `COPILOT_AUTO_UPDATE=false` wird pro Prozess gesetzt.
-- **Staleness:** wie codex — `stale_after` (Default 900s) als Backstop für
-  hängende Prozesse.
+- **Permissions:** default `--allow-all-tools` (the agent edits files + shell). Override with `step.tools` /
+  `FABRIKANT_COPILOT_TOOLS` (e.g. `shell,write`) → `--allow-tool=<list>`. Real isolation (non-root/container/VM)
+  is a deployment prerequisite, not a config option.
+- **Model:** `--model <name>` (e.g. `gpt-5.3-codex`, `claude-haiku-4.5`); optional — the CLI has a default model.
+  An `anthropic/` prefix (opencode convention) is stripped.
+- **Output:** `--output-format json` → JSONL (one JSON line per event). The schema isn't fully documented, so
+  extraction is defensive: `result` field > last assistant text > raw stdout (fallback).
+- **No token/cost data:** Copilot bills in premium requests/AI credits and the CLI reports no usage — the step
+  summary shows 0 tokens (like codex).
+- **Auth:** `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` (fine-grained PAT with "Copilot Requests") —
+  belongs in the deployment environment, not the spec. `COPILOT_AUTO_UPDATE=false` is set per process.
+- **Staleness:** like codex — `stale_after` (default 900 s) is the backstop for hung processes.
 
 ## Security layers for agent processes
 
