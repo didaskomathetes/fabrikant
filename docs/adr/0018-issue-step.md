@@ -21,9 +21,9 @@ mktemp/trap-Boilerplate) und die API-Aufrufe sind nicht isoliert testbar.
 - `label` legt fehlende Labels implizit an (GitHub-Verhalten). Die bisherigen
   `ensure-labels`-Steps (`gh label create --color`) entfallen; Label-Farben müssen
   einmalig manuell gesetzt werden. Bewusst kein fünfter Action-Typ.
-- Kyudo-Triage, fabrik-Refine und refactor-sweep nutzen `issue`-Steps. Der Sweep-Agent
+- Triage-, Refine- und refactor-sweep-Loops nutzen `issue`-Steps. Der Sweep-Agent
   liefert nur noch JSON-Kandidaten; ein `llm`-Step extrahiert sie, max. 3
-  `create`-Steps legen die Issues an. Der ai-lab-Spec bleibt auf `shell` + `gh`
+  `create`-Steps legen die Issues an. Einige Specs bleiben vorerst auf `shell` + `gh`
   (außerhalb des Scopes).
 - Token-Schutz: `GITHUB_TOKEN` erscheint nie in Step-Ergebnissen; zusätzlich greift das
   bestehende Secret-Masking in Logs und Run-Records.
@@ -31,4 +31,4 @@ mktemp/trap-Boilerplate) und die API-Aufrufe sind nicht isoliert testbar.
 ## Folgen
 
 - Weniger Shell-Injection-Fläche, testbare Issue-Logik ohne `gh`.
-- Der ai-lab-Spec kann später analog migriert werden.
+- Weitere Specs können später analog migriert werden.

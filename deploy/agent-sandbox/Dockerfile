@@ -32,7 +32,7 @@ FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9
 ARG CLAUDE_CODE_VERSION=2.1.322
 ARG CODEX_VERSION=0.167.0
 ARG COPILOT_VERSION=1.0.108
-# Python für Ziel-Repos mit `requires-python` jenseits von Debians python3 (ai-lab: 3.13).
+# Python für Ziel-Repos mit `requires-python` jenseits von Debians python3 (z. B. 3.13).
 ARG PYTHON_VERSION=3.13.13
 
 # Werkzeuge, die Agenten in Ziel-Repos typischerweise brauchen: git (Pflicht), gh, ripgrep,
@@ -41,7 +41,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git gh ripgrep python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# uv (Python-Projekte wie ai-lab-merchant-assistant), per Digest gepinnt.
+# uv (Python-Projekte), per Digest gepinnt.
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /uvx /usr/local/bin/
 
 # Interpreter ins Image statt zur Laufzeit laden (die Downloads liegen nicht auf der

@@ -11,7 +11,7 @@ from helpers import load_script
 _PATH = Path(__file__).resolve().parent.parent / "scripts" / "sonar_report.py"
 sr = load_script(_PATH.name, "sonar_report")
 
-KEY = "quark-playground:fabrik"
+KEY = "fabrik:fabrik"
 LINK = "https://github.com/o/r/blob/abc"
 
 

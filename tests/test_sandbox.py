@@ -521,7 +521,7 @@ def test_finish_exchange_reports_oserror_instead_of_raising(repo, monkeypatch):
 
 def test_result_with_symlink_is_rejected(repo):
     ex = sandbox.prepare_exchange("sid-link", str(repo))
-    _forge_result_head(ex, repo, f"120000 blob {_blob(repo, '/root/.hermes/.env')}\tlink\n", ex.base)
+    _forge_result_head(ex, repo, f"120000 blob {_blob(repo, '/root/.config/fabrik/fabrik.env')}\tlink\n", ex.base)
     with pytest.raises(sandbox.SandboxError, match="Symlink"):
         sandbox.apply_result(ex, str(repo))
     assert not (repo / "link").exists() and not (repo / "link").is_symlink()

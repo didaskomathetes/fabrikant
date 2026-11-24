@@ -75,7 +75,7 @@ fix rounds of `pr_review` and relay pushes. Agents that push themselves call
 Without installation: `python -m fabrik …` (from the project root).
 
 Environment variables: `GITHUB_TOKEN` (GitHub API), `FABRIK_ENV_FILE` (path to the
-`.env` file with `GITHUB_TOKEN`, default `/root/.hermes/.env`), `FABRIK_TOKEN`
+`.env` file with `GITHUB_TOKEN`, default `~/.config/fabrik/fabrik.env`), `FABRIK_TOKEN`
 (optional: bearer token for the API `POST` routes), `FABRIK_WORKERS`
 (worker pool size, default 4), `FABRIK_LLM_PROVIDERS` +
 `FABRIK_LLM_<NAME>_{URL,MODEL,KEY}` (LLM providers, see below).
@@ -253,7 +253,7 @@ If the spec lives as `.fabrik/fabrik.yaml` in the repo, the prompts sit next to 
 |----------|---------------------------------------------------------------|----------|
 | `shell`  | `cmd`, `workdir`, `env`, `timeout` (default 600 s), `name`, `failure_kind` | Run `sh -c`; exit ≠ 0 aborts the loop. `failure_kind` (`outcome`\|`transient`\|`environment`) names the [failure class](#failure-classes-adr-0035) for exit ≠ 0, e.g. `outcome` for test/lint steps. Fixed exit codes take precedence: 126/127 and 78 (`EX_CONFIG`) → `environment`, 75 (`EX_TEMPFAIL`) → `transient` — this is how a script reports the class itself; death by signal (OOM kill, SIGTERM; exit > 128) stays `unknown`. Allowed on shell steps only |
 | `git`    | `fetch`, `branch`, `track`, `commit: {add, message}`, `push` | Git op; `push` blocks on protected branches; `commit` on a clean tree is a no-op |
-| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIK_ENV_FILE` / `/root/.hermes/.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
+| `pr`     | `repo: owner/name`, `base`, `head`, `title`, `body`          | PR via the GitHub API (token from `GITHUB_TOKEN` / `FABRIK_ENV_FILE` / `~/.config/fabrik/fabrik.env`). An open PR for `head` → reused; `head` without commits ahead of `base` → no PR, the run ends successfully, follow-up steps `skipped` (the tier gate still applies) |
 | `agent`  | `backend` (e.g. `opencode`), `prompt`, `workdir`, `endpoint`, `model`, `variant` (`opencode` only: model variant from the opencode config, e.g. reasoning effort), `permissions`, `timeout`, `github_identity` — or legacy: `cmd`, `prompt` | Agent task via a pluggable backend (session + prompt + polling) or an agent CLI. Without `backend`/`cmd` = cleanly skipped. `github_identity: dev\|reviewer` (CLI backends only) sets the role's `GH_TOKEN`/`GITHUB_TOKEN` in the agent process — `gh` (and `git` with `gh` as credential helper) then runs as the builder or QA app instead of as the local user. A `gh` wrapper at the front of the PATH reads the token fresh from `FABRIK_ENV_FILE` on every call, so runs with `timeout` > 1h survive the 1h installation token |
 | `report` | `text`, `write` (optional: file path, relative to the project root) | Message to the run log and/or a report file |
 | `http`   | `url`, `method`, `headers`, `body`, `expect: {status}`, `emit: {var: body\|status}` | HTTP request; the response/status becomes available as a variable for following steps |

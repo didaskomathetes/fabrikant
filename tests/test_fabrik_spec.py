@@ -29,7 +29,7 @@ from fabrik.engine import _approval_condition
 from fabrik.steps import issue
 
 SPEC_PATH = Path(__file__).resolve().parent.parent / "projects" / "fabrik.fabrik.yaml"
-REPO = "didaskomathetes/quark-playground"
+REPO = "didaskomathetes/fabrik"
 MARKER = "<!-- Refine (auto) -->"
 CLOSE_MARKER = "<!-- Close-Vorschlag (auto) -->"
 CLOSE = "close proposed"
@@ -517,7 +517,7 @@ def test_sonar_pr_trigger_reconciles_per_head_and_passes_pr_ref():
         "SONAR_PR": "{pr_number}",
         "SONAR_REPORT_FILE": ".fabrik/sonar/report.json",
         "SONAR_COMMENT_FILE": ".fabrik/sonar/comment.md",
-        "SONAR_LINK_BASE": "https://github.com/didaskomathetes/quark-playground/blob/{pr_head_sha}",
+        "SONAR_LINK_BASE": "https://github.com/didaskomathetes/fabrik/blob/{pr_head_sha}",
     }
     # Kein LLM-Step; erst kommentieren, dann das Gate bewerten — ein rotes Gate soll im PR landen.
     assert list(steps) == ["scan", "post", "gate"]

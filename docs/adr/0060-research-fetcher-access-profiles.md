@@ -19,8 +19,8 @@ passt es nicht:
    SDLC-Pipelines)". Die Quellen sind vorher unbekannt; sie ergeben sich erst aus Suchergebnissen
    und aus Links in gefundenen Artikeln. Eine Allowlist, die das vorab abdeckt, müsste praktisch
    das ganze Web erlauben.
-2. **Zugriff auf bekannte Systeme mit Credentials.** Beispiel: AI Lab braucht für Eval- und
-   Debug-Arbeit Langfuse (lesend), einen internal-dev-Endpunkt und example-org-Build-Shops. Das gilt nur
+2. **Zugriff auf bekannte Systeme mit Credentials.** Beispiel: ein Projekt braucht für Eval- und
+   Debug-Arbeit ein Observability-Tool (lesend), einen Dev-Endpunkt und Build-Shops. Das gilt nur
    für bestimmte Loops eines Projekts, nicht für alle Runs der Instanz.
 
 Ob ein zusätzlicher Host gefährlich ist, hängt davon ab, **was im Container liegt**. Jeder erlaubte

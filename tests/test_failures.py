@@ -202,7 +202,7 @@ def test_typed_errors_keep_their_base_types():
     [
         # Real (4×): git fetch Netzfehler
         (
-            "fatal: unable to access 'https://github.com/didaskomathetes/quark-playground.git/': "
+            "fatal: unable to access 'https://github.com/didaskomathetes/fabrik.git/': "
             "Could not resolve host: github.com",
             K.TRANSIENT,
         ),
@@ -211,7 +211,7 @@ def test_typed_errors_keep_their_base_types():
         # Real: abgelaufenes/falsches Token
         (
             "remote: Invalid username or token. Password authentication is not supported for Git operations.\n"
-            "fatal: Authentication failed for 'https://github.com/didaskomathetes/quark-playground.git/'",
+            "fatal: Authentication failed for 'https://github.com/didaskomathetes/fabrik.git/'",
             K.ENVIRONMENT,
         ),
         ("fatal: unable to access '…': The requested URL returned error: 403", K.ENVIRONMENT),

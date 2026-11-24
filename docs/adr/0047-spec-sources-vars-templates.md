@@ -43,7 +43,7 @@ Fork oder eine zweite Instanz musste Specs committen oder suchen-und-ersetzen.
 ## Konsequenzen
 
 - Zweites Projekt: 5–10 Zeilen Spec (siehe README). `fabrik.fabrik.yaml` ist eine Instanz der Templates.
-- Private Specs/Prompts (`gods-last-garden`, `kyudo-neandertal`, `ai-lab-merchant-assistant`) liegen nicht
+- Private Specs/Prompts liegen nicht
   mehr im Repo; Migration im README.
 - Der Spec-Hash eines Runs deckt nur die Spec-Datei ab, nicht das Template.
 - Eine Spec aus `FABRIK_PROJECTS_PATH`/Zielrepo kann Shell-Steps enthalten: Quellen sind vertrauenswürdig

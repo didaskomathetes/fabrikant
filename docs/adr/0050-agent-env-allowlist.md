@@ -68,7 +68,7 @@ Logs, nicht die Prozess-Umgebung.
 ## Restrisiko
 
 - **Dateien statt Env:** `HOME` bleibt in der Allowlist. Ein Agent als Host-Subprozess liest
-  weiterhin Dateien des Betreibers (`~/.config/gh`, `~/.ssh`, `~/.hermes/.env`,
+  weiterhin Dateien des Betreibers (`~/.config/gh`, `~/.ssh`, `~/.config/fabrik/fabrik.env`,
   `FABRIK_ENV_FILE`, …) und kommt so an dieselben Tokens, die aus der Env entfernt wurden.
 - **`/proc/<ppid>/environ`:** Ein Agent als Host-Subprozess kann die Env des fabrik-Parent-Prozesses
   (inkl. `GITHUB_TOKEN`) lesen; die Allowlist scrubbt nur die Env des Kindes, nicht die des Parents.

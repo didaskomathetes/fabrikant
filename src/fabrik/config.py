@@ -23,6 +23,8 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 _CHECKOUT_ROOT = PACKAGE_DIR.parent.parent
 APP_DIR_NAME = "fabrik"
 ENV_FILE_NAME = "fabrik.env"
+# Default location of the operator's env file (tokens); overridable via FABRIK_ENV_FILE.
+DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrik" / ENV_FILE_NAME)
 
 
 def is_source_checkout(root: Path) -> bool:

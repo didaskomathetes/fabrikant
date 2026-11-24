@@ -2,7 +2,7 @@
 """gh-token-refresh — GitHub-App-Installation-Token für fabrik erneuern (ADR 0010).
 
 Erzeugt ein frisches 1h-Installation-Token für eine GitHub-App und schreibt es
-in die FABRIK_ENV_FILE (Default /root/.hermes/.env). fabrik liest die Datei pro
+in die FABRIK_ENV_FILE (Default ~/.config/fabrik/fabrik.env). fabrik liest die Datei pro
 API-Call neu — kein Restart.
 
 Rollen (`--role`, Default dev) = die zwei Identitäten der Dual-Identity-Pipeline:
@@ -15,7 +15,7 @@ Rollen (`--role`, Default dev) = die zwei Identitäten der Dual-Identity-Pipelin
                        landet als `iss` im JWT
   <P>_APP_KEY_FILE     Pfad zum App-Private-Key (PEM, RSA)
   <P>_INSTALLATION_ID  Installation-ID im Ziel-Repo/-Org
-  FABRIK_ENV_FILE      Ziel-Datei (Default /root/.hermes/.env)
+  FABRIK_ENV_FILE      Ziel-Datei (Default ~/.config/fabrik/fabrik.env)
 Config aus Env ODER fabrik.env neben diesem Script.
 
 Cron (alle 30 min, Token lebt 1h; eine Zeile pro Rolle):
@@ -26,7 +26,7 @@ Exit 0 = Token geschrieben, != 0 = Fehler (Cron-Mail/Alert).
 
 Sicherheit:
   - FABRIK_ENV_FILE wird mit 0600 geschrieben (nur Owner liest den Token).
-  - Ist FABRIK_ENV_FILE `chattr +i` (hermes-VM, Terraform), wird das Flag für
+  - Ist FABRIK_ENV_FILE `chattr +i` (z. B. per Terraform), wird das Flag für
     den Rename kurz aufgehoben und danach wieder gesetzt (braucht root;
     `lsattr`/`chattr` aus e2fsprogs).
   - Abhängigkeit: `openssl` (RS256-JWT-Signierung) muss im PATH sein —
@@ -52,7 +52,7 @@ from pathlib import Path
 API = "https://api.github.com"
 SCRIPT_DIR = Path(__file__).resolve().parent
 FABRIK_HOME = SCRIPT_DIR.parent
-DEFAULT_ENV_FILE = "/root/.hermes/.env"
+DEFAULT_ENV_FILE = str(Path.home() / ".config" / "fabrik" / "fabrik.env")
 JWT_LIFETIME_S = 540  # 9 min — GitHub akzeptiert max. 10 min
 JWT_SKEW_S = 60  # iat in der Vergangenheit (Clock-Skew-Toleranz)
 SUBPROCESS_TIMEOUT_S = 30
@@ -183,8 +183,8 @@ def _chattr(path: Path, op: str) -> None:
 def _immutable_lifted(path: Path) -> Iterator[None]:
     """Immutable-Flag von `path` für die Dauer des Blocks aufheben.
 
-    Auf dem hermes-VM ist /root/.hermes/.env per Terraform `chattr +i` —
-    `os.replace` darauf schlägt sonst mit EPERM fehl. Das Flag wird nur
+    Ist die Env-Datei per Terraform `chattr +i` (immutable), schlägt
+    `os.replace` darauf sonst mit EPERM fehl. Das Flag wird nur
     angefasst, wenn es vorher gesetzt war, und im `finally` wiederhergestellt
     (auch wenn der Block wirft) — auf dem neuen Inode nach dem Rename."""
     if not path.exists() or not _is_immutable(path):

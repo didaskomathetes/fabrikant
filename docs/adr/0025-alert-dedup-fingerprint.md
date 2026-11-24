@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-10-19). Nummerierung: ursprünglich 0013, dann 0014, seit 2026-10-20
 0025 (ADR-Nummern-Bereinigung: 0013/0014 waren doppelt belegt).
 **Entscheider:** Dominic
-**Code-PR:** [#125](https://github.com/didaskomathetes/quark-playground/pull/125)
+**Code-PR:** #125
 (Implementierung, Tests, Config und dieses ADR)
 **Kontext:** `_notify` (Kanal `github_issue`) öffnete bei **jedem** fehlgeschlagenen
 Run ein neues GitHub-Issue. Der Title enthielt die Run-ID, daher waren keine zwei
@@ -45,7 +45,7 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
   enthält bewusst keine Log-Beispiele. Minderung (explizite Risikoakzeptanz,
   bis Redaction umgesetzt ist):
   1. **Ops-only Sichtbarkeit:** Alert-Issues werden nur in privaten
-     Fabrik-Projekt-Repos geöffnet (z. B. `didaskomathetes/quark-playground`);
+     Fabrik-Projekt-Repos geöffnet (z. B. `acme/my-app`);
      Zugriff = Repo-ACL (Fabrik-Operatoren, kein breites Team, kein
      öffentliches Repo). Keine zusätzlichen GitHub-Repo-Settings nötig,
      solange das Repo privat bleibt; für neue Repos gilt dieselbe
@@ -54,7 +54,7 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
      können; Owner: Dominic (Entscheider, oben).
   3. **Folge-Issue mit Deadline:** Redaction-Layer für `log_tail` vor dem
      Issue-Post ist als
-     [#132](https://github.com/didaskomathetes/quark-playground/issues/132)
+     #132
      angelegt (Pattern-basiert, konfigurierbar, Fail-safe). **Deadline:
      Umsetzung innerhalb von 2 Wochen nach Merge dieses ADR (bis 2026-10-31);
      Owner: Dominic.** Bis dahin gilt die Risikoakzeptanz aus Punkt 2.
@@ -97,11 +97,11 @@ Alerts werden über einen stabilen **Fingerprint** des Fehlerbilds dedupliziert:
   kommentiert.
 - Tests in `tests/test_steps_notify.py` (Fingerprint-Stabilität, Dedup,
   Paginierung, Lookup-Fallback, Title-Sanitization) — geliefert in
-  [PR #125](https://github.com/didaskomathetes/quark-playground/pull/125),
+  PR #125,
   nicht in diesem ADR-PR.
 - `ALERT_OPEN_ISSUES_PAGE` (Seitengröße des Lookups, Default 100) —
   Definition: `ALERT_OPEN_ISSUES_PAGE = 100` in
   `fabrik/src/fabrik/config.py`, eingeführt in
-  [PR #125](https://github.com/didaskomathetes/quark-playground/pull/125)
+  PR #125
   (Commit 75c0cbf, auf dem PR-Branch vorhanden). Dieser ADR-PR (Base =
   PR-Branch #125) sieht sie nach dem Merge des Stapels.

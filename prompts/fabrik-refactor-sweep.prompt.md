@@ -1,27 +1,26 @@
-Du suchst Refactoring-Kandidaten im Projekt `fabrik` (Repo `didaskomathetes/quark-playground`,
-Unterverzeichnis `fabrik/`) und meldet die besten als JSON (die Issues legt anschließend der `issue`-Step an).
+Du suchst Refactoring-Kandidaten im Projekt `fabrik` (Repo `didaskomathetes/fabrik`) und meldet die besten als JSON (die Issues legt anschließend der `issue`-Step an).
 
 ## Vorgehen
 1. Halte dich an `AGENTS.md` (liegt bereits im Kontext).
 2. Bestehende offene Refactoring-Issues prüfen (keine Duplikate):
    Lies die offenen Refactoring-Issues (Label `fabrik`,`refactor`) über die GitHub-REST-API
-   (`GET https://api.github.com/repos/didaskomathetes/quark-playground/issues?labels=fabrik,refactor&state=open`).
+   (`GET https://api.github.com/repos/didaskomathetes/fabrik/issues?labels=fabrik,refactor&state=open`).
 3. SonarQube-Daten der letzten main-Analyse lesen (primäre Quelle für Code Smells +
    Test-Coverage). **Keinen Scan starten** — der `sonar-scan`-Loop analysiert main täglich.
    - `SONAR_HOST_URL` und `SONAR_TOKEN_FILE` stehen bereits im Env. **Keine Env-Dateien
      sourcen und keine Admin-Credentials verwenden.** Den Token nie in Repo, Issues,
      Commits oder Logs schreiben.
    - Auth: Basic-Auth `<token>:` mit dem Token aus `$SONAR_TOKEN_FILE`,
-     Host `$SONAR_HOST_URL` (Default `http://127.0.0.1:9000`), Projekt-Key `quark-playground:fabrik`.
+     Host `$SONAR_HOST_URL` (Default `http://127.0.0.1:9000`), Projekt-Key `fabrik:fabrik`.
    - Offene Issues (Code Smells, Bugs, Vulnerabilities):
      `curl -s -u "$(cat "$SONAR_TOKEN_FILE"):" \
-       "$SONAR_HOST_URL/api/issues/search?componentKeys=quark-playground:fabrik&resolved=false&types=CODE_SMELL,BUG,VULNERABILITY&ps=100"`
+       "$SONAR_HOST_URL/api/issues/search?componentKeys=fabrik:fabrik&resolved=false&types=CODE_SMELL,BUG,VULNERABILITY&ps=100"`
    - Test-Coverage (Projekt + pro Datei):
      `curl -s -u "$(cat "$SONAR_TOKEN_FILE"):" \
-       "$SONAR_HOST_URL/api/measures/component?component=quark-playground:fabrik&metricKeys=coverage,covered_lines,uncovered_lines"`
+       "$SONAR_HOST_URL/api/measures/component?component=fabrik:fabrik&metricKeys=coverage,covered_lines,uncovered_lines"`
      und pro Datei:
      `curl -s -u "$(cat "$SONAR_TOKEN_FILE"):" \
-       "$SONAR_HOST_URL/api/measures/component_tree?component=quark-playground:fabrik&metricKeys=coverage"`
+       "$SONAR_HOST_URL/api/measures/component_tree?component=fabrik:fabrik&metricKeys=coverage"`
    - Ist SonarQube nicht erreichbar: ohne Sonar-Daten weiter mit Schritt 4 und das im
      Ergebnis vermerken.
 4. Codebasis ergänzend analysieren (dieses Verzeichnis = das `fabrik/`-Paket):

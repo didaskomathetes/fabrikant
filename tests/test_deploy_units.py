@@ -12,7 +12,7 @@ DEPLOY_DIR = Path(__file__).resolve().parent.parent / "deploy"
 DEPLOY_ENV_FILE = "EnvironmentFile=-%h/.config/fabrik/deploy.env"
 CD_FABRIK_HOME = 'cd "$${FABRIK_HOME:?'
 # Absolute Home-/Maschinenpfade bzw. checkout-relative Annahmen unter %h.
-_HARDCODED_PATH_RE = re.compile(r"/home/|/root/|PycharmProjects|hermes|%h/[\w.-]*quark-playground")
+_HARDCODED_PATH_RE = re.compile(r"/home/|/root/|PycharmProjects")
 
 UNITS = sorted(p for p in DEPLOY_DIR.iterdir() if p.suffix in {".service", ".timer"})
 SERVICES = [p for p in UNITS if p.suffix == ".service"]

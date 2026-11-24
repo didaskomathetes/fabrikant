@@ -71,7 +71,7 @@ nicht als Dependency hat), `SONAR_SCANNER_ARGS` (`-Dsonar.…`, ersetzt `[tool.s
 
 Beispiel: die Loops `sonar-main` (täglich) und `sonar-pr` (Opt-in per PR-Label `sonar`, entprellt,
 Kommentar erst nach Freigabe)
-in der ai-lab-merchant-assistant-Spec (`FABRIK_PROJECTS_PATH`). `gh-upsert-comment.sh` erkennt den eigenen
+in einer Produktionsspec (`FABRIK_PROJECTS_PATH`). `gh-upsert-comment.sh` erkennt den eigenen
 Kommentar am Login des Tokens (PAT) bzw. am Bot-Typ (App-Token).
 
 Bringt das Projekt ein eigenes Scan-Skript mit (eigene `sonar-project.properties`, Linter-Importe), ruft

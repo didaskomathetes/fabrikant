@@ -11,8 +11,3 @@ fabrik.env
 selftest/reports/
 # GitHub-App-Private-Keys gehören nach ~/.config/fabrik/ (0600), nie ins Repo
 *.pem
-# Dienstliche Projekt-Specs/Prompts bleiben lokal (privates Repo, keine Firmendetails)
-projects/ai-lab-*.fabrik.yaml
-prompts/ailab-*.prompt.md
-projects/gods-last-garden.fabrik.yaml
-projects/echochamber.fabrik.yaml

@@ -12,7 +12,7 @@ the "Model" column and §3 paragraph 2.
 (§4): the cron + agent + state-file workaround is removed; dedup and
 re-review triggering are handled by the engine.
 **Context:** PR #10 (P0) and PR #11 (P1) are merged. The factory is production-ready enough
-to develop itself. `kyudo-neandertal.fabrik.yaml` serves as the template (triage →
+to develop itself. A production spec (CMS migration) serves as the template (triage →
 human gate → develop → checks → PR).
 
 ## Decision
@@ -94,8 +94,8 @@ engine — the state-file workaround logic has been removed from the prompt.
 a different layer than PR dedup and stays on the agent side.)
 
 ### 5. `gh` CLI for issue/PR operations
-A native `issue` step does not exist (→ issue). `gh` is already used in the kyudo spec
-and available. Until the `issue` step exists, `shell` + `gh` remains the standard way.
+A native `issue` step does not exist (→ issue). `gh` is already used in production
+specs and available. Until the `issue` step exists, `shell` + `gh` remains the standard way.
 **Token note:** shell steps run in the fabrik process env (`fabrik.env` →
 `GITHUB_TOKEN`). Agent steps run in the **opencode-serve** process env —
 `GITHUB_TOKEN` must be exported when `serve` starts (deployment prerequisite,

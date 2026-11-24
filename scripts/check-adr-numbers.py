@@ -36,7 +36,7 @@ from pathlib import Path
 
 ADR_DIR = "docs/adr"
 DEFAULT_BASE = "origin/main"
-DEFAULT_REPO = "didaskomathetes/quark-playground"
+DEFAULT_REPO = "didaskomathetes/fabrik"
 PR_LIMIT = 200  # offene PRs, deren Dateien gelesen werden
 # Laufzeitdaten/Umgebungen: `fix` schreibt dort nie (Run-Transkripte bleiben Historie).
 SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__", "runs", "state"})

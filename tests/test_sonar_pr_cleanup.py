@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "sonar-pr-cleanup.py"
-BASE = "quark-playground:fabrik"
+BASE = "fabrik:fabrik"
 REPO = "o/r"
 
 
