@@ -395,7 +395,6 @@ loops:
 
 
 def test_second_project_in_few_lines_uses_bundled_templates(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "TEMPLATES_DIR", ROOT / "templates")
     text = SECOND_PROJECT.format(root=tmp_path)
     assert len(text.splitlines()) <= 10 + 3  # Spec-Kern ≤ 10 Zeilen (+ name/root/github)
     spec = specs.load_spec(_write(tmp_path / "app.fabrik.yaml", text))
@@ -414,7 +413,6 @@ def test_second_project_in_few_lines_uses_bundled_templates(tmp_path, monkeypatc
 
 
 def test_bundled_templates_missing_required_params_fail(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "TEMPLATES_DIR", ROOT / "templates")
     with pytest.raises(ValueError, match="braucht Parameter"):
         _expand(tmp_path, "  d: {use: develop}\n")
 
@@ -427,7 +425,6 @@ def test_fabrik_spec_has_no_hardcoded_repo_outside_vars():
 
 
 def test_fabrik_spec_expands_with_bundled_templates(monkeypatch):
-    monkeypatch.setattr(config, "TEMPLATES_DIR", ROOT / "templates")
     path = ROOT / "projects" / "fabrik.fabrik.yaml"
     raw = yaml.safe_load(path.read_text())
     spec = spec_expand.expand_spec(raw, path)
@@ -455,7 +452,6 @@ def test_fabrik_spec_review_steps_use_opencode_not_copilot(monkeypatch):
     `reviewer_backend` (opencode), nicht den Template-Default `copilot` —
     Regression: `with:` übergibt nur `reviewer_model`, `reviewer_backend` kommt
     aus `vars` (ADR 0047: vars überschreiben Template-Defaults)."""
-    monkeypatch.setattr(config, "TEMPLATES_DIR", ROOT / "templates")
     path = ROOT / "projects" / "fabrik.fabrik.yaml"
     raw = yaml.safe_load(path.read_text())
     spec = spec_expand.expand_spec(raw, path)

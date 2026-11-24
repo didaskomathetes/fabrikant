@@ -21,13 +21,13 @@ entry point; fabrik itself is installed from PyPI or run from a Docker image.
 ## Decision
 
 1. **Code vs. data.** Everything read-only that the program needs ships *inside* the package:
-   `fabrik/web`, `fabrik/templates`, `fabrik/prompts`, `fabrik/examples` (bundled example specs),
+   `fabrik/web`, `fabrik/templates`, `fabrik/prompts/relay`, `fabrik/examples` (bundled example specs),
    resolved via `importlib.resources`-style package paths (`config.PACKAGE_DIR`).
-2. **Data directory.** Mutable data (runs, state, sessionlog, `fabrik.env`, user specs/templates)
-   lives in `config.DATA_DIR`, resolved as `FABRIK_DATA` > `FABRIK_HOME` (legacy, checkout mode) >
-   a platform default (`$XDG_DATA_HOME/fabrik`, i.e. `~/.local/share/fabrik`). Running from a git
-   checkout keeps working unchanged: if the repo root contains `pyproject.toml` + `src/fabrik`,
-   `FABRIK_HOME` defaults to it as before.
+2. **Home and data directory.** Mutable data (runs, state, sessionlog, `fabrik.env`) lives in
+   `config.FABRIK_HOME`, resolved as `FABRIK_HOME` env > the checkout root (if the code runs from a
+   source checkout: `pyproject.toml` + `src/fabrik`) > `$XDG_DATA_HOME/fabrik` (default
+   `~/.local/share/fabrik`). `FABRIK_DATA` keeps its ADR 0047 meaning (user specs/templates,
+   defaults to the home). Checkout mode therefore behaves exactly as before.
 3. **`fabrik init [DIR]`** scaffolds a user project directory (`projects/`, `templates/`,
    `fabrik.env.example`, a starter spec, a plugin skeleton hint) so the first run needs no repo.
 4. **Step registry (`fabrik.steps.registry`).** `register_step(type, handler, *, schema=None,
@@ -43,7 +43,7 @@ entry point; fabrik itself is installed from PyPI or run from a Docker image.
    `register_step`, `StepHandler`, `failed`/`ok` result helpers, `FailureKind`. Semver applies to
    this module (and the entry-point group names); everything else is internal.
 7. **Docker.** A multi-stage image installs the wheel, runs as non-root, stores data in the
-   `/data` volume (`FABRIK_DATA=/data`). Users extend with `FROM … && pip install their-plugins`.
+   `/data` volume (`FABRIK_HOME=/data`). Users extend with `FROM … && pip install their-plugins`.
 8. **Release.** Tag `vX.Y.Z` triggers build → `twine check` → PyPI Trusted Publishing (OIDC, no
    tokens) and a GHCR image. `pysonar` moves to the dev group (not a runtime dependency).
 
@@ -53,7 +53,8 @@ entry point; fabrik itself is installed from PyPI or run from a Docker image.
 - (+) Custom nodes are plain Python packages with one entry point; no fork needed.
 - (+) One registration mechanism for steps and hosting providers.
 - (−) The `fabrik.sdk` surface becomes a compatibility promise.
-- (−) Moving `web/`, `templates/`, `prompts/` into the package changes paths referenced in specs
-  (`prompt_file: prompts/…` falls back to the bundled copy when no user file exists).
+- (−) `web/`, `templates/`, `prompts/relay/` move into the package. Project-specific prompts
+  (`prompts/fabrik-*`) stay user data; `prompt_file` resolves spec dir → `FABRIK_HOME` → `FABRIK_DATA`
+  → bundled package assets.
 - (−) The `type` enum is gone from the schema; editor autocompletion for step types must come from
   the generated reference instead.

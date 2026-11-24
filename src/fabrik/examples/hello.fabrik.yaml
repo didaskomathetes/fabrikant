@@ -1,0 +1,10 @@
+# Starter spec bundled with fabrik (`fabrik init` copies it into your projects/ folder).
+name: hello
+description: "Smallest possible loop — proves your installation works"
+root: .
+loops:
+  greet:
+    description: "Print a greeting"
+    tier: 1
+    steps:
+      - {type: shell, name: say-hello, cmd: "echo hello from fabrik"}

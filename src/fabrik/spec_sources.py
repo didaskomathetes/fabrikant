@@ -85,15 +85,18 @@ def default_name(path: Path) -> str:
 
 
 def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:
-    """Resolve a relative path (e.g. `prompt_file`): first relative to the spec, then `FABRIK_HOME`.
+    """Resolve a relative path (e.g. `prompt_file`).
 
-    Absolute paths stay unchanged. If none of the candidates exists, the
+    Order: relative to the spec, `FABRIK_HOME`, `FABRIK_DATA`, then the assets bundled in the package
+    (`prompts/relay/…`). Absolute paths stay unchanged. If no candidate exists, the
     FABRIK_HOME path is returned (error message as before)."""
     p = Path(raw)
     if p.is_absolute():
         return p
+    candidates = [config.FABRIK_HOME / p, config.DATA_DIR / p, config.PACKAGE_DIR / p]
     if spec_path:
-        candidate = Path(spec_path).parent / p
+        candidates.insert(0, Path(spec_path).parent / p)
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
     return config.FABRIK_HOME / p

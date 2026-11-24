@@ -5,13 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "fabrik"
 version = "0.1.0"
-description = "fabrik — die Software-Fabrik: agentic Development-Loops als YAML-Specs"
+description = "fabrik — a local software factory: agentic development loops as YAML specs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.13",
     "cryptography>=50.0.2",
-    "pysonar>=1.9.0.5762",
     "jsonschema>=4.21",
     "pyyaml>=6.0",
     "ruamel-yaml>=0.19.1",
@@ -43,6 +42,7 @@ dev = [
     "diff-cover>=10.6.0",
     "pyjwt[crypto]>=2.8",
     "pip-audit>=2.10.1",
+    "pysonar>=1.9.0.5762",
 ]
 
 [tool.sonar]

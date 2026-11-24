@@ -18,8 +18,33 @@ from pathlib import Path
 
 from .i18n import t
 
-# src/fabrik/config.py → 3 Ebenen hoch = Projekt-Root (fabrik/)
-FABRIK_HOME = Path(os.environ.get("FABRIK_HOME", Path(__file__).resolve().parent.parent.parent))
+# Read-only assets (web UI, loop templates, relay prompts, example specs) ship inside the package (ADR 0069).
+PACKAGE_DIR = Path(__file__).resolve().parent
+_CHECKOUT_ROOT = PACKAGE_DIR.parent.parent
+APP_DIR_NAME = "fabrik"
+
+
+def is_source_checkout(root: Path) -> bool:
+    """True if `root` is a fabrik git/source checkout (`pyproject.toml` next to `src/fabrik`)."""
+    return (root / "pyproject.toml").is_file() and (root / "src" / APP_DIR_NAME).is_dir()
+
+
+def default_home(env: Mapping[str, str], checkout_root: Path = _CHECKOUT_ROOT) -> Path:
+    """Writable installation home (runs, state, sessionlog, `fabrik.env`), ADR 0069.
+
+    `FABRIK_HOME` wins; a source checkout uses its own root (legacy/dev mode); an installed
+    wheel falls back to `$XDG_DATA_HOME/fabrik` (default `~/.local/share/fabrik`)."""
+    explicit = env.get("FABRIK_HOME", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    if is_source_checkout(checkout_root):
+        return checkout_root
+    data_home = env.get("XDG_DATA_HOME", "").strip()
+    base = Path(data_home).expanduser() if data_home else Path.home() / ".local" / "share"
+    return base / APP_DIR_NAME
+
+
+FABRIK_HOME = default_home(os.environ)
 
 
 def _load_env_file(p: Path):
@@ -46,8 +71,10 @@ _load_env_file(FABRIK_HOME / "fabrik.env")
 # FABRIK_HOME: without FABRIK_DATA the factory behaves as before (spec resolution: ADR 0047).
 DATA_DIR = Path(os.environ.get("FABRIK_DATA", FABRIK_HOME))
 PROJECTS_DIR = DATA_DIR / "projects"  # primary (writable) spec folder
-BUNDLED_PROJECTS_DIR = FABRIK_HOME / "projects"  # bundled example specs (lowest priority)
-TEMPLATES_DIR = FABRIK_HOME / "templates"  # mitgelieferte Loop-Vorlagen
+BUNDLED_PROJECTS_DIR = (
+    FABRIK_HOME / "projects"
+)  # lowest priority; the starter spec in `examples/` is only copied by `fabrik init`
+TEMPLATES_DIR = PACKAGE_DIR / "templates"  # mitgelieferte Loop-Vorlagen
 USER_TEMPLATES_DIR = DATA_DIR / "templates"
 RUNS_DIR = FABRIK_HOME / "runs"
 WORKTREES_ENV = "FABRIK_WORKTREES"
@@ -87,7 +114,7 @@ WORKTREES_DIR = default_worktrees_dir(FABRIK_HOME, os.environ)
 # Until 2026-11 worktrees lived in the repo (`<repo>/.fabrik/worktrees`). Now only read and
 # cleaned up, so paused runs (`needs_approval`) find their worktree on resume.
 LEGACY_WORKTREES_DIR = FABRIK_HOME.parent / ".fabrik" / "worktrees"
-WEB_DIR = FABRIK_HOME / "web"
+WEB_DIR = PACKAGE_DIR / "web"
 STATE_DIR = FABRIK_HOME / "state"
 # Spec resolution (ADR 0047): search-path env (colon-separated like PATH), spec file in the
 # target repo, register of the target repos known via `fabrik project add`.
