@@ -3,20 +3,22 @@
 The diff is computed by running the proposal's patch through the same dry run as the CLI/MCP path
 (:func:`fabrikant.specs.save_spec` with ``dry_run=True``) and comparing the validated result with the
 spec currently on disk. Loop definitions are shown as YAML with secret-looking values masked
-(:func:`fabrikant.secrets.redact_secret_keys`); the unified line diff is built from the masked text,
-so a secret never leaves the server.
+(key-based, with a fingerprint so a changed secret is visible, plus pattern scrubbing of strings);
+the unified line diff is built from the masked text, so a secret never leaves the server.
 """
 
 from __future__ import annotations
 
 import difflib
+import hashlib
 import io
+import os
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
 from ruamel.yaml import YAML
 
-from .secrets import redact_secret_keys
+from .secrets import MASKED_VALUE, is_secret_key, redact_text
 from .spec_proposals import ProposalStatus, SpecProposal
 from .specs import SpecUpdate, load_projects, save_spec, spec_hash, spec_path
 
@@ -77,6 +79,28 @@ class ProposalDiff:
         return out
 
 
+_FINGERPRINT_SALT = os.urandom(16)  # per process: before/after of one diff compare, nothing else does
+FINGERPRINT_HEX_LEN = 6
+
+
+def _mask_marker(value: object) -> str:
+    """The mask with a short salted fingerprint, so a *changed* secret differs on both sides of the
+    diff (``***redacted#a1b2c3***`` vs ``***redacted#d4e5f6***``) without revealing it."""
+    digest = hashlib.sha256(_FINGERPRINT_SALT + repr(value).encode()).hexdigest()[:FINGERPRINT_HEX_LEN]
+    return f"{MASKED_VALUE[:-3]}#{digest}***"
+
+
+def _mask(value: object) -> object:
+    """Mask values of secret-looking keys (fingerprinted) and scrub secret patterns out of every string."""
+    if isinstance(value, dict):
+        return {k: _mask_marker(v) if is_secret_key(k) else _mask(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask(v) for v in value]
+    if isinstance(value, str):
+        return redact_text(value)
+    return value
+
+
 def _yaml_text(value: object) -> str:
     """Masked, stable YAML rendering of ``value`` ("" for ``None``)."""
     if value is None:
@@ -84,7 +108,7 @@ def _yaml_text(value: object) -> str:
     yml = YAML(typ="safe")
     yml.default_flow_style = False
     buf = io.StringIO()
-    yml.dump(redact_secret_keys(value), buf)
+    yml.dump(_mask(value), buf)
     return buf.getvalue()
 
 
@@ -108,7 +132,7 @@ def _loop_changes(current: dict, proposed: dict) -> list[LoopChange]:
 
 def _field_changes(current: dict, proposed: dict) -> list[FieldChange]:
     return [
-        FieldChange(key, str(current.get(key, "")), str(proposed.get(key, "")))
+        FieldChange(key, redact_text(str(current.get(key, ""))), redact_text(str(proposed.get(key, ""))))
         for key in TOP_LEVEL_FIELDS
         if current.get(key) != proposed.get(key)
     ]

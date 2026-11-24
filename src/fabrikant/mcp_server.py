@@ -47,7 +47,7 @@ from .runs import (
     pending_approvals,
     reap_orphaned_runs,
 )
-from .secrets import MASKED_VALUE, redact_for_agent, redact_secret_keys, redact_text
+from .secrets import redact_for_agent, redact_secret_keys, redact_text
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
 from .specschema import validate_spec
 

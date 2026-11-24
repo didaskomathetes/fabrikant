@@ -82,8 +82,9 @@ def _chains_or_empty() -> list[retry_chains.RetryChain]:
         return []
 
 
-# Routes with their own HMAC auth that stay reachable via the tunnel host.
 PROPOSALS_PATH = "/api/spec-proposals"
+UI_ACTOR_PREFIX = "ui:"  # audit actor of decisions taken in the web UI: ``ui:<user>``
+# Routes with their own HMAC auth that stay reachable via the tunnel host.
 INTAKE_PATH_PREFIXES = (webhook.WEBHOOK_PATH_PREFIX, alerts.ALERT_PATH_PREFIX)
 
 
@@ -233,15 +234,19 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         """GET /api/spec-proposals[?project=&status=] (metadata list) or /api/spec-proposals/<id> (with diff)."""
         try:
             if path == PROPOSALS_PATH:
-                status = spec_proposals.ProposalStatus(self._query_param("status") or "pending")
+                status = spec_proposals.ProposalStatus(
+                    self._query_param("status") or spec_proposals.ProposalStatus.PENDING
+                )
                 project = self._query_param("project") or ""
                 found = [p for p in spec_proposals.list_proposals(status) if not project or p.project == project]
                 self._json({"proposals": [proposal_diff.proposal_meta(p).to_dict() for p in found]})
             else:
                 proposal = spec_proposals.get_proposal(path[len(PROPOSALS_PATH) + 1 :])
                 self._json(proposal_diff.compute_diff(proposal).to_dict())
-        except (spec_proposals.ProposalError, ValueError) as e:
-            self._json({"error": str(e)}, 404 if "unknown proposal" in str(e) else 400)
+        except spec_proposals.ProposalNotFound as e:
+            self._json({"error": str(e)}, 404)
+        except ValueError as e:  # includes ProposalError (corrupt record, invalid id) and an unknown status
+            self._json({"error": str(e)}, 400)
 
     def _proposal_decide(self, path: str) -> None:
         """POST /api/spec-proposals/<id>/apply|reject: same functions as the CLI, audited as ``ui:<user>``."""
@@ -251,9 +256,12 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             self._json({"error": t("api.unknown_route")}, 404)
             return
         try:
-            decided = decide(proposal_id, f"ui:{self._actor or self.client_address[0]}")
+            decided = decide(proposal_id, f"{UI_ACTOR_PREFIX}{self._actor or self.client_address[0]}")
+        except spec_proposals.ProposalNotFound as e:
+            self._json({"error": str(e)}, 404)
+            return
         except spec_proposals.ProposalError as e:
-            self._json({"error": str(e)}, 404 if "unknown proposal" in str(e) else 409)
+            self._json({"error": str(e)}, 409)
             return
         self._json({"ok": True, "proposal": proposal_diff.proposal_meta(decided).to_dict()})
 

@@ -200,19 +200,15 @@ def _load(dirs: list[Path]) -> list[SpecProposal]:
 def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
     """Proposals in ``status`` (or all), newest first.
 
-    Pending records live in the top-level dir, decided ones in ``decided/``; only the
-    directories that can hold the requested status are read, so the pending hot path never
-    touches the (unbounded) audit history. Unparseable records are skipped (one bad file
+    The pending hot path reads only the small top-level dir, never the (unbounded) audit history. Unparseable records are skipped (one bad file
     must not make the whole listing unusable); ``get_proposal`` still surfaces the error
     for a specific id.
     """
-    if status is ProposalStatus.PENDING:
-        dirs = [proposals_dir()]
-    elif status is None:
-        dirs = [proposals_dir(), decided_dir()]
-    else:
-        dirs = [decided_dir()]
-    return sorted(_load(dirs), key=lambda p: p.created, reverse=True)
+    # Pending records live in the top-level dir only; decided ones in ``decided/``. Records written
+    # before that split sit decided in the top-level dir, so any non-pending query reads both.
+    dirs = [proposals_dir()] if status is ProposalStatus.PENDING else [proposals_dir(), decided_dir()]
+    found = _load(dirs)
+    return sorted((p for p in found if status in (None, p.status)), key=lambda p: p.created, reverse=True)
 
 
 def propose(project: str, patch: dict, base_hash: str, actor: str) -> SpecProposal:

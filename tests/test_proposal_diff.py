@@ -64,7 +64,8 @@ def test_diff_removed_loop(spec_file):
 def test_diff_masks_secret_keys_everywhere(spec_file):
     diff = proposal_diff.compute_diff(_propose(spec_file, {"loops": {"new": NEW_LOOP}}))
     dumped = json.dumps(diff.to_dict())
-    assert "s3cret-value" not in dumped and MASKED_VALUE in dumped
+    assert "s3cret-value" not in dumped, dumped
+    assert MASKED_VALUE[:-3] in dumped
 
 
 def test_diff_marks_stale_but_still_computes(spec_file):
@@ -183,3 +184,48 @@ def test_roles_and_csrf(local_url, spec_file):  # noqa: F811
     assert sp.get_proposal(pr.id).status is sp.ProposalStatus.PENDING
     assert _req(url + "/apply", "POST", {}, operator)[0] == 200
     assert sp.get_proposal(pr.id).decided_by == "ui:operator"
+
+
+def test_changed_secret_is_visible_without_revealing_it():
+    a, b = proposal_diff._yaml_text({"api_token": "old-secret"}), proposal_diff._yaml_text({"api_token": "new-secret"})
+    assert a != b and "secret" not in a + b and MASKED_VALUE[:-3] in a
+    assert proposal_diff._yaml_text({"api_token": "old-secret"}) == a  # stable within a process
+
+
+def test_secret_patterns_in_strings_are_scrubbed():
+    out = proposal_diff._yaml_text(
+        {"cmd": "curl -H 'Authorization: Bearer abcdefgh12345678' postgres://u:hunter2@h/db"}
+    )
+    assert "abcdefgh12345678" not in out and "hunter2" not in out
+
+
+def test_list_by_status_separates_applied_and_rejected_and_ignores_legacy_records(spec_file):
+    applied = _propose(spec_file, {"loops": {"a": NEW_LOOP}})
+    sp.apply(applied.id, "t")
+    rejected = _propose(spec_file, {"loops": {"b": NEW_LOOP}})
+    sp.reject(rejected.id, "t")
+    pending = _propose(spec_file, {"loops": {"c": NEW_LOOP}})
+    # legacy layout: a decided record that still sits in the top-level (pending) dir
+    legacy = sp.get_proposal(rejected.id)
+    sp._write(legacy)
+    ids = lambda st: {p.id for p in sp.list_proposals(st)}  # noqa: E731
+    assert ids(sp.ProposalStatus.APPLIED) == {applied.id}
+    assert ids(sp.ProposalStatus.REJECTED) == {rejected.id}
+    assert ids(sp.ProposalStatus.PENDING) == {pending.id}
+    assert ids(None) == {applied.id, rejected.id, pending.id}
+
+
+def test_get_prefers_decided_record_when_a_crash_left_both(spec_file):
+    pr = _propose(spec_file, {"loops": {"a": NEW_LOOP}})
+    stale_pending = sp.get_proposal(pr.id)
+    sp.reject(pr.id, "t")
+    sp._write(stale_pending)  # simulate: decided file written, pending not yet unlinked
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.REJECTED
+
+
+def test_unknown_proposal_is_not_found_and_corrupt_is_400(fabrikant_url, spec_file):
+    assert _req(f"{fabrikant_url}{PROPOSALS}/nope")[0] == 404
+    pr = _propose(spec_file, {"loops": {"a": NEW_LOOP}})
+    sp._path(pr.id).write_text("{broken")
+    assert _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}")[0] == 400
+    assert _req(f"{fabrikant_url}{PROPOSALS}/{pr.id}/apply", "POST", {})[0] == 409
