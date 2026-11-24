@@ -98,5 +98,5 @@ The full index is [docs/README.md](docs/README.md). Highlights:
 
 ## License
 
-Open core: the engine, CLI, UI, spec format and plugin contract are Apache 2.0 ([LICENSE](LICENSE)). Details:
-[docs/licensing.md](docs/licensing.md).
+Apache 2.0 — see [LICENSE](LICENSE). Third-party packages can extend fabrikant through the step plugin contract
+([docs/plugins.md](docs/plugins.md)).
