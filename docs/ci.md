@@ -1,35 +1,34 @@
 # CI
 
-Workflow: `<repo-root>/.github/workflows/fabrikant-ci.yml` (GitHub lädt nur dort) (Jobs `test`, `browser`).
-Läuft bei Pull Requests und Pushes auf `main`; Python 3.12, uv-Cache über `uv.lock`,
-Action-Versionen per Commit-SHA gepinnt, Permissions `contents: read`.
-Die Jobs laufen direkt im Repository-Root (Standalone-Layout, kein
-`working-directory`).
+Workflow: `.github/workflows/fabrikant-ci.yml` (GitHub only reads workflows from there). Jobs: `test`, `browser`,
+`package`; tag releases use `release.yml` ([releasing.md](releasing.md)). It runs on pull requests and pushes to `main`
+with Python 3.12, a uv cache keyed on `uv.lock`, actions pinned by commit SHA and `contents: read` permissions.
+Jobs run in the repository root (no `working-directory`).
 
 ## Jobs
 
-- `test`: `uv sync --frozen`, `scripts/lint.sh` (ruff check + format, pyright, bandit ab Severity medium), `fabrikant validate --offline projects/*.fabrikant.yaml` (Specs inkl. vars/Templates; ohne host-abhängige root-Prüfung), `pytest -m "not browser and not perf" -n auto`
-  (parallel via pytest-xdist, mit `--cov=fabrikant`: Coverage-Gate `fail_under = 90` in `pyproject.toml`),
-  davor JS-Lint (Biome, `biome.json`, nur `src/fabrikant/web/app.js`; Fehler blockieren, Warnungen nicht) und
-  Dependency-Audit (`pip-audit` gegen die Lock-Umgebung); danach `pytest -m perf` seriell (Wall-Clock-Budgets
-  vertragen keine CPU-Konkurrenz durch parallele Worker).
-- `browser`: `playwright install --with-deps chromium` (Browser **und**
-  System-Libs), dann `pytest -m browser`. Blockierend (kein `continue-on-error`).
+- `test`: `uv sync --frozen`, then JS lint (Biome, `biome.json`, only `src/fabrikant/web/app.js`; errors block,
+  warnings don't) and a dependency audit (`pip-audit` against the locked environment), then `scripts/lint.sh`
+  (ruff check + format, pyright, bandit from severity medium), `fabrikant validate --offline projects/*.fabrikant.yaml`
+  (specs incl. vars/templates, without the host-dependent `root` check) and
+  `pytest -m "not browser and not perf" -n auto` (parallel via pytest-xdist, with `--cov=fabrikant`; coverage gate
+  `fail_under = 90` in `pyproject.toml`). Finally `pytest -m perf` runs serially, because wall-clock budgets don't
+  tolerate CPU contention from parallel workers.
+- `browser`: `playwright install --with-deps chromium` (browser **and** system libraries), then
+  `pytest -m browser`. Blocking (no `continue-on-error`).
+- `package`: builds the wheel and runs the clean-venv smoke test (`scripts/smoke-wheel.sh`).
 
 ## Secrets
 
-- `SONAR_ADMIN_PASSWORD` wird **nur** als GitHub-Actions-Secret
-  (Settings → Secrets and variables → Actions) gesetzt und per
-  `${{ secrets.… }}` an einen vertrauenswürdigen Step übergeben — nie im Repo,
-  nie per `echo`/`set -x`, nie an Jobs, die PR-Code ausführen (z. B. Browser-Tests).
-  GitHub maskiert den Wert in Logs. Lokal steht er in der gitignorierten
-  `fabrikant.env`.
-- `scripts/sonar-init.py` schreibt den Token nach `state/sonar-token.txt`
-  mit Berechtigung `0600` (nur Owner). `state/` ist in `.gitignore`.
+- `SONAR_ADMIN_PASSWORD` is set **only** as a GitHub Actions secret (Settings → Secrets and variables → Actions)
+  and passed to a trusted step via `${{ secrets.… }}`. Never put it in the repo, never `echo` it or use `set -x`,
+  and never pass it to jobs that run PR code (e.g. the browser tests). GitHub masks the value in logs. Locally it
+  lives in the git-ignored `fabrikant.env`.
+- `scripts/sonar-init.py` writes the token to `state/sonar-token.txt` with mode `0600` (owner only). `state/` is
+  in `.gitignore`.
 
-## Keine Leaks über Artefakte
+## No leaks through artifacts
 
-`state/` (Token, SQLite-Logs) darf nie hochgeladen werden. Der Workflow lädt
-keine Artefakte hoch; falls künftig `actions/upload-artifact` genutzt wird,
-nur explizite Pfade (z. B. `coverage.xml`) angeben, nie `.` oder `state/`.
-`tests/test_ci_workflow.py` sichert das ab.
+`state/` (tokens, SQLite logs) must never be uploaded. The workflow uploads no artifacts; if
+`actions/upload-artifact` is added later, list explicit paths only (e.g. `coverage.xml`), never `.` or `state/`.
+`tests/test_ci_workflow.py` enforces this.

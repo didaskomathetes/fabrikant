@@ -1,12 +1,12 @@
-# Relay-Tasks — Anleitung
+# Relay tasks — guide
 
-Entscheidung und Begründung: [ADR 0037](adr/0037-relay-tasks.md). Hier: Brief schreiben, Ablauf,
-Eingreifen.
+Decision and rationale: [ADR 0037](adr/0037-relay-tasks.md). This page covers writing a brief, the flow and how to
+intervene.
 
-## Brief-Vorlage (Issue-Body)
+## Brief template (issue body)
 
-Titel = Aufgabe. Pflicht sind `## Goal`, `## Session` und `## Verify`; der Rest ist optional.
-Sprache der Sessions ist Englisch, der Brief darf deutsch sein.
+Title = task. `## Goal`, `## Session` and `## Verify` are required; the rest is optional. Sessions work in
+English; the brief may be written in another language.
 
 ````markdown
 ## Goal
@@ -57,62 +57,60 @@ scope: src/my_import/**, docs/my_import.md
 - **`session_minutes`** is capped by `relay.max_session_minutes` (default 35, because of
   `FABRIKANT_STALE_HOURS`).
 
-## Ablauf
+## Flow
 
-1. Issue mit Brief anlegen, Label `fabrikant-relay` setzen. Das Label muss von einem `relay.allowed`-
-   Login kommen.
-2. `relay-dispatch` (Default alle 15 min) startet die erste Session, danach jeweils den fälligen
-   Task, der am längsten wartet. Es läuft höchstens ein Relay-Run pro Projekt.
-3. Jede Session committet und pusht auf `fabrikant/relay/<N>` und aktualisiert den Status-Kommentar.
-   Commits laufen als Bot (`relay.bot_login`). Bei `done` steht das Ergebnis (`## Result` im
-   Handoff) im Status-Kommentar, nach dem Audit zusätzlich dessen Zusammenfassung.
-4. `status: done` → Label `relay: done` → `relay-audit`:
-   - Phase 1 blind: eigene Queries, read-only. Veröffentlicht werden nur Dateien direkt in
-     `audit/blind/` (max. 1 MB); Arbeitskopien gehören nach `.fabrikant-session/audit/work/`
-   - Phase 2: prüft die Skripte und Logs des Workers
-   - `AUDIT.md` mit Verdikt; `pass` → Label `relay: audited`. Das Verdikt ist an den Trail-Hash
-     gebunden (letzte Zeile von `AUDIT.md`, Status-Kommentar)
-   - mit `relay.trail_archive`: nach `pass` Trail archivieren (`audit-<k>`), Archiv prüfen, dann
-     `.fabrikant/relay/<N>/` per Lösch-Commit vom Branch entfernen; der PR enthält nur noch die
-     Änderung. Link und Hash stehen im Status-Kommentar und in einem Block am Ende des PR-Bodys (Archiv-Link, Ref,
-     `AUDIT.md`, Hash, Prüfbefehl; fabrikant ersetzt nur den Text zwischen den `fabrikant-relay-trail`-Markern
-     und entfernt ihn, wenn eine spätere Session den Trail zurückholt)
-5. Ein Mensch zeichnet ab: Stichprobe aus dem Audit im Zielsystem prüfen, bei Code einen PR vom
-   Branch öffnen, Issue schließen.
+1. Create an issue with the brief and set the label `fabrikant-relay`. The label must come from a login in
+   `relay.allowed`.
+2. `relay-dispatch` (default every 15 min) starts the first session, then the due task that has waited longest.
+   At most one relay run per project runs at a time.
+3. Each session commits and pushes to `fabrikant/relay/<N>` and updates the status comment. Commits are made as
+   the bot (`relay.bot_login`). On `done`, the result (`## Result` in the handoff) is in the status comment; after
+   the audit, so is its summary.
+4. `status: done` → label `relay: done` → `relay-audit`:
+   - Phase 1, blind: own queries, read-only. Only files directly in `audit/blind/` are published (max. 1 MB);
+     working copies belong in `.fabrikant-session/audit/work/`.
+   - Phase 2: checks the worker's scripts and logs.
+   - `AUDIT.md` with a verdict; `pass` → label `relay: audited`. The verdict is bound to the trail hash (last
+     line of `AUDIT.md`, status comment).
+   - With `relay.trail_archive`: after `pass`, archive the trail (`audit-<k>`), verify the archive, then remove
+     `.fabrikant/relay/<N>/` from the branch with a delete commit, so the PR contains only the change. Link and
+     hash are in the status comment and in a block at the end of the PR body (archive link, ref, `AUDIT.md`,
+     hash, verification command; fabrikant only replaces the text between the `fabrikant-relay-trail` markers and
+     removes it when a later session restores the trail).
+5. A human signs off: spot-check the audit in the target system, open a PR from the branch for code, close the
+   issue.
 
-## Eingreifen
+## Intervening
 
-| Situation | Was tun |
+| Situation | What to do |
 |---|---|
-| Checkpoint / Rückfrage (`relay: blocked`) | Status-Kommentar lesen, ggf. Brief ergänzen, Label entfernen |
-| Stillstand, gescheiterte Runs (ohne `retry` bzw. Klasse nicht in `retry.on`, `retry.max` erschöpft), `max_sessions` | Ursache klären (Run-Historie: Suche `relay #N`), ggf. `max_sessions` erhöhen, Label entfernen |
-| Brief von jemand anderem bearbeitet | prüfen, dann Label `fabrikant-relay` neu setzen (= Freigabe dieser Fassung) |
-| Audit `fail` | `AUDIT.md` lesen; Label entfernen → nächste Session arbeitet die Findings ab |
-| Weiterarbeiten nach archiviertem Trail | Labels `relay: done`/`relay: audited` entfernen; die nächste Session stellt den Trail aus dem Archiv wieder her (Hash-Prüfung) |
-| Selbst weitermachen | Branch auschecken, nach `prompts/relay/session.prompt.md` arbeiten, Handoff aktualisieren, pushen |
-| Anhalten | `fabrikant pause <projekt> relay-dispatch` oder Label `fabrikant-relay` entfernen |
+| Checkpoint / question (`relay: blocked`) | Read the status comment, amend the brief if needed, remove the label |
+| Stall, failed runs (no `retry`, class not in `retry.on`, `retry.max` exhausted), `max_sessions` | Find the cause (run history: search `relay #N`), raise `max_sessions` if needed, remove the label |
+| Brief edited by someone else | Review it, then set the label `fabrikant-relay` again (= approval of that version) |
+| Audit `fail` | Read `AUDIT.md`; remove the label → the next session works through the findings |
+| Continue after an archived trail | Remove the labels `relay: done`/`relay: audited`; the next session restores the trail from the archive (hash check) |
+| Continue yourself | Check out the branch, work per `prompts/relay/session.prompt.md`, update the handoff, push |
+| Stop | `fabrikant pause <project> relay-dispatch` or remove the label `fabrikant-relay` |
 
-## Gescheiterte Runs
+## Failed runs
 
-Ein Run, dessen `publish` nicht durchlief, ist ein Fehlschlag. Ohne `relay.retry` blockiert er den
-Task sofort. Mit `relay.retry` (gleiche Semantik wie der Run-Retry, ADR 0036) wird nur bei
-`interrupted`/`transient` (Fehlerklassen, ADR 0035) nach dem Backoff wiederholt, höchstens `max`
-zusätzliche Male; meldet der Run ein `retry_after` (z. B. Rate-Limit-Reset), wartet der Retry bis
-dahin, höchstens `max_wait`. Die Relay-Steps melden ihre Klasse über den Exit-Code (75 = `transient`:
-Netz, GitHub-5xx, Rate-Limit; 78 = `environment`: 401/403, falsches `bot_login`). `unknown` blockiert
-immer.
+A run whose `publish` did not complete is a failure. Without `relay.retry` it blocks the task immediately. With
+`relay.retry` (same semantics as run retry, ADR 0036) only `interrupted`/`transient` failures (failure classes,
+ADR 0035) are retried after the backoff, at most `max` additional times; if the run reports a `retry_after` (e.g.
+a rate-limit reset), the retry waits until then, at most `max_wait`. The relay steps report their class through
+the exit code (75 = `transient`: network, GitHub 5xx, rate limit; 78 = `environment`: 401/403, wrong
+`bot_login`). `unknown` always blocks.
 
-## Grenzen
+## Limits
 
-- Ohne `FABRIKANT_SANDBOX=1` (ADR 0054) laufen Agents als OS-User. Die Prüfungen der Harness verhindern
-  Drift, nicht Vorsatz. Darum führt fabrikant nur Briefs von `allowed`-Logins aus.
-- Lokale Dateien pro Run: `.fabrikant-session/` ist das Austauschverzeichnis mit dem Agenten (Brief,
-  `SESSION.md`, Audit-Arbeitsstand); die Sandbox trägt es in den Container und zurück, ohne
-  `audit/work/` (steht in `.fabrikant-session/.fabrikant-local`). Plan, Handoff-Snapshot und Check-in liegen
-  in `.fabrikant-harness/` und erreichen den Agenten in der Sandbox nie.
-- Read-only Zugang für den Prüfer stellt das Projekt bereit; fabrikant kann ihn nicht erzwingen.
-- Der Prüfer kann nur die Invarianten prüfen. Nicht spezifizierte Transformationen meldet er,
-  bewerten muss sie ein Mensch.
+- Without `FABRIKANT_SANDBOX=1` (ADR 0054) agents run as the OS user. The harness checks prevent drift, not
+  intent, which is why fabrikant only executes briefs from `allowed` logins.
+- Local files per run: `.fabrikant-session/` is the exchange directory with the agent (brief, `SESSION.md`, audit
+  working state); the sandbox carries it into the container and back, except `audit/work/` (listed in
+  `.fabrikant-session/.fabrikant-local`). Plan, handoff snapshot and check-in live in `.fabrikant-harness/` and
+  never reach the agent in the sandbox.
+- Read-only access for the auditor is provided by the project; fabrikant cannot enforce it.
+- The auditor can only check the invariants. It reports unspecified transformations; a human has to judge them.
 
 ## Configuration (ADR 0037)
 
