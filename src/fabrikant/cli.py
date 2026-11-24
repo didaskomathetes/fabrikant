@@ -337,6 +337,12 @@ def cmd_proposals(args):
             pr = spec_proposals.get_proposal(args.id)
             print(json.dumps(pr.to_dict(), indent=2, ensure_ascii=False))
         elif args.action == "apply":
+            if not args.yes:
+                # An applied patch can add shell steps (= code execution): show it first.
+                pr = spec_proposals.get_proposal(args.id)
+                print(json.dumps(pr.to_dict(), indent=2, ensure_ascii=False))
+                print(t("cli.proposal_confirm", id=pr.id))
+                sys.exit(1)
             pr = spec_proposals.apply(args.id, actor)
             print(t("cli.proposal_applied", id=pr.id, project=pr.project))
         else:
@@ -655,6 +661,7 @@ def main(argv=None):
     p = sub.add_parser("proposals", help=t("cli.help.proposals"))
     p.add_argument("action", choices=["list", "show", "apply", "reject"])
     p.add_argument("id", nargs="?", default="")
+    p.add_argument("--yes", action="store_true", help=t("cli.help.proposals_yes"))
     p.set_defaults(func=cmd_proposals)
 
     p = sub.add_parser("approve", help=t("cli.help.approve"))

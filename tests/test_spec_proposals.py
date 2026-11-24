@@ -235,7 +235,10 @@ def test_cli_proposals_list_show_apply_reject(proj, capsys):
     assert pr.id in capsys.readouterr().out
     cli.main(["proposals", "show", pr.id])
     assert json.loads(capsys.readouterr().out)["patch"] == {"description": "via-cli"}
-    cli.main(["proposals", "apply", pr.id])
+    with pytest.raises(SystemExit):  # without --yes: shows the patch, applies nothing
+        cli.main(["proposals", "apply", pr.id])
+    assert "via-cli" in capsys.readouterr().out and "description: via-cli" not in proj.read_text()
+    cli.main(["proposals", "apply", pr.id, "--yes"])
     assert "description: via-cli" in proj.read_text()
     pr2 = sp.propose("p", {"description": "again"}, _hash(proj), "mcp")
     cli.main(["proposals", "reject", pr2.id])
@@ -302,3 +305,19 @@ def test_apply_and_reject_are_serialised_by_a_lock(proj, monkeypatch):
     assert held and not (proj.parent / "p.fabrikant.yaml.bak").exists()
     with pytest.raises(sp.ProposalError, match="already rejected"):
         sp.apply(pr.id, "cli:me")
+
+
+def test_corrupt_proposal_is_a_proposal_error(proj):
+    pr = sp.propose("p", {"description": "x"}, _hash(proj), "mcp")
+    sp._path(pr.id).write_text("{not json", encoding="utf-8")
+    with pytest.raises(sp.ProposalError, match="corrupt"):
+        sp.get_proposal(pr.id)
+
+
+def test_bad_id_does_not_create_the_store_or_lock(proj):
+    assert not sp.proposals_dir().exists()
+    with pytest.raises(sp.ProposalError):
+        sp.apply("../x", "me")
+    with pytest.raises(sp.ProposalError):
+        sp.reject("../x", "me")
+    assert not sp.proposals_dir().exists()

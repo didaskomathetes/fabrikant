@@ -24,5 +24,10 @@ Risky tools are opt-in (not even listed otherwise); `--read-only` wins over all 
 Spec changes are **propose-and-approve**: the agent sends a patch (`loops`, `remove_loops`, `description`,
 `max_parallel`) plus the `_hash` from `get_spec`; fabrikant validates it against the schema, refuses stale
 hashes and stores a proposal. A human reviews and applies it with `fabrikant proposals list|show|apply|reject`
-(atomic write, previous file kept as `<spec>.bak`, comments preserved). Only specs inside the projects dir can
-change.
+(atomic write, previous file kept as `<spec>.bak`, comments preserved). `apply` prints the patch and needs
+`--yes` to proceed, since an applied patch can add shell steps. Only specs inside the projects dir can change.
+`--read-only` affects only the MCP server; `fabrikant proposals` is the human side and is not gated by it.
+
+Anything returned to the agent (`get_run`, `list_runs`, `get_run_log`, `list_approvals`) is scrubbed: values of
+secret-looking keys are masked and secret patterns (bearer tokens, API keys, `key=value`, `scheme://user:pw@host`)
+are redacted in strings. This is best-effort pattern matching, not a guarantee.

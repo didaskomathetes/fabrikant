@@ -175,6 +175,27 @@ def test_token_secrets_are_still_masked(key):
     assert secrets.redact_secret_keys({key: "x"}) == {key: secrets.MASKED_VALUE}
 
 
+@pytest.mark.parametrize(
+    "key", ["secret_max_tokens", "input_token", "output_token", "key", "auth", "bearer", "pat", "dsn", "API_KEY"]
+)
+def test_more_secret_key_names_are_masked(key):
+    assert secrets.redact_secret_keys({key: "x"}) == {key: secrets.MASKED_VALUE}
+
+
+@pytest.mark.parametrize("key", ["monkey", "author", "input_tokens", "output_tokens"])
+def test_lookalike_keys_are_not_masked(key):
+    assert secrets.redact_secret_keys({key: 5}) == {key: 5}
+
+
+def test_redact_for_agent_scrubs_strings_under_innocent_keys():
+    out = secrets.redact_for_agent(
+        {"DB_URL": "postgres://u:hunter2@h/db", "args": ["--x", "Bearer abcdefgh12345678"], "n": 3, "ok": "plain"}
+    )
+    dumped = str(out)
+    assert "hunter2" not in dumped and "abcdefgh12345678" not in dumped
+    assert out["n"] == 3 and out["ok"] == "plain"
+
+
 def test_contains_masked_value_finds_nested_mask():
     mask = secrets.MASKED_VALUE
     assert secrets.contains_masked_value({"a": [{"b": mask}]})

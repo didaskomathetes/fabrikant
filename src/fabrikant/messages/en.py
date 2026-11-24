@@ -118,6 +118,8 @@ MESSAGES: dict[str, str] = {
     "cli.help.mcp_allow_spec_write": "Offer propose_spec_change and list_spec_proposals (opt-in; a human applies via `fabrikant proposals apply`)",
     "cli.help.proposals": "Review spec-change proposals made by agents (list/show/apply/reject)",
     "cli.proposal_applied": "✔ proposal {id} applied to {project}",
+    "cli.proposal_confirm": "review the patch above, then re-run with --yes to apply proposal {id}",
+    "cli.help.proposals_yes": "Apply without showing the patch first",
     "cli.proposal_rejected": "⊘ proposal {id} for {project} rejected",
     "api.invalid_json": "invalid JSON",
     "api.unknown_route": "unknown route",

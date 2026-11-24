@@ -283,6 +283,14 @@ def test_get_run_log_tail_and_bound(projects_dir, runs_dir):
     assert res.truncated and len(res.log.splitlines()) == mcp.DEFAULT_LOG_LINES
 
 
+def test_get_run_log_is_redacted(projects_dir, runs_dir):
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "r1")
+    (runs_dir / "p" / "r1.log").write_text("ok\nAuthorization: Bearer abcdefgh12345678\nDB=postgres://u:hunter2@h/db\n")
+    log = mcp.get_run_log_tool("r1", "p").log
+    assert "abcdefgh12345678" not in log and "hunter2" not in log and "ok" in log
+
+
 def test_get_run_log_missing_raises(projects_dir, runs_dir):
     _write_spec(projects_dir, "p")
     _write_run(runs_dir, "p", "r1")
@@ -302,6 +310,22 @@ def test_queue_status(monkeypatch, projects_dir, runs_dir):
 
 
 # -------------------------------------------------------- tool handlers: approvals
+def test_list_approvals_redacts_note_and_approval(projects_dir, runs_dir):
+    _write_spec(projects_dir, "p")
+    _write_run(
+        runs_dir,
+        "p",
+        "r1",
+        status="needs_approval",
+        note="token=abc123secret",
+        approval={"cmd": "curl -H 'Bearer abcdefgh12345678'", "auth": "x"},
+    )
+    res = mcp.list_approvals("p")
+    dumped = json.dumps(res.model_dump())
+    assert "abc123secret" not in dumped and "abcdefgh12345678" not in dumped
+    assert res.approvals[0].approval["auth"] == MASKED_VALUE
+
+
 def test_list_approvals(projects_dir, runs_dir):
     _write_spec(projects_dir, "p")
     _write_run(runs_dir, "p", "r1", status="needs_approval", approval={"step": "deploy"})
@@ -359,6 +383,14 @@ def test_start_run_delegates_to_engine(monkeypatch, projects_dir):
     assert res.started and not res.queued
     assert (calls["name"], calls["lname"], calls["trigger"], calls["actor"]) == ("p", "l", "mcp", "mcp")
     assert calls["vars"] == {"a": "1"} and calls["run_id"].endswith("-l") and res.run_id == calls["run_id"]
+
+
+def test_start_run_coerces_scalar_vars(monkeypatch, projects_dir):
+    _write_spec(projects_dir, "p")
+    seen = {}
+    monkeypatch.setattr(mcp, "start_priority_run", lambda *a, **k: seen.update(vars=k["initial_vars"]) or False)
+    mcp.start_run("p", "l", vars={"n": 1, "b": True, "f": 1.5})
+    assert seen["vars"] == {"n": "1", "b": "True", "f": "1.5"}
 
 
 def test_start_run_worker_failure_is_a_tool_error(monkeypatch, projects_dir):

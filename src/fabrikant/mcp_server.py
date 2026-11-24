@@ -47,7 +47,7 @@ from .runs import (
     pending_approvals,
     reap_orphaned_runs,
 )
-from .secrets import redact_secret_keys
+from .secrets import redact_for_agent, redact_secret_keys, redact_text
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
 from .specschema import validate_spec
 
@@ -373,7 +373,7 @@ def list_runs_tool(
     if status:
         runs = [r for r in runs if r.get("status") == status][:limit]
     # Run records carry ``vars`` (secrets may have been passed to start_run): mask them.
-    return RunList(runs=[redact_secret_keys(r) for r in runs], count=len(runs))
+    return RunList(runs=[redact_for_agent(r) for r in runs], count=len(runs))
 
 
 def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
@@ -381,7 +381,7 @@ def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
     rec = get_run(run_id, project or None)
     if rec is None:
         raise ToolError(f"run not found: {run_id!r}")
-    return redact_secret_keys(rec)
+    return redact_for_agent(rec)
 
 
 def get_run_log_tool(run_id: _RunId, project: _OptProject = None, lines: _LogLines | None = None) -> RunLog:
@@ -390,6 +390,7 @@ def get_run_log_tool(run_id: _RunId, project: _OptProject = None, lines: _LogLin
     if log is None:
         raise ToolError(f"no log for run: {run_id!r}")
     lines = lines or DEFAULT_LOG_LINES
+    log = redact_text(log)  # command output may contain tokens
     all_lines = log.splitlines()
     truncated = len(all_lines) > lines
     return RunLog(run_id=run_id, log="\n".join(all_lines[-lines:]) if truncated else log, truncated=truncated)
@@ -418,8 +419,8 @@ def list_approvals(project: _OptProject = None) -> ApprovalList:
             project=r.get("project"),
             loop=r.get("loop"),
             started=r.get("started"),
-            note=r.get("note", ""),
-            approval=r.get("approval") or {},
+            note=redact_for_agent(r.get("note", "")),
+            approval=redact_for_agent(r.get("approval") or {}),
         )
         for r in pending_approvals(project or None)
     ]
@@ -435,7 +436,7 @@ def start_run(
     project: _Project,
     loop: Annotated[str, Field(min_length=1, description="Loop name")],
     note: str = "",
-    vars: Annotated[dict[str, str] | None, Field(description="Initial variables (K=V)")] = None,
+    vars: Annotated[dict[str, str | int | float | bool] | None, Field(description="Initial variables (K=V)")] = None,
 ) -> StartedRun:
     """Start a loop run (mirrors ``POST /api/runs``); queued if at the parallel limit."""
     loops = _known_project(project).get("loops", {})
@@ -444,7 +445,13 @@ def start_run(
     run_id = f"{config.now_id()}-{loop}"
     try:
         queued = start_priority_run(
-            project, loop, "mcp", run_id=run_id, note=note, initial_vars=dict(vars or {}) or None, actor=MCP_ACTOR
+            project,
+            loop,
+            "mcp",
+            run_id=run_id,
+            note=note,
+            initial_vars={k: str(v) for k, v in (vars or {}).items()} or None,
+            actor=MCP_ACTOR,
         )
     except RuntimeError as e:
         raise ToolError(f"worker start failed: {e}") from e

@@ -159,7 +159,10 @@ def get_proposal(proposal_id: str) -> SpecProposal:
     path = _path(proposal_id)
     if not path.is_file():
         raise ProposalError(f"unknown proposal: {proposal_id!r}")
-    return SpecProposal.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        return SpecProposal.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except ValueError as e:  # JSONDecodeError is a ValueError
+        raise ProposalError(f"corrupt proposal {proposal_id!r}: {e}") from e
 
 
 def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
@@ -210,6 +213,7 @@ def apply(proposal_id: str, actor: str) -> SpecProposal:
     error) raises :class:`ProposalError`, so callers (CLI, web UI) see a clean error
     instead of a raw traceback.
     """
+    _path(proposal_id)  # validate the id before taking the lock (no stray files on a bad id)
     with _decision_lock():
         proposal = _pending(proposal_id)
         _refuse_masked(proposal.patch)  # also covers records written by an older version
@@ -224,6 +228,7 @@ def apply(proposal_id: str, actor: str) -> SpecProposal:
 
 def reject(proposal_id: str, actor: str) -> SpecProposal:
     """Reject a pending proposal (kept as an audit record)."""
+    _path(proposal_id)
     with _decision_lock():
         return _decide(_pending(proposal_id), ProposalStatus.REJECTED, actor)
 
