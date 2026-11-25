@@ -388,6 +388,27 @@ def _validate_retry_cron(spec: dict, lname: str, ldef: dict) -> list[str]:
     return errs
 
 
+# Step types that honour `github_identity: dev|reviewer` (ADR 0010).
+IDENTITY_STEP_TYPES = frozenset({"agent", "shell"})
+
+
+def _validate_step_common(st: dict, where: str) -> list[str]:
+    """Cross-type step fields: `sandboxed` (shell only, ADR 0054) and `github_identity` (ADR 0010).
+
+    Checked for every step, so a key on a step type that ignores it fails validation instead of
+    being dropped silently at runtime."""
+    errs = []
+    if "sandboxed" in st and (st.get("type") != "shell" or not isinstance(st["sandboxed"], bool)):
+        errs.append(_t("specs.sandboxed_only_for_shell", where=where))
+    gid = st.get("github_identity")
+    if gid is not None:
+        if st.get("type") not in IDENTITY_STEP_TYPES:
+            errs.append(_t("specs.github_identity_only_for_step_types", where=where, v2=sorted(IDENTITY_STEP_TYPES)))
+        elif gid not in GH_TOKEN_ENV:
+            errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))
+    return errs
+
+
 def _validate_step_shell(st: dict, where: str, spec: dict) -> list[str]:
     if not st.get("cmd"):
         return [_t("specs.shell_without_cmd", where=where)]
@@ -439,9 +460,6 @@ def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
         errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
-    gid = st.get("github_identity")
-    if gid is not None and gid not in GH_TOKEN_ENV:
-        errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))
     if st.get("workdir") is not None and not isinstance(st["workdir"], str):
         errs.append(_t("specs.agent_workdir_must_be_a", where=where))
     if st.get("timeout") is not None:
@@ -585,6 +603,7 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                         errs += _validate_failure_kind(st, where)
                     stype = st.get("type")
                     errs += _validate_step_type(stype, where)
+                    errs += _validate_step_common(st, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None
                     if validator is not None:
                         errs += validator(st, where, spec)

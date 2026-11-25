@@ -106,17 +106,25 @@ def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:
     return config.FABRIKANT_HOME / p
 
 
-def resolve_script_paths(command: str, spec_path: str | Path | None) -> str:
+def resolve_script_paths(command: str, spec_path: str | Path | None, workdir: str | Path | None = None) -> str:
     """Resolve ``scripts/...`` references in a shell command relative to its spec.
 
-    Existing paths are made absolute so the shell step can retain the project's
-    worktree as its working directory. Missing paths remain unchanged so the
-    shell reports the same command-not-found error as before.
+    Only for scripts the step's working tree does NOT have itself: a script that exists under
+    ``workdir`` stays relative, so the run uses the worktree's own copy (the code under test). An
+    absolute path into the spec's checkout would run a different version, would not exist in a
+    sandbox container (which only gets a clone of the worktree), and scripts that locate their repo
+    from their own path (``sonar-scan.sh``, ``lint.sh``) would work on that checkout instead of the
+    run's worktree. Other existing paths are made absolute so the step can keep the worktree as its
+    working directory; missing paths remain unchanged so the shell reports the same
+    command-not-found error as before.
     """
 
     def replace(match: re.Match[str]) -> str:
         raw = match.group(0)
-        path = resolve_relative(raw.removeprefix("./"), spec_path)
+        rel = raw.removeprefix("./")
+        if workdir is not None and (Path(workdir) / rel).is_file():
+            return raw
+        path = resolve_relative(rel, spec_path)
         return str(path) if path.is_file() else raw
 
     return _SCRIPT_PATH_RE.sub(replace, command)

@@ -7,6 +7,7 @@ Regression: Issue #62 (add-acceptance-Step im Triage-Loop).
 """
 
 import os
+import subprocess
 
 import pytest
 
@@ -59,6 +60,23 @@ def test_shell_script_path_is_relative_to_spec(tmp_path):
     )
     assert res["ok"] is True
     assert "spec-script" in res["output"]
+
+
+def test_shell_script_in_worktree_stays_relative(tmp_path):
+    """A script the worktree has itself runs from the worktree (the code under test), not the spec's copy."""
+    spec_dir = tmp_path / "project"
+    (spec_dir / "scripts").mkdir(parents=True)
+    (spec_dir / "scripts" / "which.sh").write_text("echo spec-copy\n")
+    work = tmp_path / "work"
+    (work / "scripts").mkdir(parents=True)
+    (work / "scripts" / "which.sh").write_text("echo worktree-copy\n")
+    res = _step_shell(
+        {"workdir": str(work), "spec_path": str(spec_dir / "fabrikant.yaml")},
+        {"type": "shell", "cmd": "sh scripts/which.sh"},
+        NOOP,
+    )
+    assert res["ok"] is True
+    assert "worktree-copy" in res["output"] and "spec-copy" not in res["output"]
 
 
 def test_shell_timeout(tmp_path):
@@ -355,3 +373,84 @@ def test_shell_verdict_line_becomes_field_and_leaves_output_and_summary(tmp_path
 def test_shell_without_verdict_has_no_field(tmp_path):
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo hi"}, NOOP)
     assert "verdict" not in res
+
+
+# ---------------------------------------------------------------- github_identity (ADR 0010)
+def test_shell_github_identity_sets_role_token(tmp_path, monkeypatch):
+    """`github_identity: reviewer` → `gh` in the command runs with that role's token."""
+    monkeypatch.setattr(
+        "fabrikant.steps.shell.github_env", lambda role: {"PATH": os.environ["PATH"], "GH_TOKEN": f"tok-{role}"}
+    )
+    step = {"type": "shell", "cmd": 'echo "$GH_TOKEN"', "github_identity": "reviewer"}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is True
+    assert "tok-reviewer" in res["output"]
+
+
+def test_shell_github_identity_missing_token_fails_as_environment(tmp_path, monkeypatch):
+    def _missing(role):
+        raise RuntimeError("GITHUB_REVIEWER_TOKEN not available")
+
+    monkeypatch.setattr("fabrikant.steps.shell.github_env", _missing)
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "true", "github_identity": "reviewer"}, NOOP)
+    assert res["ok"] is False
+    assert res["failure_kind"] == "environment"
+    assert "GITHUB_REVIEWER_TOKEN" in res["summary"]
+
+
+# ---------------------------------------------------------------- sandboxed (ADR 0054)
+def _capture_run_shell(monkeypatch):
+    calls = []
+
+    def fake(session_id, cmd, workdir, env, timeout):
+        calls.append({"cmd": cmd, "workdir": workdir, "env": env})
+        return subprocess.CompletedProcess([], 0, "in-container\n", "")
+
+    monkeypatch.setattr("fabrikant.sandbox.run_shell", fake)
+    return calls
+
+
+def test_shell_sandboxed_runs_in_container_with_scrubbed_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+    monkeypatch.setenv("SOME_HOST_SECRET", "s3cret")
+    monkeypatch.setattr(
+        "fabrikant.steps.shell.github_env",
+        lambda role: {"GH_TOKEN": "tok", "GITHUB_TOKEN": "tok", "FABRIKANT_ENV_FILE": "/h"},
+    )
+    calls = _capture_run_shell(monkeypatch)
+    step = {"type": "shell", "cmd": "make lint", "sandboxed": True, "github_identity": "dev", "env": {"X": "{v}"}}
+    res = _step_shell(_ctx(tmp_path, v="val"), step, NOOP)
+    assert res["ok"] is True and "in-container" in res["output"]
+    env = calls[0]["env"]
+    assert env["X"] == "val" and env["GH_TOKEN"] == "tok"
+    assert "SOME_HOST_SECRET" not in env and "FABRIKANT_ENV_FILE" not in env  # agent allowlist (ADR 0050)
+
+
+def test_shell_sandboxed_without_identity_gets_no_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+    monkeypatch.setenv("GH_TOKEN", "host-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "host-token")
+    calls = _capture_run_shell(monkeypatch)
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "make test", "sandboxed": True}, NOOP)
+    assert res["ok"] is True
+    assert "GH_TOKEN" not in calls[0]["env"] and "GITHUB_TOKEN" not in calls[0]["env"]
+
+
+def test_shell_sandboxed_without_global_switch_runs_on_host(tmp_path, monkeypatch):
+    monkeypatch.delenv("FABRIKANT_SANDBOX", raising=False)
+    calls = _capture_run_shell(monkeypatch)
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo host", "sandboxed": True}, NOOP)
+    assert res["ok"] is True and "host" in res["output"] and calls == []
+
+
+def test_shell_sandbox_error_fails_as_environment(tmp_path, monkeypatch):
+    from fabrikant import sandbox
+
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+
+    def boom(*a, **k):
+        raise sandbox.SandboxError("result rejected: symlink")
+
+    monkeypatch.setattr("fabrikant.sandbox.run_shell", boom)
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "true", "sandboxed": True}, NOOP)
+    assert res["ok"] is False and res["failure_kind"] == "environment" and "symlink" in res["summary"]

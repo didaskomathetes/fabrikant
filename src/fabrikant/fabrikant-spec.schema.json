@@ -371,8 +371,9 @@
         "github_identity": {
           "type": "string",
           "enum": ["dev", "reviewer"],
-          "description": "agent: GitHub identity (token) the agent uses for pushes/PRs."
+          "description": "agent/shell: GitHub identity (token) for `gh`/`git` in the step (ADR 0010). Agent: pushes/PRs; shell: e.g. posting as the reviewer app. In a sandboxed shell step only this token enters the container."
         },
+        "sandboxed": { "type": "boolean", "description": "shell: run the command in the per-run agent container when FABRIKANT_SANDBOX is on (ADR 0054) — for steps that execute repo code (lint, tests). The container gets a clone of the worktree plus the remote default branch, the scrubbed agent env and the step's env:; changes come back via the checked bundle exchange. Without FABRIKANT_SANDBOX the step runs on the host." },
         "workdir": { "type": "string", "description": "agent: working directory inside the worktree." },
         "permissions": {
           "type": "array",

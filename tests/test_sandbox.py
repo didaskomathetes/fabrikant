@@ -115,7 +115,7 @@ def test_render_docker_cmd_has_hardening_and_mounts():
     # Arbeitsklon im tmpfs (exec für Build-Tools, Größe begrenzt), read-only root fs.
     tmpfs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--tmpfs"]
     assert tmpfs == [
-        "/tmp:size=256m",
+        "/tmp:rw,exec,mode=1777,size=256m",  # exec: test runners and build tools run from /tmp
         "/home/agent:rw,mode=1777,size=256m",
         "/work:rw,exec,mode=1777,size=2g",
     ]
@@ -226,6 +226,21 @@ def test_sweep_is_best_effort(monkeypatch, caplog, exc):
     monkeypatch.setattr(sandbox.subprocess, "run", boom)
     assert sandbox.sweep_stale_containers() == 0
     assert "Sandbox-Sweep übersprungen" in caplog.text
+
+
+def test_render_docker_cmd_mounts_helper_scripts_read_only_at_host_path():
+    """Commands call `{fabrikant_home}/scripts/…` by host path: the same path must exist (read-only)
+    in the container, otherwise e.g. a sandboxed test step cannot run the CI matrix script."""
+    cfg = sandbox.SandboxConfig(image="i", user="1:1", helper_scripts="/opt/fabrikant/scripts")
+    cmd = sandbox.render_docker_cmd(cfg, "s", ["codex"], _EX, {"PATH": "/usr/bin"})
+    mounts = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-v"]
+    assert "/opt/fabrikant/scripts:/opt/fabrikant/scripts:ro" in mounts
+    assert cmd[cmd.index("-w") + 1] == "/work"
+
+
+def test_sandbox_config_from_env_points_helper_scripts_at_fabrikant_home():
+    cfg = sandbox.SandboxConfig.from_env({})
+    assert cfg.helper_scripts == str(sandbox.FABRIKANT_HOME / "scripts")
 
 
 def test_render_docker_cmd_labels_container():
@@ -555,3 +570,67 @@ def test_oversized_bundle_and_patch_are_rejected(repo, monkeypatch):
 def test_parse_raw_diff():
     raw = ":100644 120000 aaa bbb M\0a.txt\0:000000 100755 000 ccc A\0sub/run.sh\0"
     assert sandbox._parse_raw_diff(raw) == [("120000", "a.txt"), ("100755", "sub/run.sh")]
+
+
+# ── Shell steps in the sandbox (run_shell) ──
+def _local_container(monkeypatch, tmp_path: Path) -> None:
+    """Replace `docker run` with the entrypoint script on the host (same argv tail)."""
+
+    def render(cfg, session_id, agent_cmd, ex, env):
+        script = sandbox.entrypoint_script(
+            work_dir=str(tmp_path / "container-work"), in_bundle=str(ex.in_bundle), out_dir=str(ex.out_dir)
+        )
+        return ["sh", "-c", script, "fabrikant-sandbox", ex.ref, *agent_cmd]
+
+    monkeypatch.setattr(sandbox, "render_docker_cmd", render)
+    monkeypatch.setattr(sandbox, "docker_cli_env", lambda env: {**os.environ, **env, "GIT_CONFIG_NOSYSTEM": "1"})
+
+
+def test_run_shell_runs_in_subdir_with_origin_main_and_returns_changes(repo, tmp_path, monkeypatch):
+    (repo / "pkg").mkdir()
+    (repo / "pkg" / "m.py").write_text("x = 1\n")
+    _sh(repo, "git", "add", "-A")
+    _sh(repo, "git", "commit", "-q", "-m", "pkg")
+    _sh(repo, "git", "update-ref", "refs/remotes/origin/main", "HEAD~1")
+    _local_container(monkeypatch, tmp_path)
+    cmd = (
+        'git rev-parse -q --verify origin/main >/dev/null && echo "base ok" && basename "$PWD" && echo fmt > fixed.txt'
+    )
+    p = sandbox.run_shell("shell-t1", cmd, str(repo / "pkg"), {}, timeout=60)
+    assert p.returncode == 0, p.stderr
+    assert p.stdout.splitlines() == ["base ok", "pkg"]  # origin/main in the clone, cwd = subdirectory
+    assert (repo / "pkg" / "fixed.txt").read_text() == "fmt\n"  # the change came back
+    assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")  # cleaned up
+
+
+def test_run_shell_propagates_exit_code_and_keeps_git_metadata_out(repo, tmp_path, monkeypatch):
+    _local_container(monkeypatch, tmp_path)
+    assert sandbox.run_shell("shell-t2", "exit 3", str(repo), {}, timeout=60).returncode == 3
+    # A smuggled `.git` already fails the exchange in the container (EX_EXCHANGE) and never reaches
+    # the host (the host-side rejection is covered by the apply_result tests).
+    p = sandbox.run_shell("shell-t3", "mkdir -p sub/.git && echo x > sub/.git/config", str(repo), {}, timeout=60)
+    assert p.returncode == sandbox.EX_EXCHANGE and not (repo / "sub").exists()
+
+
+def test_run_shell_timeout_stops_container_and_discards_exchange(repo, tmp_path, monkeypatch, _no_real_docker):
+    _local_container(monkeypatch, tmp_path)
+    with pytest.raises(subprocess.TimeoutExpired):
+        sandbox.run_shell("shell-t4", "sleep 5", str(repo), {}, timeout=0.5)
+    assert _no_real_docker == ["shell-t4"]
+    assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")
+
+
+def test_run_shell_rejected_result_raises_sandbox_error(repo, tmp_path, monkeypatch):
+    _local_container(monkeypatch, tmp_path)
+    monkeypatch.setattr(sandbox, "finish_exchange", lambda ex, top: "result rejected: test")
+    with pytest.raises(sandbox.SandboxError, match="result rejected"):
+        sandbox.run_shell("shell-t5", "true", str(repo), {}, timeout=60)
+
+
+def test_default_branch_refs(repo):
+    assert sandbox.default_branch_refs(str(repo)) == ()
+    _sh(repo, "git", "update-ref", "refs/remotes/origin/master", "HEAD")
+    assert sandbox.default_branch_refs(str(repo)) == ("refs/remotes/origin/master",)
+    _sh(repo, "git", "update-ref", "refs/remotes/origin/dev", "HEAD")
+    _sh(repo, "git", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev")
+    assert sandbox.default_branch_refs(str(repo)) == ("refs/remotes/origin/dev",)  # target of origin/HEAD

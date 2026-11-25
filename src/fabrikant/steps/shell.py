@@ -30,25 +30,45 @@ Failure class (ADR 0035): exit 126/127 → `environment`. Scripts can report the
 themselves (sysexits.h): exit 75 (EX_TEMPFAIL) → `transient`, 78 (EX_CONFIG) →
 `environment`. Other exit codes cannot be interpreted by the shell; the spec names the
 class for them via `failure_kind` (e.g. `outcome` for a test step), otherwise `unknown`.
+
+Identity (ADR 0010): `github_identity: dev|reviewer` makes `gh` (and `git` with `gh` as credential helper)
+run as that role, like the agent step. Without it the step keeps the project env.
+
+Sandbox (ADR 0054): `sandboxed: true` runs the command in the agent container when `FABRIKANT_SANDBOX`
+is on — for steps that execute repo code (lint, tests). The container gets the scrubbed agent env
+(ADR 0050) plus the step's `env:` and, with `github_identity`, only that role's token; file changes
+come back through the checked bundle exchange. Without `FABRIKANT_SANDBOX` the step runs on the host.
 """
 
 from __future__ import annotations
 
 import subprocess
+import uuid
 
+from .. import sandbox
+from ..agentenv import build_agent_env
 from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
-from ..gitops import process_env
+from ..gitops import GH_CLI_TOKEN_VAR, github_env, process_env
 from ..i18n import t
 from ..procs import run_group
 from ..runmodel import FailureKind, split_verdict
 from ..secrets import _redact
 from ..spec_sources import resolve_script_paths
 
+SANDBOXED_KEY = "sandboxed"  # step key (bool): run the command in the agent container (ADR 0054)
+_TOKEN_VARS = (GH_CLI_TOKEN_VAR, "GITHUB_TOKEN")  # from github_env: only the token goes into the container
+
 
 def run_shell(cmd: str, workdir: str, env: dict, timeout: int) -> subprocess.CompletedProcess:
     """`sh -c cmd` im Workdir (stdout/stderr getrennt erfasst); TimeoutExpired propagiert."""
     return subprocess.run(["sh", "-c", cmd], cwd=workdir, env=env, capture_output=True, text=True, timeout=timeout)
+
+
+def _container_env(identity_env: dict[str, str] | None, step_env: dict[str, str]) -> dict[str, str]:
+    """Env in the container: agent allowlist + the role's token (if any) + the step's `env:`."""
+    tokens = {k: v for k, v in (identity_env or {}).items() if k in _TOKEN_VARS}
+    return build_agent_env({**tokens, **step_env})
 
 
 def _step_shell(ctx: dict, step: dict, emit) -> dict:
@@ -76,14 +96,31 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
             )
             emit(f"  ERROR: {msg}")
             return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="placeholder-env-clash")
-    cmd = resolve_script_paths(_substitute(raw_cmd, ctx), ctx.get("spec_path"))
     workdir = step_workdir(ctx, step)
-    env = {**process_env(), **{k: _substitute(str(v), ctx) for k, v in env_step.items()}}
+    cmd = resolve_script_paths(_substitute(raw_cmd, ctx), ctx.get("spec_path"), workdir)
+    role = str(step.get("github_identity") or "").strip()
+    try:
+        identity_env = github_env(role) if role else None
+    except (RuntimeError, ValueError) as e:
+        msg = t("steps.shell.github_identity_failed", role=role, error=e)
+        emit(f"  ERROR: {msg}")
+        return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="github-identity")
+    step_vals = {str(k): _substitute(str(v), ctx) for k, v in env_step.items()}
+    sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
+    env = _container_env(identity_env, step_vals) if sandboxed else {**(identity_env or process_env()), **step_vals}
     timeout = int(step.get("timeout", 600))
     # Log the template (with {placeholders}), NOT the substituted command:
     # substituted values can contain secrets/untrusted text.
-    emit(f"  $ {raw_cmd}  (cwd={workdir}, timeout={timeout}s)")
-    p = run_group(["sh", "-c", cmd], cwd=workdir, env=env, timeout=timeout)
+    emit(f"  $ {raw_cmd}  (cwd={workdir}, timeout={timeout}s{', sandbox' if sandboxed else ''})")
+    if sandboxed:
+        try:
+            p = sandbox.run_shell(f"shell-{uuid.uuid4().hex[:12]}", cmd, workdir, env, timeout)
+        except sandbox.SandboxError as e:
+            msg = t("steps.shell.sandbox_failed", error=e)
+            emit(f"  ERROR: {msg}")
+            return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="sandbox")
+    else:
+        p = run_group(["sh", "-c", cmd], cwd=workdir, env=env, timeout=timeout)
     # Secret redaction (defense in depth): stdout/stderr can contain secrets
     # (e.g. if the command echoes an env value). The step masks output/summary itself;
     # the engine additionally masks at record write (secrets._redact_record).

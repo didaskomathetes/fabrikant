@@ -88,7 +88,8 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
 | `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
-| `github_identity` | `dev` \| `reviewer` | optional | agent: GitHub identity (token) the agent uses for pushes/PRs. |
+| `github_identity` | `dev` \| `reviewer` | optional | agent/shell: GitHub identity (token) for `gh`/`git` in the step (ADR 0010). Agent: pushes/PRs; shell: e.g. posting as the reviewer app. In a sandboxed shell step only this token enters the container. |
+| `sandboxed` | boolean | optional | shell: run the command in the per-run agent container when FABRIKANT_SANDBOX is on (ADR 0054) — for steps that execute repo code (lint, tests). The container gets a clone of the worktree plus the remote default branch, the scrubbed agent env and the step's env:; changes come back via the checked bundle exchange. Without FABRIKANT_SANDBOX the step runs on the host. |
 | `workdir` | string | optional | agent: working directory inside the worktree. |
 | `permissions` | list of string | optional | agent: tool permissions for the session. |
 | `retries` | → `numeric` | optional | agent: number of session restarts after the first attempt (integer >= 0, default 2). |

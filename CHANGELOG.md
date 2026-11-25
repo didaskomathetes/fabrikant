@@ -6,6 +6,16 @@ All notable changes to fabrikant are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Shell steps: `sandboxed: true` runs the command in the per-run agent container (ADR 0054), with a clone of the
+  worktree plus the remote default branch and fabrikant's `scripts/` mounted read-only; `github_identity: dev|reviewer`
+  runs `gh`/`git` as that role. Both keys are now rejected on step types that ignore them.
+
+### Fixed
+
+- Shell steps run a `scripts/…` path the worktree has itself from the worktree, not from the spec's checkout.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.

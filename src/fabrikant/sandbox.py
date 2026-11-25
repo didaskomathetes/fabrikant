@@ -58,7 +58,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import egress
-from .config import HARNESS_DIR, HARNESS_LOCAL_FILE, HARNESS_PRIVATE_DIR
+from .config import FABRIKANT_HOME, HARNESS_DIR, HARNESS_LOCAL_FILE, HARNESS_PRIVATE_DIR
 from .i18n import t
 
 log = logging.getLogger(__name__)
@@ -102,12 +102,18 @@ IN_BUNDLE = "/in/base.bundle"
 OUT_DIR = "/out"
 RESULT_BUNDLE_NAME = "result.bundle"
 WORK_DIR = "/work"
+# Helper scripts (relative to FABRIKANT_HOME) that specs call by host path, e.g.
+# `{fabrikant_home}/scripts/ci-matrix-pytest.py`; see `SandboxConfig.helper_scripts`.
+HELPER_SCRIPTS_DIR = "scripts"
 # Locally ignored directories that nevertheless travel into the container and back (module docstring).
 CARRY_DIRS: tuple[str, ...] = (HARNESS_DIR,)
 # Exit code of the entrypoint when the git exchange in the container fails (EX_SOFTWARE).
 EX_EXCHANGE = 70
 
 _REF_PREFIX = "refs/fabrikant/sandbox/"
+# Remote-tracking refs that `prepare_exchange(extra_refs=…)` adds to the bundle (e.g. `origin/main` as
+# the diff base of test steps); the entrypoint fetches them into the clone when present.
+_REMOTE_REFS = "refs/remotes/"
 _SLUG_RE = re.compile(r"[^a-zA-Z0-9_-]")
 _GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "fabrikant-sandbox",
@@ -145,6 +151,7 @@ ref="$1"; shift
 mkdir -p {work_dir}/repo && cd {work_dir}/repo || exit {EX_EXCHANGE}
 {{ git init -q && git fetch -q --no-tags {in_bundle} "+$ref:refs/heads/fabrikant-base" \\
   && git checkout -q -b work fabrikant-base; }} >&2 || exit {EX_EXCHANGE}
+git fetch -q --no-tags {in_bundle} "+{_REMOTE_REFS}*:{_REMOTE_REFS}*" >&2 2>/dev/null || true
 rc=0
 "$@" || rc=$?
 {{ git add -A && git {unstage} {dirs} \\
@@ -214,6 +221,9 @@ class SandboxConfig:
     # ADR 0051: egress proxy in the sandbox network. Default = the proxy container started by
     # `fabrikant egress start`; without a running proxy agent HTTP calls fail (fail-closed).
     proxy_url: str = ""
+    # Host directory mounted read-only at the SAME path, so commands that call fabrikant's helper
+    # scripts by host path (`{fabrikant_home}/scripts/…`) work in the container too. Empty → no mount.
+    helper_scripts: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SandboxConfig:
@@ -232,6 +242,7 @@ class SandboxConfig:
             network=env.get(NETWORK_VAR, "") or DEFAULT_NETWORK,
             work_size=env.get(WORK_SIZE_VAR, "") or DEFAULT_WORK_SIZE,
             proxy_url=env.get(PROXY_URL_VAR, "") or egress.agent_proxy_url(),
+            helper_scripts=str(FABRIKANT_HOME / HELPER_SCRIPTS_DIR),
         )
 
     @property
@@ -330,15 +341,17 @@ def _worktree_commit(workdir: str, tmpdir: Path, carry: tuple[str, ...] = CARRY_
     return _git(workdir, "commit-tree", tree, "-p", head, "-m", msg, env=index_env).stdout.decode().strip()
 
 
-def prepare_exchange(session_id: str, workdir: str) -> Exchange:
-    """Provide the worktree state as a bundle for the container (before `docker run`)."""
+def prepare_exchange(session_id: str, workdir: str, extra_refs: tuple[str, ...] = ()) -> Exchange:
+    """Provide the worktree state as a bundle for the container (before `docker run`).
+
+    `extra_refs`: additional `refs/remotes/...` to bundle (the container gets them under the same name)."""
     tmpdir = Path(tempfile.mkdtemp(prefix="fabrikant-sandbox-"))  # 0700: kein anderer Host-User
     ref = _REF_PREFIX + _SLUG_RE.sub("-", session_id)
     try:
         _require_worktree_root(workdir)
         base = _worktree_commit(workdir, tmpdir)
         _git(workdir, "update-ref", ref, base)
-        _git(workdir, "bundle", "create", "-q", str(tmpdir / "base.bundle"), ref)
+        _git(workdir, "bundle", "create", "-q", str(tmpdir / "base.bundle"), ref, *extra_refs)
         out = tmpdir / "out"
         out.mkdir()
         out.chmod(0o777)  # FABRIKANT_SANDBOX_USER may be ≠ host user; parent directory is 0700
@@ -492,7 +505,8 @@ def render_docker_cmd(
         str(cfg.pids_limit),
         "--read-only",
         "--tmpfs",
-        f"/tmp:size={SMALL_TMPFS_SIZE}",  # nosec B108 # tmpfs in the agent container, not the host /tmp
+        # exec: test runners and build tools put executables there (pytest's tmp_path, uv, pip builds).
+        f"/tmp:rw,exec,mode=1777,size={SMALL_TMPFS_SIZE}",  # nosec B108 # tmpfs in the container, not the host /tmp
         # HOME of the agent CLIs (config, caches). Own tmpfs options → mode explicit,
         # otherwise root:755 and not writable for the agent user.
         "--tmpfs",
@@ -509,6 +523,8 @@ def render_docker_cmd(
         "-w",
         WORK_DIR,
     ]
+    if cfg.helper_scripts:
+        cmd[-2:-2] = ["-v", f"{cfg.helper_scripts}:{cfg.helper_scripts}:ro"]
     for key in sorted(env):
         if key in SANDBOX_ENV_STRIP:
             continue
@@ -573,3 +589,65 @@ def sweep_stale_containers() -> int:
         log.warning(t("sandbox.sandbox_sweep_skipped_s"), e)
         return 0
     return len(ids)
+
+
+# ── Shell steps in the sandbox (`sandboxed: true`, ADR 0054: repo code does not run on the host) ──
+
+
+def default_branch_refs(workdir: str) -> tuple[str, ...]:
+    """The worktree's remote default branch as a ref (`origin/HEAD`, else `origin/main|master`) — the
+    usual diff base of lint/test scripts (`--base origin/main`). Empty when there is none."""
+    head = subprocess.run(
+        ["git", *_GIT_QUIET_CONFIG, "symbolic-ref", "-q", f"{_REMOTE_REFS}origin/HEAD"],
+        cwd=workdir,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    candidates = (head, f"{_REMOTE_REFS}origin/main", f"{_REMOTE_REFS}origin/master")
+    for ref in filter(None, candidates):
+        verified = subprocess.run(
+            ["git", *_GIT_QUIET_CONFIG, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}"],
+            cwd=workdir,
+            capture_output=True,
+            check=False,
+        )
+        if verified.returncode == 0:
+            return (ref,)
+    return ()
+
+
+# `sh -c` in the container: change into the step's subdirectory, then run the command.
+_SHELL_IN_SUBDIR = f'cd "$1" || exit {EX_EXCHANGE}; exec sh -c "$2"'
+
+
+def run_shell(
+    session_id: str, cmd: str, workdir: str, env: dict[str, str], timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Run a shell step's command in the agent container.
+
+    Same exchange as for agents: the worktree state (plus the remote default branch) goes in as a
+    bundle, changes come back through `finish_exchange`. `workdir` may be a subdirectory of the
+    worktree; the command runs in the same subdirectory of the clone. `env` is the (scrubbed)
+    container env. Returns the `CompletedProcess`; a timeout propagates like in `procs.run_group`.
+
+    Raises:
+        SandboxError: the exchange failed before or after the run (result rejected)."""
+    from .procs import run_group  # local: procs registers atexit hooks
+
+    top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
+    rel = os.path.relpath(os.path.realpath(workdir), os.path.realpath(top))
+    ex = prepare_exchange(session_id, top, default_branch_refs(top))
+    argv = render_docker_cmd(
+        SandboxConfig.from_env(), session_id, ["sh", "-c", _SHELL_IN_SUBDIR, "fabrikant-shell", rel, cmd], ex, env
+    )
+    try:
+        proc = run_group(argv, timeout=timeout, env=docker_cli_env(env), stdin=subprocess.DEVNULL)
+    except BaseException:
+        stop_container(session_id)
+        discard_exchange(ex, top)
+        raise
+    error = finish_exchange(ex, top)
+    if error:
+        raise SandboxError(error)
+    return proc
