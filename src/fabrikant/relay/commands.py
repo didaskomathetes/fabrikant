@@ -632,7 +632,7 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
         new = status.with_pr_trail(body, block)
         if new != body:
             ctx.github.set_pr_body(pr, new)
-        return t("relay.commands.pr_trail_link_set" if ref else "relay.commands.pr_trail_link_removed", pr=pr)
+        return t("relay.commands.pr_trail_link_set", pr=pr) if ref else t("relay.commands.pr_trail_link_removed", pr=pr)
     except (GitHubError, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_pr_body_not"), issue, e)
         return t("relay.commands.pr_body_not_updated")
