@@ -29,14 +29,14 @@ from .i18n import t
 # ------------------------------------------------------------- Konstanten
 PROXY_CONTAINER = "fabrikant-egress-proxy"
 EGRESS_NET = "fabrikant-egress"  # Bridge with internet (the proxy container lives here)
-SANDBOX_NET = "fabrikant-sandbox"  # internal: kein direkter Internetzugang (Agent-Container)
+SANDBOX_NET = "fabrikant-sandbox"  # internal: no direct internet access (agent containers)
 PROXY_PORT_IN_CONTAINER = 8888
 PROXY_MEMORY = "256m"
 PROXY_PIDS_LIMIT = 128
 
 # Pinned subnets (fixed at `docker network create --subnet` — the
 # rendered `Allow` lines reference exactly these values).
-EGRESS_SUBNET = "172.27.0.0/16"  # Bridge: Host-Clienten via published Port kommen aus diesem Netz
+EGRESS_SUBNET = "172.27.0.0/16"  # bridge: host clients via a published port come from this network
 SANDBOX_SUBNET = "172.28.0.0/16"  # internal: Agent-Container
 
 # Tinyproxy-Konfiguration (Pfade im Proxy-Container; linuxserver-Bild-Konvention /log).
@@ -45,7 +45,7 @@ FILTER_PATH = "/etc/tinyproxy/filter.txt"
 LOG_PATH = "/log/tinyproxy.log"
 LOG_NAME = "tinyproxy.log"
 
-# Basis-Allowlist (sicherer Minimal-Default; Deployment darf erweitern).
+# Base allowlist (safe minimal default; deployments may extend it).
 BUILTIN_ALLOWLIST: tuple[str, ...] = (
     "github.com",  # API, clone, releases (incl. api.github.com as subdomain)
     "models.dev",  # opencode: Model-Metadaten
@@ -63,7 +63,7 @@ DEFAULT_PORT = 8899
 # Pinned by digest (tinyproxy 1.11.0; config directives are version-dependent, and the
 # proxy is security-critical). New digest = deliberate update including a test with a real proxy.
 DEFAULT_IMAGE = "vimagick/tinyproxy@sha256:72b441b95ee1e641af948f68f09492f9f795ead72b73954414e339168c98ad8c"
-DOCKER_TIMEOUT = 60  # s, pro docker-Aufruf
+DOCKER_TIMEOUT = 60  # s, per docker call
 READY_TIMEOUT = 15.0  # s, how long `start` waits for the proxy port
 READY_POLL_INTERVAL = 0.25  # s
 
@@ -282,7 +282,7 @@ def _docker(*args: str) -> subprocess.CompletedProcess:
     except FileNotFoundError:
         raise RuntimeError(t("egress.docker_not_found_the_egress")) from None
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"docker {args[0]} Timeout nach {DOCKER_TIMEOUT}s") from None
+        raise RuntimeError(f"docker {args[0]} timed out after {DOCKER_TIMEOUT}s") from None
 
 
 def _docker_rootless() -> bool:

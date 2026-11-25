@@ -12,5 +12,5 @@ container image goes to GHCR. The maintainers configure both once; contributors 
 1. Bump `version` in `pyproject.toml`, merge to `main`.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow checks tag == version, builds, runs
    `twine check` and the wheel smoke test (`scripts/smoke-wheel.sh`), publishes to PyPI and pushes
-   `ghcr.io/<owner>/fabrikant:{X.Y.Z,latest}`.
+   `ghcr.io/didaskomathetes/fabrikant:{X.Y.Z,latest}`.
 3. Verify in a clean venv: `pip install fabrikant==X.Y.Z && fabrikant init demo`.

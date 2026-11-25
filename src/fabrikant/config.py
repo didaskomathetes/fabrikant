@@ -144,6 +144,27 @@ WORKTREE_LEASE_HEARTBEAT_S = 30.0
 WORKTREE_LEASE_TIMEOUT_S = 300.0
 
 DEFAULT_PORT = 8321
+PORT_ENV = "FABRIKANT_PORT"
+
+
+def serve_port(explicit: int | None = None, env: Mapping[str, str] | None = None) -> int:
+    """Port for `fabrikant serve`: `--port` wins, then `FABRIKANT_PORT`, then `DEFAULT_PORT`.
+
+    An invalid `FABRIKANT_PORT` raises `ValueError` instead of being silently ignored."""
+    if explicit is not None:
+        return explicit
+    raw = (os.environ if env is None else env).get(PORT_ENV, "").strip()
+    if not raw:
+        return DEFAULT_PORT
+    try:
+        port = int(raw)
+    except ValueError:
+        port = -1
+    if not 0 < port < 65536:
+        raise ValueError(f"{PORT_ENV}={raw!r} is not a valid port (1-65535)")
+    return port
+
+
 # Exchange directory harness ↔ agent in the worktree (locally git-ignored): what the agent should read
 # (brief, session plan) and what it delivers (e.g. audit report). The sandbox (ADR 0054) carries it
 # into the container and back. What should stay on its side (working copies) is listed in

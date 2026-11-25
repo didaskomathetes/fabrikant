@@ -58,7 +58,7 @@ class WebhookError(Exception):
 
 
 def tunnel_origin() -> str:
-    """Konfigurierter Tunnel-Origin (`https://host`), leer = Webhook-CORS aus."""
+    """Configured tunnel origin (`https://host`); empty = webhook CORS off."""
     return os.environ.get(ORIGIN_ENV, "").strip().rstrip("/")
 
 
@@ -125,7 +125,7 @@ def sign(secret: str, body: bytes) -> str:
 
 
 def verify_signature(secret: str, body: bytes, header: str) -> bool:
-    """Zeitkonstanter Vergleich; leeres Secret oder fehlender Header → False."""
+    """Constant-time comparison; empty secret or missing header → False."""
     if not secret or not header:
         return False
     return hmac.compare_digest(header.strip(), sign(secret, body))

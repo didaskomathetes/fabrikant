@@ -116,7 +116,7 @@ def _new_issues(st: dict, issues: list[dict]) -> list[dict]:
     """Event mode: issues that are new since the last poll (first poll: none)."""
     ids = {it["number"] for it in issues}
     if st["seen"] is None:
-        st["seen"] = ids  # initialisieren, nicht feuern
+        st["seen"] = ids  # initialize, don't fire
         return []
     new = ids - st["seen"]
     # Union (not replace): an issue that falls out of the window of 50 and
@@ -288,7 +288,7 @@ def _pr_fire_kind(
             return "neu"
         return f"head {head_sha[:7]}" if per_head and head_sha else "reconcile"
     if prev is None:
-        return None  # Erst-Poll: initialisieren, nicht feuern
+        return None  # first poll: initialize, don't fire
     old = prev.get(num)
     if old == (state, updated_at):
         return None  # unchanged
@@ -314,8 +314,8 @@ class Scheduler(threading.Thread):
         self._slack_pending: set[tuple[str, str, str]] = set()
         self._first_tick = True
         self._tick_n = 0
-        self._started_cron: set[tuple] = set()  # (proj, loop) mit erledigtem `on_start`-Fire
-        # proj -> laufende `on_start`-Fires (Event gesetzt = erledigt, Deadline = monotonic)
+        self._started_cron: set[tuple] = set()  # (proj, loop) whose `on_start` fire is done
+        # proj -> running `on_start` fires (event set = done, deadline = monotonic)
         self._start_gates: dict[str, list[tuple[threading.Event, float]]] = {}
 
     def run(self):
@@ -328,7 +328,7 @@ class Scheduler(threading.Thread):
 
     def tick(self):
         self._tick_n += 1
-        if self._tick_n % 60 == 0:  # ~alle 2 min
+        if self._tick_n % 60 == 0:  # ~every 2 min
             self._check_stale_runs()
         pause.resume_expired()
         now = config.utcnow()
@@ -458,7 +458,7 @@ class Scheduler(threading.Thread):
         base = Path(spec["root"])
         debounce = float(trig.get("debounce", 60))
         key = f"{name}:{lname}:{pattern}"
-        newest: float | None = None  # None = kein (lesbarer) Treffer
+        newest: float | None = None  # None = no (readable) match
         for path in globmod.glob(str(base / pattern), recursive=True):
             with contextlib.suppress(OSError):
                 mtime = Path(path).stat().st_mtime
@@ -468,7 +468,7 @@ class Scheduler(threading.Thread):
         now = local.timestamp()
         state = self._seen_files.get(key)
         if state is None:
-            # Erst initialisieren (neueste mtime + Zeitpunkt merken), nicht feuern.
+            # Initialize first (remember newest mtime + timestamp), don't fire.
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": False}
             return
         if newest != state["mtime"]:
