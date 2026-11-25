@@ -25,8 +25,10 @@ Timeout: `timeout` (default 600 s). The command runs in its own process group
 Verdict: an output line `::fabrikant-verdict::<word>` (`runmodel.verdict_line`) reports the domain
 result of the step (e.g. `fail` of an audit, the step itself stays green). It is removed from output and
 summary and lands as `verdict` in the step record; the UI shows it as a badge.
-A line `::fabrikant-done::` (exit 0 only) ends the run successfully after this step — the
-remaining steps are skipped (gate without work).
+With `done_marker: true` (opt-in, shell steps only), a line `::fabrikant-done::` (exit 0 only)
+ends the run successfully after this step — the remaining steps are skipped (gate without work).
+Without the key the line is ordinary output (not removed, no effect): output of tests, linters or
+echoed PR text must not be able to skip later gates.
 Lines `::fabrikant-warning::<text>` (stdout or stderr, also on exit ≠ 0) appear as ⚠ in the
 run log and as `WARNING: <text>` at the end of the output — for problems that don't fail the step.
 
@@ -93,7 +95,9 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     # the engine additionally masks at record write (secrets._redact_record).
     # Verdict line (`::fabrikant-verdict::<word>`) is metadata, not output: out of output/summary.
     stdout, verdict = split_verdict(p.stdout or "")
-    stdout, done = split_done(stdout)
+    # `::fabrikant-done::` ends the run successfully — honoured only with the explicit opt-in
+    # `done_marker: true`: otherwise any output (test/lint output, echoed PR text) could skip later gates.
+    stdout, done = split_done(stdout) if step.get("done_marker") is True else (stdout, False)
     stdout, warnings = split_warnings(stdout)
     stderr, err_warnings = split_warnings(p.stderr or "")
     warnings = [_redact(w) for w in (*warnings, *err_warnings)]

@@ -322,6 +322,10 @@
           "enum": ["transient", "environment", "outcome"],
           "description": "Failure class (ADR 0035) for non-zero exit codes; shell steps only."
         },
+        "done_marker": {
+          "type": "boolean",
+          "description": "shell: true = an output line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps."
+        },
         "extra_context": {
           "type": "array",
           "items": { "$ref": "#/$defs/context_source" },

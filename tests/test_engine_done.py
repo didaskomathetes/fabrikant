@@ -120,9 +120,9 @@ def test_done_keeps_tier_gate_and_resume_skips_rest(runs_dir, projects_dir, tmp_
 
 
 def test_shell_done_marker_skips_remaining_steps(runs_dir, projects_dir, tmp_path):
-    """End to end: a real shell step printing `::fabrikant-done::` ends the run early (no monkeypatch)."""
+    """End to end: a real shell step (`done_marker: true`) printing `::fabrikant-done::` ends the run early (no monkeypatch)."""
     steps = (
-        '- name: gate\n  type: shell\n  cmd: "echo nothing new; echo ::fabrikant-done::"\n'
+        '- name: gate\n  type: shell\n  done_marker: true\n  cmd: "echo nothing new; echo ::fabrikant-done::"\n'
         f"- name: work\n  type: shell\n  cmd: touch {tmp_path}/work\n"
     )
     _write_spec(projects_dir, tmp_path, "done_marker", steps)
@@ -130,3 +130,16 @@ def test_shell_done_marker_skips_remaining_steps(runs_dir, projects_dir, tmp_pat
     assert rec["status"] == "pass"
     assert [(s["name"], s["status"]) for s in rec["steps"]] == [("gate", "pass"), ("work", STEP_SKIPPED)]
     assert not (tmp_path / "work").exists()
+
+
+def test_shell_done_marker_needs_opt_in(runs_dir, projects_dir, tmp_path):
+    """Without `done_marker: true` the line is plain output: the remaining steps still run."""
+    steps = (
+        '- name: lint\n  type: shell\n  cmd: "echo ::fabrikant-done::"\n'
+        f"- name: work\n  type: shell\n  cmd: touch {tmp_path}/work\n"
+    )
+    _write_spec(projects_dir, tmp_path, "done_no_opt_in", steps)
+    rec = run_loop("done_no_opt_in", "s")
+    assert rec["status"] == "pass"
+    assert [(s["name"], s["status"]) for s in rec["steps"]] == [("lint", "pass"), ("work", "pass")]
+    assert (tmp_path / "work").exists()

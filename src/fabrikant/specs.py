@@ -321,6 +321,15 @@ def _validate_failure_kind(st: dict, where: str) -> list[str]:
     return []
 
 
+def _validate_done_marker(st: dict, where: str) -> list[str]:
+    """`done_marker` (opt-in for `::fabrikant-done::`): shell steps only, boolean."""
+    if st.get("type") != "shell":
+        return [_t("specs.done_marker_only_applies_to", where=where, v2=st.get("type"))]
+    if not isinstance(st["done_marker"], bool):
+        return [_t("specs.done_marker_must_be_bool", where=where, value=st["done_marker"])]
+    return []
+
+
 def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
     """Check a step's backend field ``key`` against the adapter registry (empty = env default)."""
     value = st.get(key)
@@ -583,6 +592,8 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                         errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
+                    if "done_marker" in st:
+                        errs += _validate_done_marker(st, where)
                     stype = st.get("type")
                     errs += _validate_step_type(stype, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None

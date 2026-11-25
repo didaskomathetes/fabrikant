@@ -608,3 +608,21 @@ def test_validate_pr_review_fix_keys_ok(tmp_path):
         "fix_checks": ["ruff check ."],
     }
     specs._validate_spec(_step(_valid_spec(str(tmp_path)), step))
+
+
+# ---------------------------------------------------------------- done_marker
+@pytest.mark.parametrize("value", [True, False])
+def test_validate_done_marker_ok(tmp_path, value):
+    specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "x", "done_marker": value}))
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_validate_done_marker_not_bool(tmp_path, value):
+    with pytest.raises(ValueError, match="done_marker muss true/false sein"):
+        specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "x", "done_marker": value}))
+
+
+def test_validate_done_marker_only_shell(tmp_path):
+    step = {"type": "http", "url": "http://x", "done_marker": True}
+    with pytest.raises(ValueError, match="done_marker gilt nur für shell-Steps"):
+        specs._validate_spec(_step(_valid_spec(str(tmp_path)), step))

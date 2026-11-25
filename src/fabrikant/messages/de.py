@@ -513,6 +513,8 @@ MESSAGES: dict[str, str] = {
     "specs.loop_worktree_must_be_true": "loop {lname}: worktree muss true/false sein (ist {wt!r})",
     "specs.failure_kind_only_applies_to": "{where}: failure_kind gilt nur für shell-Steps (ist {v2!r})",
     "specs.failure_kind_must_be_one": "{where}: failure_kind muss einer von {v2} sein (ist {value!r})",
+    "specs.done_marker_only_applies_to": "{where}: done_marker gilt nur für shell-Steps (ist {v2!r})",
+    "specs.done_marker_must_be_bool": "{where}: done_marker muss true/false sein (ist {value!r})",
     "specs.must_be_int_is": "{where}: {key} muss int >= {minimum} sein (ist {value!r})",
     "specs.fix_variant_must_be_a": "{where}: fix_variant muss String sein (ist {v2!r})",
     "specs.fix_checks_must_be_a": "{where}: fix_checks muss Liste nicht-leerer Shell-Kommandos sein (ist {checks!r})",

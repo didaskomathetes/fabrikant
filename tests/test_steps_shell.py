@@ -370,13 +370,22 @@ def test_shell_warning_lines_go_to_log_and_output_end(tmp_path, exit_code):
 
 
 def test_shell_done_marker_ends_run_and_is_stripped(tmp_path):
-    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::"}, NOOP)
+    step = {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
     assert res["ok"] is True and res.get("done") is True
     assert "::fabrikant-done::" not in res["output"] and res["summary"] == "nichts zu tun"
 
 
+def test_shell_done_marker_without_opt_in_is_plain_output(tmp_path):
+    """Without `done_marker: true` the line is ordinary output: kept, no early end (untrusted output)."""
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::"}, NOOP)
+    assert res["ok"] is True and "done" not in res
+    assert "::fabrikant-done::" in res["output"] and res["summary"] == "::fabrikant-done::"
+
+
 def test_shell_done_marker_ignored_on_failure(tmp_path):
-    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1"}, NOOP)
+    step = {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
     assert res["ok"] is False and not res.get("done")
 
 
