@@ -5,7 +5,7 @@ See [ADR 0069](adr/0069-distribution-and-plugin-contract.md) for the design.
 ## Install
 
 ```bash
-pip install fabrikant            # or: docker run -v fabrikant-data:/data -p 8321:8321 ghcr.io/<owner>/fabrikant
+pip install fabrikant            # or: docker run -v fabrikant-data:/data -p 8321:8321 ghcr.io/didaskomathetes/fabrikant
 mkdir my-factory && cd my-factory
 fabrikant init                   # projects/hello.fabrikant.yaml, fabrikant.env, plugins/ skeleton
 fabrikant validate projects/hello.fabrikant.yaml
@@ -45,6 +45,6 @@ step types, and a plugin that fails to import is logged and skipped.
 The image runs `fabrikant serve` with `FABRIKANT_HOME=/data`. Add plugins by extending it:
 
 ```dockerfile
-FROM ghcr.io/<owner>/fabrikant:latest
+FROM ghcr.io/didaskomathetes/fabrikant:latest
 RUN pip install my-fabrikant-steps
 ```

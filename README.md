@@ -57,7 +57,7 @@ Python 3.11+:
 
 ```bash
 pip install fabrikant
-# or: docker run -p 8321:8321 -v fabrikant-data:/data ghcr.io/<owner>/fabrikant
+# or: docker run -p 8321:8321 -v fabrikant-data:/data ghcr.io/didaskomathetes/fabrikant
 ```
 
 ## Getting started

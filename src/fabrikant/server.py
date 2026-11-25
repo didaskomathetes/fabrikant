@@ -1327,12 +1327,13 @@ def _exit_on_signals() -> None:
         signal.signal(sig, _exit)
 
 
-def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
+def serve(port: int | None = None, host: str | None = None):
     """Start the server. A non-loopback bind without auth raises ``auth.AuthError`` (ADR 0030)."""
     # Signal handlers as early as possible: even a SIGTERM/SIGHUP during setup
     # (auth check, worktree cleanup, requeue) should trigger an orderly end.
     _exit_on_signals()
     host = host or os.environ.get("FABRIKANT_HOST", "").strip() or config.DEFAULT_HOST
+    port = config.serve_port(port)
     auth.check_bind(host)
     if auth.mode() == auth.MODE_OIDC:
         oidc.check_ready()  # report a missing extra/config early instead of at the first login
