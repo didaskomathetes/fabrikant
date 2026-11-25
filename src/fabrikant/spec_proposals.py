@@ -30,11 +30,19 @@ from .specs import SpecConflict, SpecUpdate, save_spec, spec_path
 
 PROPOSALS_SUBDIR = "spec-proposals"
 PROPOSAL_SUFFIX = ".json"
+# Decided proposals are kept forever as audit records. They live in a subdirectory so the
+# hot path (the web UI polls /api/projects every few seconds for *pending* proposals) only
+# ever reads the small pending set, not the unbounded audit history.
+DECIDED_SUBDIR = "decided"
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")  # also keeps ids from escaping the store dir
 
 
 class ProposalError(ValueError):
     """A proposal cannot be created, found or applied (message is safe to show to an agent)."""
+
+
+class ProposalNotFound(ProposalError):
+    """No proposal with that id exists."""
 
 
 class ProposalStatus(StrEnum):
@@ -67,6 +75,8 @@ class SpecProposal:
         A record with an unknown status (corruption, newer fabrikant version) raises
         :class:`ProposalError` so one bad file cannot crash ``list_proposals``.
         """
+        if not isinstance(data, dict):
+            raise ProposalError("corrupted proposal record: not a JSON object")
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         try:
             known["status"] = ProposalStatus(known.get("status", ProposalStatus.PENDING))
@@ -80,8 +90,13 @@ class SpecProposal:
 
 
 def proposals_dir() -> Path:
-    """Store directory (resolved lazily: ``config.STATE_DIR`` may be redirected)."""
+    """Pending-proposals directory (resolved lazily: ``config.STATE_DIR`` may be redirected)."""
     return config.STATE_DIR / PROPOSALS_SUBDIR
+
+
+def decided_dir() -> Path:
+    """Directory for decided (applied/rejected) proposals, kept as audit records."""
+    return proposals_dir() / DECIDED_SUBDIR
 
 
 def summarize(update: SpecUpdate) -> list[str]:
@@ -129,15 +144,16 @@ def _check(project: str, update: SpecUpdate, base_hash: str) -> None:
         raise _map_save_error(e, project) from e
 
 
-def _path(proposal_id: str) -> Path:
+def _path(proposal_id: str, *, decided: bool = False) -> Path:
     if not _ID_RE.match(proposal_id):
         raise ProposalError(f"invalid proposal id: {proposal_id!r}")
-    return proposals_dir() / f"{proposal_id}{PROPOSAL_SUFFIX}"
+    base = decided_dir() if decided else proposals_dir()
+    return base / f"{proposal_id}{PROPOSAL_SUFFIX}"
 
 
-def _write(proposal: SpecProposal) -> None:
-    """Atomic write of the record (the temp file never outlives a failed write)."""
-    target = _path(proposal.id)
+def _write(proposal: SpecProposal, *, decided: bool = False) -> None:
+    """Atomic write (into the decided dir once decided); a failed write leaves no temp file."""
+    target = _path(proposal.id, decided=decided)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=target.parent, suffix=".tmp", delete=False, encoding="utf-8") as fd:
         tmp = Path(fd.name)
@@ -156,30 +172,42 @@ def _write(proposal: SpecProposal) -> None:
 
 def get_proposal(proposal_id: str) -> SpecProposal:
     """Load a proposal by id (unknown/invalid → :class:`ProposalError`)."""
-    path = _path(proposal_id)
-    if not path.is_file():
-        raise ProposalError(f"unknown proposal: {proposal_id!r}")
-    try:
-        return SpecProposal.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except ValueError as e:  # JSONDecodeError is a ValueError
-        raise ProposalError(f"corrupt proposal {proposal_id!r}: {e}") from e
+    # Decided record first: if a crash left both files, the decision wins over the stale pending copy.
+    for path in (_path(proposal_id, decided=True), _path(proposal_id)):
+        if path.is_file():
+            try:
+                return SpecProposal.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            except ValueError as e:  # JSONDecodeError is a ValueError
+                raise ProposalError(f"corrupt proposal {proposal_id!r}: {e}") from e
+    raise ProposalNotFound(f"unknown proposal: {proposal_id!r}")
+
+
+def _load(dirs: list[Path]) -> list[SpecProposal]:
+    """Parse every record in ``dirs``; unparseable files are skipped (one bad file must not
+    make the whole listing unusable)."""
+    found = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for p in d.glob(f"*{PROPOSAL_SUFFIX}"):
+            try:
+                found.append(SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8"))))
+            except (ProposalError, ValueError):
+                continue
+    return found
 
 
 def list_proposals(status: ProposalStatus | None = None) -> list[SpecProposal]:
-    """All proposals, newest first; optionally only those in ``status``.
+    """Proposals in ``status`` (or all), newest first.
 
-    Records that cannot be parsed (corruption, unknown status) are skipped: one bad
-    file must not make the whole listing unusable. ``get_proposal`` still surfaces
-    the error for a specific id.
+    The pending hot path reads only the small top-level dir, never the (unbounded) audit history. Unparseable records are skipped (one bad file
+    must not make the whole listing unusable); ``get_proposal`` still surfaces the error
+    for a specific id.
     """
-    if not proposals_dir().is_dir():
-        return []
-    found = []
-    for p in proposals_dir().glob(f"*{PROPOSAL_SUFFIX}"):
-        try:
-            found.append(SpecProposal.from_dict(json.loads(p.read_text(encoding="utf-8"))))
-        except (ProposalError, ValueError):
-            continue
+    # Pending records live in the top-level dir only; decided ones in ``decided/``. Records written
+    # before that split sit decided in the top-level dir, so any non-pending query reads both.
+    dirs = [proposals_dir()] if status is ProposalStatus.PENDING else [proposals_dir(), decided_dir()]
+    found = _load(dirs)
     return sorted((p for p in found if status in (None, p.status)), key=lambda p: p.created, reverse=True)
 
 
@@ -250,5 +278,9 @@ def _decide(proposal: SpecProposal, status: ProposalStatus, actor: str) -> SpecP
     proposal.status = status
     proposal.decided_by = actor
     proposal.decided = config.utcnow().isoformat()
-    _write(proposal)
+    _write(proposal, decided=True)
+    # The pending record is replaced by the decided one (moved out of the hot path).
+    pending = _path(proposal.id)
+    if pending.is_file():
+        pending.unlink()
     return proposal

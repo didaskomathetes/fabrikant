@@ -31,3 +31,7 @@ hashes and stores a proposal. A human reviews and applies it with `fabrikant pro
 Anything returned to the agent (`get_run`, `list_runs`, `get_run_log`, `list_approvals`) is scrubbed: values of
 secret-looking keys are masked and secret patterns (bearer tokens, API keys, `key=value`, `scheme://user:pw@host`)
 are redacted in strings. This is best-effort pattern matching, not a guarantee.
+
+The web UI shows pending proposals too (ADR 0066): a badge on the project row opens a diff modal (loops
+added/changed/removed, red/green line diff, secrets masked, stale warning) where an operator can apply or
+reject (`GET /api/spec-proposals[/<id>]`, `POST /api/spec-proposals/<id>/apply|reject`; audited as `ui:<user>`).

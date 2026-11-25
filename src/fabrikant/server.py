@@ -31,12 +31,14 @@ from . import (
     oidc,
     pause,
     procs,
+    proposal_diff,
     retry_chains,
     runsearch,
     sandbox,
     schedule,
     secrets,
     sessionlog,
+    spec_proposals,
     stream,
     webhook,
 )
@@ -80,6 +82,8 @@ def _chains_or_empty() -> list[retry_chains.RetryChain]:
         return []
 
 
+PROPOSALS_PATH = "/api/spec-proposals"
+UI_ACTOR_PREFIX = "ui:"  # audit actor of decisions taken in the web UI: ``ui:<user>``
 # Routes with their own HMAC auth that stay reachable via the tunnel host.
 INTAKE_PATH_PREFIXES = (webhook.WEBHOOK_PATH_PREFIX, alerts.ALERT_PATH_PREFIX)
 
@@ -225,6 +229,41 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             self._json({"ignored": True, "reason": t("api.not_an_incident")}, 200)
             return
         self._json(*self._start_run(name, lname, "alert", alert.to_vars(), alerts.TRIGGER_TYPE, actor="alert"))
+
+    def _proposals_get(self, path: str) -> None:
+        """GET /api/spec-proposals[?project=&status=] (metadata list) or /api/spec-proposals/<id> (with diff)."""
+        try:
+            if path == PROPOSALS_PATH:
+                status = spec_proposals.ProposalStatus(
+                    self._query_param("status") or spec_proposals.ProposalStatus.PENDING
+                )
+                project = self._query_param("project") or ""
+                found = [p for p in spec_proposals.list_proposals(status) if not project or p.project == project]
+                self._json({"proposals": [proposal_diff.proposal_meta(p).to_dict() for p in found]})
+            else:
+                proposal = spec_proposals.get_proposal(path[len(PROPOSALS_PATH) + 1 :])
+                self._json(proposal_diff.compute_diff(proposal).to_dict())
+        except spec_proposals.ProposalNotFound as e:
+            self._json({"error": str(e)}, 404)
+        except ValueError as e:  # includes ProposalError (corrupt record, invalid id) and an unknown status
+            self._json({"error": str(e)}, 400)
+
+    def _proposal_decide(self, path: str) -> None:
+        """POST /api/spec-proposals/<id>/apply|reject: same functions as the CLI, audited as ``ui:<user>``."""
+        proposal_id, _, action = path[len(PROPOSALS_PATH) + 1 :].partition("/")
+        decide = {"apply": spec_proposals.apply, "reject": spec_proposals.reject}.get(action)
+        if decide is None:
+            self._json({"error": t("api.unknown_route")}, 404)
+            return
+        try:
+            decided = decide(proposal_id, f"{UI_ACTOR_PREFIX}{self._actor or self.client_address[0]}")
+        except spec_proposals.ProposalNotFound as e:
+            self._json({"error": str(e)}, 404)
+            return
+        except spec_proposals.ProposalError as e:
+            self._json({"error": str(e)}, 409)
+            return
+        self._json({"ok": True, "proposal": proposal_diff.proposal_meta(decided).to_dict()})
 
     def _auth_ok(self) -> bool:
         """Optionales Bearer-Token (FABRIKANT_TOKEN). Leert → nur Origin-Check."""
@@ -492,6 +531,8 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             self._json(self._llm_payload())
         elif path == auth.CONNECTIONS_PREFIX:
             self._json(self._connections_payload())
+        elif path == PROPOSALS_PATH or path.startswith(PROPOSALS_PATH + "/"):
+            self._proposals_get(path)
         elif path.startswith("/api/projects/") and path.endswith("/spec.yaml"):
             name = path[len("/api/projects/") : -len("/spec.yaml")]
             p = spec_path(name)
@@ -681,6 +722,8 @@ class FabrikantHandler(BaseHTTPRequestHandler):
                 return
             ok = _cancel_chat(rid)
             self._json({"ok": ok, "cancelled": ok})
+        elif path.startswith(PROPOSALS_PATH + "/"):
+            self._proposal_decide(path)
         elif path in ("/api/approve", "/api/reject"):
             payload = self._read_json()
             if payload is None:
@@ -1046,6 +1089,9 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         for c in _chains_or_empty():  # einmal lesen, nicht je Projekt
             if c.state is retry_chains.ChainState.EXHAUSTED:
                 exhausted_by_project.setdefault(c.project, []).append(c)
+        pending_proposals: dict[str, list[spec_proposals.SpecProposal]] = {}
+        for pr in spec_proposals.list_proposals(spec_proposals.ProposalStatus.PENDING):
+            pending_proposals.setdefault(pr.project, []).append(pr)
         for name, spec in load_projects().items():
             if spec.get("_error"):
                 projects.append({"name": name, "error": spec["_error"]})
@@ -1097,6 +1143,9 @@ class FabrikantHandler(BaseHTTPRequestHandler):
                     "loops": loops,
                     "pending_approvals": approvals,
                     "shelved": shelved,
+                    "pending_proposals": [
+                        proposal_diff.proposal_meta(pr).to_dict() for pr in pending_proposals.get(name, [])
+                    ],
                 }
             )
         return projects

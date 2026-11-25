@@ -584,3 +584,23 @@ a { color: var(--run); }
 .connform .connerror { color: var(--err); }
 .connform .connhint { color: var(--warn); font-size: 0.85em; }
 .connform label.inline { display: flex; gap: 6px; align-items: center; }
+
+/* Spec-Änderungsvorschläge: Badge, Diff-Modal (ADR 0066) */
+.propbadge { margin-left: 4px; }
+.proposalpanel #proposalbody { padding: 12px 16px; overflow-y: auto; font-family: var(--mono); font-size: 12px; }
+.propmeta, .propsummary { color: var(--dim); margin-bottom: 8px; }
+.propsummary { color: var(--text); font-weight: 700; }
+.propfield { margin-bottom: 4px; }
+.propkind { font-weight: 700; margin-right: 6px; }
+.propkind.added { color: var(--ok); }
+.propkind.removed { color: var(--err); }
+.propkind.changed { color: var(--warn); }
+.proploop { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; padding: 4px 8px; }
+.proploop summary { cursor: pointer; }
+.propdiff { margin: 6px 0 2px; white-space: pre-wrap; word-break: break-all; }
+.propdiff .add { color: var(--ok); background: rgba(126, 198, 153, 0.12); display: block; }
+.propdiff .del { color: var(--err); background: rgba(224, 108, 117, 0.12); display: block; }
+.propdiff .hunk { color: var(--dim); display: block; }
+.proposal-warn { color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
+.proposal-err { color: var(--err); margin: 6px 0; }
+.propactions { display: flex; gap: 8px; margin-top: 10px; }

@@ -122,6 +122,18 @@ def test_corrupted_status_raises_proposal_error_not_crash(proj):
     assert [p.id for p in listed] == [ok.id]
 
 
+def test_non_object_record_raises_proposal_error_not_crash(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    path = sp.proposals_dir() / f"{pr.id}.json"
+    # a non-object JSON body (e.g. a list) must raise ProposalError, not AttributeError
+    path.write_text(json.dumps([1, 2, 3]))
+    with pytest.raises(sp.ProposalError, match="not a JSON object"):
+        sp.get_proposal(pr.id)
+    ok = sp.propose("p", {"description": "other"}, _hash(proj), "mcp")
+    listed = sp.list_proposals()
+    assert [p.id for p in listed] == [ok.id]
+
+
 # ------------------------------------------------------------------ apply/reject
 def test_apply_writes_with_backup_and_audit(proj):
     before = proj.read_bytes()
@@ -174,6 +186,27 @@ def test_reject_keeps_the_record(proj):
     assert "description: old" in proj.read_text()
     with pytest.raises(sp.ProposalError, match="already rejected"):
         sp.apply(pr.id, "cli:me")
+
+
+def test_decided_proposal_moves_to_decided_dir(proj):
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    pending = sp.proposals_dir() / f"{pr.id}.json"
+    decided = sp.decided_dir() / f"{pr.id}.json"
+    assert pending.is_file() and not decided.exists()
+    sp.reject(pr.id, "cli:me")
+    # The audit record is kept, but out of the pending hot path.
+    assert not pending.exists() and decided.is_file()
+    assert sp.get_proposal(pr.id).status is sp.ProposalStatus.REJECTED
+    assert [p.id for p in sp.list_proposals(sp.ProposalStatus.REJECTED)] == [pr.id]
+    assert sp.list_proposals(sp.ProposalStatus.PENDING) == []
+
+
+def test_pending_listing_needs_no_decided_dir(proj):
+    # A fresh store with only pending records: the pending listing works and the
+    # decided dir is never created as a side effect.
+    pr = sp.propose("p", {"description": "new"}, _hash(proj), "mcp")
+    assert [p.id for p in sp.list_proposals(sp.ProposalStatus.PENDING)] == [pr.id]
+    assert not sp.decided_dir().exists()
 
 
 # ---------------------------------------------------------------------- MCP tools
