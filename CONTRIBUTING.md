@@ -3,6 +3,8 @@
 Thanks for your interest in fabrikant! Setup, tests and the lint gate are described in
 [docs/development.md](docs/development.md); the conventions we follow are in [AGENTS.md](AGENTS.md).
 
+Please follow our [Code of Conduct](CODE_OF_CONDUCT.md). Notable changes go into [CHANGELOG.md](CHANGELOG.md).
+
 In short:
 
 - Open an issue or discussion before large changes; significant design decisions are recorded as ADRs in
