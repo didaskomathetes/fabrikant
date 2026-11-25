@@ -219,7 +219,7 @@ def test_checkout_resumes_blocked_handoff_and_repins_verify(repo):
     gh = FakeGitHub([make_task()])
     gh.states[ISSUE] = StatusState(verify_pending=Brief("t", BODY).verify_sha256)
     summary = commands.checkout(make_ctx(repo, gh), ISSUE)
-    assert "neue `## Verify`-Fassung übernommen" in summary and "resumed after `blocked`" in summary
+    assert "neue `## Verify`-Fassung übernommen" in summary and "fortgesetzt nach `blocked` (Label entfernt)" in summary
     h2 = ws.read_handoff()
     assert (h2.status, h2.blocked_reason, h2.session) == (Status.ACTIVE, "", 3)
     assert h2.verify_sha256 == Brief("t", BODY).verify_sha256

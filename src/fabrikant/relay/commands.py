@@ -339,7 +339,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
         handoff.verify_sha256 = brief.verify_sha256
         notes.append(t("relay.commands.adopted_new_verify_version"))
     if handoff.status is not Status.ACTIVE:
-        notes.append(f"resumed after `{handoff.status}` (label removed)")
+        notes.append(t("relay.commands.resumed_after", status=handoff.status))
         handoff.status, handoff.blocked_reason = Status.ACTIVE, ""
     handoff.session += 1
     handoff.last_session = ctx.now
@@ -612,7 +612,7 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
     )
     ctx.push(ws)
     state.archive, state.trail_warning = ref, ""
-    return f"Trail archiviert ({ref.name}, {len(removed)} Datei(en) entfernt)" + sync_pr_trail(ctx, issue, ref)
+    return t("relay.commands.trail_archived", name=ref.name, n=len(removed)) + sync_pr_trail(ctx, issue, ref)
 
 
 def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
@@ -632,7 +632,7 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
         new = status.with_pr_trail(body, block)
         if new != body:
             ctx.github.set_pr_body(pr, new)
-        return f" · PR #{pr}: trail link " + ("set" if ref else "removed")
+        return t("relay.commands.pr_trail_link_set" if ref else "relay.commands.pr_trail_link_removed", pr=pr)
     except (GitHubError, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_pr_body_not"), issue, e)
         return t("relay.commands.pr_body_not_updated")

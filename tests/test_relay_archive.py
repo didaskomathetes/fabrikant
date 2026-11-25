@@ -216,7 +216,7 @@ def test_pass_links_the_archive_in_the_pr_body_and_keeps_its_text(repo):
     assert f"[`audit-1`]({ref.uri})" in body and f"`refs/fabrikant/relay/{ISSUE}/audit-1`" in body
     assert f"blob/{ref.commit}/{TRAIL}/AUDIT.md" in body and ref.sha256 in body
     assert f"git fetch origin refs/fabrikant/relay/{ISSUE}/audit-1" in body
-    assert f"PR #{PR}: trail link set" in summary
+    assert f"PR #{PR}: Trail-Link gesetzt" in summary
 
 
 def test_pr_trail_block_is_replaced_not_duplicated():
@@ -262,7 +262,7 @@ def test_restoring_the_trail_removes_the_pr_link(repo):
     audit(repo, gh, trail_archive=GIT_REF)
     reopen(gh)
     summary = commands.checkout(make_ctx(repo, gh, trail_archive=GIT_REF), ISSUE)
-    assert gh.pr_bodies[PR] == "Body\n" and "trail link removed" in summary
+    assert gh.pr_bodies[PR] == "Body\n" and "Trail-Link entfernt" in summary
 
 
 # ── Wiederherstellen ─────────────────────────────────────────────────────────
