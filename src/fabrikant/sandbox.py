@@ -639,8 +639,13 @@ def run_shell(
     worktree; the command runs in the same subdirectory of the clone. `env` is the (scrubbed)
     container env. Returns the `CompletedProcess`; a timeout propagates like in `procs.run_group`.
 
+    The entrypoint always writes a result bundle (an empty commit when nothing changed) and keeps a
+    failing command's exit code even when the export fails. So the exit code alone cannot tell "the
+    command failed" from "the exchange failed": a missing bundle is the signal, checked before the
+    caller classifies the exit code (a red test must not hide an infrastructure failure).
+
     Raises:
-        SandboxError: the exchange failed before or after the run (result rejected)."""
+        SandboxError: the exchange failed before or after the run (no result bundle, result rejected)."""
     from .procs import run_group  # local: procs registers atexit hooks
 
     top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
@@ -654,7 +659,10 @@ def run_shell(
         stop_container(session_id)
         discard_exchange(ex, top)
         raise
+    has_result = os.path.lexists(ex.result_bundle)  # docker run has returned: the container is done
     error = finish_exchange(ex, top)
     if error:
         raise SandboxError(error)
+    if not has_result:
+        raise SandboxError(t("sandbox.shell_result_missing", code=proc.returncode))
     return proc

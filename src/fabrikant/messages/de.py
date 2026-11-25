@@ -454,6 +454,7 @@ MESSAGES: dict[str, str] = {
     "runstore_sql.run_belongs_to_project_not": "Run {run_id} gehört zu Projekt {v2!r}, nicht {project!r}",
     "runstore_sql.run_store_db_not_usable": "Run-Store-DB nicht nutzbar ({v1}): {e}",
     "sandbox.sandbox_needs_the_worktree_root": "Sandbox braucht die Worktree-Wurzel ({top}), nicht {workdir}",
+    "sandbox.shell_result_missing": "kein Ergebnis aus dem Container (Exit {code}): der git-Austausch ist fehlgeschlagen",
     "sandbox.result_rejected_result_bundle_is": "Ergebnis abgewiesen: result.bundle ist keine reguläre Datei",
     "sandbox.result_rejected_result_bundle_too": "Ergebnis abgewiesen: result.bundle zu groß ({v1} > {v2} Bytes)",
     "sandbox.result_rejected_patch_too_large": "Ergebnis abgewiesen: Patch zu groß ({v1} > {v2} Bytes)",

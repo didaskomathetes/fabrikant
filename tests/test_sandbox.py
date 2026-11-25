@@ -616,10 +616,46 @@ def test_run_shell_runs_in_subdir_with_origin_main_and_returns_changes(repo, tmp
 def test_run_shell_propagates_exit_code_and_keeps_git_metadata_out(repo, tmp_path, monkeypatch):
     _local_container(monkeypatch, tmp_path)
     assert sandbox.run_shell("shell-t2", "exit 3", str(repo), {}, timeout=60).returncode == 3
-    # A smuggled `.git` already fails the exchange in the container (EX_EXCHANGE) and never reaches
-    # the host (the host-side rejection is covered by the apply_result tests).
-    p = sandbox.run_shell("shell-t3", "mkdir -p sub/.git && echo x > sub/.git/config", str(repo), {}, timeout=60)
-    assert p.returncode == sandbox.EX_EXCHANGE and not (repo / "sub").exists()
+    # A smuggled `.git` never reaches the host (the host-side rejection is covered by the apply_result
+    # tests). Fresh container work dir: the previous run's clone would fail the setup.
+    _local_container(monkeypatch, tmp_path / "fresh")
+    sandbox.run_shell("shell-t3", "mkdir -p sub/.git && echo x > sub/.git/config", str(repo), {}, timeout=60)
+    assert not (repo / "sub" / ".git").exists()
+
+
+def test_run_shell_failed_export_after_failing_command_is_sandbox_error(repo, tmp_path, monkeypatch):
+    """The entrypoint keeps the command's exit code (here 1, a "red test") when the export fails too:
+    without a result bundle that must not reach the step's `failure_kind` classification."""
+    _local_container(monkeypatch, tmp_path)
+    cmd = "rm -rf .git; exit 1"  # the export (git add/commit/bundle) in the clone fails
+    with pytest.raises(sandbox.SandboxError, match=r"Exit 1\)"):
+        sandbox.run_shell("shell-t7", cmd, str(repo), {}, timeout=60)
+
+
+def test_run_shell_command_exit_70_with_result_is_the_command_outcome(repo, tmp_path, monkeypatch):
+    """A command that itself exits 70 (= EX_EXCHANGE) is no exchange failure: the bundle came back."""
+    _local_container(monkeypatch, tmp_path)
+    p = sandbox.run_shell("shell-t8", f"echo out > r.txt; exit {sandbox.EX_EXCHANGE}", str(repo), {}, timeout=60)
+    assert p.returncode == sandbox.EX_EXCHANGE
+    assert (repo / "r.txt").read_text() == "out\n"
+
+
+def test_run_shell_failed_clone_setup_is_sandbox_error(repo, tmp_path, monkeypatch):
+    """The entrypoint fails before the command (EX_EXCHANGE, here: the work dir already holds a clone)."""
+    _local_container(monkeypatch, tmp_path)
+    sandbox.run_shell("shell-t10", "true", str(repo), {}, timeout=60)
+    with pytest.raises(sandbox.SandboxError, match=rf"Exit {sandbox.EX_EXCHANGE}\)"):
+        sandbox.run_shell("shell-t11", "true", str(repo), {}, timeout=60)
+    assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")
+
+
+def test_run_shell_without_container_start_is_sandbox_error(repo, tmp_path, monkeypatch):
+    """`docker run` fails before the entrypoint (e.g. image missing, exit 125): no bundle → SandboxError."""
+    monkeypatch.setattr(sandbox, "render_docker_cmd", lambda cfg, sid, cmd, ex, env: ["sh", "-c", "exit 125"])
+    monkeypatch.setattr(sandbox, "docker_cli_env", lambda env: dict(os.environ))
+    with pytest.raises(sandbox.SandboxError, match=r"Exit 125\)"):
+        sandbox.run_shell("shell-t9", "true", str(repo), {}, timeout=60)
+    assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")
 
 
 def test_run_shell_timeout_stops_container_and_discards_exchange(repo, tmp_path, monkeypatch, _no_real_docker):

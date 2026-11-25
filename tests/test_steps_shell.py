@@ -484,3 +484,19 @@ def test_shell_sandbox_error_fails_as_environment(tmp_path, monkeypatch):
     monkeypatch.setattr("fabrikant.sandbox.run_shell", boom)
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "true", "sandboxed": True}, NOOP)
     assert res["ok"] is False and res["failure_kind"] == "environment" and "symlink" in res["summary"]
+
+
+def test_shell_sandboxed_missing_result_fails_as_environment_not_outcome(tmp_path, monkeypatch):
+    """A test step with `failure_kind: outcome` whose result export failed is an infrastructure failure."""
+    from fabrikant import sandbox
+
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+
+    def no_result(*a, **k):
+        raise sandbox.SandboxError(sandbox.t("sandbox.shell_result_missing", code=1))
+
+    monkeypatch.setattr("fabrikant.sandbox.run_shell", no_result)
+    step = {"type": "shell", "cmd": "make test", "sandboxed": True, "failure_kind": "outcome"}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is False and res["failure_kind"] == "environment"
+    assert "kein Ergebnis aus dem Container" in res["summary"]

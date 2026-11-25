@@ -146,8 +146,9 @@ What the container gets, beyond the agent case:
 - **`/tmp` executable** (tmpfs `rw,exec`): test runners and build tools put executables there.
 
 The command runs in the step's subdirectory of the clone (`workdir` may be below the worktree root).
-A timeout stops the container and discards the exchange; a rejected result fails the step as
-`environment`.
+A timeout stops the container and discards the exchange. A rejected or missing result bundle fails the
+step as `environment`, whatever the command's exit code: the entrypoint keeps a failing command's code
+even when the export fails, so only the bundle tells a red test from a broken exchange.
 
 **Consequences:** steps that need the network (package installs) go through the egress allowlist like
 agents. Steps that must post to GitHub or reach host services (e.g. a SonarQube upload) stay on the host
