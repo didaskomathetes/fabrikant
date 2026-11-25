@@ -104,7 +104,10 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
         + ("\n[stderr]\n" + stderr if stderr else "")
         + ("\n[warnings]\n" + "\n".join(f"WARNING: {w}" for w in warnings) if warnings else "")
     )
-    tail = _redact("\n".join((stdout or stderr).strip().splitlines()[-8:]))
+    # Tail: last lines of stdout, else stderr, else the warnings (a step whose only output is a
+    # warning must not be summarised as "no output").
+    tail_src = stdout.strip() or stderr.strip() or "\n".join(f"WARNING: {w}" for w in warnings)
+    tail = _redact("\n".join(tail_src.splitlines()[-8:]))
     if p.returncode != 0:
         return failed(
             f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'kein Output'}",

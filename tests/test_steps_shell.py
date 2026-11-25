@@ -378,3 +378,17 @@ def test_shell_done_marker_ends_run_and_is_stripped(tmp_path):
 def test_shell_done_marker_ignored_on_failure(tmp_path):
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1"}, NOOP)
     assert res["ok"] is False and not res.get("done")
+
+
+@pytest.mark.parametrize(("exit_code", "ok"), [(0, True), (2, False)])
+def test_shell_only_warning_output_is_summary(tmp_path, exit_code, ok):
+    cmd = f"echo '::fabrikant-warning::config fehlt'; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["ok"] is ok
+    assert res["summary"].endswith("WARNING: config fehlt")
+
+
+def test_shell_blank_stdout_after_markers_falls_back_to_stderr(tmp_path):
+    cmd = "echo; echo '::fabrikant-warning::w'; echo oops >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: oops"
