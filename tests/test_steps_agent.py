@@ -721,14 +721,25 @@ def test_session_failed_without_exit_info_keeps_old_shape():
     assert lines == []
 
 
-@pytest.mark.parametrize("field", ["text", "stderr_tail"])
-def test_session_failed_context_exhausted_warns_as_outcome(field):
+def test_session_failed_context_exhausted_warns_as_outcome():
     """Context window full: warning in the log, class `outcome` (no retry)."""
     lines: list[str] = []
-    last = {"status": "failed", "text": "", field: "API Error: 400 Prompt is too long"}
+    last = {"status": "failed", "text": "API Error: 400 Prompt is too long", "stderr_tail": ""}
     res = agent_step._session_failed(last, "s1", {}, lines.append)
     assert res["failure_kind"] == "outcome"
     assert any("Kontextfenster erschöpft (session s1)" in line for line in lines)
+
+
+def test_session_failed_context_phrase_in_echoed_prompt_is_not_exhaustion():
+    """Regression: codex echoes the prompt to stderr — a prompt mentioning the context window must not
+    turn an auth error into `outcome`; the stderr tail stays in the log/record."""
+    lines: list[str] = []
+    tail = "user\nKeep the change small, the context window is full of old notes.\nERROR: 401 Unauthorized"
+    last = {"status": "failed", "text": "401 Unauthorized", "exit_code": 1, "stderr_tail": tail}
+    res = agent_step._session_failed(last, "s1", {}, lines.append)
+    assert res["failure_kind"] != "outcome"
+    assert not any("Kontextfenster" in line for line in lines)
+    assert "context window is full" in res["output"]
 
 
 def test_session_failed_other_errors_do_not_warn_about_context():

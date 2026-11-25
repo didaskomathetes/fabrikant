@@ -63,10 +63,10 @@ CLI then blocks or drops the rest of the stream on shutdown (copilot: exit 0, JS
 #153).
 
 A session that fails because the model's context window is exhausted (`prompt is too long`,
-`context_length_exceeded`, `maximum context length`, …, in the error text or the stderr tail) is not restarted,
-even if the backend marks it retryable: the same input fails again. The run log shows a warning to rescope the
-work (smaller ask, split the PR/issue, or point the agent at the relevant files), and the step fails as
-`outcome`.
+`context_length_exceeded`, `maximum context length`, … in the backend's error text, not in the stderr tail, where
+CLIs echo the prompt) is not restarted, even if the backend marks it retryable: the same input fails again. The
+run log shows a warning to rescope the work (smaller ask, split the PR/issue, or point the agent at the relevant
+files), and the step fails as `outcome`.
 
 | Backend | Transport | Model | Notes |
 |---|---|---|---|
