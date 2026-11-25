@@ -524,6 +524,7 @@ MESSAGES: dict[str, str] = {
     "specs.verify_needs_checks_as_a": "{where}: verify braucht 'checks' als Liste",
     "specs.agent_without_prompt_prompt_file": "{where}: agent ohne prompt/prompt_file",
     "specs.agent_variant_must_be_a": "{where}: agent variant muss String sein (ist {v2!r})",
+    "specs.agent_tool_list_empty": "{where}: agent {key} darf nicht leer sein (Key weglassen für den Backend-Default)",
     "specs.agent_tool_list_must_be": "{where}: agent {key} muss String oder Liste von Strings sein (ist {v2!r})",
     "specs.github_identity_must_be_one": "{where}: github_identity muss einer von {v2} sein (ist {gid!r})",
     "specs.agent_workdir_must_be_a": "{where}: agent workdir muss String sein",

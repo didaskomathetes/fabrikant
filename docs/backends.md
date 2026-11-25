@@ -91,7 +91,8 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   use the shell). Real isolation (non-root/container/VM) is a deployment prerequisite, not a config option.
 - **Tool restriction per step:** `tools` (list or comma-separated string) limits the available built-ins
   (`--tools`); `allowed_tools` sets the permission rules (`--allowedTools`) and switches to
-  `--permission-mode dontAsk`, so anything not allowed is denied instead of prompted. Example for a reviewer that
+  `--permission-mode dontAsk`, so anything not allowed is denied instead of prompted. An empty value is rejected by validation (it
+  would mean no restriction); omit the key for the default. Example for a reviewer that
   may read the repo and write only its payload:
 
   ```yaml
