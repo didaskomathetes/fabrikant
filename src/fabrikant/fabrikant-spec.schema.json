@@ -253,6 +253,11 @@
           "description": "Risk tier as spec data (1 = lowest, 4 = highest); mapped to gates/approvals by a single mapping function."
         },
         "retry": { "$ref": "#/$defs/retry" },
+        "exclusive_group": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Loops with the same group never run at the same time for the same issue/PR (e.g. review-pr + pr-reply). A trigger run blocked this way is dropped like one over max_parallel (with reconcile it fires again on the next poll); queued manual runs and resumes wait."
+        },
         "use": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+$",

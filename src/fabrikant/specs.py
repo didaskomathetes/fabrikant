@@ -572,6 +572,9 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
             errs += _validate_worktree(lname, ldef, steps)
             if "retry" in ldef:
                 errs += _validate_retry_block(ldef["retry"], f"loop {lname}.retry")
+            group = ldef.get("exclusive_group")
+            if group is not None and not (isinstance(group, str) and group.strip()):
+                errs.append(_t("specs.loop_exclusive_group_must_be", lname=lname, group=group))
             errs += _validate_retry_cron(spec, lname, ldef)
             for i, st in enumerate(steps):
                 if isinstance(st, dict):

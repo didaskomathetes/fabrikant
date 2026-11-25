@@ -196,6 +196,15 @@ def test_validate_agent_github_identity_unknown(tmp_path):
         )
 
 
+def test_validate_loop_exclusive_group(tmp_path):
+    s = _valid_spec(str(tmp_path))
+    s["loops"]["l1"]["exclusive_group"] = "pr-cycle"
+    specs._validate_spec(s)  # no raise
+    s["loops"]["l1"]["exclusive_group"] = " "
+    with pytest.raises(ValueError, match="exclusive_group muss"):
+        specs._validate_spec(s)
+
+
 def test_validate_agent_variant(tmp_path):
     base = _valid_spec(str(tmp_path))
     specs._validate_spec(_step(base, {"type": "agent", "prompt": "x", "variant": "medium"}))  # kein Raise

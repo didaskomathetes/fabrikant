@@ -65,7 +65,10 @@ server start); a run in `needs_approval` keeps it for the resume. `max_parallel`
 concurrent runs per project; specs without `repo:` run without isolation in `root` and are therefore fixed at
 `max_parallel: 1`. Trigger runs over the limit are dropped, manual/chat runs and approved resumes are queued
 (ADR 0015) and wait for a free slot. `worktree: false` loops (ADR 0020) don't occupy a slot. At most one active
-run runs per loop + issue/PR. `state/replied-comments.json` and `state/reviewed-prs.json` are merged under lock
+run runs per loop + issue/PR; loops with the same `exclusive_group` (loop option, e.g. `review-pr` + `pr-reply`) also
+never run at the same time for the same issue/PR. A trigger run blocked this way is dropped like one over the limit
+(with `reconcile` it fires again on the next poll); queued runs wait.
+`state/replied-comments.json` and `state/reviewed-prs.json` are merged under lock
 into `state/agent/<project>/`. Operation: exactly **one** fabrikant process per project (see ADR 0028). True
 parallelism needs `FABRIKANT_WORKERS` > 1.
 

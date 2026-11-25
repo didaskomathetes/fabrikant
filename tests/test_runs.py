@@ -344,3 +344,67 @@ def test_last_run_per_loop_skips_unloadable_and_normalizes_fields(runs_dir):
         "id": "r-ok",
         "failure_kind": "",
     }
+
+
+# ---------------------------------------------------------------- exclusive_group
+_PR_CYCLE = {"loops": {"review-pr": {"exclusive_group": "pr"}, "pr-reply": {"exclusive_group": "pr"}, "other": {}}}
+
+
+def test_exclusive_groups_reads_loop_option():
+    assert runs.exclusive_groups("x", _PR_CYCLE) == {"review-pr": "pr", "pr-reply": "pr"}
+    assert runs.exclusive_groups("x", {"loops": {}}) == {}
+
+
+def test_exclusive_groups_unloadable_spec_is_empty(monkeypatch):
+    from fabrikant import specs
+
+    def boom():
+        raise ValueError("broken spec")
+
+    monkeypatch.setattr(specs, "load_projects", boom)
+    assert runs.exclusive_groups("x") == {}
+
+
+def test_claim_run_exclusive_group_blocks_same_item_only(runs_dir, monkeypatch):
+    """review-pr and pr-reply ran in parallel on one PR — the review judged an outdated head."""
+    from fabrikant import specs
+
+    spec = {**_PR_CYCLE, "repo": {"url": "x"}, "max_parallel": 5}
+    monkeypatch.setattr(specs, "load_projects", lambda: {"excl": spec})
+    review = runs.claim_run("excl", "review-pr", {"pr_number": 7})
+    assert review is not None
+    try:
+        assert runs.claim_run("excl", "pr-reply", {"pr_number": 7}) is None  # same group, same PR
+        other_pr = runs.claim_run("excl", "pr-reply", {"pr_number": 8})
+        unrelated = runs.claim_run("excl", "other", {"pr_number": 7})  # loop without a group
+        assert other_pr is not None and unrelated is not None
+        other_pr.release()
+        unrelated.release()
+    finally:
+        review.release()
+    after = runs.claim_run("excl", "pr-reply", {"pr_number": 7})
+    assert after is not None
+    after.release()
+
+
+def test_blocking_claim_waits_for_exclusive_group(runs_dir, monkeypatch):
+    """A queued (blocking) run waits until the other loop of its group is done with the same PR."""
+    import threading
+
+    from fabrikant import specs
+
+    spec = {**_PR_CYCLE, "repo": {"url": "x"}, "max_parallel": 5}
+    monkeypatch.setattr(specs, "load_projects", lambda: {"excl": spec})
+    review = runs.claim_run("excl", "review-pr", {"pr_number": 7})
+    assert review is not None
+    got: list = []
+    waiter = threading.Thread(
+        target=lambda: got.append(runs.claim_run("excl", "pr-reply", {"pr_number": 7}, blocking=True))
+    )
+    waiter.start()
+    waiter.join(0.3)
+    assert waiter.is_alive() and not got  # still waiting for review-pr
+    review.release()
+    waiter.join(5)
+    assert not waiter.is_alive() and got[0] is not None
+    got[0].release()

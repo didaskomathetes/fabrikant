@@ -510,6 +510,7 @@ MESSAGES: dict[str, str] = {
     "specs.spec_was_changed_externally_hash": "Spec wurde extern geändert (Hash-Mismatch) — Draft neu laden",
     "specs.approval_and_approval_when_are": "{where}: approval und approval_when schließen sich aus",
     "specs.approval_when_must_be_a": "{where}: approval_when muss ein nicht-leeres Mapping sein (Variable → Wert/Werte)",
+    "specs.loop_exclusive_group_must_be": "loop {lname}: exclusive_group muss ein nicht-leerer String sein (ist {group!r})",
     "specs.loop_worktree_must_be_true": "loop {lname}: worktree muss true/false sein (ist {wt!r})",
     "specs.failure_kind_only_applies_to": "{where}: failure_kind gilt nur für shell-Steps (ist {v2!r})",
     "specs.failure_kind_must_be_one": "{where}: failure_kind muss einer von {v2} sein (ist {value!r})",

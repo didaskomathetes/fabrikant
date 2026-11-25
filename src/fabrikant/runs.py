@@ -6,7 +6,7 @@ SQL backend. Run logs (``runs/<project>/<id>.log``) remain files."""
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -99,6 +99,29 @@ def max_parallel_for(project: str, spec: dict | None = None) -> int:
     return max(1, value)
 
 
+def exclusive_groups(project: str, spec: dict | None = None) -> dict[str, str]:
+    """Loop → `exclusive_group` of the spec: loops of the same group never run at the same time for the same
+    issue/PR (e.g. `review-pr` + `pr-reply`: no review of a head that the running fix is about to replace)."""
+    from .specs import load_projects
+
+    try:
+        if spec is None:
+            spec = load_projects().get(project) or {}
+    except (OSError, ValueError):
+        return {}
+    loops = spec.get("loops") or {}
+    return {name: str(lp["exclusive_group"]) for name, lp in loops.items() if (lp or {}).get("exclusive_group")}
+
+
+def _group_busy(key: tuple[str, str, str], groups: Mapping[str, str]) -> bool:
+    """Is another loop of the same `exclusive_group` already running for the same issue/PR?"""
+    project, loop, item = key
+    group = groups.get(loop)
+    if not group or not item:
+        return False
+    return any(p == project and i == item and lp != loop and groups.get(lp) == group for p, lp, i in _active_keys)
+
+
 def dedupe_key(variables: dict | None) -> str:
     """Issue/PR reference of a run ("" = loop without reference, e.g. cron)."""
     for k in config.DEDUPE_VARS:
@@ -146,7 +169,8 @@ def claim_run(
     """Reserves a run (ADR 0028): dedup + slot (max_parallel) for worktree loops.
 
     None if for loop + issue/PR a run is already active or paused
-    (`needs_approval`) (dedup), the limit
+    (`needs_approval`) (dedup), another loop of the same `exclusive_group` runs for this
+    issue/PR (:func:`exclusive_groups`), the limit
     is reached or a priority waiter in the same scope is waiting (ADR 0015) and
     `blocking=False`. `blocking=True` is a priority claim: it waits for a
     free slot **and** for the end of an active run of the same loop +
@@ -160,6 +184,7 @@ def claim_run(
     needs_slot = scope == project
     limit = max_parallel_for(project) if needs_slot else 0
     key = (project, loop, dedupe_key(variables))
+    groups = exclusive_groups(project) if key[2] else {}
     # Paused runs release their claim but keep occupying the reference; the
     # resume (blocking or exclude_run_id) is exempt. File I/O deliberately
     # outside the lock.
@@ -170,7 +195,11 @@ def claim_run(
             _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
         try:
             while True:
-                free = key not in _active_keys and (not needs_slot or _slots_used.get(project, 0) < limit)
+                free = (
+                    key not in _active_keys
+                    and not _group_busy(key, groups)
+                    and (not needs_slot or _slots_used.get(project, 0) < limit)
+                )
                 if free and (blocking or not _priority_waiters.get(scope)):
                     break
                 if not blocking:
