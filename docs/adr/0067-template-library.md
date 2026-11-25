@@ -1,6 +1,6 @@
 # ADR 0067: Template Library — Curated, Documented Loop Templates
 
-**Status:** Draft (2026-11-23, branch `feat/template-library`)
+**Status:** Accepted (2026-11-24)
 **Relates to:** ADR 0047 (spec sources, vars & templates), `docs/roadmap.md` First win 3 (#133), `src/fabrikant/spec_expand.py`
 
 ## Context

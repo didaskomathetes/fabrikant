@@ -1,6 +1,6 @@
 # ADR-Index
 
-Architektur-Entscheidungen (Architecture Decision Records) für fabrik.
+Architektur-Entscheidungen (Architecture Decision Records) für fabrikant.
 
 **Konvention:** nächste freie Nummer über `main` **und alle offenen PRs**
 (`python scripts/check-adr-numbers.py next`; Kollision reparieren: `… fix`), Dateiname `NNNN-kurz-titel.md`,
@@ -59,8 +59,8 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0043](0043-reconcile-dedup-queue-and-paused.md) | Reconcile-Dedup — eingereihte Trigger und pausierte Runs | Vorgeschlagen |
 | [0044](0044-acp-backend-observation.md) | ACP-Backend (OpenHands via SDK/ACP) — beobachten, nicht adoptieren | Akzeptiert (2026-11-13) |
 | [0045](0045-incident-roundtrip.md) | Incident-Roundtrip (Sentry/CloudWatch → Triage → Hotfix-PR) | Akzeptiert (2026-11-13) |
-| [0046](0046-oidc-login.md) | OIDC-Login (generischer Client, optionales Extra `fabrik[oidc]`) | Akzeptiert (2026-11-13) |
-| [0047](0047-spec-sources-vars-templates.md) | Spec-Quellen (`FABRIK_PROJECTS_PATH`, Zielrepo), spec-relative Pfade, `vars`, Loop-Templates | Akzeptiert, Nachtrag 2026-11-03 (Worktrees außerhalb des Checkouts) vorgeschlagen |
+| [0046](0046-oidc-login.md) | OIDC-Login (generischer Client, optionales Extra `fabrikant[oidc]`) | Akzeptiert (2026-11-13) |
+| [0047](0047-spec-sources-vars-templates.md) | Spec-Quellen (`FABRIKANT_PROJECTS_PATH`, Zielrepo), spec-relative Pfade, `vars`, Loop-Templates | Akzeptiert, Nachtrag 2026-11-03 (Worktrees außerhalb des Checkouts) vorgeschlagen |
 | [0049](0049-ui-i18n.md) | UI-Sprache — Message-Kataloge de/en, Locale-Formatierung | Akzeptiert |
 | [0050](0050-agent-env-allowlist.md) | Agent-Env-Allowlist — Agent-Prozesse erben kein `os.environ` | Vorgeschlagen |
 | [0051](0051-egress-default-deny-proxy.md) | Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy | Akzeptiert |
@@ -69,17 +69,17 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0054](0054-per-run-agent-sandbox.md) | Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container | In Überarbeitung (2026-11-06) |
 | [0055](0055-ui-delegated-event-handlers.md) | UI ohne Inline-Event-Handler (data-* + Delegation) | Akzeptiert (2026-11-13) |
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
-| [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIK_LAUNCHER`) | Akzeptiert (2026-11-18) |
+| [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIKANT_LAUNCHER`) | Akzeptiert (2026-11-18) |
 | [0058](0058-webhook-replay-protection.md) | Webhook-Replay-Schutz (opt-in `replay_protection`) | Akzeptiert (2026-11-18) |
 | [0059](0059-needs-human-escalation.md) | `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift | Akzeptiert (2026-11-19); Nachtrag 2026-11-16: Eskalationsart `access` (ADR 0060) |
 | [0060](0060-research-fetcher-access-profiles.md) | Fetcher für offene Recherche (Herkunftsprüfung, Bereinigung/Injection-Scan), Zugriffsprofile pro Loop/Run, einmalige Freigaben | Akzeptiert (2026-11-19) |
-| [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrik replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
+| [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrikant replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
 | [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
 | [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
 | [0064](0064-mcp-server-stdio.md) | MCP-Server — fabrikant als stdio-Endpoint für MCP-fähige Agenten (Runs, Specs, Approvals) | Accepted (2026-11-21); Amendment 2026-11-22: local profile, hardening, opt-in approvals; Amendment 2026-11-23: official MCP SDK, spec-write tools; re-landed 2026-11-25 |
-| [0065](0065-golden-runs-eval-harness.md) | Golden Runs — gepinnte Baseline + Eval-Harness (`fabrik eval`, opt-in CI-Gate) | Accepted (2026-11-21) |
-| [0066](0066-spec-proposal-review-ui.md) | Spec-Proposal Review in the Web UI — server-side diff, apply/reject with roles + CSRF | Proposed (2026-11-23) |
-| [0067](0067-template-library.md) | Template library — curated, documented loop templates + `fabrikant template` CLI | Draft (2026-11-23) |
-| [0068](0068-golden-run-store-mark.md) | Golden Runs — run-store mark + `fabrikant eval --golden <run-id>` | Draft (2026-11-25) |
-| [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrik`, Docker, step plugins | Accepted (2026-11-24) |
+| [0065](0065-golden-runs-eval-harness.md) | Golden Runs — gepinnte Baseline + Eval-Harness (`fabrikant eval`, opt-in CI-Gate) | Accepted (2026-11-21) |
+| [0066](0066-spec-proposal-review-ui.md) | Spec-Proposal Review in the Web UI — server-side diff, apply/reject with roles + CSRF | Accepted (2026-11-24) |
+| [0067](0067-template-library.md) | Template library — curated, documented loop templates + `fabrikant template` CLI | Accepted (2026-11-24) |
+| [0068](0068-golden-run-store-mark.md) | Golden Runs — run-store mark + `fabrikant eval --golden <run-id>` | Accepted (2026-11-24) |
+| [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrikant`, Docker, step plugins | Accepted (2026-11-24) |
 | [0070](0070-rename-to-fabrikant.md) | Rename to fabrikant — package, CLI, env, entry points | Accepted (2026-11-24; amended: no legacy compat layer) |
