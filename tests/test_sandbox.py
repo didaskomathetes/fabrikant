@@ -637,6 +637,13 @@ def test_run_shell_rejected_result_raises_sandbox_error(repo, tmp_path, monkeypa
         sandbox.run_shell("shell-t5", "true", str(repo), {}, timeout=60)
 
 
+def test_run_shell_config_error_leaves_no_exchange(repo, monkeypatch):
+    monkeypatch.setenv(sandbox.PIDS_LIMIT_VAR, "many")
+    with pytest.raises(RuntimeError):
+        sandbox.run_shell("shell-t6", "true", str(repo), {}, timeout=60)
+    assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")
+
+
 def test_default_branch_refs(repo):
     assert sandbox.default_branch_refs(str(repo)) == ()
     _sh(repo, "git", "update-ref", "refs/remotes/origin/master", "HEAD")

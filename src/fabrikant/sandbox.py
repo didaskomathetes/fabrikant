@@ -645,10 +645,9 @@ def run_shell(
 
     top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
     rel = os.path.relpath(os.path.realpath(workdir), os.path.realpath(top))
+    cfg = SandboxConfig.from_env()  # before the exchange: a config error must not leave refs/tmpdir behind
     ex = prepare_exchange(session_id, top, default_branch_refs(top))
-    argv = render_docker_cmd(
-        SandboxConfig.from_env(), session_id, ["sh", "-c", _SHELL_IN_SUBDIR, "fabrikant-shell", rel, cmd], ex, env
-    )
+    argv = render_docker_cmd(cfg, session_id, ["sh", "-c", _SHELL_IN_SUBDIR, "fabrikant-shell", rel, cmd], ex, env)
     try:
         proc = run_group(argv, timeout=timeout, env=docker_cli_env(env), stdin=subprocess.DEVNULL)
     except BaseException:
