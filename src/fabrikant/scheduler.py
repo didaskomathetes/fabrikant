@@ -296,8 +296,8 @@ def _pr_fire_kind(
       ``on_pr:#N@…`` record also counts as done (ADR 0023). Otherwise ``"neu"`` (PR unknown
       and above `floor`) or ``"head <sha[:7]">`` (`per_head`) or
       ``"reconcile"`` (catch up a known PR).
-    - `per_update` (`reconcile: updated`): like `per_head`, keyed per `updated_at`
-      (``on_pr:#N@u<stamp>``); kind ``"update <updated_at>"``.
+    - `per_update` (`reconcile: updated`): like `per_head`, keyed per observed `updated_at`
+      (``on_pr:#N@u<stamp>``, one run per snapshot, not per change); kind ``"update <updated_at>"``.
     - Event mode: ``None`` on the first poll, for an unchanged PR (state +
       `updated_at` equal) and for PRs displaced below `floor`. Otherwise
       ``"neu"``, ``"state-wechsel <old>→<new>"`` or ``"aktualisiert"``.
@@ -645,9 +645,11 @@ class Scheduler(threading.Thread):
         (without I/O); only polling/throttling, label filter,
         dedup state (`seen`/`floor`) and run starting via `_safe_run` remain here.
 
-        `reconcile: updated` like `head`, but per PR change (`updated_at`, trigger
-        `on_pr:#N@u<stamp>`): comments, reviews and labels fire too — exactly once and
-        restart-proof (e.g. a reply loop: comments during a restart are not lost).
+        `reconcile: updated` like `head`, but per observed PR state (`updated_at` at poll
+        time, trigger `on_pr:#N@u<stamp>`): comments, reviews and labels fire too — one run
+        per observed snapshot, restart-proof (e.g. a reply loop: a comment during a restart is
+        not lost). Several changes between two polls collapse into the latest `updated_at`
+        and fire one run, not one per change — the loop must read the current PR state.
 
         `exclude_labels` (ADR 0059, e.g. `[needs human]`): PRs with one of these labels do not
         fire; removing the label is itself a change and fires again afterwards.

@@ -25,9 +25,11 @@ Trigger types (`config.TRIGGER_TYPES`): `manual`, `cron`, `on_file`, `on_issue`,
   `{pr_body}`. `reconcile: true` (ADR 0011): also fires for existing PRs, but only if no previous `on_pr` run
   exists (status irrelevant; restart-proof; reconciling controller). `reconcile: head` (ADR 0023): like `true`,
   but per head SHA (`on_pr:#N@<sha>`) — every new push fires exactly once, a discarded trigger (lock busy,
-  restart) is caught up on the next poll. `reconcile: updated`: like `head`, but per PR change (`updated_at`,
-  `on_pr:#N@u<stamp>`) — pushes, comments, reviews and label changes each fire exactly once, also when they
-  happened during a restart (e.g. a loop answering review comments). The loop's own PR actions (reply comment,
+  restart) is caught up on the next poll. `reconcile: updated`: like `head`, but per observed PR state (`updated_at` at
+  poll time, `on_pr:#N@u<stamp>`) — pushes, comments, reviews and label changes fire a run, also when they
+  happened during a restart (e.g. a loop answering review comments). The guarantee is one run per observed
+  snapshot, not per change: several changes between two polls collapse into the latest `updated_at` and fire
+  once, so the loop must read the PR's current state (all new comments), not assume a single event. The loop's own PR actions (reply comment,
   push, label) also bump `updated_at` and fire it once more: it needs a gate step that ends without touching the
   PR when there is nothing new (e.g. `done_marker: true` + `::fabrikant-done::`, see runs.md), otherwise it retriggers itself endlessly.
   Additional variable: `{pr_head_sha}`

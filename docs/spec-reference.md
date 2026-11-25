@@ -168,7 +168,7 @@ What starts a loop. `type` selects the trigger kind; the per-type fields are lis
 | `priority_labels` | list of string | optional | on_issue: labels used to sort candidates (first match wins, ADR 0021). |
 | `exclude_labels` | list of string | optional | on_issue/on_pr: issues/PRs with any of these labels do not start the loop (ADR 0059). |
 | `poll` | → `numeric` | optional | on_issue/on_pr/on_slack: poll interval in seconds (>= 0). |
-| `reconcile` | boolean / `head` \| `updated` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per PR change: push, comment, review, label). |
+| `reconcile` | boolean / `head` \| `updated` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per observed PR state: one run per `updated_at` seen at poll time; several changes between two polls give one run). |
 | `skip_blocked` | boolean | optional | on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031). |
 | `max_per_poll` | → `numeric` | optional | on_issue with reconcile: max runs started per poll (integer >= 1). |
 | `states` | list of `open` \| `closed` | optional | on_pr: PR states to react to (default: open). |

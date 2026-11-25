@@ -8,8 +8,9 @@ All notable changes to fabrikant are documented here. The format follows
 
 ### Added
 
-- `on_pr` trigger `reconcile: updated`: reconciles per PR change (`updated_at`), so pushes, comments, reviews and
-  label changes each fire exactly once, also across a server restart.
+- `on_pr` trigger `reconcile: updated`: reconciles per observed PR state (`updated_at` at poll time), so pushes,
+  comments, reviews and label changes fire a run, also across a server restart — one run per observed snapshot:
+  several changes between two polls collapse into one run.
 - Shell step markers: with the opt-in `done_marker: true`, a line `::fabrikant-done::` (exit 0) ends the run
   early and successfully (without the key the line is ordinary output, so test/lint output or echoed PR text
   cannot skip later gates); lines `::fabrikant-warning::<text>` report non-fatal problems (⚠ in the run log, `WARNING:` at the end of the output).

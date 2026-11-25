@@ -593,7 +593,7 @@
             { "type": "boolean" },
             { "type": "string", "enum": ["head", "updated"] }
           ],
-          "description": "on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per PR change: push, comment, review, label)."
+          "description": "on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per observed PR state: one run per `updated_at` seen at poll time; several changes between two polls give one run)."
         },
         "skip_blocked": { "type": "boolean", "description": "on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031)." },
         "max_per_poll": { "$ref": "#/$defs/numeric", "description": "on_issue with reconcile: max runs started per poll (integer >= 1)." },
