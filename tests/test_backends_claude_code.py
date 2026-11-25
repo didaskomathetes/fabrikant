@@ -277,6 +277,20 @@ def test_build_cmd_default_allows_edits_and_bash():
     cmd = ClaudeCodeBackend(model="m")._build_cmd()
     assert cmd[-4:] == ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
     assert "--tools" not in cmd
+    assert "--setting-sources" not in cmd and "--strict-mcp-config" not in cmd  # unrestricted: unchanged
+
+
+def assert_untrusted_workdir(cmd: list[str]) -> None:
+    """Restricted: only user settings, no MCP servers, every hook off (project settings can't re-enable them)."""
+    assert cmd[cmd.index("--setting-sources") + 1] == "user"
+    assert "--strict-mcp-config" in cmd
+    assert json.loads(cmd[cmd.index("--settings") + 1]) == {"disableAllHooks": True}
+
+
+@pytest.mark.parametrize("step", [{"tools": "Read"}, {"allowed_tools": "Read"}])
+def test_either_restriction_key_hardens(step):
+    """One key is enough: `tools` alone still runs on untrusted content, `allowed_tools` alone too."""
+    assert_untrusted_workdir(ClaudeCodeBackend.create(step, "", "m", 900)._build_cmd())
 
 
 def test_create_restricts_tools_from_step():
@@ -287,6 +301,7 @@ def test_create_restricts_tools_from_step():
     }
     cmd = ClaudeCodeBackend.create(step, "", "claude-opus-5-5", 900)._build_cmd()
     assert cmd[cmd.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write"
+    assert_untrusted_workdir(cmd)
     assert cmd[-4:] == [
         "--permission-mode",
         "dontAsk",
@@ -301,5 +316,6 @@ def test_create_keeps_explicit_empty_restrictions(value):
     """Empty ≠ omitted (programmatic steps bypass validation): fail closed, never the Bash default."""
     cmd = ClaudeCodeBackend.create({"tools": value, "allowed_tools": value}, "", "m", 900)._build_cmd()
     assert cmd[cmd.index("--tools") + 1] == ""
+    assert_untrusted_workdir(cmd)
     assert cmd[-2:] == ["--permission-mode", "dontAsk"]
     assert "--allowedTools" not in cmd and "Bash" not in cmd

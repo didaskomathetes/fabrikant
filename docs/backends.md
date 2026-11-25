@@ -95,8 +95,12 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   - `allowed_tools` are pre-approval rules (`--allowedTools`) and switch to `--permission-mode dontAsk`: a call
     that would otherwise prompt is denied. This is not an allowlist. Calls that need no approval (file reads in
     the working directory, read-only Bash commands) still run, and so do calls approved by `permissions.allow`
-    rules in the user, project or local `settings.json` of the machine running the agent. To really keep a tool
-    out, leave it out of `tools`.
+    rules in the user `settings.json` of the machine running the agent. To really keep a tool out, leave it out
+    of `tools`.
+  - Either key also treats the working directory as untrusted, since restricted steps typically read content
+    someone else wrote (a PR head): `--setting-sources user` (no project/local settings — their hooks, `env`
+    block and `.mcp.json` servers would otherwise apply in a headless run), `--strict-mcp-config` (no MCP
+    servers) and `--settings '{"disableAllHooks": true}'` (no hooks, including the user's).
   - An empty value is rejected by validation; omit the key for the default.
 
   Example for a reviewer that may read the repo and write only its payload (`Write` exists but is not

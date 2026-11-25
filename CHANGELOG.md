@@ -13,6 +13,12 @@ All notable changes to fabrikant are documented here. The format follows
   that would prompt (calls needing no approval and `settings.json` approvals still run). Both keys accept a list
   or a comma-separated string; copilot's `tools` now accepts a list too.
 
+### Security
+
+- `claude_code` steps with `tools` or `allowed_tools` no longer load the working directory's project/local
+  settings, `.mcp.json` or any hooks (`--setting-sources user --strict-mcp-config`, hooks disabled): a PR under
+  review can no longer run commands through its own `.claude/settings.json`.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.

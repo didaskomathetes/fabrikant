@@ -16,7 +16,9 @@ ends, then done/failed. The result is a final JSON on stdout
   `Edit(/.fabrikant-session/review/review.json)`) and switch the CLI to `dontAsk`,
   which denies whatever would otherwise prompt. Not an allowlist: calls that need no
   approval (reads in the workdir, read-only Bash) and calls approved by the user/
-  project/local `settings.json` still run. `tools` does not cover MCP tools.
+  `settings.json` still run. `tools` does not cover MCP tools.
+  A restricted step also treats the working directory as untrusted (`RESTRICTED_FLAGS`):
+  no project/local settings (hooks, env, `.mcp.json`), no MCP servers, no hooks at all.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """
@@ -34,6 +36,20 @@ from ._oneshot import OneShotCliBackend, csv_arg
 def _opt_csv(value: object) -> str | None:
     """Like `csv_arg`, but an omitted key stays None — an explicit empty value must not mean "default"."""
     return None if value is None else csv_arg(value)
+
+
+# Restricted steps (`tools`/`allowed_tools`) often run on repo content someone else wrote (a PR head).
+# Headless `claude -p` ignores project `permissions.allow` rules, but still applies the project's hooks,
+# `env` block and `.mcp.json` servers — a PR adding `.claude/settings.json` could run commands despite
+# `tools`, e.g. write the reviewer's payload itself. Only user settings (the operator's) are read; MCP
+# servers and hooks (the CLI flag outranks every settings file) stay off.
+RESTRICTED_FLAGS = (
+    "--setting-sources",
+    "user",
+    "--strict-mcp-config",
+    "--settings",
+    json.dumps({"disableAllHooks": True}),
+)
 
 
 class ClaudeCodeBackend(OneShotCliBackend):
@@ -84,6 +100,8 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     def _build_cmd(self) -> list[str]:
         cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
+        if self.tools is not None or self.allowed_tools is not None:
+            cmd += RESTRICTED_FLAGS
         if self.tools is not None:
             cmd += ["--tools", self.tools]  # "" = no built-in tools at all
         if self.allowed_tools is not None:
