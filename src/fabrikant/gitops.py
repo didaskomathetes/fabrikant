@@ -671,8 +671,8 @@ def _gh_token(role: str = "dev") -> str:
 
 def _gh_request(req: urllib.request.Request) -> bytes:
     """urlopen with retry on transient network errors (DNS flakes,
-    connection reset). HTTPError (4xx/5xx) is an answer, not a flake —
-    NOT retried."""
+    connection reset) — for writes only if replay-safe (`netretry.may_replay`).
+    HTTPError (4xx/5xx) is an answer, not a flake — NOT retried."""
     waits = netretry.delays()
     for attempt in range(len(waits) + 1):
         try:
@@ -680,8 +680,8 @@ def _gh_request(req: urllib.request.Request) -> bytes:
                 return r.read()
         except urllib.error.HTTPError:
             raise
-        except (urllib.error.URLError, ConnectionError, TimeoutError):
-            if attempt == len(waits):
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            if attempt == len(waits) or not netretry.may_replay(req.get_method(), e):
                 raise
             time.sleep(waits[attempt])
     raise AssertionError("unreachable")  # pragma: no cover

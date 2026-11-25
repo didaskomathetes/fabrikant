@@ -236,7 +236,8 @@ class GitLabProvider(Provider):
         return urllib.parse.quote(r.slug, safe="")
 
     def _request(self, method: str, path: str, payload: dict | None = None, *, raw: bool = False) -> Any:
-        """A GitLab REST call with retry on transient network errors (like ``gitops._gh_request``).
+        """A GitLab REST call with retry on transient network errors (like ``gitops._gh_request``; writes
+        only if replay-safe, ``netretry.may_replay``).
 
         ``raw=True`` returns the decoded body text (for diff endpoints); otherwise the
         parsed JSON. HTTP errors (4xx/5xx) propagate as :class:`urllib.error.HTTPError`.
@@ -261,8 +262,8 @@ class GitLabProvider(Provider):
                     break
             except urllib.error.HTTPError:
                 raise
-            except (urllib.error.URLError, ConnectionError, TimeoutError):
-                if attempt == len(waits):
+            except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+                if attempt == len(waits) or not netretry.may_replay(method, e):
                     raise
                 time.sleep(waits[attempt])
         else:  # pragma: no cover

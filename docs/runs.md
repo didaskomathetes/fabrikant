@@ -79,7 +79,10 @@ retry:
 Short network blips (DNS, dropped connections) usually never reach the run retry: GitHub/GitLab API calls
 and `git fetch`/`push`/`pull` retry themselves first, with growing waits (5 s, 15 s, 30 s, 60 s; about 2 minutes
 in total, `config.NET_RETRY_DELAYS_S`). Only a network error that outlasts these waits fails the step as
-`transient`.
+`transient`. API writes are replayed only when that is safe (`netretry.may_replay`): GET/HEAD/PUT/DELETE and
+PATCH (fabrikant's PATCHes set absolute values) always, a POST (new issue, comment) only if it never reached the
+server (name resolution failed, connection refused). A timeout or reset may follow a committed POST, so it fails
+the step instead of creating a duplicate.
 
 Only classes in `on` (always a subset of `interrupted`/`transient`) trigger a retry;
 `unknown`/`outcome`/`environment` end the chain. Every attempt passes all gates again (approval, blockers) and

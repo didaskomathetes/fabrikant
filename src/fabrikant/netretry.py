@@ -4,13 +4,18 @@ A short DNS outage (e.g. Wi-Fi that resets its DNS servers) made runs fail whose
 done — for example at the push after green tests. Network calls therefore retry with growing
 waits (`config.NET_RETRY_DELAYS_S`) as long as the error is transient; only after that does the
 failure class `transient` and with it the run retry take over (ADR 0035/0036).
+
+HTTP calls replay only what is safe to send twice (:func:`may_replay`): a timeout or reset can hit
+after the server already committed a POST (a new issue or comment would then exist twice).
 """
 
 from __future__ import annotations
 
 import logging
+import socket
 import subprocess
 import time
+import urllib.error
 from collections.abc import Callable, Sequence
 
 from . import config
@@ -19,10 +24,25 @@ from .i18n import t
 
 log = logging.getLogger(__name__)
 
+# Methods whose replay leaves the same state: HTTP-idempotent ones plus PATCH — every PATCH fabrikant
+# sends sets absolute values (issue state/body/labels, comment/PR body, a ref's sha), none appends.
+REPLAY_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE", "PATCH"})
+
 
 def delays(override: Sequence[float] | None = None) -> tuple[float, ...]:
     """Waits between the attempts (length = number of retries)."""
     return tuple(config.NET_RETRY_DELAYS_S if override is None else override)
+
+
+def may_replay(method: str, exc: BaseException) -> bool:
+    """Whether a failed HTTP request may be sent again. Replay-safe methods: yes. Others (POST): only if
+    the request provably never reached the server — name resolution failed or the connection was refused
+    (urllib wraps errors while connecting as `URLError`). Timeouts and resets are ambiguous: the server may
+    have committed the write before the answer got lost."""
+    if method.upper() in REPLAY_SAFE_METHODS:
+        return True
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else None
+    return isinstance(reason, (socket.gaierror, ConnectionRefusedError))
 
 
 def run_git(

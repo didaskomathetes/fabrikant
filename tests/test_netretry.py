@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import socket
 import subprocess
+import urllib.error
 
 import pytest
 
@@ -133,3 +135,73 @@ def test_gitlab_request_retries_network_errors(monkeypatch):
     with pytest.raises(urllib.error.URLError):
         gitlab.GitLabProvider(host="gitlab.example.com")._request("GET", "/user")
     assert calls["n"] == -7
+
+
+@pytest.mark.parametrize(
+    ("method", "exc", "expected"),
+    [
+        ("GET", TimeoutError("read timed out"), True),
+        ("PATCH", ConnectionResetError("reset"), True),
+        ("put", urllib.error.URLError("x"), True),
+        ("POST", urllib.error.URLError(socket.gaierror(-3, "Temporary failure in name resolution")), True),
+        ("POST", urllib.error.URLError(ConnectionRefusedError(111, "Connection refused")), True),
+        ("POST", urllib.error.URLError(TimeoutError("timed out")), False),
+        ("POST", ConnectionResetError("reset"), False),
+        ("POST", TimeoutError("read timed out"), False),
+    ],
+)
+def test_may_replay_only_safe_methods_or_unsent_requests(method, exc, expected):
+    assert netretry.may_replay(method, exc) is expected
+
+
+def _count_urlopen(monkeypatch, module, exc: BaseException) -> dict:
+    calls = {"n": 0}
+
+    def fail(req, timeout=None):
+        calls["n"] += 1
+        raise exc
+
+    monkeypatch.setattr(config, "NET_RETRY_DELAYS_S", (0, 0))
+    monkeypatch.setattr(module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(module.httpsafe, "urlopen", fail)
+    return calls
+
+
+def _github_post():
+    from fabrikant import gitops
+
+    gitops._gh_api("POST", "https://api.github.com/repos/o/r/issues", "tok", {"title": "t"})
+
+
+def _gitlab_post():
+    from fabrikant.hosting import gitlab
+
+    gitlab.GitLabProvider(host="gitlab.example.com")._request("POST", "/projects/1/issues", {"title": "t"})
+
+
+@pytest.mark.parametrize("post", [_github_post, _gitlab_post])
+def test_post_is_not_replayed_after_ambiguous_error(monkeypatch, post):
+    """Regression: a reset while reading the answer can follow a committed write — replaying the POST
+    would create the issue/comment twice."""
+    from fabrikant import gitops
+    from fabrikant.hosting import gitlab
+
+    monkeypatch.setenv(gitlab.TOKEN_ENV, "tok")
+    calls = _count_urlopen(monkeypatch, gitops if post is _github_post else gitlab, ConnectionResetError("reset"))
+    with pytest.raises(ConnectionResetError):
+        post()
+    assert calls["n"] == 1
+
+
+@pytest.mark.parametrize("post", [_github_post, _gitlab_post])
+def test_post_is_retried_when_it_never_left(monkeypatch, post):
+    """DNS down: the request never reached the server — a replay cannot duplicate anything."""
+    from fabrikant import gitops
+    from fabrikant.hosting import gitlab
+
+    monkeypatch.setenv(gitlab.TOKEN_ENV, "tok")
+    dns = urllib.error.URLError(socket.gaierror(-3, "Temporary failure in name resolution"))
+    calls = _count_urlopen(monkeypatch, gitops if post is _github_post else gitlab, dns)
+    with pytest.raises(urllib.error.URLError):
+        post()
+    assert calls["n"] == 3
