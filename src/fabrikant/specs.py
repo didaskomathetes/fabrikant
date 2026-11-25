@@ -182,7 +182,7 @@ def save_spec(
     ``dry_run``: run every check but leave the file untouched (proposal validation).
     ``backup``: copy the previous file to ``<file>.bak`` before replacing it.
     """
-    spec = load_projects().get(name)
+    spec = load_project(name)
     if not spec:
         raise KeyError(_t("specs.unknown_project", name=name))
     if spec.get("_error"):
@@ -699,6 +699,32 @@ def collect_projects(files: list[Path] | None = None, *, check_root: bool = True
         spec.setdefault("_path", str(f))
         projects[name] = spec
     return projects, conflicts
+
+
+def _declared_name(path: Path) -> str:
+    """Project name of a spec file without expanding/validating it (``name:`` or the file-derived default)."""
+    try:
+        name = load_spec_raw(path).get("name")
+    except Exception:
+        name = None
+    return str(name) if name else spec_sources.default_name(path)
+
+
+def load_project(name: str) -> dict | None:
+    """Load a single project (like ``load_projects().get(name)``) without loading every other spec.
+
+    The first source file declaring ``name`` wins (same priority as :func:`collect_projects`); a broken
+    spec is returned marked with ``_error``; unknown → ``None``."""
+    for f in spec_sources.spec_files():
+        if _declared_name(f) != name:
+            continue
+        try:
+            spec = load_spec(f)
+        except Exception as e:
+            spec = {"name": name, "_error": str(e)}
+        spec.setdefault("_path", str(f))
+        return branches.apply_overrides({name: spec})[name]
+    return None
 
 
 def load_projects() -> dict[str, dict]:

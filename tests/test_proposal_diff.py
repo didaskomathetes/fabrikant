@@ -83,6 +83,16 @@ def test_diff_errors_when_patch_no_longer_validates(spec_file):
     assert "unknown" in proposal_diff.compute_diff(pr).error
 
 
+def test_load_project_matches_load_projects(spec_file):
+    assert specs.load_project("uitest") == specs.load_projects()["uitest"]
+    assert specs.load_project("ghost") is None
+
+
+def test_detail_payload_keeps_base_hash(spec_file):
+    pr = _propose(spec_file, {"loops": {"new": NEW_LOOP}})
+    assert proposal_diff.compute_diff(pr).to_dict()["base_hash"] == pr.base_hash
+
+
 def test_decided_proposal_has_metadata_only(spec_file):
     pr = sp.reject(_propose(spec_file, {"loops": {"new": NEW_LOOP}}).id, "ui:x")
     diff = proposal_diff.compute_diff(pr)
@@ -95,7 +105,8 @@ def test_list_and_get_endpoints(fabrikant_url, spec_file):
     status, body, _ = _req(fabrikant_url + PROPOSALS)
     listed = json.loads(body)["proposals"]
     assert status == 200 and [p["id"] for p in listed] == [pr.id] and "patch" not in listed[0]
-    assert listed[0]["changes"] == ["loop new: set"] and listed[0]["loops"] == []
+    assert listed[0]["changes"] == ["loop new: set"]
+    assert not {"loops", "fields", "stale", "error", "base_hash"} & listed[0].keys()
     assert json.loads(_req(fabrikant_url + PROPOSALS + "?project=other")[1])["proposals"] == []
     assert json.loads(_req(fabrikant_url + PROPOSALS + "?status=applied")[1])["proposals"] == []
     assert _req(fabrikant_url + PROPOSALS + "?status=bogus")[0] == 400

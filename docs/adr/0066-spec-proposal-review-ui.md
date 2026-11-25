@@ -1,7 +1,7 @@
 # ADR 0066: Spec-Proposal Review in the Web UI
 
 **Status:** Proposed (2026-11-23)
-**Betrifft:** ADR 0064 (MCP server, spec proposals), ADR 0030 (auth/roles/CSRF), ADR 0055 (UI event handling)
+**Relates to:** ADR 0064 (MCP server, spec proposals), ADR 0030 (auth/roles/CSRF), ADR 0055 (UI event handling)
 
 ## Context
 
@@ -15,12 +15,14 @@ visibility, and a reviewer needs to see *what would change*, not the patch.
 - **Server-side diff.** `fabrikant.proposal_diff` runs the patch through the same dry run as the CLI
   (`save_spec(..., dry_run=True)`) and compares the validated result with the spec on disk: per loop
   added / removed / changed (before/after YAML plus a unified line diff) and changed top-level
-  `description` / `max_parallel`. Values of secret-looking keys are masked before rendering
-  (`secrets.redact_secret_keys`, shared with the MCP server), so a secret never reaches the browser or the
-  diff lines. The proposal's raw `patch` is never sent.
+  `description` / `max_parallel`. Secret masking is key-name based
+  (values of secret-looking keys are replaced, via `secrets.is_secret_key`, shared with the MCP server)
+  plus pattern scrubbing of every remaining string (`secrets.redact_text`). The mask carries a salted,
+  per-process fingerprint (`***redacted#a1b2c3***`), so a *changed* secret is visible to the reviewer
+  without revealing it. A secret never reaches the browser or the diff lines. The proposal's raw `patch` is never sent.
 - **Stale detection.** `stale` is true when the current spec hash differs from the proposal's `base_hash`.
   The diff is still shown (against today's spec) but apply is refused.
-- **Endpoints** (`/api/spec-proposals`): `GET ?project=&status=` (metadata list, default pending),
+- **Endpoints** (`/api/spec-proposals`): `GET ?project=&status=` (metadata-only list, default pending: no diff, no `base_hash`),
   `GET /<id>` (with diff), `POST /<id>/apply`, `POST /<id>/reject`. Reads need `viewer`, decisions
   `operator` (the role that may edit specs via `PUT /api/projects/<p>/spec`), with the usual session
   CSRF rules. Apply/reject call `spec_proposals.apply/reject`, i.e. the CLI code path (atomic write,

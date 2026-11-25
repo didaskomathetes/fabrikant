@@ -15,12 +15,13 @@ import io
 import os
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
+from pathlib import Path
 
 from ruamel.yaml import YAML
 
 from .secrets import MASKED_VALUE, is_secret_key, redact_text
 from .spec_proposals import ProposalStatus, SpecProposal
-from .specs import SpecUpdate, load_projects, save_spec, spec_hash, spec_path
+from .specs import SpecUpdate, load_project, save_spec, spec_hash
 
 TOP_LEVEL_FIELDS = ("description", "max_parallel")
 DIFF_CONTEXT_LINES = 3
@@ -55,26 +56,49 @@ class FieldChange:
 
 
 @dataclass
-class ProposalDiff:
-    """A proposal's metadata plus what applying it would change. ``stale``: the spec moved on."""
+class ProposalMeta:
+    """A proposal's metadata only (list payloads): no patch, no diff, no spec contents."""
 
     id: str
     project: str
     proposed_by: str
     created: str
     status: str
-    base_hash: str
     decided_by: str = ""
     decided: str = ""
-    stale: bool = False
     changes: list[str] = field(default_factory=list)  # value-free summary from the proposal
+
+    @classmethod
+    def from_proposal(cls, proposal: SpecProposal) -> ProposalMeta:
+        return cls(
+            id=proposal.id,
+            project=proposal.project,
+            proposed_by=proposal.proposed_by,
+            created=proposal.created,
+            status=str(proposal.status),
+            decided_by=proposal.decided_by,
+            decided=proposal.decided,
+            changes=list(proposal.changes),
+        )
+
+    def to_dict(self) -> dict:
+        """JSON-able form."""
+        return asdict(self)
+
+
+@dataclass
+class ProposalDiff(ProposalMeta):
+    """Detail view: the metadata plus what applying the proposal would change. ``stale``: the spec moved on."""
+
+    base_hash: str = ""
+    stale: bool = False
     error: str = ""  # why no diff could be computed (e.g. the patch no longer validates)
     loops: list[LoopChange] = field(default_factory=list)
     fields: list[FieldChange] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """JSON-able form, including per-kind counts for the summary line."""
-        out = asdict(self)
+        out = super().to_dict()
         out["counts"] = {k.value: sum(1 for c in self.loops if c.kind is k) for k in ChangeKind}
         return out
 
@@ -138,31 +162,21 @@ def _field_changes(current: dict, proposed: dict) -> list[FieldChange]:
     ]
 
 
-def proposal_meta(proposal: SpecProposal) -> ProposalDiff:
-    """Metadata only (no patch, no diff: cheap and free of spec contents, for lists)."""
-    return ProposalDiff(
-        id=proposal.id,
-        project=proposal.project,
-        proposed_by=proposal.proposed_by,
-        created=proposal.created,
-        status=str(proposal.status),
-        base_hash=proposal.base_hash,
-        decided_by=proposal.decided_by,
-        decided=proposal.decided,
-        changes=list(proposal.changes),
-    )
+def proposal_meta(proposal: SpecProposal) -> ProposalMeta:
+    """Metadata only (cheap and free of spec contents, for lists)."""
+    return ProposalMeta.from_proposal(proposal)
 
 
 def compute_diff(proposal: SpecProposal) -> ProposalDiff:
     """Diff ``proposal`` against the spec on disk (only for pending proposals; others carry metadata only)."""
-    result = proposal_meta(proposal)
+    result = ProposalDiff(**vars(proposal_meta(proposal)), base_hash=proposal.base_hash)
     if proposal.status is not ProposalStatus.PENDING:
         return result
     try:
-        current = load_projects().get(proposal.project)
+        current = load_project(proposal.project)
         if not current or current.get("_error"):
             raise KeyError(proposal.project)
-        result.stale = spec_hash(spec_path(proposal.project)) != proposal.base_hash
+        result.stale = spec_hash(Path(current["_path"])) != proposal.base_hash
         # No base_hash here: a stale proposal still shows what its patch would do to today's spec.
         proposed = save_spec(proposal.project, SpecUpdate.from_payload(proposal.patch), dry_run=True)
     except KeyError:
