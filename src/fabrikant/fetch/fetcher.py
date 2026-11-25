@@ -68,10 +68,10 @@ class FetchResult:
     source_path: Path | None = None
     fetched_at: str | None = None
     content_type: str | None = None
-    reason: str | None = None  # für not_fetched / error
+    reason: str | None = None  # for not_fetched / error
     snippet: str = ""
-    domain: str = ""  # Host der URL (für Freigabe/Domain-Statistik)
-    found_in: str = ""  # Provenance: wo die URL herkam (source-id / "search" / "agent")
+    domain: str = ""  # host of the URL (for approval/domain statistics)
+    found_in: str = ""  # provenance: where the URL came from (source-id / "search" / "agent")
 
     @property
     def ok(self) -> bool:
@@ -118,13 +118,13 @@ def _is_blocked_ip(ip_str: str) -> bool:
 
 
 def assert_public_url(url: str) -> tuple[str, str]:
-    """URL validieren (http/https, Host auflösen, keine privaten/loopback IPs).
+    """Validate a URL (http/https, resolvable host, no private/loopback IPs).
 
-    Liefert ``(host, url)``; wirft :class:`ValueError` bei Verstoß.
+    Returns ``(host, url)``; raises :class:`ValueError` on violation.
     """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"Scheme {parsed.scheme!r} nicht erlaubt (nur http/https)")
+        raise ValueError(f"Scheme {parsed.scheme!r} not allowed (http/https only)")
     host = parsed.hostname
     if not host:
         raise ValueError("URL hat keinen Host")
@@ -133,11 +133,11 @@ def assert_public_url(url: str) -> tuple[str, str]:
             host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP
         )
     except socket.gaierror as e:
-        raise ValueError(f"Host {host!r} nicht auflösbar: {e}") from e
+        raise ValueError(f"Host {host!r} not resolvable: {e}") from e
     for info in infos:
         ip = str(info[4][0])
         if _is_blocked_ip(ip):
-            raise ValueError(f"SSRF-Schutz: {host!r} auflöst auf blockierte Adresse {ip} (privat/loopback/link-local)")
+            raise ValueError(f"SSRF-Schutz: {host!r} resolves to blocked address {ip} (private/loopback/link-local)")
     return host, url
 
 
@@ -204,7 +204,7 @@ def _header_safe(text: str) -> str:
 
 
 class Fetcher:
-    """Ein gehärteter Fetcher mit Auto-Freigaben, SSRF-Schutz und Herkunftsprotokoll."""
+    """A hardened fetcher with auto-approvals, SSRF protection and a provenance log."""
 
     def __init__(
         self,
@@ -228,7 +228,7 @@ class Fetcher:
 
     # --- Auto-Freigabe (ADR 0060 §3) ---
     def is_approved(self, url: str) -> bool:
-        """Herkunft (explizite approved_urls) + approved_domains. Sonst: kein Fetch."""
+        """Provenance (explicit approved_urls) + approved_domains. Otherwise: no fetch."""
         if url in self.approved_urls:
             return True
         host = urllib.parse.urlsplit(url).hostname or ""
@@ -236,7 +236,7 @@ class Fetcher:
 
     # --- HTTP ---
     def _http_get(self, url: str) -> tuple[bytes, str]:
-        """Geprüftes HTTP-Get; liefert ``(body, content_type)``."""
+        """Checked HTTP GET; returns ``(body, content_type)``."""
         req = urllib.request.Request(
             url, headers={"User-Agent": DEFAULT_UA, "Accept": "text/html,text/plain,application/json,*/*;q=0.8"}
         )
@@ -393,11 +393,11 @@ def _dedupe(findings: list[ScanFinding]) -> list[ScanFinding]:
 
 
 def results_to_pending(results: Iterable[FetchResult]) -> list[PendingURL]:
-    """``not_fetched``-Ergebnisse → ``PendingURL``-Liste (für :func:`bundle_access`).
+    """``not_fetched`` results → ``PendingURL`` list (for :func:`bundle_access`).
 
-    Nur URLs, die weder automatisch freigegeben noch abgerufen wurden, landen im
-    gebündelten ``access``-Request (ADR 0060 §3). ``found_in`` = Provenance-Quelle,
-    ``why`` = der Nicht-Freigabe-Grund.
+    Only URLs that were neither auto-approved nor fetched end up in the
+    bundled ``access`` request (ADR 0060 §3). ``found_in`` = provenance source,
+    ``why`` = the reason it was not approved.
     """
     out: list[PendingURL] = []
     for r in results:

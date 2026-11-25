@@ -44,7 +44,7 @@ _REVIEW_TEMPLATE = (
 DEFAULT_REVIEW_BACKEND = "opencode"
 # This many findings are named in the summary of a failed review.
 SUMMARY_FINDINGS = 5
-# Status-Vokabular der AC-Verifikation (ADR 0013 Stufe 2).
+# Status vocabulary of the AC verification (ADR 0013 stage 2).
 ACCEPTANCE_STATUSES = ("met", "unmet", "unverifiable")
 
 

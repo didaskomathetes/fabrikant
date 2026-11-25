@@ -87,12 +87,12 @@ def is_write_credential(env_key: str) -> bool:
 # --- Modelle -------------------------------------------------------------------
 @dataclass(frozen=True)
 class FetchProfile:
-    """Die ``fetch``-Seite eines Profils: was der Fetcher darf."""
+    """The ``fetch`` side of a profile: what the fetcher may do."""
 
     approved_domains: tuple[str, ...] = ()
     fetches_per_session: int = DEFAULT_FETCHES_PER_SESSION
     queries_per_session: int = DEFAULT_QUERIES_PER_SESSION
-    has_classifier: bool = False  # Stufe C (optional), nur Flag
+    has_classifier: bool = False  # stage C (optional), flag only
 
     @classmethod
     def from_dict(cls, data: object) -> FetchProfile | None:
@@ -122,7 +122,7 @@ class FetchProfile:
 
 @dataclass
 class AccessProfile:
-    """Ein vollständiges Zugriffsprofil (Name + alle drei Seiten)."""
+    """A complete access profile (name + all three sides)."""
 
     name: str
     fetch: FetchProfile | None = None
@@ -131,7 +131,7 @@ class AccessProfile:
     tools: tuple[str, ...] = ()
 
     def carries_write_credentials(self) -> bool:
-        """True, wenn die ``env``-Seite ein Schreib-Credential trägt (Validierung, §4)."""
+        """True if the ``env`` side carries a write credential (validation, §4)."""
         return any(is_write_credential(k) for k in self.env)
 
     def to_dict(self) -> dict:
@@ -166,7 +166,7 @@ class AccessProfile:
 
 # --- Spec-Parsing & Resolution -------------------------------------------------
 def parse_access_spec(spec: object) -> dict[str, AccessProfile]:
-    """Der ``access:``-Block der Spec → {name: AccessProfile}. Defensive: ``{}`` bei Bad."""
+    """The ``access:``-block of the spec → {name: AccessProfile}. Defensive: ``{}`` on bad input."""
     if not isinstance(spec, dict):
         return {}
     raw = spec.get("access")
@@ -183,7 +183,7 @@ def parse_access_spec(spec: object) -> dict[str, AccessProfile]:
 
 
 def profile_names_for_loop(spec: object, loop_name: str) -> list[str]:
-    """Welche Profile ein Loop hat (``loops.<loop>.access``; Relay ist Sonderfall)."""
+    """Which profiles a loop has (``loops.<loop>.access``; relay is a special case)."""
     if not isinstance(spec, dict) or not _s(loop_name):
         return []
     raw: object = None
@@ -196,23 +196,23 @@ def profile_names_for_loop(spec: object, loop_name: str) -> list[str]:
 
 
 def resolve_profiles(spec: object, loop_name: str) -> list[AccessProfile]:
-    """Profilnamen des Loops → Profile-Definitionen (unbekannte Namen werden weggelassen)."""
+    """Loop profile names → profile definitions (unknown names are omitted)."""
     profiles = parse_access_spec(spec)
     return [profiles[n] for n in profile_names_for_loop(spec, loop_name) if n in profiles]
 
 
 def validate_access_spec(spec: object) -> list[str]:
-    """Spec-Validierung (ADR 0060 §4).
+    """Spec validation (ADR 0060 §4).
 
-    Regel: Ein Profil mit ``egress`` und ein Profil mit ``fetch`` dürfen nicht im selben
-    Loop kombiniert werden, wenn das ``egress``-Profil Schreib-Credentials trägt. Wer
-    fremde Inhalte liest, bekommt keine Schreibrechte auf Systeme außerhalb des Branches.
+    Rule: a profile with ``egress`` and a profile with ``fetch`` must not be combined in
+    the same loop if the ``egress`` profile carries write credentials. Whoever reads
+    foreign content gets no write access to systems outside the branch.
     """
     problems: list[str] = []
     profiles = parse_access_spec(spec)
     if not isinstance(spec, dict):
-        return ["spec ist kein Dict"]
-    # Pro Loop: fetch-Profile + egress-Profil mit Write-Creds → Konflikt.
+        return ["spec is not a dict"]
+    # Per loop: fetch profiles + egress profile with write creds → conflict.
     loop_map: dict[str, list[str]] = {}
     loops = spec.get("loops")
     if isinstance(loops, dict):
@@ -228,18 +228,18 @@ def validate_access_spec(spec: object) -> list[str]:
         ]
         if fetch_profs and write_egress:
             problems.append(
-                f"Loop {loop_name!r}: fetch-Profil {fetch_profs} + egress-Profil mit Write-Credentials {write_egress} "
-                f"dürfen nicht kombiniert werden (ADR 0060 §4)"
+                f"Loop {loop_name!r}: fetch profile {fetch_profs} + egress profile with write credentials {write_egress} "
+                f"must not be combined (ADR 0060 §4)"
             )
     return problems
 
 
 # --- Fetcher-Anbindung ---------------------------------------------------------
 def fetcher_config_for(profiles: list[AccessProfile]) -> dict:
-    """Merged Fetcher-Konfig aus aktiven Profilen.
+    """Merged fetcher config from active profiles.
 
-    Domains = Union; Limits = das strenge Minimum (der restriktivste Wert gewinnt).
-    Ohne ``fetch``-Profil → leere Domains (nichts freigegeben).
+    Domains = union; limits = the strictest minimum (the most restrictive value wins).
+    Without a ``fetch`` profile → empty domains (nothing approved).
     """
     fetch_profs = [p.fetch for p in profiles if p.fetch is not None]
     if not fetch_profs:
@@ -258,10 +258,10 @@ def fetcher_config_for(profiles: list[AccessProfile]) -> dict:
     }
 
 
-# --- Stufe 4: Einmalige Grants -------------------------------------------------
+# --- Stage 4: one-time grants -------------------------------------------------
 @dataclass
 class Grant:
-    """Ein einmaliger Grant für ein Profil, gültig für ein Item mit Ablauf."""
+    """A one-time grant for a profile, valid for one item, with expiry."""
 
     profile_name: str
     item: str  # z. B. "PR #123" / "Relay-Task #45"
@@ -278,7 +278,7 @@ class Grant:
         return True
 
     def record_use(self) -> None:
-        """Eine Nutzung protokollieren (zählt gegen ``max_sessions``)."""
+        """Record one use (counts against ``max_sessions``)."""
         if self.max_sessions is not None:
             self.used_sessions += 1
 
@@ -313,7 +313,7 @@ class Grant:
 
 
 def _parse_dt(x: object) -> datetime | None:
-    # Naive Datetimes gelten als UTC, damit Aware/Naive-Vergleiche nie crashen.
+    # Naive datetimes are treated as UTC so aware/naive comparisons never crash.
     if isinstance(x, datetime):
         return x if x.tzinfo is not None else x.replace(tzinfo=UTC)
     if isinstance(x, str):
@@ -342,7 +342,7 @@ class GrantStore:
     ) -> Grant:
         if ttl_hours is None and max_sessions is None:
             raise ValueError(
-                "Grant braucht eine Bound (ttl_hours oder max_sessions) — forever-Grants sind nicht erlaubt (ADR 0060 §5)"
+                "Grant needs a bound (ttl_hours or max_sessions) — forever grants are not allowed (ADR 0060 §5)"
             )
         g = Grant(
             profile_name=profile_name,
@@ -361,13 +361,13 @@ class GrantStore:
         return {g.profile_name for g in self.active_grants(now)}
 
     def effective_profiles(self, spec: object, loop_name: str, now: datetime) -> list[AccessProfile]:
-        """Statische Loop-Profile + aktive Grant-Profile (Grants für definierte Profile nur)."""
+        """Static loop profiles + active grant profiles (grants for defined profiles only)."""
         profiles = parse_access_spec(spec)
         names = set(profile_names_for_loop(spec, loop_name)) | self.active_profile_names(now)
         return [profiles[n] for n in sorted(names) if n in profiles]
 
     def record_usage(self, profile_name: str, item: str, now: datetime) -> bool:
-        """Nutzung eines Grants protokollieren. True, wenn ein passender aktiver Grant gezählt wurde."""
+        """Record a grant use. True if a matching active grant was counted."""
         for g in self.active_grants(now):
             if g.profile_name == profile_name and g.item == item:
                 g.record_use()
@@ -387,7 +387,7 @@ class GrantStore:
         return cls([g for g in (Grant.from_dict(x) for x in raw) if g is not None])
 
 
-# Re-Export für Tests/CLI
+# re-export for tests/CLI
 __all__ = [
     "DEFAULT_FETCHES_PER_SESSION",
     "DEFAULT_QUERIES_PER_SESSION",

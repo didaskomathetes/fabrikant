@@ -48,7 +48,7 @@ def fabrikant_url() -> str:
 
 @dataclass(frozen=True)
 class AgentRole:
-    """Backend/Modell einer Relay-Rolle (Builder = Sessions, Reviewer = Audit)."""
+    """Backend/model of a relay role (builder = sessions, reviewer = audit)."""
 
     backend: str | None = None
     model: str | None = None
@@ -109,7 +109,7 @@ def _positive(raw: Any, default: int, where: str, errs: list[str]) -> int:
 
 @dataclass(frozen=True)
 class RelayConfig:
-    """Typisierter `relay:`-Block (Defaults projektneutral, `allowed` ist Pflicht)."""
+    """Typed `relay:` block (project-neutral defaults, `allowed` is required)."""
 
     project: str
     repo: str

@@ -69,7 +69,7 @@ def _heuristic_reasons(files: list[FileChange], step: dict) -> list[str]:
 
 
 def _llm_reason(files: list[FileChange], diff: str, ctx: dict, step: dict, emit) -> tuple[str | None, dict]:
-    """LLM-Meinung. Liefert (grund|None, llm-result). None = nicht kritisch."""
+    """LLM opinion. Returns (reason|None, llm result). None = not critical."""
     file_list = "\n".join(f"- {f.path} (+{f.additions}/-{f.deletions})" for f in files[:100])
     prompt = t("human_gate.llm_prompt").replace("{files}", file_list).replace("{diff}", _cap(diff))
     res = _step_llm(

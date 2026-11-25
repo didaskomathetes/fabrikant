@@ -93,7 +93,7 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     tail = _redact("\n".join((stdout or p.stderr or "").strip().splitlines()[-8:]))
     if p.returncode != 0:
         return failed(
-            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'kein Output'}",
+            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'no output'}",
             _exit_kind(p.returncode, step),
             exit_code=p.returncode,
             output=_cap(out),

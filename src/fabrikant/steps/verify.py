@@ -33,7 +33,7 @@ def _step_verify(ctx: dict, step: dict, emit) -> dict:
         return {"ok": True, "verify": [], "summary": t("steps.verify.verify_no_checks_defined_empty_2")}
 
     results: list[dict] = []
-    kinds: list[Failure] = []  # Klassen der roten Checks (ADR 0035); unklassifiziert rot → outcome
+    kinds: list[Failure] = []  # classes of the failing checks (ADR 0035); unclassified red → outcome
     for i, chk in enumerate(checks):
         if not isinstance(chk, dict) or "type" not in chk:
             name = str(chk.get("name")) if isinstance(chk, dict) and chk.get("name") else f"check-{i + 1}"

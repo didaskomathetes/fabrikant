@@ -334,7 +334,7 @@ class RunOutcome:
 
     run_id: str  # starts with the start time → lexicographically sortable
     published: bool  # publish/audit-publish went through (progress is on the branch)
-    failure_kind: FailureKind | None = None  # ADR 0035; None = `unknown` (Altbestand / nicht klassifiziert)
+    failure_kind: FailureKind | None = None  # ADR 0035; None = `unknown` (legacy / unclassified)
     finished: datetime | None = None
     retry_after: datetime | None = None  # ADR 0035: earliest sensible attempt (only for `transient`)
 

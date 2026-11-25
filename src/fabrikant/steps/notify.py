@@ -199,7 +199,7 @@ def _find_open_alert(provider: Provider, gh: str, labels: list[str], marker: str
                 continue
             if marker in it.body:
                 return it.number
-        if len(issues) < per_page:  # letzte Seite → kein Match
+        if len(issues) < per_page:  # last page → no match
             return None
         if page >= config.ALERT_LOOKUP_MAX_PAGES:  # Rate-Limit-Schutz: Lookup abbrechen
             log.warning(

@@ -58,13 +58,13 @@ from ..runmodel import FailureKind
 from .pr import _normalize_labels
 
 ACTIONS = ("create", "edit", "label", "close", "list", "block")
-_NUMBERLESS = ("create", "list")  # Actions ohne Pflicht-`number`
+_NUMBERLESS = ("create", "list")  # actions without a required `number`
 _STATES = ("open", "closed")
 _CLOSE_REASONS = ("completed", "not_planned", "duplicate")
 _PER_PAGE = 100  # host maximum for list endpoints
 LIST_LIMIT = 100  # list: default upper bound (prompt size stays bounded)
-LIST_MAX_PAGES = 5  # list: harte Obergrenze der Pagination (≤ 500 Issues)
-LIST_BODY_CHARS = 200  # list: Body-Auszug pro Issue
+LIST_MAX_PAGES = 5  # list: hard upper bound on pagination (≤ 500 issues)
+LIST_BODY_CHARS = 200  # list: body excerpt per issue
 # block: at most 5 blocked_by (dependencies prompt, ADR 0031); more is LLM noise.
 # The prerequisite (`prerequisite`) is added separately and never falls under the limit.
 MAX_BLOCKERS = 5
@@ -128,7 +128,7 @@ def _step_issue(ctx: dict, step: dict) -> dict:
         return _HANDLERS[action](ctx, step, repo, number, provider)
     except urllib.error.HTTPError as e:
         detail = ""
-        with contextlib.suppress(Exception):  # Body-Read ist best-effort
+        with contextlib.suppress(Exception):  # body read is best-effort
             detail = e.read().decode()[:300]
         return _fail(f"{action} fehlgeschlagen (HTTP {e.code}): {detail}", classify_http(e.code, e.headers))
 

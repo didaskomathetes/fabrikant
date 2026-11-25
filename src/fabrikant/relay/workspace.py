@@ -408,7 +408,7 @@ class Workspace:
         return p.returncode == 0
 
     def publish_audit(self) -> str | None:
-        """Report + Blind-Evidenz (:func:`copy_evidence`) aus `.fabrikant-session/audit/` ins Relay-Verzeichnis kopieren."""
+        """Copy the report + blind evidence (:func:`copy_evidence`) from `.fabrikant-session/audit/` into the relay directory."""
         src = self.session / "audit"
         report = src / AUDIT_REPORT
         if not report.is_file():

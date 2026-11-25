@@ -76,7 +76,7 @@ class _PipeDrain:
             self._error = e
 
     def result(self) -> tuple:
-        """Wartet auf EOF beider Streams → `(stdout, stderr)`."""
+        """Waits for EOF on both streams → `(stdout, stderr)`."""
         self._thread.join()
         if self._error is not None:
             raise self._error

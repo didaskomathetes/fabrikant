@@ -313,7 +313,7 @@ class OpenCodeBackend:
         return _t("backends.opencode.is_opencode_serve_running_default", base=base, v2=self.endpoint)
 
     def unhealthy_kind(self) -> FailureKind:
-        """Abgelehnte Auth (401/403) → `environment`; Server nicht erreichbar → `transient`."""
+        """Rejected auth (401/403) → `environment`; server unreachable → `transient`."""
         kinds = {classify_exception(e).kind for e in self._probe_errors}
         return FailureKind.ENVIRONMENT if FailureKind.ENVIRONMENT in kinds else FailureKind.TRANSIENT
 
@@ -373,8 +373,8 @@ class OpenCodeBackend:
                 created = (info.get("time") or {}).get("created")
                 if created:
                     age = time.time() - created / 1000
-                    # CPU-Boxen: erstes Token kann >5 Min dauern (Prompt-Processing) —
-                    # Threshold konfigurierbar (step.stale_after / FABRIKANT_AGENT_STALE_AFTER)
+                    # CPU boxes: the first token can take >5 min (prompt processing) —
+                    # threshold is configurable (step.stale_after / FABRIKANT_AGENT_STALE_AFTER)
                     if age > self.stale_after:
                         # `retryable`: a hanging model/server is transient —
                         # a fresh session heals it (agent step retry, ADR 0035).

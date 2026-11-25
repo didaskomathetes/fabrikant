@@ -339,7 +339,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
         handoff.verify_sha256 = brief.verify_sha256
         notes.append(t("relay.commands.adopted_new_verify_version"))
     if handoff.status is not Status.ACTIVE:
-        notes.append(f"fortgesetzt nach `{handoff.status}` (Label entfernt)")
+        notes.append(f"resumed after `{handoff.status}` (label removed)")
         handoff.status, handoff.blocked_reason = Status.ACTIVE, ""
     handoff.session += 1
     handoff.last_session = ctx.now
@@ -525,7 +525,7 @@ def audit_reveal(ctx: RelayContext, issue: int) -> str:
 
 
 def parse_verdict(report: str | None) -> str:
-    """Letzter `<!-- relay-audit verdict=… -->`-Marker; fehlt er → fail."""
+    """Letzter `<!-- relay-audit verdict=… -->`-Marker; if missing → fail."""
     found = _VERDICT_RE.findall(report or "")
     return found[-1] if found else "fail"
 
@@ -632,7 +632,7 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
         new = status.with_pr_trail(body, block)
         if new != body:
             ctx.github.set_pr_body(pr, new)
-        return f" · PR #{pr}: Trail-Link " + ("gesetzt" if ref else "entfernt")
+        return f" · PR #{pr}: trail link " + ("set" if ref else "removed")
     except (GitHubError, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_pr_body_not"), issue, e)
         return t("relay.commands.pr_body_not_updated")

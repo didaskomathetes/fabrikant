@@ -333,7 +333,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
             )
             be.send_prompt(sid, prompt, workdir)
             if attempt == 0:
-                _emit_agent_prompt(emit, prompt)  # Prompt nur 1× loggen
+                _emit_agent_prompt(emit, prompt)  # log the prompt only once
                 if lg is not None:  # Full text for the transcript (UI), redacted in the SessionLog
                     lg.event("prompt", step_name=sname, step_type="agent", text=prompt)
             last: dict = {}
@@ -440,13 +440,13 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 if tools:
                     extra += f" · Tools: {', '.join(tools[:8])}"
                 return failed(
-                    f"agent timeout nach {timeout}s (session {sid}){extra}",
+                    f"agent timeout after {timeout}s (session {sid}){extra}",
                     progress.timeout_kind(time.time(), stale_after, observable=not isinstance(be, OneShotCliBackend)),
                     usage=usage,
                 )
             if last["status"] != "done":
                 continue  # Retry path (transient error) → next for iteration
-            # done: Rest der Konversation ins Log (letzte Message war "in Progress").
+            # done: flush the rest of the conversation to the log (last message was "in progress").
             messages = be.transcript(sid, workdir)
             _emit_new_agent_messages(emit, messages, emitted_n, flush=True)
             if lg is not None:
@@ -482,7 +482,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
         # for loop ended without return = unreachable (every path breaks off).
         raise RuntimeError(_t("steps.agent.agent_retry_loop_without_result", backend_name=backend_name, sid=sid))
     except Exception:
-        if sid:  # Orphan-Schutz: Exception mid-Run bricht die Session ab (H3)
+        if sid:  # orphan guard: an exception mid-run aborts the session (H3)
             try:
                 be.cancel(sid, workdir)
                 emit(_t("steps.agent.agent_session_aborted_after_exception", sid=sid))

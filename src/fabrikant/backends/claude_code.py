@@ -40,11 +40,11 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     # ------------------------------------------------------------------ Hooks
     def _env(self) -> dict:
-        """Eigene Auth der Claude-Code-CLI explizit durchreichen (ADR 0050)."""
+        """Explicitly pass through the Claude Code CLI's own auth (ADR 0050)."""
         return passthrough(CLAUDE_AUTH_VARS)
 
     def billing(self) -> Billing:
-        """API-Key → ``api`` (gewinnt im ``-p``-Modus immer), OAuth-Token des Abos → ``subscription``."""
+        """API key → ``api`` (always wins in ``-p`` mode), subscription OAuth token → ``subscription``."""
         return from_auth(
             self._env(), api=("ANTHROPIC_API_KEY",), subscription=("CLAUDE_CODE_OAUTH_TOKEN",), api_wins=True
         )

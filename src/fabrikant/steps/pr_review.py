@@ -353,7 +353,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     max_rounds = max(0, int(step.get("max_rounds", 2))) + int(ctx.get(GRANT_ROUNDS_CTX, 0) or 0)
     pushed_sha = ""  # head after the last fix round; empty = round 1
 
-    previous: list[dict] = []  # Findings der Vorrunde (Konvergenz, ADR 0039)
+    previous: list[dict] = []  # findings of the previous round (convergence, ADR 0039)
 
     for round_i in range(max_rounds + 1):
         if pushed_sha and not _wait_for_head(dev_provider, repo, pr_number, pushed_sha):
@@ -381,7 +381,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
                 usage=res.get("usage"),
             )
         review_field = _review_field(verdict, (step.get("model") or "").strip(), pr=pr_number, round=round_i + 1)
-        acceptance_block = _format_acceptance(verdict["acceptance"])  # unverifiable sichtbar, blockiert nicht
+        acceptance_block = _format_acceptance(verdict["acceptance"])  # unverifiable is shown, does not block
         if verdict["verdict"] == "approved":
             body = verdict.get("summary") or "approved"
             if acceptance_block:
