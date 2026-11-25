@@ -25,4 +25,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("runs", "golden")  # SQLite ≥ 3.35 / PostgreSQL: natives DROP COLUMN
+    with op.batch_alter_table("runs") as batch:  # batch mode: portable to SQLite < 3.35
+        batch.drop_column("golden")

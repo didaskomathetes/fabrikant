@@ -1,7 +1,7 @@
 # ADR 0068: Golden Runs — Run-Store Mark + `eval --golden`
 
-**Status:** Draft; proposed on the `feat/golden-runs-store` branch
-**Betrifft:** ADR 0065 (Golden Runs, `fabrikant eval`), ADR 0034 (run store, JSON + SQL), `docs/roadmap.md` First win 2 (#130)
+**Status:** Draft (2026-11-25)
+**Relates to:** ADR 0065 (Golden Runs, `fabrikant eval`), ADR 0034 (run store, JSON + SQL), `docs/roadmap.md` First win 2 (#130)
 
 ## Context
 
@@ -27,8 +27,13 @@ nullable): the *name* of the golden baseline this run was captured as.
 - `save_golden(project, name, golden)` marks the `baseline_run` **best-effort**:
   `mark_baseline(project, run_id, name)` sets `golden = name` on the run record.
   A missing run (e.g. CI with an empty `runs/`) is not an error — the mark is
-  skipped (and logged at debug level); the sidecar file stays the committed
+  skipped (logged at debug level; other store errors are logged as warnings);
+  marking runs inside the sidecar lock so concurrent captures stay ordered. The sidecar file stays the committed
   review source.
+- **Single-name semantics.** A run carries at most one golden name, and at most
+  one run carries a given name. `fabrikant golden capture` refuses to capture a
+  run that is already the baseline of a *different* golden (it would silently
+  replace that mark) unless `--force` is given.
 - **One baseline run per golden name.** When a golden is re-captured with a
   different run, the previous baseline run loses its mark
   (`unmark_baseline`; only a mark equal to the name is cleared, so a run that is

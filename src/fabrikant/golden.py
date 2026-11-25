@@ -228,11 +228,44 @@ def save_golden(project: str, name: str, golden: dict) -> Path:
             with contextlib.suppress(OSError):
                 os.unlink(fd.name)
             raise
-    new_run = golden.get("baseline_run", "")
-    if previous and previous != new_run:
-        unmark_baseline(project, previous, name)  # a re-capture must not leave two runs marked
-    mark_baseline(project, new_run, name)
+        # Mark inside the lock so concurrent captures cannot leave the marks out of order.
+        new_run = golden.get("baseline_run", "")
+        if previous and previous != new_run:
+            unmark_baseline(project, previous, name)  # a re-capture must not leave two runs marked
+        mark_baseline(project, new_run, name)
     return p
+
+
+def current_mark(project: str, run_id: str) -> str:
+    """The golden name a run currently carries in the run store (``""`` if unmarked/unknown)."""
+    from .runstore import STORE  # local: keep golden importable without the store
+
+    record = STORE.get_record(run_id, project)
+    return str((record or {}).get("golden") or "")
+
+
+def _set_mark(project: str, run_id: str, name: str, *, only_if: str | None = None) -> bool:
+    """Write ``golden = name`` on a run (best-effort, see :func:`mark_baseline`).
+
+    ``only_if`` restricts the write to runs whose current mark equals it. A missing run
+    (:class:`PreconditionError`) is expected (CI) and skipped quietly; any other store
+    failure is logged at warning level. Returns ``True`` if the mark was written."""
+    try:
+        from .runstore import STORE, PreconditionError  # local: keep golden importable without the store
+
+        try:
+            if only_if is not None:
+                record = STORE.get_record(run_id, project)
+                if record is None or record.get("golden") != only_if:
+                    return False
+            STORE.update_fields(project, run_id, {"golden": name})
+        except PreconditionError:
+            log.debug("golden mark on run %s/%s skipped: run not in store", project, run_id)
+            return False
+        return True
+    except Exception:  # noqa: BLE001 - best-effort by design: the sidecar file is the source of truth
+        log.warning("golden mark %r on run %s/%s failed", name, project, run_id, exc_info=True)
+        return False
 
 
 def mark_baseline(project: str, run_id: str, name: str) -> bool:
@@ -243,14 +276,7 @@ def mark_baseline(project: str, run_id: str, name: str) -> bool:
     mark and never breaks the capture. Returns ``True`` if the mark was written."""
     if not run_id:
         return False
-    try:
-        from .runstore import STORE  # local: keep golden importable without the store
-
-        STORE.update_fields(project, run_id, {"golden": name})
-        return True
-    except Exception:  # noqa: BLE001 - best-effort by design, see docstring
-        log.debug("golden mark %r on run %s/%s skipped", name, project, run_id, exc_info=True)
-        return False
+    return _set_mark(project, run_id, name)
 
 
 def unmark_baseline(project: str, run_id: str, name: str) -> bool:
@@ -258,17 +284,7 @@ def unmark_baseline(project: str, run_id: str, name: str) -> bool:
 
     Only a mark equal to ``name`` is cleared, so a run that is the baseline of another golden
     keeps that mark. Returns ``True`` if a mark was removed."""
-    try:
-        from .runstore import STORE  # local: keep golden importable without the store
-
-        record = STORE.get_record(run_id, project)
-        if record is None or record.get("golden") != name:
-            return False
-        STORE.update_fields(project, run_id, {"golden": ""})
-        return True
-    except Exception:  # noqa: BLE001 - best-effort, same as mark_baseline
-        log.debug("golden unmark %r on run %s/%s skipped", name, project, run_id, exc_info=True)
-        return False
+    return _set_mark(project, run_id, "", only_if=name)
 
 
 def golden_for_run(run_id: str) -> tuple[str, str] | None:
@@ -282,10 +298,10 @@ def golden_for_run(run_id: str) -> tuple[str, str] | None:
     record = STORE.get_record(run_id, None)
     if record is None:
         return None
-    name = record.get("golden", "")
-    if not name:
+    name, project = record.get("golden", ""), record.get("project", "")
+    if not name or not project:  # no mark, or no project to resolve the sidecar file from
         return None
-    return record.get("project", ""), name
+    return project, name
 
 
 def compare_golden(golden: dict, record: dict) -> list[str]:

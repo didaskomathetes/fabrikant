@@ -6,6 +6,7 @@ Die backend-neutrale Store-Suite (Operationen, Vorbedingungen, Round-Trip) liegt
 import json
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import insert, inspect, text
@@ -27,7 +28,7 @@ from fabrikant.runschema import (
 )
 from fabrikant.runschema import runs as runs_table
 from fabrikant.runstore import STORE, PreconditionError, RunStore, RunStoreError
-from fabrikant.runstore_sql import InvalidRecordError, SqlRunStore, make_engine, migrate, store_for_url
+from fabrikant.runstore_sql import InvalidRecordError, SqlRunStore, alembic_config, make_engine, migrate, store_for_url
 
 
 @pytest.fixture
@@ -507,4 +508,32 @@ def test_usage_cache_tokens_round_trip_and_migration_keeps_usage_rows(sql, tmp_p
             "SELECT prompt_tokens, cache_read_tokens, cache_write_tokens, billing FROM step_usage"
         ).one()
         assert tuple(row) == (7, None, None, None)
+    engine.dispose()
+
+
+def test_golden_mark_round_trips_and_migration_0006_to_0007_keeps_rows(sql, tmp_path):
+    """ADR 0068: golden mark in the SQL store; 0006 → 0007 keeps rows (golden NULL) and downgrades."""
+    from fabrikant import golden
+
+    sql.create("p", "g", _rec(id="g", status="pass"))
+    assert golden.mark_baseline("p", "g", "nightly") is True
+    assert golden.golden_for_run("g") == ("p", "nightly")
+    assert golden.unmark_baseline("p", "g", "nightly") is True
+    assert golden.golden_for_run("g") is None
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'g.db'}")
+    migrate(engine, "0006")
+    with engine.begin() as conn:
+        _seed_run(conn)
+    migrate(engine)
+    with engine.begin() as conn:
+        assert conn.exec_driver_sql("SELECT golden FROM runs WHERE id = 'r1'").scalar() is None
+        conn.execute(text("UPDATE runs SET golden = 'x' WHERE id = 'r1'"))
+    with engine.begin() as conn:  # downgrade through batch mode
+        cfg = alembic_config()
+        cfg.attributes["connection"] = conn
+        command.downgrade(cfg, "0006")
+    with engine.connect() as conn:
+        assert "golden" not in {c["name"] for c in inspect(conn).get_columns("runs")}
+        assert conn.exec_driver_sql("SELECT count(*) FROM runs").scalar() == 1
     engine.dispose()

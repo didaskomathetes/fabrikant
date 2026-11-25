@@ -639,3 +639,77 @@ def test_mark_baseline_failure_is_logged_not_raised(projects_dir, runs_dir, capl
     with caplog.at_level("DEBUG", logger="fabrikant.golden"):
         assert golden.mark_baseline("p", "gone", "l") is False
     assert "skipped" in caplog.text
+
+
+# ------------------------------------------------------------------ review follow-ups (ADR 0068)
+def test_unmark_baseline_logs_store_error_and_swallows(runs_dir, monkeypatch, caplog):
+    from fabrikant.runstore import STORE
+
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="l")
+
+    def boom(*a, **k):
+        raise RuntimeError("disk gone")
+
+    monkeypatch.setattr(type(STORE.backend()), "update_fields", boom)  # class-level: STORE is a proxy
+    with caplog.at_level("WARNING", logger="fabrikant.golden"):
+        assert golden.unmark_baseline("p", "orig-1", "l") is False
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_missing_run_is_skipped_quietly(runs_dir, caplog):
+    with caplog.at_level("WARNING", logger="fabrikant.golden"):
+        assert golden.mark_baseline("p", "gone", "l") is False
+    assert not caplog.records
+
+
+def test_unmark_keeps_mark_of_other_golden(runs_dir):
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="other")
+    assert golden.unmark_baseline("p", "orig-1", "l") is False
+    assert golden.golden_for_run("orig-1") == ("p", "other")
+
+
+def test_golden_for_run_without_project_is_unmarked(runs_dir, monkeypatch):
+    from fabrikant.runstore import STORE
+
+    monkeypatch.setattr(type(STORE.backend()), "get_record", lambda *a, **k: {"golden": "l", "project": ""})
+    assert golden.golden_for_run("x") is None
+
+
+def test_cmd_eval_rejects_empty_golden(capsys):
+    args = type("A", (), {"project": None, "loop": None, "name": None, "golden_run": "", "yes": True})()
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_eval(args)
+    assert e.value.code == cli.EXIT_ERROR
+    assert "--golden" in capsys.readouterr().out
+
+
+def test_main_eval_golden_wiring_without_positionals(projects_dir, runs_dir, capsys, monkeypatch):
+    _write_golden(
+        projects_dir, "p", "l", {"loop": "l", "baseline_run": "orig-1", "expect": {"status": "pass", "steps": []}}
+    )
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="l")
+    _stub_eval(monkeypatch, [])
+    with pytest.raises(SystemExit) as e:
+        cli.main(["eval", "--golden", "orig-1", "--yes"])
+    assert e.value.code == 0
+    assert "no regression" in capsys.readouterr().out
+
+
+def _capture_args(name=None, force=False):
+    return type(
+        "A",
+        (),
+        {"golden_cmd": "capture", "project": "p", "loop": "l", "run_id": "orig-1", "name": name, "force": force},
+    )()
+
+
+def test_capture_refuses_run_marked_for_another_golden(projects_dir, runs_dir, capsys):
+    _write_spec(projects_dir, "p")
+    _write_run(runs_dir, "p", "orig-1", status="pass", loop="l", golden="first", steps=_STEPS)
+    with pytest.raises(SystemExit) as e:
+        cli.cmd_golden(_capture_args(name="second"))
+    assert e.value.code == cli.EXIT_ERROR
+    assert "--force" in capsys.readouterr().out
+    assert golden.golden_for_run("orig-1") == ("p", "first")
+    cli.cmd_golden(_capture_args(name="second", force=True))
+    assert golden.golden_for_run("orig-1") == ("p", "second")

@@ -16,6 +16,7 @@ from .failures import parse_kind
 from .golden import (
     GoldenError,
     capture_golden,
+    current_mark,
     eval_report,
     get_golden,
     golden_for_run,
@@ -240,7 +241,13 @@ def cmd_golden(args):
     try:
         if args.golden_cmd == "capture":
             g = capture_golden(args.project, args.loop, args.run_id)
-            p = save_golden(args.project, args.name or args.loop, g)
+            gname = args.name or args.loop
+            other = current_mark(args.project, args.run_id)
+            if other and other != gname and not getattr(args, "force", False):
+                # A run carries at most one golden name (ADR 0068): re-marking would drop the other mark.
+                print(t("cli.golden_other_mark", run=args.run_id, other=other, name=gname))
+                sys.exit(EXIT_ERROR)
+            p = save_golden(args.project, gname, g)
             print(f"✔ golden '{args.name or args.loop}' for {args.project}/{args.loop} from run {args.run_id} → {p}")
             return
         goldens = {args.name: get_golden(args.project, args.name)} if args.name else load_goldens(args.project)
@@ -283,6 +290,9 @@ def cmd_eval(args):
     Exit codes: ``EXIT_OK`` no regression, ``EXIT_REGRESSION`` real diffs against the golden,
     ``EXIT_ERROR`` infrastructure/usage problem or inconclusive run (e.g. waiting for approval)."""
     golden_run = getattr(args, "golden_run", None)
+    if golden_run is not None and not golden_run.strip():
+        print(t("cli.eval_empty_golden"))
+        sys.exit(EXIT_ERROR)
     if golden_run and (args.project or args.loop or args.name):
         print("Error: --golden RUN_ID resolves project/loop/name itself; do not combine it with them")
         sys.exit(EXIT_ERROR)
@@ -692,21 +702,22 @@ def main(argv=None):
     gc.add_argument("loop")
     gc.add_argument("run_id", help="Id des abgeschlossenen Baseline-Runs")
     gc.add_argument("--name", default=None, help=t("cli.help.golden_name"))
+    gc.add_argument("--force", action="store_true", help=t("cli.help.golden_force"))
     gs = g.add_parser("show", help=t("cli.help.golden_show"))
     gs.add_argument("project")
     gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
     p.set_defaults(func=cmd_golden)
 
     p = sub.add_parser("eval", help=t("cli.help.eval"), epilog=EXIT_CODES_HELP)
-    p.add_argument("project", nargs="?", default=None, help="Project (omit with --golden)")
-    p.add_argument("loop", nargs="?", default=None, help="Loop (omit with --golden)")
+    p.add_argument("project", nargs="?", default=None, help=t("cli.help.eval_project"))
+    p.add_argument("loop", nargs="?", default=None, help=t("cli.help.eval_loop"))
     p.add_argument("--name", default=None, help=t("cli.help.golden_name"))
     p.add_argument(
         "--golden",
         dest="golden_run",
         default=None,
         metavar="RUN_ID",
-        help="Resolve the golden from this run's run-store mark (ADR 0068)",
+        help=t("cli.help.eval_golden"),
     )
     p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
     p.set_defaults(func=cmd_eval)
