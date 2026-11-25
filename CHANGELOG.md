@@ -10,8 +10,9 @@ All notable changes to fabrikant are documented here. The format follows
 
 - `fabrikant validate` warns about spec keys the schema doesn't know (`⚠ <project>: unknown spec key <path>: <key>`).
   The engine ignores them, so a typo or a key from a newer fabrikant version would otherwise silently have no
-  effect. `x-` keys and keys a step plugin declares in its schema are exempt (steps of a plugin without a schema
-  are not checked); the exit code is unchanged.
+  effect. `x-` keys and keys a step plugin declares in its schema (literal or via `patternProperties`) are exempt
+  (steps of a plugin without a key list or with open `additionalProperties` are not checked); the exit code is
+  unchanged.
 - The spec schema documents the backend step options `sandbox` (codex), `tools` (copilot) and `username`/`password`
   (opencode).
 

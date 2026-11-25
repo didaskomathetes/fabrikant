@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 
@@ -101,19 +103,29 @@ def _strict_validator() -> Draft202012Validator:
     return Draft202012Validator(strict)
 
 
-def _plugin_keys(instance: object) -> set[str] | None:
-    """Keys a registered plugin step declares in its own schema (ADR 0069).
+def _plugin_declares(instance: object) -> Callable[[str], bool] | None:
+    """Whether a key is one a registered plugin step declares in its own schema (ADR 0069): a literal
+    `properties` key or one matching a `patternProperties` pattern.
 
-    None for a plugin without a key list (no schema or no `properties`): its keys are unknowable,
-    so none of them is reported (the scaffolded `greet` reads `who` without declaring it)."""
+    None for a plugin whose keys are unknowable — no schema, no key list, a schema that admits any
+    further key (`additionalProperties` other than false) or a pattern Python cannot compile: none of
+    its keys is reported (the scaffolded `greet` reads `who` without declaring it)."""
     from .steps import registry
 
     stype = instance.get("type") if isinstance(instance, dict) else None
     plugin = registry.get_step(stype) if isinstance(stype, str) else None
     if plugin is None:
-        return set()
-    properties = (plugin.schema or {}).get("properties")
-    return set(properties) if properties else None
+        return lambda key: False
+    schema = plugin.schema or {}
+    names = set(schema.get("properties") or {})
+    if not (names or schema.get("patternProperties")) or schema.get("additionalProperties", False) is not False:
+        return None
+    try:
+        patterns = [re.compile(p) for p in schema.get("patternProperties") or {}]
+    except re.error:
+        return None
+    # JSON-Schema patterns are unanchored, hence search, not match.
+    return lambda key: key in names or any(p.search(key) for p in patterns)
 
 
 def unknown_keys(spec: dict) -> list[str]:
@@ -126,12 +138,14 @@ def unknown_keys(spec: dict) -> list[str]:
     for err in _strict_validator().iter_errors(public):
         if err.validator != "additionalProperties" or not isinstance(err.instance, dict):
             continue
-        plugin_keys = _plugin_keys(err.instance)
-        if plugin_keys is None:
+        plugin_declares = _plugin_declares(err.instance)
+        if plugin_declares is None:
             continue
-        known = set(err.schema.get("properties") or {}) | plugin_keys
+        known = set(err.schema.get("properties") or {})
         path = "/".join(str(p) for p in err.absolute_path) or "<root>"
         # PyYAML (YAML 1.1) reads an unquoted `on` key as bool True; retry.py maps it back, so it is known.
         names = ("on" if k is True else str(k) for k in err.instance)
-        found += [f"{path}: {k}" for k in names if k not in known and not k.startswith(("x-", "_"))]
+        found += [
+            f"{path}: {k}" for k in names if k not in known and not k.startswith(("x-", "_")) and not plugin_declares(k)
+        ]
     return sorted(found)

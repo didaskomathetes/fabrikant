@@ -196,6 +196,26 @@ def test_unknown_keys_accepts_plugin_schema_keys(monkeypatch):
     ]
 
 
+def test_unknown_keys_honours_plugin_pattern_properties(monkeypatch):
+    """Regression: a key matching the plugin's `patternProperties` is accepted by its schema, so it
+    must not be reported as ignored."""
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    mixed = {"properties": {"label": {"type": "string"}}, "patternProperties": {"^opt_": {"type": "integer"}}}
+    registry.register_step("mixed", lambda ctx, step, emit: {}, schema=mixed)
+    registry.register_step("patterns", lambda ctx, step, emit: {}, schema={"patternProperties": {"^opt_": {}}})
+    registry.register_step("open", lambda ctx, step, emit: {}, schema={**mixed, "additionalProperties": True})
+    registry.register_step("bad", lambda ctx, step, emit: {}, schema={"patternProperties": {"(": {}}})
+    assert unknown_keys(_with_step({"type": "mixed", "label": "l", "opt_foo": 1, "xopt_bar": 2})) == [
+        "loops/l1/steps/0: xopt_bar"
+    ]
+    assert unknown_keys(_with_step({"type": "patterns", "opt_a": 1, "other": 2})) == ["loops/l1/steps/0: other"]
+    assert unknown_keys(_with_step({"type": "open", "anything": 1})) == []
+    assert unknown_keys(_with_step({"type": "bad", "anything": 1})) == []
+
+
 def test_newly_declared_keys_keep_accepting_list_values():
     """Declaring a key must not turn a value the engine accepted (and ignored) into a spec error:
     specs written for newer versions pass `tools` as a list (claude_code)."""
