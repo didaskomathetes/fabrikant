@@ -18,11 +18,13 @@
 | `approve <run_id>` / `reject <run_id>` `[--project X]` | Resume or abort a `needs_approval` run |
 | `pause` / `disable <project> [loop] [--until ISO]`, `resume <project> [loop]` | [Pause/disable](triggers.md#pause--disable-adr-0019) |
 | `replay <run_id> [--project X] [--yes]` | Deterministic re-execution (ADR 0061) |
-| `golden capture\|show`, `eval <project> <loop>` | Golden-run baselines and regression check (ADR 0065) |
+| `golden capture\|show`, `eval <project> <loop>` or `eval --golden <run-id>` | Golden-run baselines and regression check (ADR 0065); `capture` marks the run in the run store, `--force` re-marks a run that carries another golden (ADR 0068) |
 | `chat "..."` | [Chat](chat.md) command or LLM copilot |
 | `alert test [--project X]` | Test alert channels |
 | `user add\|passwd\|role <name> [role]` | Local users ([auth](auth.md)) |
-| `mcp [--read-only] [--allow-approvals]` | MCP server on stdio (ADR 0064); also `fabrikant-mcp` |
+| `mcp [--read-only] [--allow-approvals] [--allow-spec-write]` | MCP server on stdio (ADR 0064); also `fabrikant-mcp` |
+| `proposals list\|show\|apply\|reject [id]` | Review spec-change proposals made by MCP agents; `apply` shows the patch and needs `--yes` ([MCP](mcp.md)) |
+| `template list`, `template create <name> [--project X] [--out DIR] [--force]` | Loop template library ([templates](templates.md), ADR 0067) |
 | `fetch <url> ...` | Research fetcher with injection scan (ADR 0060) |
 | `agent-env` | Print the scrubbed env for a shared `opencode serve` ([backends](backends.md#security-layers-for-agent-processes)) |
 | `egress start\|stop\|status` | Egress proxy for agent containers (ADR 0051) |
