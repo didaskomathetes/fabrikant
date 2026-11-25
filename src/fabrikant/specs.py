@@ -255,7 +255,10 @@ def load_spec(path: Path, *, check_root: bool = True) -> dict:
         # expandvars FIRST, then expanduser — `~` in the variable VALUE works.
         # (os.path.expandvars does not know ${VAR:-default}; unset stays literal →
         # the is_dir gate fails with an understandable message.)
-        data["root"] = str(Path(os.path.expandvars(str(data["root"]))).expanduser())
+        root = Path(os.path.expandvars(str(data["root"]))).expanduser()
+        # A relative root (e.g. the `root: .` of `fabrikant init`) is relative to the fabrikant home,
+        # so a scaffolded spec stays portable.
+        data["root"] = str(root if root.is_absolute() else (config.FABRIKANT_HOME / root).resolve())
     data["_path"] = str(path)
     expand_relay_loops(data)  # `relay:` → generierte Relay-Loops (ADR 0037), danach normal validiert
     _validate_spec(data, check_root=check_root)

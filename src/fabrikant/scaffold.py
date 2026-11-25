@@ -1,6 +1,6 @@
 """`fabrikant init`: scaffold a user project directory (ADR 0069).
 
-Creates `projects/hello.fabrikant.yaml`, `fabrikant.env` and a `plugins/` skeleton in a directory that then
+Creates `projects/hello.fabrikant.yaml`, `fabrikant.env`, `.gitignore` and a `plugins/` skeleton in a directory that then
 acts as the fabrikant home (runs, state, specs) whenever fabrikant is started from it."""
 
 from __future__ import annotations
@@ -10,6 +10,14 @@ from pathlib import Path
 from . import config
 
 STARTER_SPEC = "hello.fabrikant.yaml"
+# Local state and secrets that must never be committed (fabrikant.env may hold tokens).
+GITIGNORE = """# fabrikant local state and secrets
+fabrikant.env
+runs/
+state/
+sessionlog.db*
+.fabrikant/
+"""
 ENV_TEMPLATE = "fabrikant.env.example"
 PLUGIN_PYPROJECT = """[build-system]
 requires = ["hatchling"]
@@ -28,7 +36,8 @@ greet = "my_steps:greet"
 include = ["my_steps.py"]
 """
 PLUGIN_SKELETON = '''"""Example custom step; install with `pip install -e plugins/`, then use
-`- {type: greet, name: hi, who: world}` in a loop (docs/plugins.md)."""
+`- {type: greet, name: hi, who: world}` in a loop
+(https://github.com/didaskomathetes/fabrikant/blob/main/docs/plugins.md)."""
 
 from fabrikant.sdk import ok
 
@@ -45,8 +54,9 @@ def init_project(dest: Path) -> list[Path]:
     (dest / "projects").mkdir(parents=True, exist_ok=True)
     spec = (config.PACKAGE_DIR / "examples" / STARTER_SPEC).read_text(encoding="utf-8")
     files = {
-        dest / "projects" / STARTER_SPEC: spec.replace("root: .", f"root: {dest}"),
+        dest / "projects" / STARTER_SPEC: spec,
         dest / config.ENV_FILE_NAME: (config.PACKAGE_DIR / "examples" / ENV_TEMPLATE).read_text(encoding="utf-8"),
+        dest / ".gitignore": GITIGNORE,
         dest / "plugins" / "pyproject.toml": PLUGIN_PYPROJECT,
         dest / "plugins" / "my_steps.py": PLUGIN_SKELETON,
     }
