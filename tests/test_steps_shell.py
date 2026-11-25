@@ -387,6 +387,17 @@ def test_shell_github_identity_sets_role_token(tmp_path, monkeypatch):
     assert "tok-reviewer" in res["output"]
 
 
+def test_shell_github_identity_keeps_project_env(tmp_path, monkeypatch):
+    """The identity env is laid OVER the project env: `github_env` carries no HOME (and PATH only with
+    the gh wrapper), yet `gh`/`git` in the command need both."""
+    monkeypatch.setenv("HOME", "/home/someone")
+    monkeypatch.setattr("fabrikant.steps.shell.github_env", lambda role: {"GH_TOKEN": "tok", "GITHUB_TOKEN": "tok"})
+    step = {"type": "shell", "cmd": 'echo "$HOME|$GH_TOKEN"', "github_identity": "dev"}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is True
+    assert "/home/someone|tok" in res["output"]
+
+
 def test_shell_github_identity_missing_token_fails_as_environment(tmp_path, monkeypatch):
     def _missing(role):
         raise RuntimeError("GITHUB_REVIEWER_TOKEN not available")

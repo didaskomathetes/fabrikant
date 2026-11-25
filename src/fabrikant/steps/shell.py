@@ -107,7 +107,11 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
         return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="github-identity")
     step_vals = {str(k): _substitute(str(v), ctx) for k, v in env_step.items()}
     sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
-    env = _container_env(identity_env, step_vals) if sandboxed else {**(identity_env or process_env()), **step_vals}
+    # On the host the identity env is an overlay (github_env carries only token/PATH/env-file
+    # variables): HOME, PATH and the rest of the project env must stay.
+    env = (
+        _container_env(identity_env, step_vals) if sandboxed else {**process_env(), **(identity_env or {}), **step_vals}
+    )
     timeout = int(step.get("timeout", 600))
     # Log the template (with {placeholders}), NOT the substituted command:
     # substituted values can contain secrets/untrusted text.
