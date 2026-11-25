@@ -162,7 +162,7 @@ _USAGE_FIELDS: Mapping[str, str] = {
     "billing": _TEXT,
 }
 _REVIEW_FIELDS: Mapping[str, str] = {"verdict": _TEXT, "model": _TEXT, "summary": _TEXT, "round": _INT}
-_FINDING_FIELDS = ("severity", "text", "suggestion")  # Modellfelder eines Findings (Rest: LLM-Fremdfelder)
+_FINDING_FIELDS = ("severity", "text", "suggestion")  # model fields of a finding (rest: foreign LLM fields)
 _APPROVAL_FIELDS: Mapping[str, str] = {
     "reason": _TEXT,
     "kind": _TEXT,
@@ -338,7 +338,7 @@ def _present(row: Mapping[str, Any], names: Sequence[str]) -> dict[str, Any]:
 
 @dataclass
 class _Children:
-    """Kind-Zeilen mehrerer Runs, gruppiert nach Run-Id (bzw. Step)."""
+    """Kind rows of several runs, grouped by run id (or step)."""
 
     steps: dict[str, list[Mapping]] = field(default_factory=dict)
     usage: dict[tuple[str, int], Mapping] = field(default_factory=dict)
@@ -434,7 +434,7 @@ def _configure_sqlite(engine: Engine) -> None:
 
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_conn: Any, _record: Any) -> None:
-        dbapi_conn.isolation_level = None  # pysqlite: kein implizites BEGIN
+        dbapi_conn.isolation_level = None  # pysqlite: no implicit BEGIN
         cur = dbapi_conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL")
         cur.execute(f"PRAGMA busy_timeout={int(config.SQLITE_BUSY_TIMEOUT_MS)}")
@@ -673,7 +673,7 @@ class SqlSessionLog:
         )
 
     def artifact(self, run_id: str, step_name: str, kind: str, path: str, created_at: str) -> None:
-        """Artefakt eines Steps registrieren."""
+        """Register an artifact of a step."""
         self._insert(run_artifacts, run_id=run_id, step_name=step_name, kind=kind, path=path, created_at=created_at)
 
     def checkpoint(self, run_id: str, step_idx: int, step_name: str, status: str, data: str) -> None:
@@ -681,7 +681,7 @@ class SqlSessionLog:
         self._insert(run_checkpoints, run_id=run_id, step_idx=step_idx, step_name=step_name, status=status, data=data)
 
     def event_data(self, run_id: str, kind: str) -> list[str]:
-        """``data`` aller Events ``kind`` eines Runs, in Reihenfolge."""
+        """``data`` of all events of ``kind`` of a run, in order."""
         stmt = (
             select(run_events.c.data)
             .where(run_events.c.run_id == run_id, run_events.c.kind == kind)

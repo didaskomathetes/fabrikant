@@ -147,7 +147,7 @@ def test_archive_moves_only_imported_files(history, runs_dir, tmp_path):
 
 def test_deviating_record_stays_in_runs_not_archived(runs_dir, tmp_path):
     """Ein Record, der importiert aber vom gespeicherten Stand abweicht, bleibt in runs/ (nicht archiviert)."""
-    # Review-Finding mit nicht-string `severity`: parse_run → "", SQL-Store → str(5) → Abweichung nach Import
+    # Review-Finding mit nicht-string `severity`: parse_run → "", SQL-Store → str(5) → Mismatch after import
     finding = {"severity": 5, "text": "t", "suggestion": "fix it"}
     _save(
         runs_dir,
@@ -170,7 +170,7 @@ def test_deviating_record_stays_in_runs_not_archived(runs_dir, tmp_path):
     assert report.runs_archived == 0
     assert (runs_dir / "p" / "dev.json").is_file()  # bleibt in runs/ liegen
     assert not (archive / "p" / "dev.json").exists()
-    assert any(i.run_id == "dev" and "Abweichung nach Import" in i.reason for i in report.issues)
+    assert any(i.run_id == "dev" and "Mismatch after import" in i.reason for i in report.issues)
     assert not report.ok
 
 
@@ -207,7 +207,7 @@ def test_archive_collision_keeps_source(history, runs_dir, tmp_path):
     assert report.runs_archived == 1  # nur b
     assert (runs_dir / "p" / "a.json").is_file()  # Kollision → Quelle bleibt liegen
     assert (archive / "p" / "a.json").read_text() == "besteht schon"
-    assert any(i.run_id == "a" and "Archiv-Kollision" in i.reason for i in report.issues)
+    assert any(i.run_id == "a" and "Archive collision" in i.reason for i in report.issues)
     assert not report.ok
 
 

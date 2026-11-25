@@ -17,7 +17,7 @@ from .runmodel import Run
 
 SortKey = tuple[str, str, str]
 
-# Normalisierte UTC-Zeit mit fester Breite: lexikalische = chronologische Ordnung (SQL-Spalte ``started_utc``).
+# Normalized fixed-width UTC time: lexical = chronological order (SQL column ``started_utc``).
 UTC_SORT_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
 
@@ -28,7 +28,7 @@ def to_utc(value: str) -> datetime:
 
 
 def utc_sort_text(value: str) -> str | None:
-    """ISO-Zeitpunkt → normalisierter UTC-Text (:data:`UTC_SORT_FORMAT`); None, wenn leer/unparsebar."""
+    """ISO timestamp → normalized UTC text (:data:`UTC_SORT_FORMAT`); None if empty/unparseable."""
     try:
         return to_utc(value).strftime(UTC_SORT_FORMAT) if value else None
     except ValueError:

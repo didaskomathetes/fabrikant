@@ -100,7 +100,7 @@ def _warn_connection_refs(name: str, spec: dict) -> None:
 
 
 def cmd_project(args):
-    """project add <repo-pfad> — Zielrepo mit `.fabrikant/fabrikant.yaml` registrieren (ADR 0047)."""
+    """project add <repo-path> — register a target repo with `.fabrikant/fabrikant.yaml` (ADR 0047)."""
     try:
         spec = spec_sources.register_target(args.path)
     except ValueError as e:
@@ -350,7 +350,7 @@ def cmd_eval(args):
 
 
 def cmd_runs(args):
-    """Run-Historie; `show`/`export` zeigen einen Einzelrun (Record + Session-Log)."""
+    """Run history; `show`/`export` show a single run (record + session log)."""
     if args.runs_cmd == "show":
         out = show_run(args.run_id, args.show_project)
         if out is None:
@@ -812,17 +812,17 @@ def main(argv=None):
     p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
     p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
     p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
-    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
+    p.add_argument("--out", default=None, help="Output dir (sources/ + quarantine/)")
     p.add_argument("--ledger", default=None, help=t("cli.help.fetch_ledger"))
     p.add_argument("--spec", default=None, help=t("cli.help.fetch_spec"))
     p.add_argument("--loop", default=None, help=t("cli.help.fetch_loop"))
     p.add_argument(
         "--detectors",
         default=None,
-        help="Kommagetrennte Injection-Detektoren: regex (Default), llm-guard (Extra injection-llm-guard); "
-        "sonst FABRIKANT_FETCH_DETECTORS",
+        help="Comma-separated injection detectors: regex (default), llm-guard (extra injection-llm-guard); "
+        "otherwise FABRIKANT_FETCH_DETECTORS",
     )
-    p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
+    p.add_argument("--json", action="store_true", help="Result as JSON")
     p.set_defaults(func=cmd_fetch)
 
     args = ap.parse_args(argv)

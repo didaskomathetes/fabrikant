@@ -590,7 +590,7 @@ class RunStore(BaseRunStore):
 
     @property
     def root(self) -> Path:
-        """Wurzelverzeichnis der Records."""
+        """Root directory of the records."""
         return self._runs_dir or config.RUNS_DIR
 
     def _dirs(self, project: str | None) -> list[Path]:
@@ -625,7 +625,7 @@ class RunStore(BaseRunStore):
             data = json.loads(f.read_text(encoding="utf-8"))
         except FileNotFoundError:
             raise RecordError("Datei verschwunden") from None
-        except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
+        except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
             raise RecordError(t("runstore.not_valid_json", e=e)) from e
         if not isinstance(data, dict):
             raise RecordError(t("runstore.expected_object_is", v1=type(data).__name__))
@@ -708,7 +708,7 @@ class RunStore(BaseRunStore):
             data = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return None
-        except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
+        except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
             raise RunStoreError(f"defekter Run-Record {path.name}: {e}") from e
         if not isinstance(data, dict):
             raise RunStoreError(t("runstore.broken_run_record_expected_object", v1=path.name, v2=type(data).__name__))

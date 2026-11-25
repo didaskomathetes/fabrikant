@@ -13,7 +13,7 @@ from .engine import _issue_link, _pr_link
 
 @dataclass(frozen=True)
 class RunLink:
-    """Verlinktes GitHub-Objekt eines Runs."""
+    """Linked GitHub object of a run."""
 
     number: str = ""
     title: str = ""

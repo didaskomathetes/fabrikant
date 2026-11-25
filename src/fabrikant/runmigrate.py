@@ -52,7 +52,7 @@ class MigrationIssue:
 
 @dataclass
 class MigrationReport:
-    """Ergebnis eines (Probe-)Imports."""
+    """Result of a (dry-run) import."""
 
     dry_run: bool
     target: str
@@ -66,7 +66,7 @@ class MigrationReport:
     checkpoints_imported: int = 0
     artifacts_imported: int = 0
     sessions_existing: int = 0
-    orphan_sessions: Counter[str] = field(default_factory=Counter)  # Projekt → Anzahl Sessions ohne Run
+    orphan_sessions: Counter[str] = field(default_factory=Counter)  # project → number of sessions without a run
     issues: list[MigrationIssue] = field(default_factory=list)
 
     @property
@@ -87,10 +87,10 @@ class MigrationReport:
             ),
             f"Session-Log: {self.sessions_imported} Sessions ({self.events_imported} Events, "
             f"{self.checkpoints_imported} Checkpoints, {self.artifacts_imported} Artefakte) importiert, "
-            f"{self.sessions_existing} schon vorhanden",
+            f"{self.sessions_existing} already present",
         ]
         if self.archive_dir:
-            out.append(f"Archiv: {self.runs_archived} Run-JSON nach {self.archive_dir} verschoben")
+            out.append(f"Archive: {self.runs_archived} run JSON moved to {self.archive_dir}")
         if self.orphan_sessions:
             total = sum(self.orphan_sessions.values())
             top = ", ".join(f"{p} ({n})" for p, n in self.orphan_sessions.most_common(SAMPLE_LIMIT))
@@ -162,7 +162,7 @@ def _import_runs(
         stored = store.get(run_id, project)
         diff = _run_diff(expected, stored) if stored is not None else [t("runmigrate.unreadable")]
         if diff:
-            report.issues.append(MigrationIssue(run_id, where, f"Abweichung nach Import: {', '.join(diff)}"))
+            report.issues.append(MigrationIssue(run_id, where, f"Mismatch after import: {', '.join(diff)}"))
         else:
             archivable.add(path)
     return present, archivable
@@ -181,7 +181,7 @@ def archive_runs(runs_dir: Path, archive_dir: Path, archivable: set[Path]) -> tu
             if dest.exists():
                 issues.append(
                     MigrationIssue(
-                        path.stem, f"{path.parent.name}/{path.name}", "Archiv-Kollision: Ziel existiert schon"
+                        path.stem, f"{path.parent.name}/{path.name}", "Archive collision: target already exists"
                     )
                 )
                 continue

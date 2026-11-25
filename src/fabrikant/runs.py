@@ -22,7 +22,7 @@ STEP_MARKS = {"pass": "✔", "fail": "✖", "timeout": "⏱", "error": "✖", "w
 
 
 def uses_worktree(loop: dict) -> bool:
-    """Loop braucht einen Run-Worktree (Default). ``worktree: false`` = nein (ADR 0020)."""
+    """Loop needs a run worktree (default). ``worktree: false`` = no (ADR 0020)."""
     return loop.get("worktree", True) is not False
 
 
@@ -50,7 +50,7 @@ def lock_key(project: str, loop_name: str) -> str:
 
 
 class RunClaim:
-    """Belegter Run-Slot (ADR 0028); `release()` ist idempotent."""
+    """Occupied run slot (ADR 0028); `release()` is idempotent."""
 
     def __init__(self, project: str, scope: str, key: tuple[str, str, str]):
         self.scope = scope
@@ -350,7 +350,7 @@ def reap_orphaned_runs() -> list[str]:
     Every cleaned-up run updates its retry chain (ADR 0036: the
     restart consumes the attempt, the next one is planned after backoff).
     Returns the cleaned-up run ids."""
-    from . import retry_chains  # lokal: retry_chains importiert get_run aus diesem Modul
+    from . import retry_chains  # local: retry_chains imports get_run from this module
     from .specs import load_projects
 
     reaped: list[str] = []

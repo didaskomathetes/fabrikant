@@ -167,9 +167,9 @@ def authenticate(trigger: dict | None, body: bytes, fabrikant_signature: str, se
 
 
 def route(category: str, routes: dict[str, str] | None, fallback: str = ROUTE_NONE) -> str:
-    """Deterministisches Mapping Kategorie → Hotfix-Loop.
+    """Deterministic mapping category → hotfix loop.
 
-    Unbekannte/ungemappte Kategorie → `fallback` (Default `none` = kein Hotfix)."""
+    Unknown/unmapped category → `fallback` (default `none` = no hotfix)."""
     return str((routes or {}).get(category) or fallback or ROUTE_NONE)
 
 
