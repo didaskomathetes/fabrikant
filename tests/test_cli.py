@@ -166,7 +166,9 @@ def test_cmd_run_rejects_busy_lock(projects_dir, tmp_path, monkeypatch, capsys):
         with pytest.raises(SystemExit) as e:
             cli.cmd_run(type("A", (), {"project": "p", "loop": "l", "note": "", "var": []})())
         assert e.value.code == 1
-        assert "läuft bereits" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "läuft bereits" in out
+        assert "exclusive_group" in out  # also names the exclusive_group block reason
     finally:
         lock.release()
 
