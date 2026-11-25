@@ -1,46 +1,46 @@
-// fabrikant UI — vanilla JS, no build
+// fabrikant UI — vanilla JS, kein Build
 const $ = (s) => document.querySelector(s);
 let state = { projects: [], selected: null, runTimer: null, openLoop: null, graphOpen: null, openApprovals: null, openProposals: null, openShelved: null, schedOpen: false, schedTimer: null };
-// Last loaded run record of the open panel — basis for the log toggle
-// (formatted view ↔ raw log) and for the refresh after approve/reject.
+// Letztes geladenes Run-Record des offenen Panels — Basis für den Log-Toggle
+// (formatierte Ansicht ↔ rohes Log) und für den Refresh nach Approve/Reject.
 let runPanelRec = null;
-// Re-render guard: counts renderDetail calls. Stale (outdated) renders
-// must no longer overwrite the detail view, otherwise a parallel
-// auto-refresh would discard a just-opened loop spec.
+// Re-Render-Schutz: zählt renderDetail-Aufrufe. Veraltete (überholte) Renders
+// dürfen den Detail-View nicht mehr überschreiben, sonst würde ein paralleler
+// Auto-Refresh eine gerade geöffnete Loop-Spec wieder wegwerfen.
 let detailRenderSeq = 0;
 
-// Auth (ADR 0030): mode "local" → session cookie + CSRF header on write requests.
+// Auth (ADR 0030): Modus "local" → Session-Cookie + CSRF-Header bei Schreib-Requests.
 const auth = { mode: "none", user: null, role: null, csrf: "" };
 
-// ---- i18n (ADR 0049): de/en message catalogs, no framework, no build ----
-// Translates ONLY the UI chrome strings. User content (specs, prompts, logs,
-// chat answers, run records) stays in the language it was created in.
-// Language choice: localStorage > browser language > Fallback "en".
+// ---- i18n (ADR 0049): Message-Kataloge de/en, kein Framework, keine Build ----
+// Übersetzt NUR die UI-Chrome-Strings. User-Content (Specs, Prompts, Logs,
+// Chat-Antworten, Run-Records) bleibt in der Sprache, in der er erzeugt wurde.
+// Sprachwahl: localStorage > Browser-Sprache > Fallback "en".
 const I18N_LANGS = ["de", "en"];
 const I18N_DEFAULT = "en";
 const I18N_STORAGE_KEY = "fabrikant.lang";
 const i18n = { lang: I18N_DEFAULT, catalogs: {}, ready: false };
 
-// t(key, vars): translation with {placeholders}; fallback en → the key itself.
+// t(key, vars): Übersetzung mit {Platzhalter}; Fallback en → Key selbst.
 function t(key, vars) {
   let s = i18n.catalogs[i18n.lang]?.[key] ?? i18n.catalogs.en?.[key] ?? key;
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }
 
-// tOr(key, fallback): the translation or — for open values (unknown trigger
-// type, status, failure class) — the raw value instead of the catalog key.
+// tOr(key, fallback): Übersetzung oder — für offene Werte (unbekannter Trigger-
+// Typ, Status, Fehlerklasse) — der rohe Wert statt des Katalog-Keys.
 function tOr(key, fallback) {
   return i18n.catalogs[i18n.lang]?.[key] ?? i18n.catalogs.en?.[key] ?? fallback;
 }
 
-// Locale for Intl (clock, date/time) — the chosen UI language.
+// Locale für Intl (Uhr, Datum/Zeit) — die gewählte UI-Sprache.
 function i18nLocale() {
   return i18n.lang;
 }
 
-// Format a date/time (ISO string) via Intl with the chosen locale.
-// Invalid/empty input → unchanged (no UI strings, only raw data).
+// Datum/Zeit (ISO-String) über Intl mit der gewählten Locale formatieren.
+// Ungültiger/leerer Input → unverändert (keine UI-Strings, nur rohe Daten).
 function fmtDateTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -50,10 +50,10 @@ function fmtDateTime(iso) {
   });
 }
 
-// Stored choice > browser language > Fallback "en".
+// Gespeicherte Auswahl > Browser-Sprache > Fallback "en".
 function i18nResolve() {
   let lang = null;
-  try { lang = localStorage.getItem(I18N_STORAGE_KEY); } catch (e) { /* private mode */ }
+  try { lang = localStorage.getItem(I18N_STORAGE_KEY); } catch (e) { /* privater Modus */ }
   if (!lang || !I18N_LANGS.includes(lang)) {
     const nav = (navigator.language || "").toLowerCase();
     lang = I18N_LANGS.includes(nav.slice(0, 2)) ? nav.slice(0, 2) : I18N_DEFAULT;
@@ -70,7 +70,7 @@ async function i18nLoad() {
   i18n.ready = true;
 }
 
-// Render static elements (index.html) + dynamic views in the new language.
+// Statische Elemente (index.html) + dynamische Views in der neuen Sprache rendern.
 function i18nApply() {
   document.documentElement.lang = i18n.lang;
   document.title = t("app.title");
@@ -80,16 +80,16 @@ function i18nApply() {
   $("#langtoggle").textContent = i18n.lang.toUpperCase();
   renderProjects();
   if (state.selected) {
-    // Rebuild the history too (filter labels) — a language switch is a
-    // deliberate action, a filter reset is acceptable.
+    // Historie mit aufbauen (Filter-Labels) — Sprachwechsel ist eine
+    // bewusste Aktion, ein Filter-Reset ist akzeptabel.
     const hv = $("#histview");
     if (hv) delete hv.dataset.project;
     renderDetail(state.selected);
   }
   if (state.online !== undefined) setHealth(state.online);
   if (runPanelRec) {
-    // Re-label status badge + actions; log/transcript tab (live stream,
-    // content) stays untouched — only the overview gets re-rendered.
+    // Status-Badge + Aktionen neu beschriften; Log/Transkript-Tab (Live-Stream,
+    // Content) bleibt unangetastet — nur die Übersicht wird neu gerendert.
     const st = $("#runstatus").dataset.status;
     setRunStatus(st);
     renderRunActions(st);
@@ -100,11 +100,11 @@ function i18nApply() {
 function setLang(lang) {
   if (!I18N_LANGS.includes(lang) || lang === i18n.lang) return;
   i18n.lang = lang;
-  try { localStorage.setItem(I18N_STORAGE_KEY, lang); } catch (e) { /* private mode */ }
+  try { localStorage.setItem(I18N_STORAGE_KEY, lang); } catch (e) { /* privater Modus */ }
   i18nApply();
 }
 
-// Toggle in the header (base view): de ↔ en.
+// Umschalter im Header (Basis-View): de ↔ en.
 function toggleLang() {
   setLang(i18n.lang === "de" ? "en" : "de");
 }
@@ -117,10 +117,10 @@ async function api(path, opts = {}) {
   const r = await fetch(path, opts);
   if (r.status === 401 && auth.mode !== "none") showLogin();
   if (!r.ok) {
-    // Carry over the server's reason (`{"error": …}`) so messages can display it.
+    // Server-Begründung (`{"error": …}`) mitnehmen, damit Meldungen sie anzeigen können.
     const detail = await r.json().then((b) => (b && typeof b.error === "string" ? b.error : ""), () => "");
     const err = new Error(detail ? `${path} → ${r.status}: ${detail}` : `${path} → ${r.status}`);
-    err.status = r.status; // e.g. 409 = optimistic lock (spec changed externally)
+    err.status = r.status; // z. B. 409 = Optimistischer Lock (Spec extern geändert)
     err.detail = detail;
     throw err;
   }
@@ -137,17 +137,17 @@ function applySession(s) {
   $("#oidclogin").classList.toggle("hidden", auth.mode !== "oidc");
 }
 
-// No login needed (mode none) or already signed in.
+// Kein Login nötig (Modus none) oder bereits angemeldet.
 function sessionReady() {
   return auth.mode === "none" || !!auth.user;
 }
 
-// OIDC: at most once per page load redirect automatically to the IdP (no redirect loop).
+// OIDC: höchstens einmal pro Seitenaufruf automatisch zum IdP (keine Redirect-Schleife).
 let oidcRedirected = false;
 
 function showLogin() {
   applySession({ mode: auth.mode, user: null, role: null, csrf: "" });
-  // OIDC: no form, straight to the IdP (ADR 0046); on failure the callback shows an error page.
+  // OIDC: kein Formular, direkt zum IdP (ADR 0046); nach Fehlschlag zeigt der Callback eine Fehlerseite.
   if (auth.mode === "oidc" && !oidcRedirected) {
     oidcRedirected = true;
     location.assign("/api/login/oidc");
@@ -158,7 +158,7 @@ async function initSession() {
   try {
     applySession(await (await fetch("/api/session")).json());
   } catch (e) {
-    /* server offline — the health indicator shows that */
+    /* Server offline — der Health-Indikator zeigt es */
   }
   if (sessionReady()) refresh();
   else showLogin();
@@ -179,27 +179,27 @@ async function doLogin(ev) {
 
 async function doLogout() {
   await api("/api/logout", { method: "POST" }).catch(() => {});
-  // OIDC: not straight back to the IdP — its SSO session would sign right back in.
+  // OIDC: nicht sofort zurück zum IdP — dessen SSO-Session würde direkt wieder anmelden.
   oidcRedirected = true;
   showLogin();
 }
 
-// HTML escape for text AND attribute values (including quotes). The UI uses
-// no inline JS handlers anymore (issue #268): values live in data-* attributes,
-// handlers are bound via addEventListener/delegation — there,
-// entity-masked values are safe.
+// HTML-Escape für Text UND Attributwerte (auch Anführungszeichen). Die UI nutzt
+// keine Inline-JS-Handler mehr (Issue #268): Werte stehen in data-*-Attributen,
+// die Handler sind per addEventListener/Delegation gebunden — dort sind
+// entity-maskierte Werte sicher.
 const ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 }
 
-// ---- Delegated click handlers (issue #268): no inline JS, values in data-* ----
-// The INNERMOST [data-act] parent of the click target wins — this replaces
-// the former event.stopPropagation() calls (button in a clickable row).
-// [data-stop] swallows clicks without action (e.g. the locked ▶ run in the
-// clickable loop card).
+// ---- Delegierte Klick-Handler (Issue #268): kein Inline-JS, Werte in data-* ----
+// Der jeweils INNERSTE [data-act]-Eltern des Klickziels gewinnt — das ersetzt
+// die früheren event.stopPropagation()-Aufrufe (Button in klickbarer Zeile).
+// [data-stop] schluckt Klicks ohne Aktion (z. B. der gesperrte ▶ run in der
+// klickbaren Loop-Karte).
 
-// Project list: selection, approval/shelve badges, approval list, shelve actions.
+// Projektliste: Auswahl, Freigabe-/Ablage-Badges, Freigabe-Liste, Ablage-Aktionen.
 function onProjectsClick(e) {
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -218,8 +218,8 @@ function onProjectsClick(e) {
   }
 }
 
-// Detail view: header (spec/graph), loop cards, run buttons, state buttons
-// and the graph editor (card + save bar).
+// Detail-View: Kopf (Spec/Graph), Loop-Karten, Run-Buttons, State-Buttons
+// und der Graph-Editor (Karte + Save-Leiste).
 function onDetailClick(e) {
   if (e.target.closest("[data-stop]")) return;
   const el = e.target.closest("[data-act]");
@@ -245,9 +245,9 @@ function onDetailClick(e) {
   }
 }
 
-// Context menu of the graph: closes before every action (replaces the former
-// `before` argument of the state buttons). ctx-run/ctx-edit close themselves
-// (they read graphCtxTarget, which hideGraphCtx() sets to null).
+// Kontextmenü des Graphs: schließt sich vor jeder Aktion (ersetzt das frühere
+// `before`-Argument der State-Buttons). ctx-run/ctx-edit schließen sich selbst
+// (sie lesen graphCtxTarget, das hideGraphCtx() auf null setzt).
 function onGraphCtxClick(e) {
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -257,8 +257,8 @@ function onGraphCtxClick(e) {
   else if (d.act === "set-state") { hideGraphCtx(); setRunState(d.name, d.loop || null, d.to); }
 }
 
-// Approval buttons of the run modal (no value needed: runApprove reads id/project
-// from the title).
+// Freigabe-Buttons des Run-Modals (kein Wert nötig: runApprove liest Id/Projekt
+// aus dem Titel).
 function onRunActionsClick(e) {
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -266,8 +266,8 @@ function onRunActionsClick(e) {
   else if (el.dataset.act === "run-reject") runApprove(false);
 }
 
-// Schedule panel: run now, one-time form (⏱ open, set, close)
-// and pending (✕). Values in data-*.
+// Schedule-Panel: Run-Now, One-time-Formular (⏱ öffnen, setzen, schließen)
+// und Ausstehende (✕). Werte in data-*.
 function onSchedClick(e) {
   const el = e.target.closest("[data-act]");
   if (!el) return;
@@ -281,7 +281,7 @@ function onSchedClick(e) {
   }
 }
 
-// Enter/Escape in the one-time field (#sched-when is re-created on every open).
+// Enter/Escape im One-time-Feld (#sched-when wird bei jedem Öffnen neu erzeugt).
 function onSchedKeydown(e) {
   if (e.target.id !== "sched-when") return;
   if (e.key === "Enter") schedOnetimeSubmit();
@@ -292,17 +292,17 @@ function badge(text, cls) {
   return `<span class="badge ${cls || ""}">${esc(text)}</span>`;
 }
 
-// Failure class of failed runs/steps (ADR 0035); legacy records without the field = unknown.
-// Mirror of runmodel.FAILED_RUN_STATUSES / FAILED_STEP_STATUSES (parity is checked by tests/test_web_constants.py).
+// Fehlerklasse gescheiterter Runs/Steps (ADR 0035); Altbestand ohne Feld = unknown.
+// Spiegel von runmodel.FAILED_RUN_STATUSES / FAILED_STEP_STATUSES (Gleichstand prüft tests/test_web_constants.py).
 const FAILED_RUN_STATUSES = ["error", "fail"];
 const FAILED_STEP_STATUSES = ["error", "fail", "timeout"];
-// Failure-class hints from the i18n catalog (keys `kind.<class>`).
+// Fehlerklassen-Hinweise aus dem i18n-Katalog (Keys `kind.<klasse>`).
 const FAILURE_KINDS = ["interrupted", "transient", "environment", "outcome", "unknown"];
 const kindHint = (kind) => tOr(`kind.${kind}`, kind);
 const kindLabel = (kind) => tOr(`kind.label.${kind}`, kind);
 const stateLabel = (st) => tOr(`state.label.${st}`, st);
-// Failure-class badge (label + hint tooltip) for a class; unknown
-// classes are shown raw (tOr fallback).
+// Fehlerklassen-Badge (Label + Hinweis-Tooltip) für eine Klasse; unbekannte
+// Klassen werden roh angezeigt (tOr-Fallback).
 function kindBadgeHtml(kind) {
   return `<span class="badge kind ${esc(kind)}" title="${esc(t("kind.title", { kind: kindHint(kind) }))}">${esc(kindLabel(kind))}</span>`;
 }
@@ -312,9 +312,9 @@ function kindBadge(rec, failedStatuses = FAILED_RUN_STATUSES) {
   return kindBadgeHtml(kind);
 }
 
-// Verdict badge (business outcome, e.g. relay-audit `fail`) — independent of run status: a
-// green run may have published a negative verdict. Run: verdict of the last step that
-// reported one (mirror of runmodel.Run.verdict); step: its own.
+// Verdikt-Badge (fachliches Ergebnis, z. B. relay-audit `fail`) — unabhängig vom Run-Status: ein
+// grüner Run kann ein negatives Verdikt veröffentlicht haben. Run: Verdikt des letzten Steps, der
+// eins gemeldet hat (Spiegel von runmodel.Run.verdict); Step: sein eigenes.
 const VERDICT_TONES = { pass: "good", done: "good", fail: "bad", blocked: "bad" };
 function runVerdict(rec) {
   if (!rec) return "";
@@ -330,15 +330,15 @@ function verdictBadge(rec) {
   return `<span class="badge verdict ${tone}" title="${esc(t("verdict.title"))}">${esc(t("verdict.label", { verdict: tOr(`verdict.value.${v}`, v) }))}</span>`;
 }
 
-// Health display; remember the state so a language switch can re-label it.
+// Health-Anzeige; Zustand merken, damit ein Sprachwechsel sie neu beschriften kann.
 function setHealth(online) {
   state.online = online;
   $("#health").textContent = t(online ? "health.online" : "health.offline");
 }
 
-// opts.force: after an explicit user action (pause/resume) re-render the
-// detail view in any case — the guards below apply only to the
-// auto-refresh. renderDetail restores the open loop spec and history itself.
+// opts.force: nach einer expliziten User-Aktion (pause/resume) den
+// Detail-View in jedem Fall neu rendern — die Guards unten gelten nur dem
+// Auto-Refresh. renderDetail stellt offene Loop-Spec und Historie selbst wieder her.
 async function refresh(opts = {}) {
   try {
     state.projects = await api("/api/projects");
@@ -348,11 +348,11 @@ async function refresh(opts = {}) {
   }
   setHealth(true);
   renderProjects();
-  // Re-render the detail view only if no loop spec is open and no graph is open
-  // — otherwise
-  // the auto-refresh (5 s) would discard the open spec. The
-  // run history lies outside the re-rendered part and is always
-  // updated in place (loaded pages + scroll position are preserved).
+  // Detail-View nur neu rendern, wenn keine Loop-Spec offen, kein Graph offen
+  // — sonst würde
+  // der Auto-Refresh (5 s) die offene Spec wegwerfen. Die
+  // Run-Historie liegt außerhalb des re-gerenderten Teils und wird immer
+  // in-place aktualisiert (geladene Seiten + Scroll-Position bleiben erhalten).
   if (!state.selected) return;
   if (opts.force || (!state.openLoop && !state.graphOpen)) renderDetail(state.selected);
   loadHistory(state.selected, "refresh");
@@ -378,9 +378,9 @@ function renderProjects() {
   }).join("");
 }
 
-// Accordion (no nested scroll): only the selected project shows
-// its loops, all others only the count. The state follows state.selected
-// and thereby survives every re-render (5-s refresh).
+// Accordion (kein verschachtelter Scroll): nur das ausgewählte Projekt zeigt
+// seine Loops, alle anderen nur die Anzahl. Der Zustand folgt state.selected
+// und überlebt damit jeden Re-Render (5-s-Refresh).
 function loopSummary(p) {
   const loops = p.loops || [];
   const head = `<div class="ploopcount">${esc(t("loops.count", { n: loops.length, s: loops.length === 1 ? "" : "s" }))}</div>`;
@@ -392,8 +392,8 @@ function loopSummary(p) {
   }).join("") + `</div>`;
 }
 
-// Open approval requests (needs_approval): badge with count in the project view.
-// Click (stopPropagation: the project is NOT selected) expands the list.
+// Offene Freigabe-Anfragen (needs_approval): Badge mit Anzahl im Projekt-View.
+// Klick (stopPropagation: Projekt wird NICHT ausgewählt) klappt die Liste auf.
 function approvalBadge(p) {
   const n = (p.pending_approvals || []).length;
   if (!n) return "";
@@ -401,9 +401,9 @@ function approvalBadge(p) {
       data-act="toggle-approvals" data-name="${esc(p.name)}">⏸ ${n}</span>`;
 }
 
-// Expanded list of open approvals (newest first). Clicking an
-// entry opens the run-log modal — the approval context (what/why) is
-// rendered there as usual (formatRun → formatApproval).
+// Aufgeklappte Liste der offenen Freigaben (neueste zuerst). Klick auf einen
+// Eintrag öffnet das Run-Log-Modal — der Approval-Kontext (was/warum) wird
+// dort wie üblich gerendert (formatRun → formatApproval).
 function approvalList(p) {
   const appr = p.pending_approvals || [];
   if (!appr.length || state.openApprovals !== p.name) return "";
@@ -423,8 +423,8 @@ function toggleApprovals(name) {
   renderProjects();
 }
 
-// Spec change proposals (ADR 0066): badge with count, expandable list, diff modal
-// with apply/reject. The server computes the diff (GET /api/spec-proposals/<id>).
+// Spec-Änderungsvorschläge (ADR 0066): Badge mit Anzahl, aufklappbare Liste, Diff-Modal
+// mit Apply/Reject. Das Diff rechnet der Server (GET /api/spec-proposals/<id>).
 const PROPOSALS_API = "/api/spec-proposals";
 const proposalUi = { diff: null, error: "" };
 
@@ -450,7 +450,7 @@ function toggleProposals(name) {
   renderProjects();
 }
 
-// Line diff (unified) in red/green; `@@` headers dimmed.
+// Zeilen-Diff (unified) rot/grün; ``@@``-Köpfe gedimmt.
 function diffHtml(lines) {
   return `<pre class="propdiff">` + lines.map((ln) => {
     const cls = ln.startsWith("+") ? "add" : ln.startsWith("-") ? "del" : ln.startsWith("@@") ? "hunk" : "";
@@ -521,10 +521,10 @@ function onProposalClick(e) {
   else if (act === "prop-close") closeProposal();
 }
 
-// Exhausted retry chains ("shelved", ADR 0036, decision 6): like
-// approvals — badge with count, expandable list with class, last error,
-// attempt count and the actions *retry now* (exhausted → immediate run)
-// and *discard* (chain dismissed).
+// Erschöpfte Retry-Ketten („Abgelegt“, ADR 0036, Entscheidung 6): analog
+// Freigaben — Badge mit Anzahl, aufklappbare Liste mit Klasse, letztem Fehler,
+// Versuchszahl und den Aktionen *jetzt erneut* (exhausted → sofortiger Run)
+// und *verwerfen* (Kette dismissed).
 function shelvedBadge(p) {
   const n = (p.shelved || []).length;
   if (!n) return "";
@@ -573,15 +573,15 @@ async function shelvedAction(project, loop, triggerKey, action) {
   refresh({ force: true });
 }
 
-// Pause/Disable (ADR 0019): badge + buttons per project/loop.
+// Pause/Disable (ADR 0019): Badge + Buttons pro Projekt/Loop.
 function stateBadge(st) {
   if (!st || st.state === "active") return "";
   const until = st.until ? esc(t("state.until", { until: fmtDateTime(st.until) })) : "";
   return ` <span class="statebadge ${esc(st.state)}">${esc(stateLabel(st.state))}${until}</span>`;
 }
 
-// State buttons (pause/resume/disable): values in data-*, action via delegation
-// (onDetailClick resp. onGraphCtxClick — the latter closes the menu first).
+// State-Buttons (pause/resume/disable): Werte in data-*, Aktion per Delegation
+// (onDetailClick bzw. onGraphCtxClick — letzteres schließt das Menü vorher).
 function stateButtons(project, loop, st) {
   const cur = (st && st.state) || "active";
   const btn = (to, label) => cur === to ? "" :
@@ -589,9 +589,9 @@ function stateButtons(project, loop, st) {
   return btn("active", t("state.resume")) + btn("paused", t("state.pause")) + btn("disabled", t("state.disable"));
 }
 
-// Hint on the locked ▶ run: where to lift the effective `disabled` state.
-// A disabled project overrides the loop state (pause.effective_state)
-// — then the loop card has no matching resume button, only the header does.
+// Hinweis am gesperrten ▶ run: wo der wirksame `disabled`-Zustand aufzuheben
+// ist. Ein deaktiviertes Projekt schlägt den Loop-Zustand (pause.effective_state)
+// — dann hat die Loop-Karte keinen passenden resume-Button, nur der Kopf.
 function runLockReason(p) {
   return (p.state || {}).state === "disabled" ? t("state.lockProject") : t("state.lockLoop");
 }
@@ -621,22 +621,22 @@ function selectProject(name) {
   prefetchLoopSpecs(name);
 }
 
-// Loads the complete spec and fills loopSpecCache so loop specs can be opened
-// (without their own fetch) immediately. Important: the auto-refresh must
-// restore the open spec *synchronously* — its own fetch per
-// re-render would keep getting aborted under parallel renders.
+// Lädt die komplette Spec und füllt loopSpecCache, damit Loop-Specs sofort
+// (ohne eigenen Fetch) geöffnet werden können. Wichtig: Der Auto-Refresh muss
+// die offene Spec *synchron* wiederherstellen können — ein eigener Fetch pro
+// Re-Render würde bei parallelen Renders immer wieder abgebrochen.
 async function prefetchLoopSpecs(name) {
   try {
     const spec = await api(`/api/projects/${encodeURIComponent(name)}/spec`);
     for (const [loopName, ldef] of Object.entries(spec.loops || {})) {
       loopSpecCache[name + "/" + loopName] = renderLoopSpec(ldef);
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { /* ign */ }
 }
 
-// Detail view = re-rendered header/loops (#detail-main) + run history
-// (#histview). The history is only rebuilt on project switch, so that
-// auto-refresh renders neither discard the filter focus nor the loaded pages.
+// Detail-View = re-gerenderter Kopf/Loops (#detail-main) + Run-Historie
+// (#histview). Die Historie wird nur beim Projektwechsel neu aufgebaut, damit
+// Auto-Refresh-Renders weder Filter-Fokus noch geladene Seiten wegwerfen.
 function renderDetail(name) {
   ++detailRenderSeq;
   const p = state.projects.find((x) => x.name === name);
@@ -646,7 +646,7 @@ function renderDetail(name) {
     el.innerHTML = `<div id="detail-main"></div><div id="histview" class="histview"></div>`;
     openHistory(name);
   }
-  // Graph view mode: the graph replaces the loop list (no extra panel).
+  // Graph-View-Modus: der Graph ersetzt die Loop-Liste (kein zusätzliches Panel).
   const graphMode = state.graphOpen === name;
   $("#detail-main").innerHTML = `
     <div class="row" style="margin-bottom:14px">
@@ -687,32 +687,32 @@ function renderDetail(name) {
         </div>
         <div class="loopspec hidden" id="loopspec-${esc(l.name)}"></div>
       </div>`).join("")}`;
-  // Restore the kept-open loop spec after a re-render (auto-refresh).
+  // Offen gehaltene Loop-Spec nach Re-Render (Auto-Refresh) wiederherstellen.
   if (state.openLoop) openLoopSpec(name, state.openLoop);
-  // Restore the open graph after a (forced) re-render
-  // (from graphDrafts — no own fetch, so parallel renders don't race).
+  // Offenen Graph nach einem (erzwungenen) Re-Render wiederherstellen
+  // (aus graphDrafts — kein eigener Fetch, damit parallele Renders nicht racen).
   if (state.graphOpen === name) loadGraph(name);
-  // Graph card: delegated input handler (field change → draft update).
-  // #graphnode is re-created on every renderDetail → exactly one listener.
+  // Graph-Karte: delegierter Input-Handler (Feld-Change → Draft-Update).
+  // #graphnode wird bei jedem renderDetail neu erzeugt → genau ein Listener.
   const gn = $("#graphnode");
   if (gn) gn.addEventListener("input", graphNodeInput);
 }
 
-// ---- History: searchable, paginated run list (issue #163) ----
+// ---- Historie: durchsuchbare, paginierte Run-Liste (Issue #163) ----
 const HISTORY_STATUSES = ["running", "queued", "needs_approval", "pass", "fail", "error", "rejected"];
 const HISTORY_PAGE_SIZE = 20;
-const HISTORY_MAX_PAGE_SIZE = 200; // = runsearch.MAX_PAGE_SIZE (server truncates above this)
+const HISTORY_MAX_PAGE_SIZE = 200; // = runsearch.MAX_PAGE_SIZE (Server kappt darüber)
 const HISTORY_EMPTY_FILTER = { q: "", from: "", to: "", status: "", failure_kind: "", loop: "" };
 let histFilter = { ...HISTORY_EMPTY_FILTER };
 let histRuns = [];
 let histCursor = null;
 let histHtml = "";
-let histSeq = 0; // only reset/more count up → discard outdated responses
-let histBusy = false; // reset/more in flight → suspend refresh (would overwrite the new page)
+let histSeq = 0; // nur reset/more zählen hoch → überholte Antworten verwerfen
+let histBusy = false; // reset/more unterwegs → Refresh aussetzen (würde die neue Seite überschreiben)
 let histTimer = null;
 
-// Build a project's history (filters reset) and load the first page.
-// Only called on project switch — see renderDetail.
+// Historie eines Projekts aufbauen (Filter zurückgesetzt) und die erste Seite laden.
+// Wird nur beim Projektwechsel aufgerufen — siehe renderDetail.
 function openHistory(name) {
   const p = state.projects.find((x) => x.name === name);
   const el = $("#histview");
@@ -744,12 +744,12 @@ function openHistory(name) {
   loadHistory(name, "reset");
 }
 
-// Load a page. mode:
-// - "reset":   new search from the start (filters changed / project opened)
-// - "more":    append the next page via cursor
-// - "refresh": update already-loaded runs in place (auto-refresh,
-//              after actions). Loads as many as are already shown, so the
-//              list doesn't shrink to page 1 and the scroll doesn't jump.
+// Seite laden. mode:
+// - "reset":   neue Suche ab Anfang (Filter geändert / Projekt geöffnet)
+// - "more":    nächste Seite per Cursor anhängen
+// - "refresh": bereits geladene Runs in-place aktualisieren (Auto-Refresh,
+//              nach Aktionen). Lädt so viele wie schon angezeigt, damit die
+//              Liste nicht auf Seite 1 schrumpft und der Scroll nicht springt.
 async function loadHistory(name, mode) {
   if (!$("#h-list") || $("#histview").dataset.project !== name) return;
   const isRefresh = mode === "refresh";
@@ -760,13 +760,13 @@ async function loadHistory(name, mode) {
   const limit = isRefresh ? Math.min(Math.max(loaded, HISTORY_PAGE_SIZE), HISTORY_MAX_PAGE_SIZE) : HISTORY_PAGE_SIZE;
   const qs = new URLSearchParams({ project: name, ...histFilter, limit });
   if (mode === "more" && histCursor) qs.set("cursor", histCursor);
-  // Drop empty filters, but always send "q": switches the API into search mode.
+  // Leere Filter weglassen, aber "q" immer senden: schaltet die API in den Such-Modus.
   for (const [k, v] of [...qs]) if (!v && k !== "q") qs.delete(k);
   let data;
   try {
     data = await api(`/api/runs?${qs}`);
   } catch (e) {
-    if (isRefresh || seq !== histSeq) return; // refresh error (briefly offline): keep the list
+    if (isRefresh || seq !== histSeq) return; // Refresh-Fehler (kurz offline): Liste behalten
     histBusy = false;
     histHtml = "";
     if ($("#h-list")) $("#h-list").innerHTML = `<div class="runerr">✖ ${esc(e.message)}</div>`;
@@ -778,7 +778,7 @@ async function loadHistory(name, mode) {
     histRuns = histRuns.concat(data.runs);
     histCursor = data.next_cursor;
   } else if (isRefresh && loaded > limit) {
-    // More loaded than a single request may deliver: replace the head, keep rest + cursor.
+    // Mehr geladen als eine Anfrage liefern darf: Kopf ersetzen, Rest + Cursor behalten.
     const ids = new Set(data.runs.map((r) => r.id));
     histRuns = data.runs.concat(histRuns.slice(limit).filter((r) => !ids.has(r.id)));
   } else {
@@ -802,12 +802,12 @@ function renderHistoryList() {
         <button class="ghost" data-act="reject">${esc(t("history.reject"))}</button>
       </span>` : ""}
     </div>`).join("") : `<div class="histempty">${esc(t("history.empty"))}</div>`;
-  // Don't rewrite an unchanged list (no flicker / hover loss on auto-refresh).
+  // Unveränderte Liste nicht neu schreiben (kein Flackern / Hover-Verlust beim Auto-Refresh).
   if (html !== histHtml) $("#h-list").innerHTML = histHtml = html;
   $("#h-more").classList.toggle("hidden", !histCursor);
 }
 
-// Delegated click handler of the history list: values come from data-* (no inline JS).
+// Delegierter Klick-Handler der Historienliste: Werte kommen aus data-* (kein Inline-JS).
 function onHistoryClick(e) {
   const act = e.target.closest("[data-act]");
   const row = act && act.closest(".histrow");
@@ -817,7 +817,7 @@ function onHistoryClick(e) {
   else histApprove(project, run, act.dataset.act === "approve");
 }
 
-// Approve/reject directly from the list (with confirmation); same API as chat/modal.
+// Freigeben/Ablehnen direkt aus der Liste (mit Bestätigung); gleiche API wie Chat/Modal.
 async function histApprove(project, runId, ok) {
   const action = t(ok ? "history.approve" : "history.reject");
   if (!confirm(t("history.confirm", { runId, action }))) return;
@@ -833,9 +833,9 @@ async function histApprove(project, runId, ok) {
   refresh();
 }
 
-// Optional initial variables (K=V, one per line) for manual runs —
-// e.g. issue_number=42 for issue-driven loops (like CLI --var).
-// null = the user cancelled.
+// Optionale Initiale-Variablen (K=V, eine pro Zeile) für manuelle Runs —
+// z. B. issue_number=42 für issue-gesteuerte Loops (wie CLI --var).
+// null = User hat abgebrochen.
 function promptVars() {
   const raw = prompt(t("run.varsPrompt"));
   if (raw === null) return null;
@@ -862,10 +862,10 @@ async function startRun(project, loop) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project, loop, vars }),
     });
-    // The server returns the run id in the response (BEFORE the worker writes the record
-    // to disk) → the panel follows exactly this run by id.
-    // (Formerly: search for the "newest run of the loop" — in the race the panel found the
-    // OLD run, whose terminal status stopped the polling immediately.)
+    // Der Server liefert die Run-Id im Response (BEVOR der Worker den Record
+    // auf Disk schreibt) → das Panel folgt exakt diesem Run per Id.
+    // (Früher: "neuester Run des Loops" suchen — im Race fand das Panel den
+    // ALTEN Run, dessen Endstatus das Polling sofort stoppte.)
     if (r.run_id) {
       openRunPanel(`${project} / ${loop} · ${r.run_id}`, r.queued ? "queued" : "running");
       pollRunById(project, r.run_id);
@@ -877,13 +877,13 @@ async function startRun(project, loop) {
   }
 }
 
-// Polls a specific run by id (robust against the start race).
-// Run id in the title: runApprove() reads it from there for /api/approve|reject.
-// Without the id the buttons in the live panel (needs_approval) would be inactive.
-// opts.graceNeedsApproval: after an approval the resume worker writes
-// "running" only shortly AFTER the POST → needs_approval is here a
-// transitional status, not a gate. Without the flag the polling stops at the gate,
-// because the run (correctly) pauses there.
+// Pollt einen konkreten Run per Id (robust gegen das Start-Race).
+// Run-ID im Titel: runApprove() liest sie daraus für /api/approve|reject.
+// Ohne ID wären die Buttons im Live-Panel (needs_approval) inaktiv.
+// opts.graceNeedsApproval: Nach einer Approval schreibt der Resume-Worker
+// "running" erst kurz NACH dem POST → needs_approval ist hier ein
+// Übergangsstatus, kein Gate. Ohne das Flag stoppt das Polling am Gate,
+// weil der Run dort (korrekterweise) pausiert.
 async function pollRunById(project, runId, opts = {}) {
   clearTimeout(state.runTimer);
   try {
@@ -891,9 +891,9 @@ async function pollRunById(project, runId, opts = {}) {
     openRunPanel(`${project} / ${rec.loop} · ${runId}`, rec.status);
     setRunRecord(rec);
     if (runTab === "overview") $("#runlog").scrollTop = $("#runlog").scrollHeight;
-  } catch (e) { /* ignore */ }
+  } catch (e) { /* ign */ }
   const st = $("#runstatus").dataset.status;
-  // queued: a manual run waits with priority for the project lock (ADR 0015).
+  // queued: manueller Run wartet mit Vorrang auf den Projekt-Lock (ADR 0015).
   const keep = st === "running" || st === "queued" || (opts.graceNeedsApproval && st === "needs_approval");
   if (keep) state.runTimer = setTimeout(() => pollRunById(project, runId, opts), 1500);
   refresh();
@@ -918,58 +918,58 @@ async function toggleSpec(name) {
   el.textContent = specCache[name];
 }
 
-// ---- Spec graph (Cytoscape) — view mode that replaces the loop list ----
-// The graph is a DRAFT editor: it renders from an in-memory working copy
-// (graphDrafts) of the spec, not from the server payload. Adding/changing/
-// removing/reordering loops & steps only changes the draft (dry-run) and
-// is written into the spec only via "💾 save". Details/editor of a node
-// appear as a floating card (#graphnode) IN the graph, not in the bottom panel.
+// ---- Spec-Graph (Cytoscape) — View-Modus, der die Loop-Liste ersetzt ----
+// Der Graph ist ein DRAFT-Editor: er rendert aus einer in-memory Working Copy
+// (graphDrafts) der Spec, nicht aus dem Server-Payload. Hinzufügen/Ändern/
+// Entfernen/Reihenfolge von Loops & Steps ändert nur den Draft (Dry-Run) und
+// wird erst per "💾 save" in die Spec geschrieben. Details/Editor eines Knotens
+// erscheinen als schwebende Karte (#graphnode) IM Graph, nicht im Bottom-Panel.
 //
-// Layers: top = project + loops (edges colored by trigger type); click on
-// a loop → drill-down to its steps as a directed chain from the loop root
-// (loop → s1 → s2 → …; only the first step has an edge to the loop).
-// Step/loop/project click → card (details + edit). Gray ghost nodes
-// ("+ New Loop" / "+ New Step") add nodes.
+// Ebenen: Top = Projekt + Loops (Kanten nach Trigger-Typ gefärbt); Klick auf
+// eine Loop → Drill-down auf deren Steps als gerichtete Kette ab Loop-Wurzel
+// (loop → s1 → s2 → …; nur der erste Step hat eine Kante zur Loop).
+// Step-/Loop-/Projekt-Klick → Karte (Details + Edit). Graue Ghost-Nodes
+// ("+ New Loop" / "+ New Step") fügen Nodes hinzu.
 
 let graphRenderSeq = 0;
-const graphDrafts = {}; // project → working copy of the spec (draft)
-const graphSaved = {};  // project → JSON of the last saved draft
-const graphBaseHash = {}; // project → _hash of the spec at draft load (optimistic lock)
-const graphInherited = {}; // project → { loop → {triggers, steps} } of the `use:` loops (expanded, read-only)
-// project → { loop → {triggers, steps, description} }: loops that only come into being on expansion
-// (e.g. from the `relay:` block) — read-only, never part of the draft (save doesn't write them).
+const graphDrafts = {}; // project → Working Copy der Spec (Draft)
+const graphSaved = {};  // project → JSON des letzten gespeicherten Drafts
+const graphBaseHash = {}; // project → _hash der Spec beim Draft-Load (Optimistischer Lock)
+const graphInherited = {}; // project → { loop → {triggers, steps} } der `use:`-Loops (expandiert, read-only)
+// project → { loop → {triggers, steps, description} }: Loops, die erst beim Expandieren entstehen
+// (z. B. aus dem `relay:`-Block) — read-only, nie Teil des Drafts (Save schreibt sie nicht).
 const graphGenerated = {};
-const graphTplParams = {}; // template → params block (null = unknown) — cache for the with: editor
-let graphDrill = null;  // { project, loop } — current drill-down layer
-let graphCtxTarget = null; // node for which the context menu is open
-let graphCtxClose = null;  // document listener that closes the menu
-let graphSel = null;     // { kind, id, loop?, index? } — node with an open card
+const graphTplParams = {}; // template → params-Block (null = unbekannt) — Cache für den with:-Editor
+let graphDrill = null;  // { project, loop } — aktuelle Drill-down-Ebene
+let graphCtxTarget = null; // Node, für den das Kontextmenü offen ist
+let graphCtxClose = null;  // Document-Listener, der das Menü schließt
+let graphSel = null;     // { kind, id, loop?, index? } — Knoten mit offener Karte
 
-// Trigger type → edge color (literal hex: Cytoscape does not resolve CSS var()).
-// Keys = config.TRIGGER_TYPES (manual, cron, on_file, on_issue, on_pr, on_webhook).
+// Trigger-Typ → Kantenfarbe (Literal-Hex: Cytoscape löst CSS var() nicht auf).
+// Schlüssel = config.TRIGGER_TYPES (manual, cron, on_file, on_issue, on_pr, on_webhook).
 const TRIGGER_EDGE_COLORS = {
   manual: "#7d8899", cron: "#d9a441", on_file: "#50b867",
   on_issue: "#9b59b6", on_pr: "#56b6c2", on_webhook: "#e05561",
 };
 const EDGE_DEFAULT_COLOR = "#56b6c2";
-// Display name of a trigger type (i18n `trig.<type>`); unknown → raw type.
+// Anzeigename eines Trigger-Typs (i18n `trig.<typ>`); unbekannt → roher Typ.
 const trigLabel = (type) => (type ? tOr(`trig.${type}`, type) : "?");
-// Display name of a run/step status (i18n `run.status.<status>`); unknown →
-// raw status (closed enum, fallback for old/new statuses).
+// Anzeigename eines Run-/Step-Status (i18n `run.status.<status>`); unbekannt →
+// roher Status (geschlossenes Enum, Fallback für Alt-/Neu-Status).
 const statusLabel = (st) => (st ? tOr(`run.status.${st}`, st) : st);
 
-// ---- Draft (in-memory working copy of the spec) ----
-// Deep copy of the spec so edits don't touch the fetched spec.
+// ---- Draft (in-memory Working Copy der Spec) ----
+// Deep-Copy der Spec, damit Edits die gefetchte Spec nicht berühren.
 function draftFromSpec(spec) {
   const loops = {};
   for (const [ln, ldef] of Object.entries(spec.loops || {})) {
     if (!ldef || typeof ldef !== "object") continue;
-    // Keep ALL keys of the loop definition (worktree, retry, tier,
-    // use, with, insert, …) — only triggers/steps get deep-copied. The
-    // draft source is the RAW spec (?raw=1): vars stay literal,
-    // use:/insert: loops un-inlined. triggers/steps only if the spec has
-    // them: an injected `steps: []`/`triggers: []` would overwrite template
-    // values in `use:` loops (→ loopList creates them on demand only).
+    // ALLE Schlüssel der Loop-Definition behalten (worktree, retry, tier,
+    // use, with, insert, …) — nur triggers/steps werden deep-copied. Die
+    // Draft-Quelle ist die ROHE Spec (?raw=1): vars bleiben wörtlich,
+    // use:/insert:-Loops un-inlined. triggers/steps nur, wenn die Spec sie
+    // hat: ein injiziertes `steps: []`/`triggers: []` würde bei `use:`-Loops
+    // die Template-Werte überschreiben (→ loopList legt sie erst bei Bedarf an).
     loops[ln] = { ...ldef };
     for (const key of ["triggers", "steps"]) {
       if (Array.isArray(ldef[key])) loops[ln][key] = ldef[key].map((x) => ({ ...(x || {}) }));
@@ -982,43 +982,43 @@ function draftFromSpec(spec) {
   };
 }
 
-// Get the steps/triggers list of a draft loop for editing — creates it
-// only now, so untouched loops don't write empty lists into the spec.
+// steps/triggers-Liste einer Draft-Loop zum Ändern holen — legt sie erst
+// jetzt an, damit unangetastete Loops keine leeren Listen in die Spec schreiben.
 function loopList(ldef, key) {
   if (!Array.isArray(ldef[key])) ldef[key] = [];
   return ldef[key];
 }
 
-// After a removal: drop an empty list of a `use:` loop again — then
-// the template values apply again, instead of being overwritten by `[]`.
+// Nach einem Entfernen: leere Liste einer `use:`-Loop wieder weglassen — dann
+// gelten wieder die Template-Werte, statt sie mit `[]` zu überschreiben.
 function pruneEmptyList(ldef, key) {
   if (ldef.use && Array.isArray(ldef[key]) && !ldef[key].length) delete ldef[key];
 }
 
-// Own steps editable? `use:` loops inherit their steps from the template; own
-// `steps` would replace them entirely (and collide with `insert:`) — there
-// only if the raw spec already has own steps.
+// Eigene Steps editierbar? `use:`-Loops erben die Steps vom Template; eigene
+// `steps` würden sie komplett ersetzen (und kollidieren mit `insert:`) — dort
+// nur, wenn die rohe Spec bereits eigene Steps hat.
 function loopStepsEditable(ldef) {
   return !ldef.use || Array.isArray(ldef.steps);
 }
 
-// Does the draft have unsaved changes? (Comparison with the last save state.)
+// Draft hat ungespeicherte Änderungen? (Vergleich mit letztem Save-Stand.)
 function draftDirty(name) {
   const d = graphDrafts[name];
   if (!d) return false;
   return JSON.stringify(d) !== (graphSaved[name] ?? "");
 }
 
-// Draft → nodes/edges (client-side, so the graph renders from the draft,
-// not from a server payload — the graph is the single source of truth).
+// Draft → Nodes/Edges (client-seitig, damit der Graph aus dem Draft rendert,
+// nicht aus einem Server-Payload — der Graph ist die einzige Quelle).
 function draftGraph(name, draft) {
   const nodes = [{ id: `proj:${name}`, kind: "project", label: name }];
   const edges = [];
   const seenTpl = new Set();
   for (const [lname, ldef] of Object.entries(draft.loops || {})) {
     const loopId = `loop:${name}:${lname}`;
-    // `use:` loops without own triggers/steps: show the inherited ones
-    // (from the expanded spec) — read-only, not part of the draft.
+    // `use:`-Loops ohne eigene triggers/steps: die vom Template geerbten
+    // (aus der expandierten Spec) anzeigen — read-only, nicht Teil des Drafts.
     const inh = ldef.use ? (graphInherited[name] || {})[lname] || {} : {};
     const trigTypes = (Array.isArray(ldef.triggers) ? ldef.triggers : inh.triggers || [])
       .filter((t) => t && t.type).map((t) => String(t.type));
@@ -1035,9 +1035,9 @@ function draftGraph(name, draft) {
       if (!seenTpl.has(tplId)) { seenTpl.add(tplId); nodes.push({ id: tplId, kind: "template", label: String(ldef.use) }); }
       edges.push({ source: loopId, target: tplId, kind: "uses_template" });
     }
-    // Step chain: only the FIRST step hangs off the loop (has_step), the
-    // rest follow via next_step — the drill-down shows the execution
-    // as a directed chain from the loop root (loop → s1 → s2 → …).
+    // Step-Kette: nur der ERSTE Step hängt an der Loop (has_step), die
+    // weiteren folgen per next_step — der Drill-down zeigt die Ausführung
+    // als gerichtete Kette ab Loop-Wurzel (loop → s1 → s2 → …).
     let prev = null;
     (ldef.steps || []).forEach((s, si) => {
       const stepId = `step:${name}:${lname}:${si}`;
@@ -1048,9 +1048,9 @@ function draftGraph(name, draft) {
     });
     if (!Array.isArray(ldef.steps)) pushReadonlySteps(nodes, edges, name, lname, inh.steps || [], prev);
   }
-  // Generated loops (e.g. relay-dispatch/-session/-audit from `relay:`): read-only.
+  // Generierte Loops (z. B. relay-dispatch/-session/-audit aus `relay:`): read-only.
   for (const [lname, gdef] of Object.entries(graphGenerated[name] || {})) {
-    if (lname in (draft.loops || {})) continue; // a draft loop of the same name takes precedence
+    if (lname in (draft.loops || {})) continue; // gleichnamige Draft-Loop hat Vorrang
     const loopId = `loop:${name}:${lname}`;
     const trigTypes = gdef.triggers.filter((t) => t && t.type).map((t) => String(t.type));
     const stepNames = gdef.steps.map((s, i) => String(s.name || s.type || `step ${i}`));
@@ -1061,7 +1061,7 @@ function draftGraph(name, draft) {
   return { nodes, edges };
 }
 
-// Graph button: toggle view mode (graph ↔ loop list).
+// Graph-Button: View-Modus umschalten (Graph ↔ Loop-Liste).
 function toggleGraph(name) {
   if (state.graphOpen === name) {
     const el = $("#graphcanvas");
@@ -1077,10 +1077,10 @@ function toggleGraph(name) {
   state.graphOpen = name;
   graphDrill = null;
   closeGraphCard();
-  renderDetail(name); // whose restore logic calls loadGraph(name)
+  renderDetail(name); // dessen Restore-Logik ruft loadGraph(name) auf
 }
 
-// Load the draft (from the spec) and render it.
+// Draft laden (aus der Spec) und rendern.
 async function loadGraph(name) {
   const el = $("#graphcanvas");
   if (!el) return;
@@ -1089,15 +1089,15 @@ async function loadGraph(name) {
     el.innerHTML = `<div class="graphmsg">${esc(t("graph.loading"))}</div>`;
     try {
       const base = `/api/projects/${encodeURIComponent(name)}/spec`;
-      // ?raw=1 → raw (not expanded) spec: draft source with all
-      // loop keys, vars literal, use:/insert: un-inlined. _hash for
-      // the optimistic lock on save. The expanded spec only provides
-      // the (read-only) template steps/triggers of use: loops.
+      // ?raw=1 → rohe (nicht expandierte) Spec: Draft-Quelle mit allen
+      // Loop-Schlüsseln, vars wörtlich, use:/insert: un-inlined. _hash für
+      // den Optimistischen Lock beim Save. Die expandierte Spec liefert nur
+      // die (read-only) Template-Steps/-Triggers der use:-Loops.
       const [raw, expanded] = await Promise.all([
         graphDrafts[name] ? null : api(`${base}?raw=1`),
         api(base),
       ]);
-      if (seq !== graphRenderSeq) return; // project switched
+      if (seq !== graphRenderSeq) return; // Projekt gewechselt
       if (raw) {
         graphDrafts[name] = draftFromSpec(raw);
         graphSaved[name] = JSON.stringify(graphDrafts[name]);
@@ -1111,52 +1111,52 @@ async function loadGraph(name) {
         graphInherited[name][ln] = { triggers: ldef.triggers || [], steps: ldef.steps || [] };
         if (rawLoops && !(ln in rawLoops)) generated[ln] = { ...graphInherited[name][ln], description: ldef.description || "" };
       }
-      // Without a fresh raw spec (draft already exists) the known list stays valid.
+      // Ohne frische rohe Spec (Draft existiert schon) bleibt die bekannte Liste gültig.
       if (rawLoops) graphGenerated[name] = generated;
     } catch (e) {
       if (seq === graphRenderSeq) el.innerHTML = `<div class="graphmsg err">${esc(e.message)}</div>`;
       return;
     }
   }
-  if (seq !== graphRenderSeq) return; // stale render (project switch)
+  if (seq !== graphRenderSeq) return; // veraltetes Render (Projektwechsel)
   renderGraph(name);
 }
 
-// Attach a read-only step chain (`tstep`) to a loop: template or generated steps.
+// Read-only Step-Kette (`tstep`) an eine Loop hängen: Template- oder generierte Steps.
 function pushReadonlySteps(nodes, edges, name, lname, steps, prev) {
   const loopId = `loop:${name}:${lname}`;
   steps.forEach((s, si) => {
     const stepId = `tstep:${name}:${lname}:${si}`;
     nodes.push({ id: stepId, kind: "tstep", label: String(s.name || s.type || `step ${si}`) });
-    if (!prev) edges.push({ source: loopId, target: stepId, kind: "has_step" }); // only the first step hangs off the loop
+    if (!prev) edges.push({ source: loopId, target: stepId, kind: "has_step" }); // nur der erste Step hängt an der Loop
     if (prev) edges.push({ source: prev, target: stepId, kind: "next_step" });
     prev = stepId;
   });
 }
 
-// Loop node (editable or generated)?
+// Loop-Knoten (editierbar oder generiert)?
 function isLoopKind(kind) {
   return kind === "loop" || kind === "gloop";
 }
 
-// has_loop edge: label = trigger types of the target loop, color from the first.
+// has_loop-Kante: Label = Trigger-Typen der Ziel-Loop, Farbe nach dem ersten.
 function loopEdge(e, byId) {
   const triggers = (byId[e.target] || {}).triggers || [];
   return { ...e, label: triggers.map(trigLabel).join(", "), colorKey: triggers[0] };
 }
 
-// Elements of the current layer + ghost nodes:
-// Top: project + loops + "+ New Loop";
-// Drill-down: project + loop + steps + templates + "+ New Step".
+// Elemente der aktuellen Ebene + Ghost-Nodes:
+// Top: Projekt + Loops + "+ New Loop";
+// Drill-down: Projekt + Loop + Steps + Templates + "+ New Step".
 function graphElements(name, g) {
   const byId = {};
   for (const n of g.nodes) byId[n.id] = n;
   if (graphDrill && graphDrill.project === name) {
     const loopId = `loop:${name}:${graphDrill.loop}`;
     const projId = `proj:${name}`;
-    // Children exactly via the loop's edges (no ID prefix: loop `a` would
-    // otherwise also collect the steps of `a:b`). Only the first step hangs
-    // directly off the loop (has_step) — the rest follow via the next_step chain.
+    // Kinder exakt über die Kanten der Loop (kein ID-Präfix: Loop `a` würde
+    // sonst auch die Steps von `a:b` einsammeln). Nur der erste Step hängt
+    // direkt an der Loop (has_step) — der Rest folgt per next_step-Kette.
     const childIds = new Set(g.edges
       .filter((e) => (e.kind === "uses_template" || e.kind === "has_step") && e.source === loopId)
       .map((e) => e.target));
@@ -1168,10 +1168,10 @@ function graphElements(name, g) {
     const edges = g.edges
       .filter((e) => (e.kind === "has_step" || e.kind === "next_step" || e.kind === "uses_template" || (e.kind === "has_loop" && e.target === loopId)) && ids.has(e.source) && ids.has(e.target))
       .map((e) => (e.kind === "has_loop" ? loopEdge(e, byId) : e));
-    // Ghost node: append a new step to the chain — not for template loops
-    // without own steps (one step would replace all template steps). The
-    // ghost hangs at the CHAIN END (new steps are appended to the end),
-    // for a loop without steps at the loop itself.
+    // Ghost-Node: neuen Step an die Kette anhängen — nicht bei Template-Loops
+    // ohne eigene Steps (ein Step würde alle Template-Steps ersetzen). Der
+    // Ghost hängt am KETTENENDE (neue Steps werden ans Ende angehängt),
+    // bei einer Loop ohne Steps an die Loop selbst.
     const ldef = (graphDrafts[name] || { loops: {} }).loops[graphDrill.loop];
     if (ldef && loopStepsEditable(ldef)) {
       const n = (ldef.steps || []).length;
@@ -1186,30 +1186,30 @@ function graphElements(name, g) {
   const edges = g.edges
     .filter((e) => e.kind === "has_loop" && ids.has(e.source) && ids.has(e.target))
     .map((e) => loopEdge(e, byId));
-  // Ghost node: create a new loop.
+  // Ghost-Node: neue Loop anlegen.
   nodes.push({ id: "ghost:loop", kind: "ghost", label: t("graph.ghostLoop"), ghost: "loop" });
   edges.push({ source: `proj:${name}`, target: "ghost:loop", kind: "ghost_edge" });
   return { nodes, edges };
 }
 
-// Cytoscape stylesheet: literal hex (Cytoscape does not resolve CSS var()).
+// Cytoscape-Stylesheet: Literal-Hex (Cytoscape löst CSS var() nicht auf).
 const GRAPH_STYLE = [
   { selector: "node", style: { "label": "data(label)", "color": "#d8dee7", "font-size": 11, "text-valign": "bottom", "text-halign": "center", "text-margin-y": 4, "text-background-color": "#15181d", "text-background-opacity": 0.85, "text-background-padding": 3, "text-wrap": "ellipsis", "text-max-width": "140px" } },
   { selector: 'node[kind="project"]', style: { "background-color": "#4a90d9", "shape": "ellipse", "width": 46, "height": 46, "font-size": 13, "font-weight": "bold" } },
   { selector: 'node[kind="loop"]', style: { "background-color": "#50b867", "shape": "round-rectangle", "width": 36, "height": 36 } },
-  // Generated loops (e.g. from `relay:`): read-only, faded + dashed.
+  // Generierte Loops (z. B. aus `relay:`): read-only, blass + gestrichelt.
   { selector: 'node[kind="gloop"]', style: { "background-color": "#50b867", "background-opacity": 0.35, "border-color": "#50b867", "border-width": 1.5, "border-style": "dashed", "shape": "round-rectangle", "width": 36, "height": 36 } },
   { selector: 'node[kind="step"]', style: { "background-color": "#e0a030", "shape": "rectangle", "width": 28, "height": 28, "font-size": 10 } },
   { selector: 'node[kind="trigger"]', style: { "background-color": "#9b59b6", "shape": "diamond", "width": 20, "height": 20, "font-size": 9 } },
   { selector: 'node[kind="template"]', style: { "background-color": "#e05561", "shape": "hexagon", "width": 30, "height": 30 } },
-  // Steps inherited from the template (read-only): faded + dashed.
+  // Vom Template geerbte Steps (read-only): blass + gestrichelt.
   { selector: 'node[kind="tstep"]', style: { "background-color": "#e0a030", "background-opacity": 0.35, "border-color": "#e0a030", "border-width": 1.5, "border-style": "dashed", "shape": "rectangle", "width": 28, "height": 28, "font-size": 10, "color": "#7d8899" } },
   { selector: 'node[kind="ghost"]', style: { "background-opacity": 0, "border-color": "#5a6472", "border-width": 1.5, "border-style": "dashed", "color": "#7d8899", "shape": "round-rectangle", "width": 40, "height": 30, "font-size": 10, "cursor": "pointer" } },
   { selector: "node:selected", style: { "border-color": "#ffb454", "border-width": 2.5 } },
   { selector: "edge", style: { "width": 1.5, "line-color": "#3a4250", "curve-style": "straight", "label": "data(label)", "font-size": 9, "color": "#7d8899", "text-background-color": "#15181d", "text-background-opacity": 0.85, "text-background-padding": 2 } },
   { selector: 'edge[kind="has_loop"]', style: { "width": 2 } },
-  // Step chain (has_step = entry at the loop, next_step = chain): both
-  // with arrows so the execution direction is visible (loop → s1 → s2 → …).
+  // Step-Kette (has_step = Einstieg an der Loop, next_step = Kette): beide
+  // mit Pfeil, damit die Ausführung Richtung zeigt (loop → s1 → s2 → …).
   { selector: 'edge[kind="has_step"]', style: { "line-color": "#e0a030", "target-arrow-shape": "triangle", "target-arrow-color": "#e0a030", "arrow-scale": 0.7 } },
   { selector: 'edge[kind="next_step"]', style: { "line-color": "#e0a030", "target-arrow-shape": "triangle", "target-arrow-color": "#e0a030", "arrow-scale": 0.7 } },
   { selector: 'edge[kind="uses_template"]', style: { "line-color": "#e05561", "line-style": "dashed" } },
@@ -1233,7 +1233,7 @@ function renderGraph(name) {
     })),
     ...edges.map((e) => ({
       data: { id: `${e.source}→${e.target}:${e.kind}`, source: e.source, target: e.target, kind: e.kind, label: e.label || "" },
-      // Color the has_loop edge after the loop's (first) trigger type (raw type as key).
+      // has_loop-Kante nach dem (ersten) Trigger-Typ der Loop färben (roher Typ als Key).
       style: e.kind === "has_loop" ? { "line-color": TRIGGER_EDGE_COLORS[e.colorKey] || EDGE_DEFAULT_COLOR } : undefined,
     })),
   ];
@@ -1247,25 +1247,25 @@ function renderGraph(name) {
   el._cy = cy;
   wireGraphEvents(cy, name);
   updateGraphDirtyBadge(name);
-  // Re-position the open card after the (re-)render.
+  // Offene Karte nach dem (Re-)Render neu positionieren.
   if (graphSel && graphSel.project === name) positionGraphCard(name);
 }
 
-// Loop name from a loop node ID (`loop:<project>:<loop>`) — exact by
-// prefix, since project/loop names may themselves contain ":".
+// Loop-Name aus einer Loop-Node-ID (`loop:<project>:<loop>`) — exakt per
+// Präfix, da Projekt-/Loop-Namen selbst ":" enthalten können.
 function loopNameFromId(name, id) {
   return id.slice(`loop:${name}:`.length);
 }
 
-// Step node ID (`step:<project>:<loop>:<i>`) → { loop, index }.
+// Step-Node-ID (`step:<project>:<loop>:<i>`) → { loop, index }.
 function stepInfoFromId(name, id) {
-  const rest = id.slice(id.indexOf(":") + 1 + name.length + 1); // `step:` or `tstep:`
+  const rest = id.slice(id.indexOf(":") + 1 + name.length + 1); // `step:` oder `tstep:`
   const i = rest.lastIndexOf(":");
   return { loop: rest.slice(0, i), index: parseInt(rest.slice(i + 1), 10) };
 }
 
-// Click: loop → drill-down; step/loop/project → card (details+edit);
-// Ghost → create node; project (in drill-down) → back. Right-click: menu.
+// Klick: Loop → Drill-down; Step/Loop/Projekt → Karte (Details+Edit);
+// Ghost → Node anlegen; Projekt (im Drill-down) → zurück. Rechtsklick: Menü.
 function wireGraphEvents(cy, name) {
   cy.on("tap", "node", (ev) => {
     hideGraphCtx();
@@ -1277,8 +1277,8 @@ function wireGraphEvents(cy, name) {
       return;
     }
     if (isLoopKind(kind)) {
-      // Loop click: drill-down only (the card would cover the navigation).
-      // Edit a loop = right-click → "✎ edit".
+      // Loop-Klick: nur Drill-down (Karte würde die Navigation verdecken).
+      // Loop editieren = Rechtsklick → "✎ edit".
       graphDrill = { project: name, loop: loopNameFromId(name, id) };
       graphSel = null;
       closeGraphCard();
@@ -1297,16 +1297,16 @@ function wireGraphEvents(cy, name) {
       openGraphCard(name);
     }
   });
-  // cxttap = right-click in Cytoscape 3.30.x (there is no "cxtadd" event).
+  // cxttap = Rechtsklick in Cytoscape 3.30.x (es gibt kein "cxtadd"-Event).
   cy.on("cxttap", "node", (ev) => {
     ev.originalEvent.preventDefault();
     showGraphCtx(ev.originalEvent.clientX, ev.originalEvent.clientY, ev.target);
   });
-  // Card follows the node on pan/zoom.
+  // Karte folgt dem Knoten bei Pan/Zoom.
   cy.on("pan zoom", () => { if (graphSel && graphSel.project === name) positionGraphCard(name); });
 }
 
-// Ghost node clicked → put a default node into the draft (dry-run) + open the card.
+// Ghost-Node geklickt → Default-Node in den Draft legen (Dry-Run) + Karte öffnen.
 function graphGhostAdd(name, ghost) {
   const draft = graphDrafts[name];
   if (!draft) return;
@@ -1331,12 +1331,12 @@ function graphGhostAdd(name, ghost) {
   }
 }
 
-// ---- Floating node card (#graphnode) — details + edit IN the graph ----
-// Absolute card in #graphview, anchored at the clicked node (renderedPosition),
-// follows on pan/zoom. Edits the draft (dry-run); save writes the spec.
+// ---- Schwebende Knoten-Karte (#graphnode) — Details + Edit IM Graph ----
+// Absolute Karte in #graphview, am geklickten Knoten verankert (renderedPosition),
+// folgt bei Pan/Zoom. Editiert den Draft (Dry-Run); Save schreibt die Spec.
 function cardHead(title) {
-  // `title` is already HTML (callers escape dynamic values themselves), e.g.
-  // the step card with <span class="dim">…</span> — do NOT escape here.
+  // `title` ist bereits HTML (aufrufer escapen dynamische Werte selbst), z. B.
+  // die Step-Karte mit <span class="dim">…</span> — hier NICHT escapen.
   return `<div class="graphnode-head"><b>${title}</b><button class="ghost" title="${esc(t("graph.cardClose"))}" data-act="close-card">✕</button></div>`;
 }
 
@@ -1358,10 +1358,10 @@ function closeGraphCard() {
   const el = $("#graphnode");
   if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
   graphSel = null;
-  if (state.selected) updateGraphDirtyBadge(state.selected); // show the save bar again if needed
+  if (state.selected) updateGraphDirtyBadge(state.selected); // Save-Leiste ggf. wieder zeigen
 }
 
-// Loop definition that the card edits (step/loop card) — from draft + graphSel.
+// Loop-Def, die die Karte editiert (Step-/Loop-Karte) — aus Draft + graphSel.
 function graphCardLoop(name) {
   const draft = graphDrafts[name];
   if (!draft || !graphSel) return null;
@@ -1385,7 +1385,7 @@ function renderGraphCard(name) {
     if (!ldef) { closeGraphCard(); return; }
     const trigs = (ldef.triggers || []).map((t, i) => geTriggerRow(t, i)).join("");
     const steps = (ldef.steps || []).map((s, i) => geStepCard(s, i)).join("");
-    // Template loops (`use:`): show inherited triggers/steps as a hint only.
+    // Template-Loops (`use:`): geerbte Triggers/Steps nur als Hinweis zeigen.
     const inh = (graphInherited[name] || {})[graphSel.loop] || {};
     const tpl = esc(ldef.use || "");
     const inhList = (xs, f) => xs.map((x) => esc(String(f(x)))).join(", ") || "—";
@@ -1396,8 +1396,8 @@ function renderGraphCard(name) {
       ? `<div id="ge-steps">${steps || `<div class="ge-empty">${esc(t("graph.noSteps"))}</div>`}</div>
         <button class="ghost" data-act="card-add-step">${esc(t("graph.addStep"))}</button>`
       : `<div id="ge-steps"><div class="ge-empty">${t("graph.inheritedSteps", { tpl, list: inhList(inh.steps || [], (s) => s.name || s.type || "step") })}</div></div>`;
-    // Template loops (`use:`): with: parameters editable (fields are
-    // loaded asynchronously from /api/templates/<tpl>/params → renderGraphWithFields).
+    // Template-Loops (`use:`): with:-Parameter editierbar (Felder werden
+    // asynchron aus /api/templates/<tpl>/params geladen → renderGraphWithFields).
     const withBlock = ldef.use
       ? `<div class="ge-sec">${esc(t("graph.withSection", { tpl: ldef.use }))}</div>
         <div id="ge-with">${esc(t("graph.withLoading"))}</div>`
@@ -1444,15 +1444,15 @@ function renderGraphCard(name) {
   el.innerHTML = html;
   el.classList.remove("hidden");
   updateGraphDirtyBadge(name);
-  // Load the with: fields of the `use:` loop asynchronously (template params).
+  // with:-Felder der `use:`-Loop asynchron nachladen (Template-params).
   if (graphSel.kind === "loop") {
     const ldef = graphCardLoop(name);
     if (ldef && ldef.use) renderGraphWithFields(name);
   }
 }
 
-// with: values ↔ input text: edited as JSON literals (3, true, [1,2]);
-// anything that is not JSON stays a string.
+// with:-Werte ↔ Eingabetext: als JSON-Literal editiert (3, true, [1,2]);
+// was kein JSON ist, bleibt String.
 function withToText(v) {
   return typeof v === "string" ? v : JSON.stringify(v);
 }
@@ -1466,15 +1466,15 @@ function withFromText(text) {
   }
 }
 
-// Load the template parameters (with:) of a `use:` loop (cached) and render them
-// as edit fields in the loop card. Default = template default;
-// a `null` default = required field (marked with *).
+// Template-Parameter (with:) einer `use:`-Loop laden (gecacht) und als
+// Editierfelder in die Loop-Karte rendern. Default = Template-Default;
+// `null`-Default = Pflichtfeld (mit * markiert).
 async function renderGraphWithFields(name) {
   const ldef = graphCardLoop(name);
   if (!ldef || !ldef.use) return;
   const tpl = ldef.use;
-  // Cache per project+template (project-local templates take precedence);
-  // errors (null = with: not editable) are not cached.
+  // Cache pro Projekt+Template (projektlokale Templates haben Vorrang);
+  // Fehler (null = with: nicht editierbar) werden nicht gecacht.
   const ckey = `${name}/${tpl}`;
   let params = graphTplParams[ckey];
   if (params === undefined) {
@@ -1485,7 +1485,7 @@ async function renderGraphWithFields(name) {
       params = null;
     }
   }
-  // Card closed/changed in the meantime → don't render anymore.
+  // Karte in der Zwischenzeit geschlossen/geändert → nicht mehr rendern.
   const cur = graphCardLoop(name);
   const box = $("#ge-with");
   if (!cur || cur.use !== tpl || !box) return;
@@ -1508,8 +1508,8 @@ async function renderGraphWithFields(name) {
     .join("");
 }
 
-// ---- Read-only cards: generated loops (e.g. `relay:`) and their/template steps ----
-// Value for display: strings literal (prompts, cmd), everything else as JSON.
+// ---- Read-only-Karten: generierte Loops (z. B. `relay:`) und deren/Template-Steps ----
+// Wert für die Anzeige: Strings wörtlich (Prompts, cmd), alles andere als JSON.
 function roValue(v) {
   return typeof v === "string" ? v : JSON.stringify(v, null, 2);
 }
@@ -1554,7 +1554,7 @@ function readonlyStepCard(name, loop, index) {
     </div>`;
 }
 
-// Anchor the card at the node (renderedPosition → canvas coordinates).
+// Karte am Knoten verankern (renderedPosition → Canvas-Koordinaten).
 function positionGraphCard(name) {
   const el = $("#graphnode");
   const view = $("#graphview");
@@ -1568,7 +1568,7 @@ function positionGraphCard(name) {
   const h = el.offsetHeight || 200;
   const vw = view.clientWidth;
   const vh = view.clientHeight;
-  // Right of the node; on overflow mirror to the left/top.
+  // Rechts vom Knoten; bei Überlauf nach links/oben spiegeln.
   let x = p.x + 24;
   let y = p.y - 12;
   if (x + w > vw - 8) x = p.x - w - 24;
@@ -1579,11 +1579,11 @@ function positionGraphCard(name) {
   el.style.top = `${y}px`;
 }
 
-// Update the dirty badge in the card footer.
-// Show the dirty state: badge in the card resp. save bar in the graph. The
-// bar appears only with a closed card (that one has its own save/discard
-// in the footer; so the two never overlap) — otherwise after
-// "✕ remove loop" (which closes the card) there would be no way left to save.
+// Dirty-Badge in der Karten-Fußzeile aktualisieren.
+// Dirty-Zustand anzeigen: Badge in der Karte bzw. Save-Leiste im Graph. Die
+// Leiste erscheint nur bei geschlossener Karte (die hat eigenes save/discard
+// im Fuß; so überdecken sich die beiden nie) — sonst gäbe es nach
+// "✕ remove loop" (schließt die Karte) keinen Weg mehr zum Speichern.
 function updateGraphDirtyBadge(name) {
   const dirty = draftDirty(name);
   const el = $("#graphnode-dirty");
@@ -1594,7 +1594,7 @@ function updateGraphDirtyBadge(name) {
   if (bar) bar.classList.toggle("hidden", !dirty || cardOpen);
 }
 
-// Show draft-editor errors in the card AND the save bar ("" = clear).
+// Fehler des Draft-Editors in Karte UND Save-Leiste zeigen ("" = löschen).
 function graphError(msg) {
   for (const id of ["#graphnode-err", "#graphbar-err"]) {
     const el = $(id);
@@ -1602,14 +1602,14 @@ function graphError(msg) {
   }
 }
 
-// Delegated input handler of the card: field change → draft update (dry-run).
+// Delegierter Input-Handler der Karte: Feld-Change → Draft-Update (Dry-Run).
 function graphNodeInput(e) {
   const el = e.target;
   const name = state.selected;
   const draft = graphDrafts[name];
   if (!draft || !graphSel) return;
   graphError("");
-  // Project fields (description / max_parallel).
+  // Projekt-Felder (description / max_parallel).
   if (el.dataset.gn !== undefined) {
     if (graphSel.kind === "project") {
       if (el.dataset.gn === "description") draft.description = el.value;
@@ -1618,28 +1618,28 @@ function graphNodeInput(e) {
       const ldef = graphCardLoop(name);
       if (!ldef) return;
       if (el.dataset.gn === "description") ldef.description = el.value;
-      // Name: only remember it (graphSel.name); the draft key is only renamed on save
-      // (no re-render per keystroke → focus/cursor stays).
+      // Name: nur merken (graphSel.name); der Draft-Key wird erst beim Save
+      // umbenannt (kein Re-Render pro Tastendruck → Fokus/Cursor bleibt).
       else if (el.dataset.gn === "name") graphSel.name = el.value.trim();
     }
     updateGraphDirtyBadge(name);
     return;
   }
-  // Template parameters (with:) of a `use:` loop (data-gw).
+  // Template-Parameter (with:) einer `use:`-Loop (data-gw).
   if (el.dataset.gw !== undefined) {
     const ldef = graphCardLoop(name);
     if (!ldef) return;
     const key = el.dataset.gw;
     ldef.with = ldef.with || {};
     const parsed = withFromText(el.value);
-    // Empty → remove the key (template default applies / required field stays missing).
+    // Leer → Key entfernen (Template-Default greift / Pflichtfeld bleibt fehlend).
     if (parsed === undefined) delete ldef.with[key];
     else ldef.with[key] = parsed;
     if (!Object.keys(ldef.with).length) delete ldef.with;
     updateGraphDirtyBadge(name);
     return;
   }
-  // Step/trigger fields (data-ge).
+  // Step-/Trigger-Felder (data-ge).
   if (el.dataset.ge === undefined) return;
   const loop = graphCardLoop(name);
   if (!loop) return;
@@ -1649,7 +1649,7 @@ function graphNodeInput(e) {
   const arr = (kind === "step" ? loop.steps : loop.triggers) || [];
   const obj = arr[idx];
   if (!obj) return;
-  // Type switch (step/trigger): the schema changes → re-render (values stay).
+  // Typ-Wechsel (Step/Trigger): Schema ändert sich → Re-Render (Werte bleiben).
   if (key === "type") {
     obj.type = el.value;
     renderGraphCard(name);
@@ -1679,7 +1679,7 @@ function graphNodeInput(e) {
   }
 }
 
-// ---- Structural actions of the card (add/move/remove) — edit the draft ----
+// ---- Struktur-Aktionen der Karte (add/move/remove) — editieren den Draft ----
 function graphCardAddStep() {
   const name = state.selected;
   const ldef = graphCardLoop(name);
@@ -1724,8 +1724,8 @@ function graphCardRemoveStep() {
   renderGraph(name);
 }
 
-// Remove a loop from the draft (dry-run — only effective with save, discard
-// brings it back). The drill-down into the loop is reset along with it.
+// Loop aus dem Draft entfernen (Dry-Run — erst mit save wirksam, discard
+// bringt sie zurück). Der Drill-down auf die Loop wird mit zurückgesetzt.
 function graphCardRemoveLoop() {
   const name = state.selected;
   const draft = graphDrafts[name];
@@ -1736,11 +1736,11 @@ function graphCardRemoveLoop() {
   renderGraph(name);
 }
 
-// ---- Save / discard (the single commit point of the draft editor) ----
-// Diff draft vs. last save state → only changed loops + deleted names +
-// changed top-level fields. This way a save doesn't overwrite foreign,
-// interim changes to other loops (in addition to the optimistic lock via
-// base_hash), and untouched fields stay out of the payload.
+// ---- Save / Discard (der eine Commit-Punkt des Draft-Editors) ----
+// Diff Draft vs. letzter Save-Stand → nur geänderte Loops + gelöschte Namen +
+// geänderte Top-Level-Felder. So überschreibt ein Save fremde, zwischenzeitliche
+// Änderungen an anderen Loops nicht (ergänzend zum Optimistischen Lock via
+// base_hash), und unangetastete Felder bleiben aus dem Payload weg.
 function draftDelta(name) {
   const draft = graphDrafts[name];
   const saved = graphSaved[name] ? JSON.parse(graphSaved[name]) : { loops: {}, description: "", max_parallel: "" };
@@ -1758,14 +1758,14 @@ function draftDelta(name) {
   return delta;
 }
 
-// Save: PUT the changed loops + deleted names + top-level fields as a spec update
-// (base_hash = optimistic lock). The server merges per loop.
+// Save: geänderte Loops + gelöschte Namen + Top-Level-Felder als Spec-Update
+// PUTen (base_hash = Optimistischer Lock). Der Server mergt pro Loop.
 async function graphDraftSave() {
   const name = state.selected;
   const draft = graphDrafts[name];
   if (!draft) return;
   graphError("");
-  // Rename a loop (name field of the loop card) → switch the draft key only now.
+  // Loop umbenennen (Name-Feld der Loop-Karte) → Draft-Key erst jetzt wechseln.
   if (graphSel && graphSel.kind === "loop" && graphSel.name && graphSel.name !== graphSel.loop) {
     const nn = graphSel.name;
     if (draft.loops[nn]) { graphError(t("graph.loopExists", { name: nn })); return; }
@@ -1777,15 +1777,15 @@ async function graphDraftSave() {
     graphSel.id = `loop:${name}:${nn}`;
     if (graphDrill && graphDrill.project === name) graphDrill.loop = nn;
   }
-  // Validation: every loop needs at least one step — except template loops
-  // (`use:`) without own steps, whose steps come from the template.
+  // Validierung: jede Loop braucht mindestens einen Step — außer Template-Loops
+  // (`use:`) ohne eigene steps, deren Steps aus dem Template kommen.
   for (const [ln, ldef] of Object.entries(draft.loops)) {
     if (loopStepsEditable(ldef) && !(ldef.steps || []).length) { graphError(t("graph.loopNeedsStep", { name: ln })); return; }
   }
   const delta = draftDelta(name);
   const body = { loops: delta.loops };
-  // Send top-level fields only if they changed — otherwise e.g.
-  // `description: ''` would be written into specs that had no description.
+  // Top-Level-Felder nur senden, wenn sie sich geändert haben — sonst würde
+  // z. B. `description: ''` in Specs geschrieben, die kein description hatten.
   if (delta.description !== undefined) body.description = delta.description;
   if (delta.max_parallel !== "" && delta.max_parallel != null) body.max_parallel = delta.max_parallel;
   if (delta.remove_loops.length) body.remove_loops = delta.remove_loops;
@@ -1799,7 +1799,7 @@ async function graphDraftSave() {
     graphBaseHash[name] = (resp.spec && resp.spec._hash) || graphBaseHash[name];
   } catch (e) {
     if (e.status === 409) {
-      // External change since draft load → draft outdated, reload it.
+      // Externe Änderung seit Draft-Load → Draft veraltet, neu laden.
       delete graphDrafts[name];
       graphError(t("graph.specChanged"));
       await loadGraph(name);
@@ -1809,28 +1809,28 @@ async function graphDraftSave() {
     return;
   }
   graphSaved[name] = JSON.stringify(draft);
-  delete graphInherited[name]; // reload the template expansion (loadGraph on re-render)
-  // Invalidate all caches of the project (loopSpecCache is keyed per project/loop,
-  // specCache per project) — the old no-op `name + "/"` never hit.
+  delete graphInherited[name]; // Template-Expansion neu laden (loadGraph beim Re-Render)
+  // Alle Caches des Projekts invalidieren (loopSpecCache ist pro project/loop
+  // keyt, specCache pro project) — der alte No-op `name + "/"` traf nie.
   for (const k of Object.keys(loopSpecCache)) if (k.startsWith(name + "/")) delete loopSpecCache[k];
   delete specCache[name];
-  // refresh(force) re-renders the detail view; renderDetail calls loadGraph.
+  // refresh(force) rendert den Detail-View neu; renderDetail ruft loadGraph auf.
   await refresh({ force: true });
   closeGraphCard();
 }
 
-// Discard: reset the draft to the last save state.
+// Discard: Draft auf den letzten Save-Stand zurücksetzen.
 function graphDraftDiscard() {
   const name = state.selected;
   if (graphSaved[name] == null) return;
   graphDrafts[name] = JSON.parse(graphSaved[name]);
-  if (graphSel) graphSel.name = undefined; // discard a pending loop rename as well
+  if (graphSel) graphSel.name = undefined; // pending Loop-Rename mitverwerfen
   renderGraphCard(name);
   renderGraph(name);
 }
 
-// Context menu (right-click): run + stateButtons + "✎ edit" (opens the card).
-// State buttons in the menu close it before the status switch (onGraphCtxClick).
+// Kontextmenü (Rechtsklick): run + stateButtons + "✎ edit" (öffnet die Karte).
+// State-Buttons im Menü schließen es vor dem Statuswechsel (onGraphCtxClick).
 function showGraphCtx(x, y, node) {
   const menu = $("#graphctx");
   const name = state.selected;
@@ -1846,7 +1846,7 @@ function showGraphCtx(x, y, node) {
       ? `<button class="ghost" disabled title="${esc(t("graph.ctxRunDisabled"))}">${esc(t("detail.run"))}</button>`
       : `<button class="ghost" data-act="ctx-run">${esc(t("detail.run"))}</button>`)
       + stateButtons(name, loop, l && l.state)
-      // Generated loops: details only (the source is e.g. the `relay:` block in the YAML).
+      // Generierte Loops: nur Details (Quelle ist z. B. der `relay:`-Block der YAML).
       + (kind === "loop"
         ? `<button class="ghost" data-act="ctx-edit">${esc(t("graph.edit"))}</button>`
         : `<button class="ghost" data-act="ctx-edit">${esc(t("graph.details"))}</button>`);
@@ -1882,7 +1882,7 @@ function graphCtxRun() {
   if (t && isLoopKind(t.kind)) startRun(state.selected, loopNameFromId(state.selected, t.id));
 }
 
-// "✎ edit" → open the floating card for the node.
+// "✎ edit" → schwebende Karte für den Knoten öffnen.
 function graphCtxEdit() {
   const t = graphCtxTarget;
   hideGraphCtx();
@@ -1901,18 +1901,18 @@ function graphCtxEdit() {
   }
 }
 
-// ---- Form schema (step/trigger type → fields) — as in the YAML spec ----
-// Field definition: [key, label, type, opts?]. Types:
-//   text  single line · area  multi line · num  integer · float  decimal
-//   bool  checkbox · sel   select (opts.options) · list  comma list
+// ---- Form-Schema (Step-/Trigger-Typ → Felder) — wie im YAML-Spec ----
+// Feld-Definition: [key, label, typ, opts?]. Typen:
+//   text  Einzeile · area  Mehrzeile · num  Ganzzahl · float  Gleitkomma
+//   bool  Checkbox · sel   Auswahl (opts.options) · list  Komma-Liste
 //   json  JSON-Textarea
-// Absence = field not set (deleted on save). bool with
-// opts.default: checkbox state = value (or default); to default → deleted.
+// Abwesenheit = Feld nicht gesetzt (wird beim Save gelöscht). bool mit
+// opts.default: Checkbox-Status = Wert (oder Default); auf Default → gelöscht.
 const GE_FIELD = { text: "text", area: "area", num: "num", float: "float", bool: "bool", sel: "sel", list: "list", json: "json" };
 const GE_STEP_TYPES = ["shell", "git", "pr", "agent", "report", "http", "llm", "notify", "state", "verify", "review", "pr_review", "pr_merge", "issue", "human_gate"];
 const GE_TRIGGER_TYPES = ["manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook"];
 
-// reconcile (on_pr): true/false/"head" — as a select with conversion.
+// reconcile (on_pr): true/false/"head" — als Select mit Konvertierung.
 const GE_RECONCILE_TO_STORED = (v) => (v === "" ? undefined : v === "true" ? true : v === "false" ? false : v);
 const GE_RECONCILE_TO_DISPLAY = (v) => (v === true ? "true" : v === false ? "false" : v == null ? "" : String(v));
 
@@ -2036,7 +2036,7 @@ const GE_STEP_SCHEMAS = {
   ],
 };
 
-// Fields that apply to EVERY step (approval + gate) — appended to the type schema.
+// Felder, die JEDEM Step gelten (Approval + Gate) — ans Typ-Schema angehängt.
 const GE_STEP_COMMON = [
   ["gate", "gate (Fehler bricht Run ab)", GE_FIELD.bool, { default: true }],
   ["approval", "approval (immer pausieren)", GE_FIELD.bool],
@@ -2115,7 +2115,7 @@ function geFieldHtml(kind, type, def, obj, idx) {
   return `<div class="ge-field"><label>${esc(label)}</label>${inner}</div>`;
 }
 
-// Non-schema fields of an object as JSON (so nothing is hidden/lost).
+// Nicht-Schema-Felder eines Objekts als JSON (damit nichts versteckt/verloren geht).
 function geExtraHtml(kind, type, obj, idx) {
   const schemaKeys = new Set(geSchemaFor(kind, type).map((d) => d[0]));
   const skip = new Set(["type", "name", ...schemaKeys]);
@@ -2162,7 +2162,7 @@ function geTriggerRow(trig, i) {
   </div>`;
 }
 
-// Structural actions inside the loop card (index-based, not graphSel).
+// Struktur-Aktionen innerhalb der Loop-Karte (Index-basiert, nicht graphSel).
 function graphCardMoveStepInLoop(i, dir) {
   const name = state.selected;
   const ldef = graphCardLoop(name);
@@ -2196,7 +2196,7 @@ function graphCardRemoveTriggerInLoop(i) {
   renderGraph(name);
 }
 
-// ---- Read/write field values (draft update without re-render) ----
+// ---- Feld-Werte lesen/schreiben (Draft-Update ohne Re-Render) ----
 function geReadField(el, def) {
   const ftype = def[2];
   const opts = def[3] || {};
@@ -2213,7 +2213,7 @@ function geReadField(el, def) {
   if (ftype === GE_FIELD.json) {
     const v = el.value.trim();
     if (v === "") return undefined;
-    return JSON.parse(v); // throws on invalid JSON
+    return JSON.parse(v); // wirft bei ungültigem JSON
   }
   if (ftype === GE_FIELD.sel) {
     const v = el.value;
@@ -2238,7 +2238,7 @@ function geSetField(obj, key, def, raw) {
   }
 }
 
-// ---- Loop spec (clickable loops) ----
+// ---- Loop-Spec (klickbare Loops) ----
 const loopSpecCache = {};
 
 function toggleLoopSpec(project, loop) {
@@ -2254,8 +2254,8 @@ function toggleLoopSpec(project, loop) {
   }
 }
 
-// Open a loop spec (accordion: closes the previous one). Also called by the auto-refresh
-// to restore the open spec after a re-render.
+// Loop-Spec öffnen (Akkordeon: schließt vorherige). Wird auch vom Auto-Refresh
+// aufgerufen, um die offene Spec nach einem Re-Render wiederherzustellen.
 async function openLoopSpec(project, loop) {
   const seq = detailRenderSeq;
   const el = $(`#loopspec-${CSS.escape(loop)}`);
@@ -2278,11 +2278,11 @@ async function openLoopSpec(project, loop) {
     } catch (e) {
       loopSpecCache[project + "/" + loop] = `<div class="runerr">✖ ${esc(e.message)}</div>`;
     }
-    // Guard: the DOM may have been re-rendered during the fetch (el detached)
-    // or a newer render has started → then don't write anymore.
+    // Guard: DOM kann während des Fetches re-rendered worden sein (el detached)
+    // oder ein neuerer Render hat begonnen → dann nicht mehr schreiben.
     if (seq !== detailRenderSeq) return;
   }
-  // Write the content — both on cache hit (pre-fetch) and after the fetch.
+  // Content schreiben — sowohl bei Cache-Hit (Pre-Fetch) als auch nach Fetch.
   const cur = $(`#loopspec-${CSS.escape(loop)}`);
   if (cur) cur.innerHTML = loopSpecCache[project + "/" + loop];
 }
@@ -2323,7 +2323,7 @@ function formatSpecVal(v) {
   return String(v);
 }
 
-// Approval context in the run modal — same order as engine.approval_lines.
+// Freigabe-Kontext im Run-Modal — gleiche Reihenfolge wie engine.approval_lines.
 function formatApproval(ctx) {
   if (!ctx) return "";
   const row = (k, vHtml) => `<div class="appr-row"><span class="appr-k">${k}</span><span class="appr-v">${vHtml}</span></div>`;
@@ -2340,7 +2340,7 @@ function formatApproval(ctx) {
   return `<div class="runapproval"><div class="appr-title">${esc(t("approval.title"))}</div>${rows.join("")}</div>`;
 }
 
-// Issue/PR of the run with links (rec.meta comes from the server, see runmeta.py).
+// Issue/PR des Runs mit Links (rec.meta kommt vom Server, s. runmeta.py).
 function formatRunMeta(meta) {
   const rows = [];
   for (const kind of ["issue", "pr"]) {
@@ -2354,15 +2354,15 @@ function formatRunMeta(meta) {
   return rows.length ? `<div class="runmetabox">${rows.join("")}</div>` : "";
 }
 
-// Token count compact: 950, 12.3k, 1.30M.
+// Token-Zahl kompakt: 950, 12.3k, 1.30M.
 function fmtTokens(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-// Costs/tokens compact ("$0.0123 · 1.30M tok (1.28M cached)"); "" without usage (run without LLM steps).
-// Cache reads are included in total_tokens: an agent re-reads its context every turn.
-// Subscription steps (billing=subscription) cost no money per token, but limits: "≈ $x" + hint.
+// Kosten/Tokens kompakt ("$0.0123 · 1.30M tok (1.28M cached)"); "" ohne Verbrauch (Run ohne LLM-Steps).
+// Cache-Reads sind in total_tokens enthalten: ein Agent liest seinen Kontext jeden Turn neu.
+// Abo-Steps (billing=subscription) kosten kein Geld pro Token, sondern Limits: "≈ $x" + Hinweis.
 function fmtUsd(c) {
   const sub = c.subscription_cost_usd || 0;
   const billed = c.cost_usd - sub;
@@ -2393,12 +2393,12 @@ const STEP_ICONS = { pass: "✔", skipped: "–", waiting: "⏸", running: "▶"
 function formatRun(rec) {
   if (!rec) return t("run.noRecord");
   let out = `<div class="runmeta">${esc(rec.id)} · ${badge(statusLabel(rec.status), rec.status)}${kindBadge(rec)}${verdictBadge(rec)} · ${esc(rec.trigger)} · ${esc(fmtDateTime(rec.started))}</div>`;
-  // Retry chain (ADR 0036, decision 6): "attempt n/max, next at …".
+  // Retry-Kette (ADR 0036, Entscheidung 6): „Versuch n/max, nächster um …“.
   if (rec.retry) {
     const st = rec.retry.state;
     const max = rec.retry.max || 0;
-    // rec.attempt is the 0-based index of this run (0 = original, 1..max = retries):
-    // pending shows the upcoming attempt, exhausted the last failed one.
+    // rec.attempt ist der 0-basierte Index dieses Runs (0 = Original, 1..max = Retries):
+    // pending zeigt den kommenden Versuch, exhausted den letzten gescheiterten.
     const att = rec.attempt || 0;
     const next = rec.retry.next_attempt_at
       ? t("run.retryNext", { at: fmtDateTime(rec.retry.next_attempt_at) })
@@ -2432,20 +2432,20 @@ function formatRun(rec) {
   return out;
 }
 
-// Show a run record in the panel (tab "overview"). Stores the record for the
-// tabs. For a NEW run (different id) the modal jumps to "overview"; for the
-// same run (live polling) the tab stays — log/transcript are not overwritten.
+// Run-Record im Panel anzeigen (Tab "Übersicht"). Speichert das Record für die
+// Tabs. Bei einem NEUEN Run (anderer id) springt das Modal auf "Übersicht"; beim
+// selben Run (Live-Polling) bleibt der Tab — Log/Transkript werden nicht überschrieben.
 function setRunRecord(rec) {
   const isNew = !runPanelRec || runPanelRec.id !== rec.id;
   runPanelRec = rec;
-  // Running runs open directly in the log tab (the step bar shows the active step).
+  // Laufende Runs öffnen direkt im Log-Tab (Step-Leiste zeigt den aktiven Step).
   if (isNew) showRunTab(rec.status === "running" ? "log" : "overview");
   else if (runTab === "overview") $("#runlog").innerHTML = formatRun(runPanelRec);
 }
 
 let runTab = "overview";
-let runStream = null; // EventSource of the log tab
-let runLogPoll = null; // polling fallback (timer id)
+let runStream = null; // EventSource des Log-Tabs
+let runLogPoll = null; // Polling-Fallback (Timer-Id)
 
 function stopRunStream() {
   if (runStream) runStream.close();
@@ -2454,7 +2454,7 @@ function stopRunStream() {
   runLogPoll = null;
 }
 
-// Switch tab: overview (record), log (SSE live), transcript (agent turns).
+// Tab wechseln: Übersicht (Record), Log (SSE-Live), Transkript (Agent-Turns).
 function showRunTab(tab) {
   stopRunStream();
   runTab = tab;
@@ -2474,15 +2474,15 @@ function runApiPath(suffix) {
   return `/api/run/${encodeURIComponent(runPanelRec.id)}/${suffix}`;
 }
 
-// Auto-scroll only with the active "follow" toggle.
+// Auto-Scroll nur bei aktivem "folgen"-Toggle.
 function followRunLog() {
   if ($("#runfollow").checked) $("#runlog").scrollTop = $("#runlog").scrollHeight;
 }
 
-// ---- Step-aware log view ----
-// The engine writes per step `[HH:MM:SS] ▶ <name> [<type>]` and at the end `✔|✖ <name> …`.
-// From that, segment live: step bar (running step highlighted) + click = only
-// that step's log. Lines before the first step (run context) belong to segment 0 ("run").
+// ---- Step-aware Log-Ansicht ----
+// Die Engine schreibt je Step `[HH:MM:SS] ▶ <name> [<typ>]` und am Ende `✔|✖ <name> …`.
+// Daraus wird live segmentiert: Step-Leiste (laufender Step hervorgehoben) + Klick = nur
+// dessen Log. Zeilen vor dem ersten Step (Run-Kontext) gehören zum Segment 0 ("Run").
 const LOG_STEP_START = /^\[[\d:]{8}\] ▶ (.+) \[([^\[\]]+)\]$/;
 const LOG_STEP_END = /^\[[\d:]{8}\] ([✔✖]) /;
 const LOG_RUN_END = /^\[[\d:]{8}\] ■ /;
@@ -2494,7 +2494,7 @@ class RunLogView {
     this.body = box.lastChild;
     this.segs = [];
     this.partial = "";
-    this.filter = null; // null = all segments
+    this.filter = null; // null = alle Segmente
     this.bar.addEventListener("click", (ev) => {
       const chip = ev.target.closest("[data-seg]");
       if (chip) this.setFilter(chip.dataset.seg === "all" ? null : Number(chip.dataset.seg));
@@ -2517,7 +2517,7 @@ class RunLogView {
     this.addSegment(t("run.logPrelude"), "", "pass", true);
   }
   get current() { return this.segs[this.segs.length - 1]; }
-  // Append text (line by line; an incomplete last line is held back).
+  // Text anhängen (zeilenweise; unvollständige Schlusszeile wird zurückgehalten).
   append(text) {
     const lines = (this.partial + text).split("\n");
     this.partial = lines.pop();
@@ -2537,7 +2537,7 @@ class RunLogView {
     }
     if (LOG_RUN_END.test(body)) this.finish();
   }
-  // Run finished: a still "running" step (abort/timeout without ✔/✖) is no longer active.
+  // Run beendet: ein noch "laufender" Step (Abbruch/Timeout ohne ✔/✖) ist nicht mehr aktiv.
   finish() {
     for (const s of this.segs) if (s.state === "running") s.state = "fail";
     this.render();
@@ -2566,11 +2566,11 @@ class RunLogView {
   }
 }
 
-// Log tab: SSE (reconnect/Last-Event-ID is handled by the browser); without EventSource or on
-// a persistent connection error fall back to polling the complete log.
+// Log-Tab: SSE (Reconnect/Last-Event-ID macht der Browser); ohne EventSource oder bei
+// dauerhaftem Verbindungsfehler Fallback auf Polling des vollständigen Logs.
 function startRunLog(box) {
   const view = new RunLogView(box);
-  const pre = { dataset: {}, view }; // marker object for ended/fallback state
+  const pre = { dataset: {}, view }; // Marker-Objekt für Ende/Fallback-Zustand
   const project = encodeURIComponent(runPanelRec.project || "");
   if (typeof EventSource === "undefined") return pollRunLog(pre, project);
   const es = new EventSource(runApiPath(`stream?project=${project}`));
@@ -2596,7 +2596,7 @@ function startRunLog(box) {
     fallbackTimer = null;
     pre.dataset.ended = "1";
     view.flush();
-    // Reload the record so overview/status show the terminal state.
+    // Record neu laden, damit Übersicht/Status den Endzustand zeigen.
     api(`/api/run/${encodeURIComponent(runPanelRec.id)}?project=${project}`).then((rec) => { runPanelRec = rec; }).catch(() => {});
   });
   es.onerror = () => {
@@ -2629,14 +2629,14 @@ async function pollRunLog(pre, project) {
       pre.view.append(text || t("run.logEmpty") + "\n");
       if (keep !== null && keep < pre.view.segs.length) pre.view.setFilter(keep);
     }
-  } catch (e) { /* next attempt */ }
+  } catch (e) { /* nächster Versuch */ }
   const st = $("#runstatus").dataset.status;
   if (st === "running" || st === "queued" || st === "needs_approval") {
     runLogPoll = setTimeout(() => pollRunLog(pre, project), 2000);
   }
 }
 
-// Transcript tab: agent turns page by page (lazy) from the session log.
+// Transkript-Tab: Agent-Turns seitenweise (lazy) aus dem SessionLog.
 async function loadTranscript(box) {
   box.innerHTML = '<div class="runtranscript"></div>';
   const list = box.firstChild;
@@ -2651,7 +2651,7 @@ async function loadTranscript(box) {
       list.insertAdjacentHTML("beforeend", `<div class="runerr">${esc(t("run.transcriptFailed", { error: e.message }))}</div>`);
       return;
     }
-    if (runTab !== "transcript" || !runPanelRec || runPanelRec.id !== id) return; // tab/run changed
+    if (runTab !== "transcript" || !runPanelRec || runPanelRec.id !== id) return; // Tab/Run gewechselt
     n += page.entries.length;
     list.insertAdjacentHTML("beforeend", page.entries.map(transcriptEntry).join(""));
     if (!page.entries.length || page.next_after === after) break;
@@ -2808,8 +2808,8 @@ async function loadTrace(box) {
   list.innerHTML = blocks.map((b) => traceBlock(b, verdicts)).join("") + (artifacts.length ? traceArtifacts(artifacts) : "");
 }
 
-// Status badge in the run panel: raw status in data-status (the polling logic
-// compares against it), display text translated.
+// Status-Badge im Run-Panel: roher Status in data-status (die Polling-Logik
+// vergleicht darauf), Anzeigetext übersetzt.
 function setRunStatus(status) {
   const el = $("#runstatus");
   el.dataset.status = status || "";
@@ -2854,7 +2854,7 @@ function closeRun() {
   $("#runbackdrop").classList.add("hidden");
 }
 
-// ---- Settings: connections (ADR 0052) ----
+// ---- Einstellungen: Verbindungen (ADR 0052) ----
 let connData = { connections: [], drivers: { agent: [], llm: [] } };
 
 const canEditConnections = () => auth.mode !== "local" || auth.role === "admin";
@@ -2934,17 +2934,17 @@ function connForm(c) {
   $("#cf-secret").addEventListener("input", syncSecretHint);
 }
 
-// Short secrets are not masked by log masking (secrets.MIN_SECRET_LEN) — hint about that while typing.
+// Kurze Secrets maskiert das Log-Masking nicht (secrets.MIN_SECRET_LEN) — beim Tippen darauf hinweisen.
 function syncSecretHint() {
   const len = $("#cf-secret").value.length;
   const min = connData.min_masked_secret_len || 0;
   $("#cf-secret-hint").textContent = len > 0 && len < min ? t("settings.secretShort", { min }) : "";
 }
 
-// Env connections don't deliver a secret: an override starts without a stored secret.
+// Env-Verbindungen liefern kein Secret mit: ein Override startet ohne gespeichertes Secret.
 const isNewOverride = (c) => !!c && c.source === "env";
 
-// Driver selection and username field depend on the kind (agent/llm).
+// Treiber-Auswahl und Username-Feld hängen an der Art (agent/llm).
 function syncConnDriver(selected) {
   const kind = $("#cf-kind").value;
   $("#cf-driver").innerHTML = (connData.drivers[kind] || []).map((d) =>
@@ -3040,8 +3040,8 @@ async function chatSend(e) {
   const pend = chatPending();
   const reqId = `c${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   chatAbort = new AbortController();
-  // Replace the flex container (.chatpending) with a plain <span> so the text
-  // flows the way it does in chatAdd() (inline-flex would lay <br>/lines side by side).
+  // Flex-Container (.chatpending) durch normalen <span> ersetzen, damit der
+  // Text wie bei chatAdd() fließt (inline-flex würde <br>/Zeilen nebeneinander legen).
   const settle = (html, text) => {
     const span = document.createElement("span");
     if (text !== undefined) span.textContent = text;
@@ -3082,29 +3082,29 @@ async function chatApprove(project, runId, ok) {
       body: JSON.stringify({ project, run_id: runId }),
     });
     chatAdd("fabrikant", r.reply);
-    // Update the modal immediately: new status + buttons gone + fresh log.
-    // Without this refresh, "approve"/"reject" would stay visible even though
-    // the run was rejected (or continued).
+    // Modal sofort aktualisieren: neuer Status + Buttons weg + frisches Log.
+    // Ohne diesen Refresh blieben "freigeben"/"ablehnen" sichtbar, obwohl der
+    // Run abgelehnt (oder fortgesetzt) wurde.
     try {
       const rec = await api(`/api/run/${encodeURIComponent(runId)}?project=${encodeURIComponent(project)}`);
       openRunPanel(`${rec.project} / ${rec.loop} · ${runId}`, rec.status);
       setRunRecord(rec);
       $("#runlog").scrollTop = $("#runlog").scrollHeight;
-      // Approve: the resume worker writes "running" only shortly AFTER the
-      // POST → the GET here often still returns needs_approval. Poll
-      // unconditionally (with grace), otherwise the panel freezes on needs_approval
-      // although the run is long running. If the project lock is held, the
-      // worker waits server-side (approval_queued) — the polling picks up the
-      // switch to running. resumed=false (thread-start error): no polling.
+      // Approve: Der Resume-Worker schreibt "running" erst kurz NACH dem
+      // POST → das GET hier liefert oft noch needs_approval. Bedingungslos
+      // pollen (mit Grace), sonst friert das Panel auf needs_approval ein,
+      // obwohl der Run längst läuft. Ist der Projekt-Lock belegt, wartet der
+      // Worker serverseitig (approval_queued) — das Polling holt den Wechsel
+      // auf running ein. resumed=false (Thread-Start-Fehler): kein Polling.
       if (ok && r.resumed) pollRunById(project, runId, { graceNeedsApproval: true });
-    } catch (e) { /* panel stays open; the auto-refresh picks up the status */ }
+    } catch (e) { /* Panel bleibt offen; der Auto-Refresh holt den Status ein */ }
   } catch (e) {
     chatAdd("fabrikant", `✖ ${e.message}`);
   }
   refresh();
 }
 
-// ---- LLM providers ----
+// ---- LLM-Provider ----
 async function refreshLlm() {
   const sel = $("#llmselect");
   if (!sel) return;
@@ -3136,12 +3136,12 @@ async function setLlm(name) {
   }
 }
 
-// ---- Schedule view: cron outlook + one-time overrides ----
-// Shows when which loops (cron) run next; run runs now
-// (startRun) or set a one-time override ("15:05", "in 10 min",
-// ISO-8601) → POST/DELETE /api/schedule/onetime, the scheduler fires it.
+// ---- Schedule-View: Cron-Ausblick + One-time-Overrides ----
+// Zeigt, wann welche Loops (cron) als Nächstes laufen; Runs jetzt ausführen
+// (startRun) oder einen One-time-Override ansetzen ("15:05", "in 10 min",
+// ISO-8601) → POST/DELETE /api/schedule/onetime, feuert der Scheduler.
 let schedData = null;
-let schedOtTarget = null; // {project, loop} of the open one-time form
+let schedOtTarget = null; // {project, loop} für das offene One-time-Formular
 
 function fmtDur(s) {
   if (s < 60) return `${s}s`;
@@ -3149,9 +3149,9 @@ function fmtDur(s) {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-// Queue section: cron times are only the plan — here you see what is actually
-// running (elapsed) / queued (submission time + start estimate) / waiting for
-// approval, plus worker and slot context (concurrency limits).
+// Queue-Sektion: Cron-Zeiten sind nur der Plan — hier sieht man, was tatsächlich
+// läuft (Elapsed) / eingereiht ist (Einreichungszeit + Start-Einschätzung) / auf
+// Freigabe wartet, plus Worker- und Slot-Kontext (Concurrency-Limits).
 function renderQueue() {
   const q = schedData.queue || {};
   const pool = q.pool || { workers: 0, queue: 0 };
@@ -3261,8 +3261,8 @@ function setKpis(open) {
   if (open) refreshKpis();
 }
 
-// One-time form (⏱ button of a row). Rebuilt only on open/close —
-// not on the 5-s refresh, otherwise input and focus would be lost.
+// One-time-Formular (⏱-Button einer Zeile). Nur beim Öffnen/Schließen neu
+// aufgebaut — nicht beim 5-s-Refresh, sonst gingen Eingabe und Fokus verloren.
 function renderSchedForm() {
   const form = $("#schedform");
   if (schedOtTarget) {
@@ -3379,8 +3379,8 @@ document.addEventListener("keydown", (e) => {
 });
 $("#loginform").addEventListener("submit", doLogin);
 $("#logout").addEventListener("click", doLogout);
-// Delegated handlers (issue #268): the containers are static in index.html,
-// so one listener each suffices for all dynamically rendered [data-act] elements.
+// Delegierte Handler (Issue #268): die Container sind statisch in index.html,
+// daher genügt je ein Listener für alle dynamisch gerenderten [data-act]-Elemente.
 $("#projects").addEventListener("click", onProjectsClick);
 $("#detail").addEventListener("click", onDetailClick);
 $("#graphctx").addEventListener("click", onGraphCtxClick);
@@ -3389,14 +3389,14 @@ $("#schedpanel").addEventListener("click", onSchedClick);
 $("#proposalpanel").addEventListener("click", onProposalClick);
 $("#proposalbackdrop").addEventListener("click", closeProposal);
 $("#schedpanel").addEventListener("keydown", onSchedKeydown);
-// i18n: load catalogs, resolve the language (localStorage > browser > "en") and
-// apply it (static + dynamic views). The chat greeting is content —
-// it only appears once the language is known.
+// i18n: Kataloge laden, Sprache auflösen (localStorage > Browser > "en") und
+// anwenden (statische + dynamische Views). Die Chat-Begrüßung ist Content —
+// sie kommt erst, wenn die Sprache bekannt ist.
 const i18nReady = i18nLoad().then(() => {
   i18n.lang = i18nResolve();
   i18nApply();
   chatAdd("fabrikant", t("chat.greeting"));
 });
-// Start only after the catalogs: otherwise the first refresh() renders raw keys.
+// Erst nach den Katalogen starten: sonst rendert der erste refresh() rohe Keys.
 i18nReady.then(initSession).then(() => sessionReady() ? refreshLlm() : 0);
 setInterval(() => i18n.ready && sessionReady() && refresh(), 5000);
