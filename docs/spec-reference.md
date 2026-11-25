@@ -47,7 +47,7 @@ A loop: a chain of steps started by triggers. Concrete loops need steps; templat
 | `worktree` | boolean | optional | false = no git worktree, empty scratch dir per run (ADR 0020); only allowed without worktree-requiring steps (git, pr, agent, review, pr_review). |
 | `tier` | integer | optional | Risk tier as spec data (1 = lowest, 4 = highest); mapped to gates/approvals by a single mapping function. |
 | `retry` | → `retry` | optional | Retry policy for failed runs (ADR 0036). max: 0 disables retry. Loop-level retry overrides the project-level block. |
-| `exclusive_group` | string | optional | Loops with the same group never run at the same time for the same issue/PR (e.g. review-pr + pr-reply). A trigger run blocked this way is dropped like one over max_parallel (with reconcile it fires again on the next poll); queued manual runs and resumes wait. |
+| `exclusive_group` | string | optional | Loops with the same group never run at the same time for the same issue/PR (e.g. review-pr + pr-reply). A trigger run blocked this way is dropped like one over max_parallel (with reconcile it fires again on the next poll); queued manual runs and resumes wait. Like max_parallel and the per-loop dedup, the check for running runs is per fabrikant process (one process per project, ADR 0028); a run paused for approval holds its issue/PR across processes. |
 | `use` | string | optional | Template loop (pre-expansion): name of a <name>.loop.yaml template (ADR 0047). Expanded before validation. |
 | `with` | object | optional | Template loop (pre-expansion): parameter values for the template. |
 | `insert` | list of object | optional | Template loop (pre-expansion): extra steps inserted after named template steps. Cannot be combined with own steps. |

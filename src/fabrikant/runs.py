@@ -101,7 +101,8 @@ def max_parallel_for(project: str, spec: dict | None = None) -> int:
 
 def exclusive_groups(project: str, spec: dict | None = None) -> dict[str, str]:
     """Loop → `exclusive_group` of the spec: loops of the same group never run at the same time for the same
-    issue/PR (e.g. `review-pr` + `pr-reply`: no review of a head that the running fix is about to replace)."""
+    issue/PR (e.g. `review-pr` + `pr-reply`: no review of a head that the running fix is about to replace).
+    Like the dedup, the check against running runs is process-local (ADR 0028: one process per project)."""
     from .specs import load_projects
 
     try:

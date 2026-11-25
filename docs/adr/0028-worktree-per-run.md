@@ -93,7 +93,8 @@ abläuft.
 
 Damit löscht ein zweiter Prozess (Server, `fabrik run`/`approve`) keine Worktrees
 laufender Runs mehr. **Weiterhin offen** und nicht unterstützt: Slots (`max_parallel`),
-Dedup und Vorrang-Warter (`runs.claim_run`) sind prozesslokal; parallele Prozesse auf
+Dedup inkl. `exclusive_group` und Vorrang-Warter (`runs.claim_run`) sind prozesslokal (nur pausierte
+`needs_approval`-Runs kommen aus dem Run-Store und gelten prozessübergreifend); parallele Prozesse auf
 demselben Projekt können das Slot-Limit überschreiten und denselben Trigger doppelt
 starten. Prozessübergreifende Slots/Dedup sind ein Folge-Thema (#280). Einschränkung: PID-Prüfung
 gilt nur auf demselben Host.
