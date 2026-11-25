@@ -40,8 +40,8 @@ TOKEN_USER = "token"  # Principal name for FABRIKANT_TOKEN callers  # nosec B105
 # (everything outside /api/) are also public and contain no data.
 PUBLIC_API = ("/api/health", "/api/login", "/api/session", "/api/login/oidc", "/api/oidc/callback")
 PUBLIC_API_PREFIXES = ("/api/webhook/",)
-CONNECTIONS_PREFIX = "/api/connections"  # Schreiben (PUT/DELETE) nur admin (ADR 0052)
-_ROLE_OVERRIDES = {"/api/logout": VIEWER}  # POST-Routes unterhalb von operator
+CONNECTIONS_PREFIX = "/api/connections"  # writes (PUT/DELETE) admin only (ADR 0052)
+_ROLE_OVERRIDES = {"/api/logout": VIEWER}  # POST routes below operator
 
 _users_lock = threading.Lock()
 _sessions_lock = threading.Lock()
@@ -53,7 +53,7 @@ class AuthError(ValueError):
 
 @dataclass(frozen=True)
 class Principal:
-    """Authentifizierter Aufrufer (Session-Benutzer oder API-Token)."""
+    """Authenticated caller (session user or API token)."""
 
     name: str
     role: str
@@ -65,7 +65,7 @@ class Principal:
 
 # ---------------------------------------------------------------- Konfiguration
 def mode() -> str:
-    """Aktiver Auth-Modus aus ``FABRIKANT_AUTH`` (Default ``none``)."""
+    """Active auth mode from ``FABRIKANT_AUTH`` (default ``none``)."""
     value = os.environ.get("FABRIKANT_AUTH", MODE_NONE).strip().lower() or MODE_NONE
     if value not in MODES:
         raise AuthError(t("auth.fabrikant_auth_unknown_allowed", value=value, v2=", ".join(MODES)))
@@ -120,7 +120,7 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-_DUMMY_HASH = hash_password(secrets.token_hex(8))  # gleiche Rechenzeit bei unbekanntem Benutzer
+_DUMMY_HASH = hash_password(secrets.token_hex(8))  # same compute time for an unknown user
 
 
 # ---------------------------------------------------------------- Benutzer-Store
@@ -295,7 +295,7 @@ def required_role(method: str, path: str) -> str | None:
 
 
 def token_principal(authorization: str) -> Principal | None:
-    """``Authorization: Bearer <FABRIKANT_TOKEN>`` → admin-Principal (API-Token), sonst ``None``."""
+    """``Authorization: Bearer <FABRIKANT_TOKEN>`` → admin principal (API token), else ``None``."""
     token = os.environ.get("FABRIKANT_TOKEN", "").strip()
     if token and hmac.compare_digest(authorization, f"Bearer {token}"):
         return Principal(TOKEN_USER, ADMIN)

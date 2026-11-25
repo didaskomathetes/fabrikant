@@ -27,13 +27,13 @@ from .i18n import t
 
 SLACK_API = "https://slack.com/api"
 DEFAULT_POLL_S = 60
-HISTORY_LIMIT = 100  # Nachrichten pro conversations.history-Aufruf
+HISTORY_LIMIT = 100  # messages per conversations.history call
 HTTP_TIMEOUT_S = 15
 SEEN_MAX = 500  # retention of the dedup history per channel
 ACCEPTED_SUBTYPES = (None, "bot_message")  # Joins, edits, deletes etc. are not alerts
 TRIGGER_PREFIX = "on_slack:"
 VAR_TEXT, VAR_CHANNEL, VAR_TS = "alert_text", "alert_channel", "alert_ts"
-ALERT_VARS = (VAR_TEXT, VAR_CHANNEL, VAR_TS)  # Laufzeit-Variablen eines on_slack-Runs
+ALERT_VARS = (VAR_TEXT, VAR_CHANNEL, VAR_TS)  # runtime variables of an on_slack run
 SLACK_TS_RE = re.compile(r"^\d{1,12}\.\d{1,9}$")  # Slack-`ts`, z. B. "1729650000.000100"
 CHANNEL_ID_RE = re.compile(r"^[A-Z0-9]{2,32}$")  # Channel-/DM-ID, z. B. "C0123ALERTS"
 
@@ -139,12 +139,12 @@ def _ts_float(value: object) -> float:
 
 def max_pages(trig: dict) -> int:
     """Page limit per channel and poll (`max_pages`, validated in specs)."""
-    return int(float(trig.get("max_pages", config.SLACK_DEFAULT_MAX_PAGES)))  # "20"/"20.0" aus `vars`
+    return int(float(trig.get("max_pages", config.SLACK_DEFAULT_MAX_PAGES)))  # "20"/"20.0" from `vars`
 
 
 def max_alert_chars(trig: dict) -> int:
     """Length limit for `alert_text` (`max_alert_chars`, validated in specs)."""
-    return int(float(trig.get("max_alert_chars", config.SLACK_DEFAULT_MAX_ALERT_CHARS)))  # "20"/"20.0" aus `vars`
+    return int(float(trig.get("max_alert_chars", config.SLACK_DEFAULT_MAX_ALERT_CHARS)))  # "20"/"20.0" from `vars`
 
 
 def cap_text(text: str, limit: int) -> str:

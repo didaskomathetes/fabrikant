@@ -35,7 +35,7 @@ from .secrets import _redact
 DEFAULT_ENV_FILE = config.DEFAULT_ENV_FILE
 GH_TOKEN_ENV = {"dev": "GITHUB_TOKEN", "reviewer": "GITHUB_REVIEWER_TOKEN"}
 GITHUB_API = "https://api.github.com"
-GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` bevorzugt GH_TOKEN vor GITHUB_TOKEN  # nosec B105
+GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` prefers GH_TOKEN over GITHUB_TOKEN  # nosec B105
 ENV_FILE_VAR = "FABRIKANT_ENV_FILE"
 # Project token file for subprocesses: marks FABRIKANT_ENV_FILE as a project override so that
 # fabrikant code in the subprocess (`fabrikant.push`, relay CLI) ignores inherited global token env values.
@@ -162,7 +162,7 @@ def _gh_token_safe(role: str = "dev") -> str:
     only its file counts: global GITHUB_TOKEN env values belong to a different identity."""
     env_key = GH_TOKEN_ENV.get(role)
     if env_key is None:
-        raise ValueError(f"unbekannte GitHub-Rolle: {role!r} (erlaubt: {list(GH_TOKEN_ENV)})")
+        raise ValueError(f"unknown GitHub role: {role!r} (allowed: {list(GH_TOKEN_ENV)})")
     tok = "" if _current().env_file else os.environ.get(env_key, "").strip()
     if tok:
         return tok
@@ -276,7 +276,7 @@ def ensure_worktree(spec: dict, run_id: str) -> Path:
         wt.parent.mkdir(parents=True, exist_ok=True)
         # detached: never collides with the main checkout (e.g. main),
         # tests need no branch, only the state of origin/<branch>
-        with repo_lock(repo_root):  # fetch + add atomar gegen parallele Runs desselben Repos
+        with repo_lock(repo_root):  # fetch + add atomic against parallel runs of the same repo
             _git_fetch(repo_root, branch)
             p = subprocess.run(
                 ["git", "-C", str(repo_root), "worktree", "add", "--detach", str(wt), f"origin/{branch}"],
@@ -311,7 +311,7 @@ def lease_lock(wt: Path) -> contextlib.AbstractContextManager[None]:
 
 @dataclass(frozen=True)
 class LeaseInfo:
-    """Inhalt einer Lease-Datei (ADR 0028): Besitzer-PID, letzter Heartbeat, Besitz-Token."""
+    """Contents of a lease file (ADR 0028): owner PID, last heartbeat, ownership token."""
 
     pid: int
     heartbeat: float
@@ -713,11 +713,11 @@ GH_DEPENDENCY_KINDS = ("blocked_by", "blocking")
 
 
 def _gh_dependencies(repo: str, number: int | str, token: str, kind: str = "blocked_by") -> list[dict]:
-    """Native Issue-Dependencies (ADR 0031): `blocked_by` = Issues, die `number`
-    blockieren; `blocking` = Issues, die `number` blockiert. Issue-Objekte inkl.
+    """Native issue dependencies (ADR 0031): `blocked_by` = issues that block
+    `number`; `blocking` = issues that `number` blocks. Issue objects incl.
     `id`, `number`, `state`, `state_reason`."""
     if kind not in GH_DEPENDENCY_KINDS:
-        raise ValueError(f"unbekannte Dependency-Art: {kind!r} (erlaubt: {GH_DEPENDENCY_KINDS})")
+        raise ValueError(f"unknown dependency kind: {kind!r} (allowed: {GH_DEPENDENCY_KINDS})")
     url = f"https://api.github.com/repos/{repo}/issues/{number}/dependencies/{kind}?per_page={GH_DEPENDENCIES_PER_PAGE}"
     return cast(list[dict], _gh_api("GET", url, token) or [])
 
