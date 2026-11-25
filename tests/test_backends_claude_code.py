@@ -319,3 +319,32 @@ def test_create_keeps_explicit_empty_restrictions(value):
     assert_untrusted_workdir(cmd)
     assert cmd[-2:] == ["--permission-mode", "dontAsk"]
     assert "--allowedTools" not in cmd and "Bash" not in cmd
+
+
+_MANAGED_MCP_ERR = b"You cannot dynamically configure MCP servers when an enterprise MCP config is present\n"
+
+
+def _poll_with_stderr(be: ClaudeCodeBackend, err: bytes) -> dict:
+    sid = be.create_task("/tmp/wd", "t")
+    p = FakePopen([])
+    p._rc = 1
+    p._err = err
+    be._sessions[sid]["proc"] = p
+    return be.poll(sid, "/tmp/wd")
+
+
+def test_restricted_step_on_managed_mcp_host_is_environment_failure():
+    """managed-mcp.json makes the CLI refuse --strict-mcp-config: host configuration, not a flaky agent."""
+    r = _poll_with_stderr(ClaudeCodeBackend.create({"tools": "Read"}, "", "m", 900), _MANAGED_MCP_ERR)
+    assert r["status"] == "failed"
+    assert r["failure_kind"] == "environment"
+    assert "managed-mcp.json" in r["text"] and "--strict-mcp-config" in r["text"]
+    assert "eingeschränkte Steps" in r["text"]
+    assert "enterprise MCP config is present" in r["text"]  # CLI text stays visible
+
+
+def test_unrestricted_step_keeps_generic_failure():
+    """Without the restriction the flag is not passed — no reinterpretation of the CLI output."""
+    r = _poll_with_stderr(ClaudeCodeBackend("", "m"), _MANAGED_MCP_ERR)
+    assert r["status"] == "failed"
+    assert "failure_kind" not in r

@@ -16,8 +16,10 @@ All notable changes to fabrikant are documented here. The format follows
 ### Security
 
 - `claude_code` steps with `tools` or `allowed_tools` no longer load the working directory's project/local
-  settings, `.mcp.json` or any hooks (`--setting-sources user --strict-mcp-config`, hooks disabled): a PR under
-  review can no longer run commands through its own `.claude/settings.json`.
+  settings, `.mcp.json` or project/user hooks (`--setting-sources user --strict-mcp-config`, hooks disabled;
+  administrator-managed hooks still apply): a PR under review can no longer run commands through its own
+  `.claude/settings.json`. On hosts with an enterprise `managed-mcp.json` Claude Code refuses
+  `--strict-mcp-config`, so such steps fail as a configuration error (`environment`).
 
 ## [0.1.0] - 2026-11-25
 

@@ -213,6 +213,7 @@ MESSAGES: dict[str, str] = {
     "backends._oneshot.one_shot_backend_exactly_one": "{v1}: One-Shot-Backend — genau ein Prompt pro Session",
     "backends._oneshot.popen_without_stdin": "{v1}: Popen ohne stdin",
     "backends._oneshot.inactive_for_s_no_activity": "{v1} inaktiv seit {v2}s (keine Aktivität)",
+    "backends.claude_code.managed_mcp_conflict": "claude_code: eingeschränkte Steps (tools/allowed_tools) brauchen --strict-mcp-config, das Claude Code verweigert, solange auf diesem Host eine Enterprise-managed-mcp.json liegt — auf einem Host ohne diese Datei ausführen ({detail})",
     "backends.codex.codex_no_output": "codex: kein Output",
     "backends.copilot.copilot_no_output": "copilot: kein Output",
     "backends.copilot.copilot_session_ended_without_a": "copilot: Session endete ohne finale Antwort (JSONL ohne result-Event) — möglicher API-Ausfall oder abgeschnittener Stream",

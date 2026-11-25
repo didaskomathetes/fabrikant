@@ -18,7 +18,9 @@ ends, then done/failed. The result is a final JSON on stdout
   approval (reads in the workdir, read-only Bash) and calls approved by the user/
   `settings.json` still run. `tools` does not cover MCP tools.
   A restricted step also treats the working directory as untrusted (`RESTRICTED_FLAGS`):
-  no project/local settings (hooks, env, `.mcp.json`), no MCP servers, no hooks at all.
+  no project/local settings (hooks, env, `.mcp.json`), no MCP servers, no project/user hooks
+  (administrator-managed hooks still run). Claude Code refuses `--strict-mcp-config` at startup
+  while an enterprise `managed-mcp.json` is deployed — reported as an `environment` failure.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """
@@ -26,9 +28,12 @@ ends, then done/failed. The result is a final JSON on stdout
 from __future__ import annotations
 
 import json
+import re
 
 from ..agentenv import CLAUDE_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
+from ..i18n import t
+from ..runmodel import FailureKind
 from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend, csv_arg
 
@@ -42,7 +47,8 @@ def _opt_csv(value: object) -> str | None:
 # Headless `claude -p` ignores project `permissions.allow` rules, but still applies the project's hooks,
 # `env` block and `.mcp.json` servers — a PR adding `.claude/settings.json` could run commands despite
 # `tools`, e.g. write the reviewer's payload itself. Only user settings (the operator's) are read; MCP
-# servers and hooks (the CLI flag outranks every settings file) stay off.
+# servers and project/user hooks (the CLI flag outranks those settings files) stay off. Hooks from
+# managed (administrator) settings are out of reach: only a managed `disableAllHooks` turns them off.
 RESTRICTED_FLAGS = (
     "--setting-sources",
     "user",
@@ -50,6 +56,10 @@ RESTRICTED_FLAGS = (
     "--settings",
     json.dumps({"disableAllHooks": True}),
 )
+# A deployed enterprise `managed-mcp.json` makes the CLI exit at startup on `--strict-mcp-config`
+# ("You cannot dynamically configure MCP servers when an enterprise MCP config is present"). The
+# isolation stays mandatory, so this is a host configuration error, not something a retry heals.
+_MANAGED_MCP_CONFLICT = re.compile(r"enterprise MCP config", re.IGNORECASE)
 
 
 class ClaudeCodeBackend(OneShotCliBackend):
@@ -98,9 +108,12 @@ class ClaudeCodeBackend(OneShotCliBackend):
     def _stale_after(self) -> int | None:
         return None  # no staleness check — the step timeout is the backstop
 
+    def _restricted(self) -> bool:
+        return self.tools is not None or self.allowed_tools is not None
+
     def _build_cmd(self) -> list[str]:
         cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
-        if self.tools is not None or self.allowed_tools is not None:
+        if self._restricted():
             cmd += RESTRICTED_FLAGS
         if self.tools is not None:
             cmd += ["--tools", self.tools]  # "" = no built-in tools at all
@@ -120,6 +133,9 @@ class ClaudeCodeBackend(OneShotCliBackend):
         except (json.JSONDecodeError, ValueError):
             d = None
         if not isinstance(d, dict):
+            if self._restricted() and _MANAGED_MCP_CONFLICT.search(f"{err}\n{out}"):
+                text = t("backends.claude_code.managed_mcp_conflict", detail=(err or out).strip()[:200])
+                return {**base, "status": "failed", "text": text, "failure_kind": FailureKind.ENVIRONMENT.value}
             return {**base, "status": "failed", "text": (err or out)[:300]}
         if returncode != 0:
             # JSON result despite exit ≠ 0 (e.g. usage limit): `result` is the actual
