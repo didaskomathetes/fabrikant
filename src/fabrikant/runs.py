@@ -162,6 +162,20 @@ def paused_dedupe_keys(
     return keys
 
 
+# Re-check interval of a blocking claim waiting for a paused group-mate's approval decision.
+_PAUSED_RECHECK_S = 5.0
+
+
+def _mate_paused(project: str, mates: list[str], item: str, exclude_run_id: str | None) -> bool:
+    """Is a group-mate paused for approval on `item`? Called under `_slots_cond`: the lock is released for
+    the file I/O (like the non-blocking check, it must not block other claims)."""
+    _slots_cond.release()
+    try:
+        return item in paused_dedupe_keys(project, mates[0], exclude_run_id, also=mates[1:])
+    finally:
+        _slots_cond.acquire()
+
+
 def claim_run(
     project: str,
     loop: str,
@@ -183,8 +197,10 @@ def claim_run(
     non-blocking claims yield to it meanwhile. ``registered=True``: the
     caller has already registered synchronously via :func:`mark_priority_waiter`
     (before the thread start, so trigger runs yield immediately); the entry
-    is removed again here. `exclude_run_id` (resume): the resumed run
-    itself does not block its own claim."""
+    is removed again here. A blocking claim also waits while a group-mate
+    (same `exclusive_group`) is paused for approval on the same issue/PR; it
+    does not count as a priority waiter meanwhile. `exclude_run_id` (resume):
+    the resumed run itself does not block its own claim."""
     scope = lock_key(project, loop)
     needs_slot = scope == project
     limit = max_parallel_for(project) if needs_slot else 0
@@ -192,7 +208,9 @@ def claim_run(
     groups = exclusive_groups(project) if key[2] else {}
     # Paused runs release their claim but keep occupying the reference — for their own loop and for
     # the other loops of their `exclusive_group` (an approval gate holds the issue/PR until it is
-    # decided); the resume (blocking or exclude_run_id) is exempt. File I/O deliberately outside the lock.
+    # decided); the resume (exclude_run_id) is exempt. A blocking claim ignores its own loop's paused
+    # runs (ADR 0043) but waits for paused group-mates (checked below, once the reference is free).
+    # File I/O deliberately outside the lock.
     group = groups.get(loop)
     mates = [lp for lp, g in groups.items() if g == group and lp != loop] if group else []
     if not blocking and key[2] and key[2] in paused_dedupe_keys(project, loop, exclude_run_id, also=mates):
@@ -201,6 +219,7 @@ def claim_run(
         if blocking and not registered:
             _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
         try:
+            mates_clear = not (blocking and mates)
             while True:
                 free = (
                     key not in _active_keys
@@ -208,7 +227,22 @@ def claim_run(
                     and (not needs_slot or _slots_used.get(project, 0) < limit)
                 )
                 if free and (blocking or not _priority_waiters.get(scope)):
-                    break
+                    if mates_clear:
+                        break
+                    if not _mate_paused(project, mates, key[2], exclude_run_id):
+                        mates_clear = True  # lock was released for the I/O → re-evaluate `free`
+                        continue
+                    # A decision (approve/reject) does not notify the condition → re-check periodically; meanwhile
+                    # don't hold back trigger runs of the scope (a decision can take days).
+                    _priority_waiters[scope] = _priority_waiters.get(scope, 0) - 1
+                    _slots_cond.notify_all()
+                    try:
+                        _slots_cond.wait(_PAUSED_RECHECK_S)
+                    finally:
+                        _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
+                    continue
+                if blocking and mates:
+                    mates_clear = False  # a mate may pause while we wait → check again once free
                 if not blocking:
                     return None
                 _slots_cond.wait()

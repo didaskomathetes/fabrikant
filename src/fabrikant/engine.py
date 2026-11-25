@@ -1352,7 +1352,9 @@ def spawn_priority_worker(
                 raise
 
     def target() -> None:
-        acquired = held or claim_run(project, loop, variables, blocking=True, registered=True)
+        acquired = held or claim_run(
+            project, loop, variables, blocking=True, registered=True, exclude_run_id=exclude_run_id
+        )
         assert acquired is not None  # blocking=True always returns a claim
         try:
             work(acquired)

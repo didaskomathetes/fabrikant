@@ -474,3 +474,58 @@ def test_paused_run_blocks_exclusive_group_mates(limit, monkeypatch):
     assert all(claims)
     for c in claims:
         c.release()
+
+
+def _group_spec(monkeypatch, project: str) -> None:
+    from fabrikant import specs
+
+    spec = {
+        "repo": {"url": "x"},
+        "max_parallel": 5,
+        "loops": {"review": {"exclusive_group": "pr"}, "reply": {"exclusive_group": "pr"}, "other": {}},
+    }
+    monkeypatch.setattr(specs, "load_projects", lambda: {project: spec})
+
+
+def test_queued_run_waits_for_paused_group_mate(limit, monkeypatch):
+    """Review point PR #20: a queued (blocking) run waited for the running group-mate, but started as soon
+    as the mate released its claim to pause for approval. It must wait until the approval is decided."""
+    _group_spec(monkeypatch, "pausegrq")
+    monkeypatch.setattr(runs, "_PAUSED_RECHECK_S", 0.05)
+    limit["n"] = 5
+    review = runs.claim_run("pausegrq", "review", {"pr_number": 5})
+    assert review is not None
+    got: list = []
+    waiter = threading.Thread(
+        target=lambda: got.append(runs.claim_run("pausegrq", "reply", {"pr_number": 5}, blocking=True))
+    )
+    waiter.start()
+    waiter.join(0.2)
+    assert waiter.is_alive() and not got  # waits for the running review
+    _paused("pausegrq", "review", {"pr_number": 5}, run_id="r1")  # review pauses for approval …
+    review.release()  # … and releases its claim
+    waiter.join(0.3)
+    assert waiter.is_alive() and not got  # the approval gate still holds the PR
+    # While it waits on the approval, it must not hold back trigger runs of the project (ADR 0015).
+    trigger = runs.claim_run("pausegrq", "other", {"pr_number": 9})
+    assert trigger is not None
+    trigger.release()
+    _paused("pausegrq", "review", {"pr_number": 5}, run_id="r1", status="rejected")  # decided
+    waiter.join(5)
+    assert not waiter.is_alive() and got[0] is not None
+    got[0].release()
+
+
+def test_queued_resume_is_not_blocked_by_its_own_record(limit, monkeypatch):
+    """Blocking claim with `exclude_run_id`: the run being resumed does not hold up its own claim; a
+    different paused group-mate still would."""
+    _group_spec(monkeypatch, "pausegrr")
+    limit["n"] = 5
+    _paused("pausegrr", "review", {"pr_number": 5}, run_id="r1")
+    own = runs.claim_run("pausegrr", "reply", {"pr_number": 5}, blocking=True, exclude_run_id="r1")
+    assert own is not None
+    own.release()
+    # Same loop: a manual run is not held by its own loop's paused run (ADR 0043, unchanged).
+    same = runs.claim_run("pausegrr", "review", {"pr_number": 5}, blocking=True)
+    assert same is not None
+    same.release()
