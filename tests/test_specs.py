@@ -441,7 +441,7 @@ def test_validate_on_pr_states_not_list(tmp_path):
         specs._validate_spec(_trigger_spec(str(tmp_path), {"type": "on_pr", "repo": "o/r", "states": "open"}))
 
 
-@pytest.mark.parametrize("rec", [True, False, "head"])
+@pytest.mark.parametrize("rec", [True, False, "head", "updated"])
 def test_validate_on_pr_reconcile_ok(tmp_path, rec):
     trig = {"type": "on_pr", "repo": "o/r", "reconcile": rec}
     specs._validate_spec(_trigger_spec(str(tmp_path), trig))  # kein Raise

@@ -117,3 +117,16 @@ def test_done_keeps_tier_gate_and_resume_skips_rest(runs_dir, projects_dir, tmp_
     assert rec2["status"] == "pass"
     assert [s["status"] for s in rec2["steps"][2:4]] == [STEP_SKIPPED, STEP_SKIPPED]
     assert not (tmp_path / "after1").exists()
+
+
+def test_shell_done_marker_skips_remaining_steps(runs_dir, projects_dir, tmp_path):
+    """End to end: a real shell step printing `::fabrikant-done::` ends the run early (no monkeypatch)."""
+    steps = (
+        '- name: gate\n  type: shell\n  cmd: "echo nothing new; echo ::fabrikant-done::"\n'
+        f"- name: work\n  type: shell\n  cmd: touch {tmp_path}/work\n"
+    )
+    _write_spec(projects_dir, tmp_path, "done_marker", steps)
+    rec = run_loop("done_marker", "s")
+    assert rec["status"] == "pass"
+    assert [(s["name"], s["status"]) for s in rec["steps"]] == [("gate", "pass"), ("work", STEP_SKIPPED)]
+    assert not (tmp_path / "work").exists()

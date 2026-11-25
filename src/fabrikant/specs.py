@@ -671,9 +671,9 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
                 _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
-        if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
+        if rec is not None and not isinstance(rec, bool) and rec not in config.RECONCILE_MODES:
             errs.append(
-                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=list(config.RECONCILE_MODES), rec=rec)
             )
     return errs
 

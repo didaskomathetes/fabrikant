@@ -6,6 +6,13 @@ All notable changes to fabrikant are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `on_pr` trigger `reconcile: updated`: reconciles per PR change (`updated_at`), so pushes, comments, reviews and
+  label changes each fire exactly once, also across a server restart.
+- Shell step markers: a line `::fabrikant-done::` (exit 0) ends the run early and successfully, lines
+  `::fabrikant-warning::<text>` report non-fatal problems (⚠ in the run log, `WARNING:` at the end of the output).
+
 ## [0.1.0] - 2026-11-25
 
 First public release.

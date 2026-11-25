@@ -50,6 +50,11 @@ shows it as a badge next to the status (list, history, run detail, step): `pass`
 red, otherwise neutral. Flow, retry and alerts stay untouched. Relay reports `pass`/`fail` (audit) or the
 handoff status (`active`/`blocked`/`done`, session).
 
+A shell step can also end the run early and successfully with a line `::fabrikant-done::` (exit 0 only), e.g. a
+gate that finds no new work: the remaining steps are recorded as skipped. Lines `::fabrikant-warning::<text>`
+(stdout or stderr, also on failure) report problems that don't fail the step: they appear as ⚠ in the run log and
+as `WARNING: <text>` at the end of the step output. Both marker lines are removed from output and summary.
+
 ## Run retry (ADR 0036)
 
 Failed runs are optionally repeated automatically — one **retry chain** with backoff per

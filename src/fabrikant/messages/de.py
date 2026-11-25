@@ -546,7 +546,7 @@ MESSAGES: dict[str, str] = {
     "specs.must_be_an_absolute_path": "{v1} muss ein absoluter Pfad sein (ist {gef!r})",
     "specs.spec_invalid": "Spec ungültig:\n  ",
     "specs.loop_trigger_on_pr_states": "loop {lname} trigger {i}: on_pr states muss nicht-leere Liste aus {v3} sein (ist {states!r})",
-    "specs.loop_trigger_on_pr_reconcile": "loop {lname} trigger {i}: on_pr reconcile muss true/false oder {v3!r} sein (ist {rec!r})",
+    "specs.loop_trigger_on_pr_reconcile": "loop {lname} trigger {i}: on_pr reconcile muss true/false oder einer von {v3} sein (ist {rec!r})",
     "specs.project_defined_more_than_once": "Projekt {name!r} mehrfach: {v2} (gewinnt) verdeckt {f}",
     "specs.description_must_be_a_string": "description muss ein String sein",
     "specs.max_parallel_must_be_an": "max_parallel muss eine ganze Zahl sein",

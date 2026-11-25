@@ -670,3 +670,49 @@ def test_fire_kind_head_without_sha_sha_record_done_none():
 def test_fire_kind_head_without_sha_unrelated_records_fires():
     """reconcile: head ohne head.sha, aber nur fremde Records → PR feuert trotzdem."""
     assert _fk(reconcile=True, per_head=True, done={"on_pr:#2@bbb", "on_pr:#12"}) == "reconcile"
+
+
+def test_on_pr_reconcile_updated_fires_per_update_and_survives_restart(monkeypatch):
+    """reconcile: updated → every PR change (also a comment without a push) fires exactly once; a new
+    scheduler (restart) fires only changes without a run record — nothing is lost during the pause."""
+    sched, fired, trig = _mk_pr_test(monkeypatch, [_pr_sha(1, "2026-11-13T14:28:20Z", "aaa")])
+    trig["reconcile"] = "updated"
+    runs: set[str] = set()
+    monkeypatch.setattr(fabrikant.scheduler, "loop_run_triggers", lambda n, ln: set(runs))
+    sched._check_pr("p", "l", {"github": "o/r"}, trig)  # first poll fires
+    assert [f[0] for f in fired] == ["on_pr:#1@u20261113T142820Z"]
+    runs.add(fired[0][0])
+    sched._pr_state.clear()  # reset the poll interval
+    sched._check_pr("p", "l", {"github": "o/r"}, trig)
+    assert len(fired) == 1  # unchanged → no double run
+    # comment (same head) during a restart: fresh scheduler, the record set stays
+    sched2, fired2, _ = _mk_pr_test(monkeypatch, [_pr_sha(1, "2026-11-13T15:00:00Z", "aaa")])
+    monkeypatch.setattr(fabrikant.scheduler, "loop_run_triggers", lambda n, ln: set(runs))
+    sched2._check_pr("p", "l", {"github": "o/r"}, trig)
+    assert [f[0] for f in fired2] == ["on_pr:#1@u20261113T150000Z"]
+
+
+def test_on_pr_reconcile_updated_retries_dropped_trigger(monkeypatch):
+    """reconcile: updated → a dropped trigger (claim refused, no run record) fires again on the next poll."""
+    sched, fired, trig = _mk_pr_test(monkeypatch, [_pr_sha(1, "2026-11-13T14:28:20Z", "aaa")])
+    trig["reconcile"] = "updated"
+    monkeypatch.setattr(fabrikant.scheduler, "loop_run_triggers", lambda n, ln: set())  # never a record
+    sched._check_pr("p", "l", {"github": "o/r"}, trig)
+    sched._check_pr("p", "l", {"github": "o/r"}, trig)
+    assert [f[0] for f in fired] == ["on_pr:#1@u20261113T142820Z"] * 2
+
+
+def test_fire_kind_reconcile_updated():
+    known = {1: ("open", "2026-11-13T14:28:20Z")}
+    assert _fk(reconcile=True, per_update=True, prev=known, updated_at="2026-11-13T15:00:00Z") == (
+        "update 2026-11-13T15:00:00Z"
+    )
+    done = {"on_pr:#1@u20261113T150000Z"}
+    assert _fk(reconcile=True, per_update=True, prev=known, updated_at="2026-11-13T15:00:00Z", done=done) is None
+    # without updated_at the PR key applies (like reconcile: true)
+    assert _fk(reconcile=True, per_update=True, prev=known, updated_at="", done={"on_pr:#1"}) is None
+
+
+def test_pr_update_trigger_compacts_timestamp():
+    assert fabrikant.scheduler._pr_update_trigger(7, "2026-11-13T14:28:20Z") == "on_pr:#7@u20261113T142820Z"
+    assert fabrikant.scheduler._pr_update_trigger(7, "") == "on_pr:#7"

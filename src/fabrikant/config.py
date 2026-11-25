@@ -233,6 +233,10 @@ PR_STATES = ("open", "closed")
 # on_pr `reconcile: head`: reconcile per head SHA instead of per PR (ADR 0023) —
 # every new push fires exactly once, even after a discarded trigger/restart.
 RECONCILE_PER_HEAD = "head"
+# on_pr `reconcile: updated`: reconcile per PR change (`updated_at`: push, comment, review, label) —
+# every change fires exactly once, even if it happened during a server restart.
+RECONCILE_PER_UPDATE = "updated"
+RECONCILE_MODES = (RECONCILE_PER_HEAD, RECONCILE_PER_UPDATE)
 # Step types that need the project's git worktree (checkout, commit,
 # agent edits, diff from the worktree). Loops with `worktree: false` must
 # not contain them (ADR 0020).

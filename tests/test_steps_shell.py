@@ -355,3 +355,26 @@ def test_shell_verdict_line_becomes_field_and_leaves_output_and_summary(tmp_path
 def test_shell_without_verdict_has_no_field(tmp_path):
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo hi"}, NOOP)
     assert "verdict" not in res
+
+
+# ---------------------------------------------------------------- warnings / done
+@pytest.mark.parametrize("exit_code", [0, 3])
+def test_shell_warning_lines_go_to_log_and_output_end(tmp_path, exit_code):
+    log: list[str] = []
+    cmd = f"echo '::fabrikant-warning::ref verworfen' >&2; echo '::fabrikant-warning::zweite'; echo done; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, log.append)
+    assert [m for m in log if "⚠" in m] == ["  ⚠ zweite", "  ⚠ ref verworfen"]
+    assert "fabrikant-warning" not in res["output"]
+    assert res["output"].endswith("[warnings]\nWARNING: zweite\nWARNING: ref verworfen")
+    assert res["summary"].endswith("done")
+
+
+def test_shell_done_marker_ends_run_and_is_stripped(tmp_path):
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::"}, NOOP)
+    assert res["ok"] is True and res.get("done") is True
+    assert "::fabrikant-done::" not in res["output"] and res["summary"] == "nichts zu tun"
+
+
+def test_shell_done_marker_ignored_on_failure(tmp_path):
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1"}, NOOP)
+    assert res["ok"] is False and not res.get("done")

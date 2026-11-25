@@ -25,7 +25,9 @@ Trigger types (`config.TRIGGER_TYPES`): `manual`, `cron`, `on_file`, `on_issue`,
   `{pr_body}`. `reconcile: true` (ADR 0011): also fires for existing PRs, but only if no previous `on_pr` run
   exists (status irrelevant; restart-proof; reconciling controller). `reconcile: head` (ADR 0023): like `true`,
   but per head SHA (`on_pr:#N@<sha>`) — every new push fires exactly once, a discarded trigger (lock busy,
-  restart) is caught up on the next poll. Additional variable: `{pr_head_sha}`
+  restart) is caught up on the next poll. `reconcile: updated`: like `head`, but per PR change (`updated_at`,
+  `on_pr:#N@u<stamp>`) — pushes, comments, reviews and label changes each fire exactly once, also when they
+  happened during a restart (e.g. a loop answering review comments). Additional variable: `{pr_head_sha}`
 - **on_webhook** — `POST /api/webhook/<project>/<loop>` (ADR 0027). Auth via HMAC-SHA256 of the raw body in the
   header `X-Fabrikant-Signature: sha256=<hex>`; wrong/missing → `401`. Replay protection via
   `X-Fabrikant-Timestamp`/`X-Fabrikant-Nonce` (ADR 0058). Payload→variables via `map` (dot paths; invalid JSON
