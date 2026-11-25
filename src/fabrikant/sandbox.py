@@ -207,6 +207,14 @@ def sandbox_enabled(env: Mapping[str, str] | None = None) -> bool:
     return env.get(ENABLE_VAR, "").strip().lower() in _TRUTHY
 
 
+def _helper_scripts_dir() -> str:
+    """`FABRIKANT_HOME/scripts` if it exists, else empty (no mount): `docker run -v` would create a
+    missing source directory on the host (root-owned with a rootful daemon), e.g. under the
+    `~/.local/share/fabrikant` home of an installed wheel, which has no `scripts/`."""
+    path = FABRIKANT_HOME / HELPER_SCRIPTS_DIR
+    return str(path) if path.is_dir() else ""
+
+
 @dataclass
 class SandboxConfig:
     """Container hardening (env overrides in `from_env`)."""
@@ -242,7 +250,7 @@ class SandboxConfig:
             network=env.get(NETWORK_VAR, "") or DEFAULT_NETWORK,
             work_size=env.get(WORK_SIZE_VAR, "") or DEFAULT_WORK_SIZE,
             proxy_url=env.get(PROXY_URL_VAR, "") or egress.agent_proxy_url(),
-            helper_scripts=str(FABRIKANT_HOME / HELPER_SCRIPTS_DIR),
+            helper_scripts=_helper_scripts_dir(),
         )
 
     @property

@@ -238,9 +238,19 @@ def test_render_docker_cmd_mounts_helper_scripts_read_only_at_host_path():
     assert cmd[cmd.index("-w") + 1] == "/work"
 
 
-def test_sandbox_config_from_env_points_helper_scripts_at_fabrikant_home():
+def test_sandbox_config_from_env_points_helper_scripts_at_fabrikant_home(tmp_path, monkeypatch):
+    (tmp_path / "scripts").mkdir()
+    monkeypatch.setattr(sandbox, "FABRIKANT_HOME", tmp_path)
+    assert sandbox.SandboxConfig.from_env({}).helper_scripts == str(tmp_path / "scripts")
+
+
+def test_sandbox_config_without_helper_scripts_dir_mounts_nothing(tmp_path, monkeypatch):
+    """No `scripts/` under FABRIKANT_HOME (installed wheel): no `-v`, docker would create the directory."""
+    monkeypatch.setattr(sandbox, "FABRIKANT_HOME", tmp_path)
     cfg = sandbox.SandboxConfig.from_env({})
-    assert cfg.helper_scripts == str(sandbox.FABRIKANT_HOME / "scripts")
+    assert cfg.helper_scripts == ""
+    cmd = sandbox.render_docker_cmd(cfg, "s", ["codex"], _EX, {"PATH": "/usr/bin"})
+    assert not any(m.startswith(str(tmp_path)) for m in (cmd[i + 1] for i, a in enumerate(cmd) if a == "-v"))
 
 
 def test_render_docker_cmd_labels_container():
