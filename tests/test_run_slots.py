@@ -449,3 +449,28 @@ def test_safe_run_callback_error_does_not_stop_run(monkeypatch, limit, capsys):
     assert done.wait(5)
     out = capsys.readouterr().out
     assert "RuntimeError" in out and "geheim" not in out
+
+
+def test_paused_run_blocks_exclusive_group_mates(limit, monkeypatch):
+    """An approval gate holds the issue/PR for the whole `exclusive_group`: a group-mate must not run on a
+    head the paused run will change once approved. Other PRs, loops outside the group and the resume
+    of the paused run itself still go through."""
+    from fabrikant import specs
+
+    spec = {
+        "repo": {"url": "x"},
+        "max_parallel": 5,
+        "loops": {"review": {"exclusive_group": "pr"}, "reply": {"exclusive_group": "pr"}, "other": {}},
+    }
+    monkeypatch.setattr(specs, "load_projects", lambda: {"pausegrp": spec})
+    limit["n"] = 5
+    _paused("pausegrp", "reply", {"pr_number": 5}, run_id="r1")
+    assert runs.claim_run("pausegrp", "review", {"pr_number": 5}) is None  # group-mate, same PR
+    claims = [
+        runs.claim_run("pausegrp", "review", {"pr_number": 6}),  # other PR
+        runs.claim_run("pausegrp", "other", {"pr_number": 5}),  # loop without a group
+        runs.claim_run("pausegrp", "reply", {"pr_number": 5}, exclude_run_id="r1"),  # its own resume
+    ]
+    assert all(claims)
+    for c in claims:
+        c.release()

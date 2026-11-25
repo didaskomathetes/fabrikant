@@ -67,7 +67,8 @@ concurrent runs per project; specs without `repo:` run without isolation in `roo
 (ADR 0015) and wait for a free slot. `worktree: false` loops (ADR 0020) don't occupy a slot. At most one active
 run runs per loop + issue/PR; loops with the same `exclusive_group` (loop option, e.g. `review-pr` + `pr-reply`) also
 never run at the same time for the same issue/PR. A trigger run blocked this way is dropped like one over the limit
-(with `reconcile` it fires again on the next poll); queued runs wait.
+(with `reconcile` it fires again on the next poll); queued runs wait. A run paused for approval keeps holding its
+issue/PR for its whole group until it is decided.
 `state/replied-comments.json` and `state/reviewed-prs.json` are merged under lock
 into `state/agent/<project>/`. Operation: exactly **one** fabrikant process per project (see ADR 0028). True
 parallelism needs `FABRIKANT_WORKERS` > 1.

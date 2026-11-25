@@ -141,14 +141,18 @@ def mark_priority_waiter(scope: str, delta: int) -> None:
         _slots_cond.notify_all()
 
 
-def paused_dedupe_keys(project: str, loop: str, exclude_run_id: str | None = None) -> set[str]:
-    """Issue/PR references (:func:`dedupe_key`) of paused `needs_approval` runs of loop `loop`.
+def paused_dedupe_keys(
+    project: str, loop: str, exclude_run_id: str | None = None, *, also: Iterable[str] = ()
+) -> set[str]:
+    """Issue/PR references (:func:`dedupe_key`) of paused `needs_approval` runs of loop `loop`
+    (and of the loops in `also`, e.g. the other members of its `exclusive_group`).
 
     `exclude_run_id` leaves out the run that is being resumed itself —
     its own record would otherwise block the resume."""
+    loops = {loop, *also}
     keys: set[str] = set()
     for r in STORE.load_records(project, RunStatus.NEEDS_APPROVAL):
-        if r.get("id") == exclude_run_id or r.get("loop") != loop:
+        if r.get("id") == exclude_run_id or r.get("loop") not in loops:
             continue
         vars_ = r.get("vars")
         key = dedupe_key(vars_ if isinstance(vars_, dict) else None)
@@ -185,10 +189,12 @@ def claim_run(
     limit = max_parallel_for(project) if needs_slot else 0
     key = (project, loop, dedupe_key(variables))
     groups = exclusive_groups(project) if key[2] else {}
-    # Paused runs release their claim but keep occupying the reference; the
-    # resume (blocking or exclude_run_id) is exempt. File I/O deliberately
-    # outside the lock.
-    if not blocking and key[2] and key[2] in paused_dedupe_keys(project, loop, exclude_run_id):
+    # Paused runs release their claim but keep occupying the reference — for their own loop and for
+    # the other loops of their `exclusive_group` (an approval gate holds the issue/PR until it is
+    # decided); the resume (blocking or exclude_run_id) is exempt. File I/O deliberately outside the lock.
+    group = groups.get(loop)
+    mates = [lp for lp, g in groups.items() if g == group and lp != loop] if group else []
+    if not blocking and key[2] and key[2] in paused_dedupe_keys(project, loop, exclude_run_id, also=mates):
         return None
     with _slots_cond:
         if blocking and not registered:
