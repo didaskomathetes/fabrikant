@@ -1231,12 +1231,24 @@ def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict |
     # and its record been written. The poll-time dedup is then not enough — otherwise
     # all queued copies run one after another (double runs, issue #226, Oct 2026).
     # Plain `on_pr:#N` stays excluded: event mode intentionally fires again on PR updates.
-    if _is_once_trigger(trigger) and trigger in loop_run_triggers(name, lname):
-        return None
+    # Checked while holding the claim: a copy of the same trigger has the same claim key, so an
+    # earlier run is either finished (record visible) or still active (claim refused). Checking
+    # before the claim would leave a gap — check, earlier run finishes and releases, claim.
     # Over the limit (max_parallel), with an active run for loop + issue/PR or
     # a waiting priority claim, the trigger is discarded; the next
     # poll/cron tick tries again.
-    return claim_run(name, lname, initial_vars)
+    claim = claim_run(name, lname, initial_vars)
+    if claim is None or not _is_once_trigger(trigger):
+        return claim
+    try:
+        seen = trigger in loop_run_triggers(name, lname)
+    except BaseException:
+        claim.release()
+        raise
+    if seen:
+        claim.release()
+        return None
+    return claim
 
 
 def _run_callback(callback: Callable[[], None] | None, name: str, lname: str) -> None:
