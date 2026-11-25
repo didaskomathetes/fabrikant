@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from fabrikant import specs
-from fabrikant.specschema import SCHEMA_PATH, load_schema, validate_spec
+from fabrikant.specschema import SCHEMA_PATH, load_schema, unknown_keys, validate_spec
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -137,6 +137,63 @@ def test_valid_bundled_specs():
     for f in sorted(REPO_ROOT.glob("projects/*.fabrikant.*")):
         spec = specs.load_spec(f, check_root=False)
         assert validate_spec(spec) == [], f"{f.name}: {validate_spec(spec)}"
+
+
+def test_bundled_specs_have_no_unknown_keys():
+    for f in sorted(REPO_ROOT.glob("projects/*.fabrikant.*")):
+        assert unknown_keys(specs.load_spec(f, check_root=False)) == [], f.name
+
+
+# ------------------------------------------------------------------ unknown keys (warning only)
+def test_unknown_keys_at_every_level():
+    spec = _with_step({"type": "shell", "cmd": "x", "sandboxd": True})
+    spec["colour"] = "red"
+    spec["loops"]["l1"]["exclusive_grup"] = "g"
+    spec["loops"]["l1"]["triggers"] = [{"type": "cron", "cron": "* * * * *", "pol": 5}]
+    spec["loops"]["l1"]["steps"].append({"type": "verify", "checks": [{"type": "shell", "cmd": "x", "tmeout": 1}]})
+    assert unknown_keys(spec) == [
+        "<root>: colour",
+        "loops/l1/steps/0: sandboxd",
+        "loops/l1/steps/1/checks/0: tmeout",
+        "loops/l1/triggers/0: pol",
+        "loops/l1: exclusive_grup",
+    ]
+    assert validate_spec(spec) == []  # still valid: only a warning
+
+
+def test_unknown_keys_exempts_extensions_internal_and_yaml_on():
+    spec = _valid_spec()
+    spec["x-shared"] = {"anything": 1}
+    spec["_path"] = "/p.yaml"
+    spec["loops"]["l1"]["x-note"] = "n"
+    spec["loops"]["l1"]["retry"] = {"max": 1, True: ["transient"]}  # PyYAML: unquoted `on` → True
+    assert unknown_keys(spec) == []
+
+
+def test_unknown_keys_respects_conditional_branches():
+    """`if`/`then` sub-schemas list single keys (state: action): they must stay non-strict, or the
+    condition never matches / a branch reports every other step key as unknown."""
+    from fabrikant.specschema import _strict
+
+    strict = _strict(load_schema())
+    assert isinstance(strict, dict)
+    for cond in strict["$defs"]["step"]["allOf"]:
+        assert "additionalProperties" not in cond["if"]
+        assert "additionalProperties" not in cond.get("then", {})
+    assert strict["$defs"]["step"]["additionalProperties"] is False
+    assert unknown_keys(_with_step({"type": "state", "action": "get", "key": "k"})) == []
+
+
+def test_unknown_keys_accepts_plugin_schema_keys(monkeypatch):
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    schema = {"type": "object", "properties": {"greeting": {"type": "string"}}}
+    registry.register_step("hello", lambda ctx, step, emit: {}, schema=schema)
+    assert unknown_keys(_with_step({"type": "hello", "greeting": "hi", "greting": "x"})) == [
+        "loops/l1/steps/0: greting"
+    ]
 
 
 # ------------------------------------------------------------------ invalid specs

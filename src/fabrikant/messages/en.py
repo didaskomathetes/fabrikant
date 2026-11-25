@@ -55,6 +55,7 @@ MESSAGES: dict[str, str] = {
     "cli.error": "Error: {error}",
     "cli.validate_loops": "✔ {name} ({n} loops)",
     "cli.connections_unchecked": "  ⚠ {name}: connections could not be checked ({error})",
+    "cli.unknown_spec_key": "  ⚠ {name}: unknown spec key {key} (ignored)",
     "cli.registered": "✔ registered: {spec}",
     "cli.var_format": "Error: --var expects K=V, got '{kv}'",
     "cli.run_limit": "⚠ {project}: parallel-run limit reached or {loop} is already running.",

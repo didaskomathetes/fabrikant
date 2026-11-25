@@ -6,7 +6,8 @@ This page is generated from it (`scripts/generate-spec-reference.py`) — do not
 The schema checks the **structure** (types, enums, required fields, ranges) of the *expanded* spec
 (after `vars:`/template/relay expansion). Semantic checks (backend registry,
 cron-vs-retry intervals, alert route cycles, template parameters) additionally run in
-`src/fabrikant/specs.py`. `fabrikant validate` runs both.
+`src/fabrikant/specs.py`. `fabrikant validate` runs both and warns about keys the schema doesn't know
+(a typo or a key from a newer fabrikant version would otherwise silently have no effect).
 
 Legend: **required** = mandatory, *italic* = optional. Types in ``code``.
 

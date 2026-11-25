@@ -134,7 +134,7 @@
   },
   "patternProperties": {
     "^x-": {
-      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts); `x-` is the documented convention for them."
+      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts), but `fabrikant validate` warns about them; `x-` keys are exempt from that warning."
     }
   },
   "$defs": {

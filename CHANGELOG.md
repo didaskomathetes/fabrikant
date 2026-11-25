@@ -6,6 +6,12 @@ All notable changes to fabrikant are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `fabrikant validate` warns about spec keys the schema doesn't know (`⚠ <project>: unknown spec key <path>: <key>`).
+  The engine ignores them, so a typo or a key from a newer fabrikant version would otherwise silently have no
+  effect. `x-` keys and keys a step plugin declares in its schema are exempt; the exit code is unchanged.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.
