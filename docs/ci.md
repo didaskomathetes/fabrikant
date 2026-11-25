@@ -18,15 +18,6 @@ Jobs run in the repository root (no `working-directory`).
   `pytest -m browser`. Blocking (no `continue-on-error`).
 - `package`: builds the wheel and runs the clean-venv smoke test (`scripts/smoke-wheel.sh`).
 
-## Secrets
-
-- The CI workflows need no secrets beyond the built-in `GITHUB_TOKEN`; releases use PyPI Trusted Publishing
-  (no stored token). SonarQube runs locally, not in CI: `SONAR_ADMIN_PASSWORD` lives only in the git-ignored
-  `fabrikant.env` and is used to mint a token. Never put it in the repo or a workflow (`tests/test_ci_workflow.py`
-  enforces this), never `echo` it or use `set -x`.
-- `scripts/sonar-init.py` writes the token to `state/sonar-token.txt` with mode `0600` (owner only). `state/` is
-  in `.gitignore`.
-
 ## No leaks through artifacts
 
 `state/` (tokens, SQLite logs) must never be uploaded. The workflow uploads no artifacts; if
