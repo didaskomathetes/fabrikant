@@ -15,6 +15,7 @@ selftest/reports/
 # local agent/IDE state and personal notes
 .claude/
 .idea/
+.fabrikant/
 .coverage
 features.md
 # old local env file name; may still contain secrets on a developer machine
