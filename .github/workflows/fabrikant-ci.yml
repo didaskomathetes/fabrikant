@@ -1,4 +1,4 @@
-# Fabrikant-CI. Siehe docs/ci.md (Secrets, Playwright, Artefakt-Regeln).
+# fabrikant CI. See docs/ci.md (secrets, Playwright, artifact rules).
 name: fabrikant-ci
 
 on:
@@ -24,15 +24,15 @@ jobs:
         run: uv sync --frozen
       - name: Lint, Typecheck, SAST (ruff, pyright, bandit)
         run: bash scripts/lint.sh
-      - name: JS-Lint (Biome, src/fabrikant/web/app.js; Fehler blockieren, Warnungen nicht)
+      - name: JS lint (Biome, src/fabrikant/web/app.js; errors block, warnings do not)
         run: npx --yes @biomejs/biome@2.6.8 lint --diagnostic-level=error
-      - name: Dependency-Audit (pip-audit gegen uv.lock-Umgebung)
+      - name: Dependency audit (pip-audit against the uv.lock environment)
         run: uv run pip-audit --skip-editable
-      - name: Specs validieren (vars, Templates, Steps — ohne host-abhängige root-Prüfung)
+      - name: Validate specs (vars, templates, steps; without the host-dependent root check)
         run: uv run fabrikant validate --offline projects/*.fabrikant.yaml
-      - name: Unit tests + Coverage-Gate (ohne Browser, parallel; fail_under in pyproject.toml)
+      - name: Unit tests + coverage gate (no browser, parallel; fail_under in pyproject.toml)
         run: uv run pytest -m "not browser and not perf" -n auto --cov=fabrikant --cov-report=term:skip-covered
-      - name: Perf-Budget-Tests (seriell, sonst Wall-Clock-Rauschen)
+      - name: Perf-budget tests (serial, otherwise wall-clock noise)
         run: uv run pytest -m perf
 
   package:
