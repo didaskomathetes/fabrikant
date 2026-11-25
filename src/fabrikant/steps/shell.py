@@ -97,7 +97,10 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
             emit(f"  ERROR: {msg}")
             return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="placeholder-env-clash")
     workdir = step_workdir(ctx, step)
-    cmd = resolve_script_paths(_substitute(raw_cmd, ctx), ctx.get("spec_path"), workdir)
+    sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
+    # Worktree-first only in the sandbox: on the host the trusted spec-directory helper must run, not
+    # a same-named script the PR under test ships (it would run with the host env and tokens).
+    cmd = resolve_script_paths(_substitute(raw_cmd, ctx), ctx.get("spec_path"), workdir if sandboxed else None)
     role = str(step.get("github_identity") or "").strip()
     try:
         identity_env = github_env(role) if role else None
@@ -106,7 +109,6 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
         emit(f"  ERROR: {msg}")
         return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="github-identity")
     step_vals = {str(k): _substitute(str(v), ctx) for k, v in env_step.items()}
-    sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
     # On the host the identity env is an overlay (github_env carries only token/PATH/env-file
     # variables): HOME, PATH and the rest of the project env must stay.
     env = (

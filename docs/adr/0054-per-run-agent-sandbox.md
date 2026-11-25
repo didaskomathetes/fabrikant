@@ -137,8 +137,10 @@ What the container gets, beyond the agent case:
 - **The remote default branch** (`origin/HEAD`, else `origin/main|master`) in the bundle, under the same
   ref name, so diff-based scripts (`--base origin/main`) work in the clone.
 - **fabrikant's `scripts/`** (`FABRIKANT_HOME/scripts`) mounted read-only at its host path: specs call
-  helpers as `{fabrikant_home}/scripts/…`, and the path must exist in the container too. A `scripts/…`
-  path the worktree has itself stays relative (the code under test runs, not the spec's copy).
+  helpers as `{fabrikant_home}/scripts/…`, and the path must exist in the container too. In a sandboxed
+  step a `scripts/…` path the worktree has itself stays relative (the worktree's copy runs; the spec
+  checkout's path does not exist in the container). On the host `scripts/…` keeps resolving to the spec
+  directory's helper: a same-named script shipped by the PR under test must not run there with tokens.
 - **Env:** the scrubbed agent env (ADR 0050) plus the step's `env:`; with `github_identity` only that
   role's token (`GH_TOKEN`/`GITHUB_TOKEN`), never the rest of the identity env.
 - **`/tmp` executable** (tmpfs `rw,exec`): test runners and build tools put executables there.

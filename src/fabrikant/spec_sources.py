@@ -109,14 +109,15 @@ def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:
 def resolve_script_paths(command: str, spec_path: str | Path | None, workdir: str | Path | None = None) -> str:
     """Resolve ``scripts/...`` references in a shell command relative to its spec.
 
-    Only for scripts the step's working tree does NOT have itself: a script that exists under
-    ``workdir`` stays relative, so the run uses the worktree's own copy (the code under test). An
-    absolute path into the spec's checkout would run a different version, would not exist in a
-    sandbox container (which only gets a clone of the worktree), and scripts that locate their repo
-    from their own path (``sonar-scan.sh``, ``lint.sh``) would work on that checkout instead of the
-    run's worktree. Other existing paths are made absolute so the step can keep the worktree as its
-    working directory; missing paths remain unchanged so the shell reports the same
-    command-not-found error as before.
+    Existing paths are made absolute so the shell step can retain the project's
+    worktree as its working directory. Missing paths remain unchanged so the
+    shell reports the same command-not-found error as before.
+
+    ``workdir`` (worktree-first) is for sandboxed steps only: a script that exists under ``workdir``
+    then stays relative, so the container runs the worktree's own copy (an absolute path into the
+    spec's checkout does not exist there). On the host the caller passes no ``workdir``: the trusted
+    spec-directory helper must win, otherwise a PR could ship a same-named script that runs on the
+    host with the step's tokens.
     """
 
     def replace(match: re.Match[str]) -> str:

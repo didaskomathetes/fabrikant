@@ -62,21 +62,40 @@ def test_shell_script_path_is_relative_to_spec(tmp_path):
     assert "spec-script" in res["output"]
 
 
-def test_shell_script_in_worktree_stays_relative(tmp_path):
-    """A script the worktree has itself runs from the worktree (the code under test), not the spec's copy."""
+def _same_named_helper(tmp_path):
+    """Spec directory and worktree both ship `scripts/which.sh` (e.g. a PR adds a same-named helper)."""
     spec_dir = tmp_path / "project"
     (spec_dir / "scripts").mkdir(parents=True)
     (spec_dir / "scripts" / "which.sh").write_text("echo spec-copy\n")
     work = tmp_path / "work"
     (work / "scripts").mkdir(parents=True)
     (work / "scripts" / "which.sh").write_text("echo worktree-copy\n")
-    res = _step_shell(
-        {"workdir": str(work), "spec_path": str(spec_dir / "fabrikant.yaml")},
+    return {"workdir": str(work), "spec_path": str(spec_dir / "fabrikant.yaml")}, spec_dir
+
+
+def test_shell_host_runs_spec_helper_not_worktree_copy(tmp_path, monkeypatch):
+    """Host provenance: the trusted spec-directory helper runs, never a same-named script from the
+    worktree (a PR could ship one that would then run on the host with tokens)."""
+    monkeypatch.delenv("FABRIKANT_SANDBOX", raising=False)
+    ctx, _ = _same_named_helper(tmp_path)
+    for step in (
         {"type": "shell", "cmd": "sh scripts/which.sh"},
-        NOOP,
-    )
+        {"type": "shell", "cmd": "sh scripts/which.sh", "sandboxed": True},
+    ):
+        res = _step_shell(ctx, step, NOOP)
+        assert res["ok"] is True
+        assert "spec-copy" in res["output"] and "worktree-copy" not in res["output"]
+
+
+def test_shell_sandboxed_keeps_worktree_helper_relative(tmp_path, monkeypatch):
+    """In the sandbox the worktree's own copy runs (the code under test); the spec checkout's absolute
+    path would not exist in the container."""
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+    calls = _capture_run_shell(monkeypatch)
+    ctx, spec_dir = _same_named_helper(tmp_path)
+    res = _step_shell(ctx, {"type": "shell", "cmd": "sh scripts/which.sh", "sandboxed": True}, NOOP)
     assert res["ok"] is True
-    assert "worktree-copy" in res["output"] and "spec-copy" not in res["output"]
+    assert calls[0]["cmd"] == "sh scripts/which.sh" and str(spec_dir) not in calls[0]["cmd"]
 
 
 def test_shell_timeout(tmp_path):
