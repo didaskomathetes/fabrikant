@@ -11,6 +11,9 @@ ends, then done/failed. The result is a final JSON on stdout
 - **Permissions:** default `--permission-mode acceptEdits` +
   `--allowedTools Bash` (agent edits files, may use shell). Real
   isolation (non-root/container/VM) is a deployment prerequisite.
+  Restricted per step: `tools` (available built-ins, `--tools`) and `allowed_tools`
+  (permission rules, e.g. `Edit(/.fabrikant-session/review/review.json)`); with
+  `allowed_tools` the CLI runs in `dontAsk` — anything not allowed is denied instead of asked.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """
@@ -22,7 +25,7 @@ import json
 from ..agentenv import CLAUDE_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
 from ..tokens import TokenCounts
-from ._oneshot import OneShotCliBackend
+from ._oneshot import OneShotCliBackend, csv_arg
 
 
 class ClaudeCodeBackend(OneShotCliBackend):
@@ -30,13 +33,28 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     name = "claude_code"
 
-    def __init__(self, endpoint: str = "", model: str = "", stale_after: int = 900):
+    def __init__(
+        self,
+        endpoint: str = "",
+        model: str = "",
+        stale_after: int = 900,
+        tools: str = "",
+        allowed_tools: str = "",
+    ):
         # opencode uses `provider/model`; `claude --model` wants only the model.
         super().__init__(endpoint, model.removeprefix("anthropic/"), stale_after)
+        self.tools = tools.strip()
+        self.allowed_tools = allowed_tools.strip()
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> ClaudeCodeBackend:
-        return cls(endpoint, model, stale_after=stale_after)
+        return cls(
+            endpoint,
+            model,
+            stale_after=stale_after,
+            tools=csv_arg(step.get("tools")),
+            allowed_tools=csv_arg(step.get("allowed_tools")),
+        )
 
     # ------------------------------------------------------------------ Hooks
     def _env(self) -> dict:
@@ -56,20 +74,15 @@ class ClaudeCodeBackend(OneShotCliBackend):
         return None  # no staleness check — the step timeout is the backstop
 
     def _build_cmd(self) -> list[str]:
-        # Containment: `acceptEdits` + `--allowedTools Bash` lets the agent
+        cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
+        if self.tools:
+            cmd += ["--tools", self.tools]
+        if self.allowed_tools:
+            # Restricted: only the given rules, everything else denied (no prompt in a headless run).
+            return [*cmd, "--permission-mode", "dontAsk", "--allowedTools", self.allowed_tools]
+        # Default containment: `acceptEdits` + `--allowedTools Bash` lets the agent
         # edit files in the workdir and run shell commands.
-        return [
-            "claude",
-            "-p",
-            "--output-format",
-            "json",
-            "--model",
-            self.model,
-            "--permission-mode",
-            "acceptEdits",
-            "--allowedTools",
-            "Bash",
-        ]
+        return [*cmd, "--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
         base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}

@@ -271,3 +271,26 @@ def test_poll_failed_json_with_nonzero_rc_reports_result():
 
 def test_unhealthy_kind_is_environment():
     assert ClaudeCodeBackend("", "sonnet").unhealthy_kind().value == "environment"  # CLI fehlt
+
+
+def test_build_cmd_default_allows_edits_and_bash():
+    cmd = ClaudeCodeBackend(model="m")._build_cmd()
+    assert cmd[-4:] == ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
+    assert "--tools" not in cmd
+
+
+def test_create_restricts_tools_from_step():
+    """QA reviewer: read + write only the payload, no shell; everything else is denied headless."""
+    step = {
+        "tools": ["Read", "Grep", "Glob", "Edit", "Write"],
+        "allowed_tools": "Read,Grep,Glob,Edit(/.fabrikant-session/review/review.json)",
+    }
+    cmd = ClaudeCodeBackend.create(step, "", "claude-opus-5-5", 900)._build_cmd()
+    assert cmd[cmd.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write"
+    assert cmd[-4:] == [
+        "--permission-mode",
+        "dontAsk",
+        "--allowedTools",
+        "Read,Grep,Glob,Edit(/.fabrikant-session/review/review.json)",
+    ]
+    assert "Bash" not in cmd

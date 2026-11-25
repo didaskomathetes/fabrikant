@@ -439,6 +439,12 @@ def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
         errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
+    for key in ("tools", "allowed_tools"):  # claude_code: --tools / --allowedTools (copilot: tools)
+        val = st.get(key)
+        if val is not None and not (
+            isinstance(val, str) or (isinstance(val, list) and all(isinstance(v, str) for v in val))
+        ):
+            errs.append(_t("specs.agent_tool_list_must_be", where=where, key=key, v2=val))
     gid = st.get("github_identity")
     if gid is not None and gid not in GH_TOKEN_ENV:
         errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))

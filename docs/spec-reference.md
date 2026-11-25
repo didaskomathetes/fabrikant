@@ -87,6 +87,8 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `endpoint` | string | optional | agent: backend endpoint override. |
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
+| `tools` | string / list of string | optional | agent (claude_code, copilot): restrict the available tools. claude_code: built-ins passed to --tools (e.g. [Read, Grep, Edit]); copilot: --allow-tool value (default: all tools). |
+| `allowed_tools` | string / list of string | optional | agent (claude_code): permission rules passed to --allowedTools (e.g. Edit(/.fabrikant-session/review/review.json)); the CLI then runs in dontAsk mode and denies everything else. Default: acceptEdits + Bash. |
 | `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
 | `github_identity` | `dev` \| `reviewer` | optional | agent: GitHub identity (token) the agent uses for pushes/PRs. |
 | `workdir` | string | optional | agent: working directory inside the worktree. |

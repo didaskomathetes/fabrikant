@@ -89,6 +89,17 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   convention) is stripped.
 - **Permissions:** default `--permission-mode acceptEdits` + `--allowedTools Bash` (the agent edits files and may
   use the shell). Real isolation (non-root/container/VM) is a deployment prerequisite, not a config option.
+- **Tool restriction per step:** `tools` (list or comma-separated string) limits the available built-ins
+  (`--tools`); `allowed_tools` sets the permission rules (`--allowedTools`) and switches to
+  `--permission-mode dontAsk`, so anything not allowed is denied instead of prompted. Example for a reviewer that
+  may read the repo and write only its payload:
+
+  ```yaml
+  - type: agent
+    backend: claude_code
+    tools: [Read, Grep, Glob, Edit, Write]
+    allowed_tools: [Read, Grep, Glob, "Edit(/.fabrikant-session/review/review.json)"]
+  ```
 - **`endpoint` is ignored** (interface compatibility) — only `model` is needed.
 - **Staleness:** doesn't apply as with opencode (no idle server state); the step timeout is the backstop.
 

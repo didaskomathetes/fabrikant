@@ -49,6 +49,13 @@ from ..tokens import TokenCounts
 STDERR_TAIL_CHARS = 4000
 
 
+def csv_arg(value: object) -> str:
+    """Step value (list or comma-separated string) → comma-separated string for a CLI flag."""
+    if isinstance(value, list | tuple):
+        return ",".join(str(v).strip() for v in value if str(v).strip())
+    return str(value or "").strip()
+
+
 def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:
     """Last `limit` characters of `text`, starting at a line boundary (if there is one in the excerpt)."""
     text = text.rstrip()

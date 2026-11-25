@@ -6,6 +6,12 @@ All notable changes to fabrikant are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `claude_code` agent steps: `tools` restricts the available built-in tools (`--tools`), `allowed_tools` sets
+  permission rules (`--allowedTools`) and runs the CLI in `dontAsk` mode, denying everything else. Both keys
+  accept a list or a comma-separated string; copilot's `tools` now accepts a list too.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.
