@@ -285,6 +285,7 @@ MESSAGES: dict[str, str] = {
     "metrics.counter_is_already_registered": "Counter {v1!r} ist bereits registriert",
     "metrics.counter_label_name_is_not": "Counter {name!r}: Label-Name {label!r} ist kein gültiger Prometheus-Labelname",
     "metrics.counter_label_name_is_duplicated": "Counter {name!r}: Label-Name {label!r} ist doppelt",
+    "netretry.git_transient_retry": "git %s: transienter Netzfehler, Versuch %d in %.0fs",
     "oidc.must_be_https_http_only": "{what} muss https:// sein (http nur für Loopback): {url}",
     "oidc.fabrikant_oidc_role_map_is": "FABRIKANT_OIDC_ROLE_MAP ist leer — ohne Mapping könnte sich niemand anmelden",
     "oidc.idp_response_from_is_not": "IdP-Antwort von {url} ist kein JSON-Objekt",

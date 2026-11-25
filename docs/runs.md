@@ -64,6 +64,11 @@ retry:
   max_wait: 24h               # upper bound for a reported `retry_after`
 ```
 
+Short network blips (DNS, dropped connections) usually never reach the run retry: GitHub/GitLab API calls
+and `git fetch`/`push`/`pull` retry themselves first, with growing waits (5 s, 15 s, 30 s, 60 s; about 2 minutes
+in total, `config.NET_RETRY_DELAYS_S`). Only a network error that outlasts these waits fails the step as
+`transient`.
+
 Only classes in `on` (always a subset of `interrupted`/`transient`) trigger a retry;
 `unknown`/`outcome`/`environment` end the chain. Every attempt passes all gates again (approval, blockers) and
 fetches fresh trigger variables from GitHub. If the chain exhausts the budget, the job is listed in the UI under

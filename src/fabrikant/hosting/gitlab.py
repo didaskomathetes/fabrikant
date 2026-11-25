@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .. import config, httpsafe
+from .. import httpsafe, netretry
 from .base import (
     GITHUB_HOST,
     Comment,
@@ -253,7 +253,8 @@ class GitLabProvider(Provider):
                 "User-Agent": "fabrikant",
             },
         )
-        for attempt in range(config.GH_RETRIES):
+        waits = netretry.delays()
+        for attempt in range(len(waits) + 1):
             try:
                 with httpsafe.urlopen(req, timeout=60) as r:
                     body = r.read()
@@ -261,9 +262,9 @@ class GitLabProvider(Provider):
             except urllib.error.HTTPError:
                 raise
             except (urllib.error.URLError, ConnectionError, TimeoutError):
-                if attempt >= config.GH_RETRIES - 1:
+                if attempt == len(waits):
                     raise
-                time.sleep(config.GH_RETRY_DELAY_S)
+                time.sleep(waits[attempt])
         else:  # pragma: no cover
             raise AssertionError("unreachable")
         if raw:

@@ -6,6 +6,12 @@ All notable changes to fabrikant are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Network blips (DNS, dropped connections) no longer fail a run whose work is done: GitHub/GitLab API calls and
+  `git fetch`/`push`/`pull` retry transient errors with growing waits (about 2 minutes) before the step fails as
+  `transient` ([run retry](docs/runs.md#run-retry-adr-0036)).
+
 ## [0.1.0] - 2026-11-25
 
 First public release.
