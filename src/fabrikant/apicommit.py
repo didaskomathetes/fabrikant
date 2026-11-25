@@ -82,7 +82,7 @@ class Change:
 def parse_diff_tree(raw: str) -> list[Change]:
     """`git diff-tree -r --raw -z --no-renames` → Changes.
 
-    Format pro Eintrag: `:<alt-mode> <neu-mode> <alt-sha> <neu-sha> <status>\\0<pfad>\\0`."""
+    Format per entry: `:<old-mode> <new-mode> <old-sha> <new-sha> <status>\\0<pfad>\\0`."""
     parts = raw.split("\0")
     changes: list[Change] = []
     for meta, path in zip(parts[0::2], parts[1::2], strict=False):
@@ -97,7 +97,7 @@ def parse_diff_tree(raw: str) -> list[Change]:
 
 
 def repo_from_remote(url: str) -> str:
-    """`https://github.com/o/r.git` oder `git@github.com:o/r` → `o/r`."""
+    """`https://github.com/o/r.git` or `git@github.com:o/r` → `o/r`."""
     m = _GITHUB_REMOTE.search(url.strip())
     if not m:
         raise ValueError(t("apicommit.no_github_remote", v1=_redact(url)))
@@ -143,7 +143,7 @@ class ApiPusher:
         self.root = Path(root)
         self.repo = repo
         self.token = token
-        # Holt `refs/heads/<branch>` nach `refs/remotes/origin/<branch>` (Default: origin, Token-Fallback).
+        # Fetches `refs/heads/<branch>` into `refs/remotes/origin/<branch>` (default: origin, token fallback).
         self.fetch = fetch or (lambda branch: gitops._git_fetch(self.root, branch))
 
     # ── git ──────────────────────────────────────────────────────────────────
@@ -243,13 +243,13 @@ class ApiPusher:
             content = base64.b64encode(self._blob(ch.sha)).decode()
             blob = self._api("POST", "/git/blobs", {"content": content, "encoding": "base64"})
             if blob.get("sha") != ch.sha:
-                msg = f"Blob {ch.path}: GitHub-SHA {blob.get('sha')} ≠ lokal {ch.sha}"
+                msg = f"Blob {ch.path}: GitHub SHA {blob.get('sha')} ≠ local {ch.sha}"
                 raise GitError(msg, msg)
             uploaded.add(ch.sha)
         base_tree = self.git("rev-parse", f"{parent}^{{tree}}").strip()
         tree = self._api("POST", "/git/trees", {"base_tree": base_tree, "tree": [c.tree_entry() for c in changes]})
         if tree.get("sha") != expected:
-            msg = f"Tree weicht ab: GitHub {tree.get('sha')} ≠ lokal {expected} (Dateimodus/Symlink?)"
+            msg = f"Tree mismatch: GitHub {tree.get('sha')} ≠ local {expected} (file mode/symlink?)"
             raise GitError(msg, msg)
 
     def _set_ref(self, branch: str, sha: str, *, exists: bool, force: bool) -> None:
@@ -339,6 +339,6 @@ def main(argv: list[str] | None = None) -> int:
         branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
         print(push_branch(root, branch, force=args.force, repo=args.repo))
         return 0
-    except Exception as e:  # CLI-Grenze: Klasse → Exit-Code (wie relay)
+    except Exception as e:  # CLI boundary: class → exit code (like relay)
         print(f"fabrikant push: {_redact(str(e))}", file=sys.stderr)
         return exit_code(classify_exception(e).kind)

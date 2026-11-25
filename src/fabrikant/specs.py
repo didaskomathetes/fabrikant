@@ -100,7 +100,7 @@ class SpecUpdate:
         unknown = sorted(set(payload) - {"loops", "remove_loops", *SPEC_EDITABLE_FIELDS})
         if unknown:
             raise ValueError(
-                f"unbekannte Felder: {', '.join(unknown)} (erlaubt: loops, remove_loops, "
+                f"unknown fields: {', '.join(unknown)} (allowed: loops, remove_loops, "
                 f"{', '.join(SPEC_EDITABLE_FIELDS)})"
             )
         return cls(loops=loops, remove_loops=list(remove), project_fields=fields)
@@ -216,7 +216,7 @@ def save_spec(
         fd.write(merged.encode("utf-8"))
         tmp = Path(fd.name)
     try:
-        os.chmod(tmp, os.stat(path).st_mode)  # Rechte der Original-Datei beibehalten
+        os.chmod(tmp, os.stat(path).st_mode)  # preserve the original file's permissions
         saved = load_spec(tmp)
     except Exception:
         tmp.unlink(missing_ok=True)
@@ -255,7 +255,10 @@ def load_spec(path: Path, *, check_root: bool = True) -> dict:
         # expandvars FIRST, then expanduser — `~` in the variable VALUE works.
         # (os.path.expandvars does not know ${VAR:-default}; unset stays literal →
         # the is_dir gate fails with an understandable message.)
-        data["root"] = str(Path(os.path.expandvars(str(data["root"]))).expanduser())
+        root = Path(os.path.expandvars(str(data["root"]))).expanduser()
+        # A relative root (e.g. the `root: .` of `fabrikant init`) is relative to the fabrikant home,
+        # so a scaffolded spec stays portable.
+        data["root"] = str(root if root.is_absolute() else (config.FABRIKANT_HOME / root).resolve())
     data["_path"] = str(path)
     expand_relay_loops(data)  # `relay:` → generierte Relay-Loops (ADR 0037), danach normal validiert
     _validate_spec(data, check_root=check_root)
@@ -282,7 +285,7 @@ def _validate_approval_when(st: dict, where: str) -> list[str]:
 
 
 def _worktree_types(steps: list) -> set[str]:
-    """Worktree-pflichtige Step-Typen, auch in (verschachtelten) `verify.checks`."""
+    """Step types that require a worktree, also in (nested) `verify.checks`."""
     found: set[str] = set()
     for st in steps:
         if not isinstance(st, dict):
@@ -328,7 +331,7 @@ def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
 
 
 def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[str]:
-    """Optionales int-Feld ``key`` (z. B. ``max_rounds``): int >= ``minimum``, kein Bool."""
+    """Optional int field ``key`` (e.g. ``max_rounds``): int >= ``minimum``, not a bool."""
     value = st.get(key)
     if value is None:
         return []
@@ -339,7 +342,7 @@ def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[st
 
 def _validate_pr_review_fix(st: dict, where: str) -> list[str]:
     """pr_review-Fix-Runden: ``fix_variant`` String, ``fix_timeout``/``fix_check_timeout`` int >= 1,
-    ``fix_checks`` Liste nicht-leerer Strings."""
+    ``fix_checks`` list of non-empty strings."""
     errs = _validate_int_field(st, "fix_timeout", where, 1) + _validate_int_field(st, "fix_check_timeout", where, 1)
     if st.get("fix_variant") is not None and not isinstance(st["fix_variant"], str):
         errs.append(_t("specs.fix_variant_must_be_a", where=where, v2=st["fix_variant"]))
@@ -471,7 +474,7 @@ def _validate_step_pr_review(st: dict, where: str, spec: dict) -> list[str]:
         errs.append(_t("specs.pr_review_without_model_required", where=where))
     errs += _validate_backend(st, "backend", where, "pr_review backend")
     errs += _validate_backend(st, "fix_backend", where, "pr_review fix_backend")
-    # max_rounds 0 = Review-only (keine Fix-Runden); max_findings >= 1 (ADR 0039).
+    # max_rounds 0 = review-only (no fix rounds); max_findings >= 1 (ADR 0039).
     errs += _validate_int_field(st, "max_rounds", where, 0)
     errs += _validate_int_field(st, "max_findings", where, 1)
     errs += _validate_pr_review_fix(st, where)

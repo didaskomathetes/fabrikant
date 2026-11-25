@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import yaml
 
-from fabrikant import cli, scaffold, specs
+from fabrikant import cli, config, scaffold, specs
 
 
 def test_init_creates_a_valid_project_and_never_overwrites(tmp_path):
@@ -13,12 +13,14 @@ def test_init_creates_a_valid_project_and_never_overwrites(tmp_path):
     assert names == {
         "projects/hello.fabrikant.yaml",
         "fabrikant.env",
+        ".gitignore",
         "plugins/pyproject.toml",
         "plugins/my_steps.py",
     }
     spec = yaml.safe_load((tmp_path / "factory" / "projects" / "hello.fabrikant.yaml").read_text())
-    assert spec["root"] == str((tmp_path / "factory").resolve())
-    specs._validate_spec(spec)
+    assert spec["root"] == "."  # portable: resolved against the fabrikant home when loaded
+    ignore = (tmp_path / "factory" / ".gitignore").read_text().splitlines()
+    assert {"fabrikant.env", "runs/", "state/"} <= set(ignore)
     env = tmp_path / "factory" / "fabrikant.env"
     env.write_text("MINE=1\n")
     assert scaffold.init_project(tmp_path / "factory") == []
@@ -40,3 +42,10 @@ def test_cli_init(tmp_path, capsys):
     assert "hello.fabrikant.yaml" in out and "fabrikant serve" in out
     cli.main(["init", str(tmp_path / "x")])
     assert "fabrikant serve" in capsys.readouterr().out
+
+
+def test_relative_root_resolves_against_home(tmp_path, monkeypatch):
+    scaffold.init_project(tmp_path)
+    monkeypatch.setattr(config, "FABRIKANT_HOME", tmp_path)
+    spec = specs.load_spec(tmp_path / "projects" / "hello.fabrikant.yaml")
+    assert spec["root"] == str(tmp_path.resolve())

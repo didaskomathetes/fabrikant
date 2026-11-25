@@ -32,8 +32,8 @@ DEFAULT_SCOPES = "openid profile email"
 DEFAULT_GROUPS_CLAIM = "groups"
 HTTP_TIMEOUT_S = 10
 PENDING_TTL_S = 600  # Time within which the user must complete the login at the IdP
-MAX_PENDING = 1000  # Obergrenze offener Login-Versuche (Schutz vor Speicherflut)
-LEEWAY_S = 30  # Uhrenabweichung zum IdP
+MAX_PENDING = 1000  # upper bound on pending login attempts (protects against memory flooding)
+LEEWAY_S = 30  # clock skew vs. the IdP
 # Asymmetric algorithms only: HS*/none would allow token forgery with the client secret.
 SIGNING_ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]
 USERNAME_CLAIMS = ("preferred_username", "email", "sub")
@@ -131,7 +131,7 @@ def _http_json(url: str, form: dict[str, str] | None = None) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as r:  # noqa: S310  # nosec: B310 — scheme checked
             doc = json.loads(r.read())
-    except (OSError, ValueError) as e:  # URLError/HTTPError sind OSError
+    except (OSError, ValueError) as e:  # URLError/HTTPError are OSError
         raise OidcError(f"IdP-Anfrage an {url} fehlgeschlagen: {e}") from e
     if not isinstance(doc, dict):
         raise OidcError(t("oidc.idp_response_from_is_not", url=url))

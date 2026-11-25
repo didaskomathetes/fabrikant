@@ -279,7 +279,7 @@ def test_push_detects_tree_mismatch(remote):
     repo, _, fake = remote
     fake.corrupt_tree = True
     commit(repo, "one", **{"a.txt": "1\n"})
-    with pytest.raises(GitError, match="Tree weicht ab"):
+    with pytest.raises(GitError, match="Tree mismatch"):
         pusher(repo).push("feat")
 
 

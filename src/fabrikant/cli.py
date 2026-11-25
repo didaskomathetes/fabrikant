@@ -373,7 +373,7 @@ def cmd_runs(args):
 def cmd_serve(args):
     try:
         serve(args.port, args.host)
-    except auth.AuthError as e:
+    except (auth.AuthError, ValueError) as e:
         print(t("cli.error", error=e))
         sys.exit(1)
 
@@ -729,7 +729,7 @@ def main(argv=None):
     p.set_defaults(func=cmd_runs)
 
     p = sub.add_parser("serve", help=t("cli.help.serve"))
-    p.add_argument("--port", type=int, default=config.DEFAULT_PORT)
+    p.add_argument("--port", type=int, default=None, help=t("cli.help.serve_port"))
     p.add_argument("--host", default=None, help=t("cli.help.serve_host"))
     p.set_defaults(func=cmd_serve)
 
