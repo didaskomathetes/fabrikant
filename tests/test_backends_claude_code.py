@@ -294,3 +294,12 @@ def test_create_restricts_tools_from_step():
         "Read,Grep,Glob,Edit(/.fabrikant-session/review/review.json)",
     ]
     assert "Bash" not in cmd
+
+
+@pytest.mark.parametrize("value", ["", [], " , "])
+def test_create_keeps_explicit_empty_restrictions(value):
+    """Empty ≠ omitted (programmatic steps bypass validation): fail closed, never the Bash default."""
+    cmd = ClaudeCodeBackend.create({"tools": value, "allowed_tools": value}, "", "m", 900)._build_cmd()
+    assert cmd[cmd.index("--tools") + 1] == ""
+    assert cmd[-2:] == ["--permission-mode", "dontAsk"]
+    assert "--allowedTools" not in cmd and "Bash" not in cmd

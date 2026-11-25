@@ -203,7 +203,7 @@ def test_validate_agent_tool_lists(tmp_path, key):
     specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: "Read,Grep"}))
     with pytest.raises(ValueError, match=f"{key} muss String oder Liste"):
         specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: [1]}))
-    for empty in ("", " ", [], [" "]):  # would mean "no restriction" — rejected
+    for empty in ("", " ", " , ", [], [" "]):  # would mean "no restriction" — rejected
         with pytest.raises(ValueError, match=f"{key} darf nicht leer sein"):
             specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: empty}))
 

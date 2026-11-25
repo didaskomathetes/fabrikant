@@ -53,7 +53,9 @@ def csv_arg(value: object) -> str:
     """Step value (list or comma-separated string) → comma-separated string for a CLI flag."""
     if isinstance(value, list | tuple):
         return ",".join(str(v).strip() for v in value if str(v).strip())
-    return str(value or "").strip()
+    text = str(value or "").strip()
+    # Only separators (" , ") count as empty; otherwise unchanged — commas may sit inside a rule.
+    return text if text.strip(", ") else ""
 
 
 def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:

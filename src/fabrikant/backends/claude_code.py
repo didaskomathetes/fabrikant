@@ -28,6 +28,11 @@ from ..tokens import TokenCounts
 from ._oneshot import OneShotCliBackend, csv_arg
 
 
+def _opt_csv(value: object) -> str | None:
+    """Like `csv_arg`, but an omitted key stays None — an explicit empty value must not mean "default"."""
+    return None if value is None else csv_arg(value)
+
+
 class ClaudeCodeBackend(OneShotCliBackend):
     """Agent-Adapter: Claude Code CLI (`claude -p`, headless Print-Mode)."""
 
@@ -38,13 +43,14 @@ class ClaudeCodeBackend(OneShotCliBackend):
         endpoint: str = "",
         model: str = "",
         stale_after: int = 900,
-        tools: str = "",
-        allowed_tools: str = "",
+        tools: str | None = None,
+        allowed_tools: str | None = None,
     ):
         # opencode uses `provider/model`; `claude --model` wants only the model.
         super().__init__(endpoint, model.removeprefix("anthropic/"), stale_after)
-        self.tools = tools.strip()
-        self.allowed_tools = allowed_tools.strip()
+        # None = key omitted (backend default); "" = explicitly empty (no tools / no pre-approvals).
+        self.tools = None if tools is None else tools.strip()
+        self.allowed_tools = None if allowed_tools is None else allowed_tools.strip()
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> ClaudeCodeBackend:
@@ -52,8 +58,8 @@ class ClaudeCodeBackend(OneShotCliBackend):
             endpoint,
             model,
             stale_after=stale_after,
-            tools=csv_arg(step.get("tools")),
-            allowed_tools=csv_arg(step.get("allowed_tools")),
+            tools=_opt_csv(step.get("tools")),
+            allowed_tools=_opt_csv(step.get("allowed_tools")),
         )
 
     # ------------------------------------------------------------------ Hooks
@@ -75,11 +81,13 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     def _build_cmd(self) -> list[str]:
         cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
-        if self.tools:
-            cmd += ["--tools", self.tools]
-        if self.allowed_tools:
-            # Restricted: only the given rules, everything else denied (no prompt in a headless run).
-            return [*cmd, "--permission-mode", "dontAsk", "--allowedTools", self.allowed_tools]
+        if self.tools is not None:
+            cmd += ["--tools", self.tools]  # "" = no built-in tools at all
+        if self.allowed_tools is not None:
+            # Restricted: whatever would prompt is denied (no prompt in a headless run).
+            # Empty = no pre-approvals at all — never falls back to the Bash default.
+            cmd += ["--permission-mode", "dontAsk"]
+            return [*cmd, "--allowedTools", self.allowed_tools] if self.allowed_tools else cmd
         # Default containment: `acceptEdits` + `--allowedTools Bash` lets the agent
         # edit files in the workdir and run shell commands.
         return [*cmd, "--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
