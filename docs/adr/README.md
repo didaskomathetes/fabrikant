@@ -72,7 +72,7 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIKANT_LAUNCHER`) | Akzeptiert (2026-11-18) |
 | [0058](0058-webhook-replay-protection.md) | Webhook-Replay-Schutz (opt-in `replay_protection`) | Akzeptiert (2026-11-18) |
 | [0059](0059-needs-human-escalation.md) | `needs human` — Escalation to a Human on Blockage, Stagnation, and Scope Drift | Akzeptiert (2026-11-19); Nachtrag 2026-11-16: Eskalationsart `access` (ADR 0060) |
-| [0060](0060-research-fetcher-access-profiles.md) | Fetcher für offene Recherche (Herkunftsprüfung, Bereinigung/Injection-Scan), Zugriffsprofile pro Loop/Run, einmalige Freigaben | Akzeptiert (2026-11-19) |
+| [0060](0060-research-fetcher-access-profiles.md) | Fetcher für offene Recherche (Herkunftsprüfung, Bereinigung/Injection-Scan), Zugriffsprofile pro Loop/Run, einmalige Freigaben | Akzeptiert (2026-11-19); Nachtrag 2026-11-22: In-Process-Detektor (Stufe C), Verdict gewährt nie Rechte, Redirect-Re-Freigabe |
 | [0061](0061-replay-deterministic-reexecution.md) | Replay — deterministische Neu-Ausführung eines abgeschlossenen Runs (`fabrikant replay`, `replay_of`, Diff-Report) | Accepted (2026-11-21) |
 | [0062](0062-hosting-provider.md) | Hosting Provider — Port/Adapter for Code Hosting (GitHub, GitLab) | Accepted (2026-11-21) |
 | [0063](0063-hosting-provider-registry.md) | Hosting Provider Registry — Extensible Adapters | Accepted (2026-11-21) |
