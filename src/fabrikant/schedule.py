@@ -63,7 +63,7 @@ next_cron_times = cron.next_times
 
 
 class NotFoundError(ValueError):
-    """Unbekanntes Projekt bzw. unbekannter Loop (API: 404 statt 400)."""
+    """Unknown project or loop (API: 404 instead of 400)."""
 
 
 # ---------------------------------------------------------------- When-Parsing
@@ -195,7 +195,7 @@ def list_onetimes() -> list[dict]:
 
 
 def remove_onetime(project: str, loop: str) -> dict | None:
-    """Angelegten One-time-Run entfernen; `None`, wenn keiner angesetzt war."""
+    """Remove a scheduled one-time run; `None` if none was scheduled."""
     with _lock:
         data = _load_onetimes()
         if data is None:

@@ -77,7 +77,7 @@ from .steps.extra_context import effective_step
 
 
 def _trigger_link(spec: dict, trigger: str, kind: str, path: str) -> str:
-    """GitHub-Link zum Trigger-Objekt (``on_<kind>:#N``, optional ``@sha``), falls Repo bekannt."""
+    """GitHub link to the trigger object (``on_<kind>:#N``, optional ``@sha``) if the repo is known."""
     m = re.match(rf"on_{kind}:#(\d+)", trigger or "")
     repo = spec.get("github")
     if not m or not repo:
@@ -129,7 +129,7 @@ def _issue_intent(step: dict) -> str:
         return f"{head}: {action}"
     diff = [f"+{lbl}" for lbl in _as_list(step.get("labels"))]
     diff += [f"−{lbl}" for lbl in _as_list(step.get("remove_labels"))]
-    return f"{head}: {' '.join(diff) or 'Labels unverändert'}"
+    return f"{head}: {' '.join(diff) or 'labels unchanged'}"
 
 
 def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
@@ -162,7 +162,7 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
             parts.append("commit")
         if step.get("push"):
             parts.append("push")
-        intent = f"Git: {', '.join(parts) or 'kein-op'}"
+        intent = f"Git: {', '.join(parts) or 'no-op'}"
     elif t == "pr":
         intent = f"PR anlegen: {step.get('repo', '')} (base {step.get('base', 'main')})"
     elif t == "http":
@@ -180,9 +180,9 @@ def _step_intent(step: dict, run_ctx: dict | None = None) -> str:
     elif t == "human_gate":
         intent = _t("engine.criticality_check_human_approval_if")
     elif t == "escalation":
-        intent = "Eskalation an einen Menschen (ADR 0059): warten, dann fortsetzen"
+        intent = "Escalation to a human (ADR 0059): wait, then resume"
     elif t == "report":
-        intent = f"Report: {step.get('write', '(nur Log)')}"
+        intent = f"Report: {step.get('write', '(log only)')}"
     elif t == "notify":
         intent = "Benachrichtigung"
     elif t == "state":
@@ -298,15 +298,15 @@ class _Run:
     log: SessionLog
     emit: Callable[[str], None]
     ctx: dict = field(default_factory=dict)
-    worktree: bool = True  # False: Scratch-Workdir statt Run-Worktree (ADR 0020)
+    worktree: bool = True  # False: scratch workdir instead of run worktree (ADR 0020)
     base: Path | None = None  # Workdir des Runs, sobald angelegt
-    state_snapshot: dict = field(default_factory=dict)  # Agent-State-Stand beim Start (ADR 0028)
+    state_snapshot: dict = field(default_factory=dict)  # agent state snapshot at start (ADR 0028)
     aborted_by: int | None = None  # Index of the step that aborted the run (ADR 0035)
     abort_failure: Failure | None = None  # Class of a run abort outside the steps
     lease: WorktreeLease | None = None  # heartbeat of the worktree lease while the run is alive (ADR 0028)
 
 
-# record["status"] bei gate-Abbruch je Step-Outcome
+# record["status"] on gate abort, per step outcome
 _ABORT_STATUS = {"fail": "fail", "timeout": "fail", "error": "error"}
 # Step status for steps behind a `done` step (run ended successfully early).
 STEP_SKIPPED = StepStatus.SKIPPED.value
@@ -676,7 +676,7 @@ def _execute_step(rn: _Run, step: dict, i: int) -> str:
     except subprocess.TimeoutExpired:
         step_record.update(status="timeout", duration_s=round(time.time() - t0, 2), **Failure().fields())
         rn.log.event("step_done", step_name=sname, step_type=step["type"], status="timeout")
-        rn.emit(f"✖ {sname} Timeout nach {step.get('timeout', '?')}s")
+        rn.emit(f"✖ {sname} timed out after {step.get('timeout', '?')}s")
         return "timeout"
     except Exception as e:
         step_record.update(status="error", duration_s=round(time.time() - t0, 2), summary=str(e))
@@ -742,7 +742,7 @@ def _run_steps(rn: _Run, loop: dict, start_i: int, resuming: bool) -> dict | Non
         # On resume the paused step is deliberately executed again — without another gate.
         condition = None if resuming and i == start_i + 1 else _approval_condition(step, rn.ctx)
         if condition is not None:
-            # Gate: Run pausiert, bis jemand approvet (UI/Chat/CLI)
+            # Gate: run pauses until someone approves (UI/chat/CLI)
             _set_step_record(record, i, {"name": sname, "type": step["type"], "status": "waiting"})
             approval = _approval_context(
                 rn.spec, rn.trigger, reason="step", step=step, run_ctx=rn.ctx, condition=condition
@@ -937,7 +937,7 @@ def _run_loop(
         emit(f"■ {str(current['status']).upper()} — {loop_name}")
         return current
     except RunStoreError as e:
-        # Defekter On-Disk-Stand / I/O: Log-Finish, Retry-Kette und Alerts laufen trotzdem.
+        # Corrupt on-disk state / I/O error: log finish, retry chain and alerts still run.
         emit(_t("engine.run_record_not_written", e=e))
     log.finish(record["status"], **session_totals(run_id))
     # Update the retry chain (ADR 0036): the state controls alert damping
@@ -1060,7 +1060,7 @@ class _WorkerPool:
 
     @property
     def busy(self) -> int:
-        """Worker, die gerade arbeiten."""
+        """Workers that are currently busy."""
         return self._busy
 
     @property
