@@ -11,9 +11,12 @@ ends, then done/failed. The result is a final JSON on stdout
 - **Permissions:** default `--permission-mode acceptEdits` +
   `--allowedTools Bash` (agent edits files, may use shell). Real
   isolation (non-root/container/VM) is a deployment prerequisite.
-  Restricted per step: `tools` (available built-ins, `--tools`) and `allowed_tools`
-  (permission rules, e.g. `Edit(/.fabrikant-session/review/review.json)`); with
-  `allowed_tools` the CLI runs in `dontAsk` — anything not allowed is denied instead of asked.
+  Restricted per step: `tools` is the hard limit on which built-ins exist (`--tools`);
+  `allowed_tools` are pre-approval rules (`--allowedTools`, e.g.
+  `Edit(/.fabrikant-session/review/review.json)`) and switch the CLI to `dontAsk`,
+  which denies whatever would otherwise prompt. Not an allowlist: calls that need no
+  approval (reads in the workdir, read-only Bash) and calls approved by the user/
+  project/local `settings.json` still run. `tools` does not cover MCP tools.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """

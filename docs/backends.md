@@ -89,11 +89,18 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   convention) is stripped.
 - **Permissions:** default `--permission-mode acceptEdits` + `--allowedTools Bash` (the agent edits files and may
   use the shell). Real isolation (non-root/container/VM) is a deployment prerequisite, not a config option.
-- **Tool restriction per step:** `tools` (list or comma-separated string) limits the available built-ins
-  (`--tools`); `allowed_tools` sets the permission rules (`--allowedTools`) and switches to
-  `--permission-mode dontAsk`, so anything not allowed is denied instead of prompted. An empty value is rejected by validation (it
-  would mean no restriction); omit the key for the default. Example for a reviewer that
-  may read the repo and write only its payload:
+- **Tool restriction per step:** both keys take a list or a comma-separated string.
+  - `tools` is the hard limit: only the named built-ins exist in the session (`--tools`). It does not cover MCP
+    tools.
+  - `allowed_tools` are pre-approval rules (`--allowedTools`) and switch to `--permission-mode dontAsk`: a call
+    that would otherwise prompt is denied. This is not an allowlist. Calls that need no approval (file reads in
+    the working directory, read-only Bash commands) still run, and so do calls approved by `permissions.allow`
+    rules in the user, project or local `settings.json` of the machine running the agent. To really keep a tool
+    out, leave it out of `tools`.
+  - An empty value is rejected by validation; omit the key for the default.
+
+  Example for a reviewer that may read the repo and write only its payload (`Write` exists but is not
+  pre-approved, so it is denied unless a settings file allows it):
 
   ```yaml
   - type: agent
