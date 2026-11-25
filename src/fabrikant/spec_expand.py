@@ -141,6 +141,16 @@ def _load_template(name: str, spec_path: Path | None) -> dict:
     return data
 
 
+def is_valid_name(name: object) -> bool:
+    """True if `name` is a syntactically valid template/loop name (`[A-Za-z0-9_-]+`)."""
+    return isinstance(name, str) and _NAME_RE.fullmatch(name) is not None
+
+
+def load_template(name: str, spec_path: Path | None = None) -> dict:
+    """Load and structurally check template `name` (public wrapper; ValueError if unknown/broken)."""
+    return _load_template(name, spec_path)
+
+
 def _insert_steps(steps: list, insert, where: str) -> list:
     """`insert: [{after: <step>, steps: [...]}]` — Zusatz-Steps hinter benannte Template-Steps."""
     if not isinstance(insert, list):

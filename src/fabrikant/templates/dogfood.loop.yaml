@@ -1,0 +1,65 @@
+# Loop template `dogfood` (ADR 0067): the minimal self-hosting loop (ADR 0001 on-ramp) —
+# the factory develops the project that hosts it. One loop, no refine, no auto-merge:
+# issue with a label → agent → test → PR, merged by a human. The starting point for
+# "fabrikant on fabrikant" (or any new project) before growing refine/review/escalation loops.
+# Usage (ADR 0047):  dogfood: {use: dogfood, with: {repo: ..., prompt_file: ..., test_cmd: ...}}
+# `params`: defaults; `null` = required (via `with:` or spec `vars:`).
+params:
+  repo: null  # owner/name — issue, PR
+  prompt_file: null  # builder prompt (relative to the spec, fallback FABRIKANT_HOME)
+  test_cmd: null
+  builder_model: null  # model choice is configuration (ADR 0022)
+  builder_variant: ""  # opencode: reasoning effort; empty = model default
+  builder_backend: claude_code
+  base: main
+  branch_prefix: fabrikant/dogfood
+  issue_label: fabrikant  # issues this loop picks up
+  pr_label: fabrikant-dogfood
+  builder_timeout: 3600
+  commit_add: [":/"]  # repo root — workdir may be a subpath
+  poll: 120
+loop:
+  description: "Dogfood (ADR 0001 on-ramp): issue with label {issue_label} → agent → test → PR (manual merge)"
+  tier: 2
+  triggers:
+    - type: on_issue
+      repo: "{repo}"
+      labels: ["{issue_label}"]
+      poll: "{poll}"
+      reconcile: true
+      max_per_poll: 1
+  steps:
+    - name: prepare
+      type: git
+      branch: "{branch_prefix}/{issue_number}"
+    - name: implement
+      type: agent
+      backend: "{builder_backend}"
+      model: "{builder_model}"
+      variant: "{builder_variant}"
+      prompt_file: "{prompt_file}"
+      timeout: "{builder_timeout}"
+    - name: test
+      type: shell
+      cmd: "{test_cmd}"
+      timeout: 900
+      failure_kind: outcome
+    - name: ship
+      type: git
+      commit:
+        add: "{commit_add}"
+        message: "{issue_title} (Issue #{issue_number}, auto)"
+      push: true
+    - name: pr
+      type: pr
+      repo: "{repo}"
+      base: "{base}"
+      head: "{branch_prefix}/{issue_number}"
+      labels: ["{pr_label}"]
+      title: "{issue_title} (auto)"
+      body: |
+        Closes #{issue_number}
+
+        PR from fabrikant loop `dogfood` (issue #{issue_number}).
+        Tests: `{test_cmd}` green.
+      approval: true  # a human approves before the PR is opened; the loop has no merge step (a human merges)

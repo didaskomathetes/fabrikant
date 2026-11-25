@@ -9,7 +9,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import auth, config, pause, profiles, retry_chains, scaffold, spec_proposals, spec_sources
+from . import auth, config, pause, profiles, retry_chains, scaffold, spec_proposals, spec_sources, templates
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
@@ -97,6 +97,33 @@ def cmd_project(args):
         print(t("cli.error", error=e))
         sys.exit(1)
     print(t("cli.registered", spec=spec))
+
+
+def cmd_template(args):
+    """template list / template create — template library (ADR 0067)."""
+    if args.template_cmd == "list":
+        broken = False
+        for tpl in templates.list_templates():
+            if tpl.error:
+                broken = True
+                print(t("templates.list_error", name=tpl.name, source=tpl.source, error=tpl.error))
+                continue
+            print(t("templates.list_ok", name=tpl.name, source=tpl.source, description=tpl.description))
+            print(t("templates.list_required", items=", ".join(tpl.required) or t("templates.list_none")))
+            if tpl.defaults:
+                print(t("templates.list_defaults", items=", ".join(tpl.defaults)))
+        if broken:
+            sys.exit(1)
+        return
+    # create
+    project = args.project or args.name
+    out = args.out or str(config.PROJECTS_DIR)
+    try:
+        path = templates.scaffold_spec(args.name, project, out, force=args.force)
+    except (ValueError, FileExistsError) as e:
+        print(t("cli.error", error=e))
+        sys.exit(1)
+    print(t("templates.created", path=path, project=project))
 
 
 def _cli_actor() -> str:
@@ -599,6 +626,16 @@ def main(argv=None):
     p.add_argument("action", choices=("add",))
     p.add_argument("path", help=t("cli.help.project_path"))
     p.set_defaults(func=cmd_project)
+
+    p = sub.add_parser("template", help=t("cli.help.template"))
+    tpl_sub = p.add_subparsers(dest="template_cmd", required=True)
+    tpl_sub.add_parser("list", help=t("cli.help.template_list"))
+    tc = tpl_sub.add_parser("create", help=t("cli.help.template_create"))
+    tc.add_argument("name", help=t("cli.help.template_name"))
+    tc.add_argument("--project", help=t("cli.help.template_project"))
+    tc.add_argument("--out", help=t("cli.help.template_out"))
+    tc.add_argument("--force", action="store_true", help=t("cli.help.template_force"))
+    p.set_defaults(func=cmd_template)
 
     p = sub.add_parser("run", help=t("cli.help.run"))
     p.add_argument("project")

@@ -1,0 +1,63 @@
+# Loop template `docs` (ADR 0067): issue with a docs label → branch → agent writes/updates
+# documentation → optional verify → PR (no merge step — a human merges).
+# Usage (ADR 0047):  docs: {use: docs, with: {repo: ..., prompt_file: ...}}
+# `params`: defaults; `null` = required (via `with:` or spec `vars:`). Unknown `{name}`
+# placeholders stay runtime variables of the engine.
+params:
+  repo: null  # owner/name — issue, PR
+  prompt_file: null  # docs prompt (relative to the spec, fallback FABRIKANT_HOME)
+  builder_model: null  # model choice is configuration (ADR 0022)
+  builder_variant: ""  # opencode: reasoning effort; empty = model default
+  builder_backend: claude_code
+  verify_cmd: "true"  # optional docs check (lint, link check); "true" = no-op
+  base: main
+  branch_prefix: fabrikant/docs
+  issue_label: docs  # issues this loop picks up
+  pr_label: fabrikant-docs
+  builder_timeout: 1800
+  commit_add: [":/"]  # repo root — workdir may be a subpath
+  poll: 60
+loop:
+  description: "Docs: issue with label {issue_label} → agent writes/updates docs → verify → PR (manual merge)"
+  tier: 2
+  triggers:
+    - type: on_issue
+      repo: "{repo}"
+      labels: ["{issue_label}"]
+      poll: "{poll}"
+      reconcile: true  # work through backlog after restart (ADR 0014)
+      max_per_poll: 1
+  steps:
+    - name: prepare
+      type: git
+      branch: "{branch_prefix}/{issue_number}"
+    - name: write
+      type: agent
+      backend: "{builder_backend}"
+      model: "{builder_model}"
+      variant: "{builder_variant}"
+      prompt_file: "{prompt_file}"
+      timeout: "{builder_timeout}"
+    - name: verify
+      type: shell
+      cmd: "{verify_cmd}"
+      timeout: 300
+      failure_kind: outcome  # red = real result (ADR 0035)
+    - name: ship
+      type: git
+      commit:
+        add: "{commit_add}"
+        message: "docs: {issue_title} (Issue #{issue_number}, auto)"
+      push: true
+    - name: pr
+      type: pr
+      repo: "{repo}"
+      base: "{base}"
+      head: "{branch_prefix}/{issue_number}"
+      labels: ["{pr_label}"]
+      title: "docs: {issue_title} (auto)"
+      body: |
+        Closes #{issue_number}
+
+        Docs PR from fabrikant loop `docs` (issue #{issue_number}).
+      approval: true  # a human approves before the PR is opened; the loop has no merge step (a human merges)
