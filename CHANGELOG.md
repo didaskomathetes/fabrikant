@@ -15,7 +15,8 @@ All notable changes to fabrikant are documented here. The format follows
   around pytest failures, tracebacks, crashes and verdict lines, plus the tail; cuts are stated), and a failed
   shell step's summary names the last failure-marker line instead of the last stdout line, which could be a
   green partial result ([failure summary](docs/runs.md#failure-summary-and-log-excerpt)). Over-long output of a
-  failed shell step keeps its start and end in the run record instead of only the start.
+  failed shell step keeps the windows around failure markers, its start and its end in the run record instead of
+  only the start.
 - An agent session that exhausts the model's context window is no longer retried with the same input: the run log
   warns to rescope the work and the step fails as `outcome` instead of `unknown`/`transient`
   ([backends](docs/backends.md)).

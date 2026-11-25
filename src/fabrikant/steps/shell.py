@@ -36,8 +36,8 @@ from __future__ import annotations
 
 import subprocess
 
-from ..context import _PLACEHOLDER_RE, _cap, _substitute, cap_ends, step_workdir
-from ..excerpt import failure_reason
+from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
+from ..excerpt import cap_output, failure_reason
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
 from ..gitops import process_env
 from ..i18n import t
@@ -100,7 +100,7 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
             f"exit {p.returncode}: {reason}",
             _exit_kind(p.returncode, step),
             exit_code=p.returncode,
-            output=cap_ends(out),
+            output=cap_output(out),
         )
     res = {"ok": True, "exit_code": 0, "output": _cap(out), "summary": (tail.splitlines()[-1] if tail else "ok")}
     return res | ({"verdict": verdict} if verdict else {})

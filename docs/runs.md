@@ -48,8 +48,9 @@ an `error:` line (uv, ruff, compilers) or a `rot:` verdict of `scripts/ci-matrix
 it stays the last output line. The run log shows a failure-aware excerpt of the step output: a window around each
 failure marker plus the last lines, at most 120 lines, with the left-out lines stated (`… (N lines)` and a
 closing `[excerpt: …; full output in the run record]`). The run record keeps the full output; if a failed shell
-step's output exceeds the record cap (200,000 characters), the record keeps its start and its end, with the number
-of omitted characters in between, so the verdict at the end survives.
+step's output exceeds the record cap (200,000 characters), the record keeps the windows around failure markers
+(chosen before the cut, at most half the cap), its start and its end, with the number of omitted characters at
+each gap, so neither a crash in the middle nor the verdict at the end is lost.
 
 ## Verdict (business result)
 

@@ -5,14 +5,17 @@ tail is not enough: a test step prints package installations *after* the lines t
 in practice: the last 10 lines were the `uv sync` package list, the segfault was 300 lines
 earlier). :func:`failure_excerpt` therefore keeps a window around every failure marker (pytest
 results, tracebacks, crashes, verdict lines of our own scripts) plus the tail, and always says how
-much was left out — the excerpt never truncates silently.
+much was left out — the excerpt never truncates silently. :func:`cap_output` caps over-long output
+for the record the same way: windows first, so the excerpt can still find them.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from itertools import accumulate
 
+from . import config
 from .i18n import t
 
 MAX_LINES = 120  # upper bound of the excerpt in the log (windows + tail)
@@ -64,7 +67,7 @@ def _windows(lines: list[str]) -> list[tuple[int, int]]:
 
 
 def _within_budget(spans: list[tuple[int, int]], budget: int) -> list[tuple[int, int]]:
-    """Ranges in order until the line budget is used up; the last one is cut if needed."""
+    """Ranges in order until the budget (lines or characters) is used up; the last one is cut if needed."""
     kept: list[tuple[int, int]] = []
     for start, end in spans:
         if budget <= 0:
@@ -99,3 +102,32 @@ def failure_excerpt(output: str, max_lines: int = MAX_LINES, tail: int = TAIL_LI
 def failure_reason(output: str) -> str:
     """Last line with a failure marker (stripped) — the shortest reason for the summary; empty if none."""
     return next((line.strip() for line in reversed(output.splitlines()) if FAILURE_MARKERS.search(line)), "")
+
+
+def cap_output(output: str | None, limit: int = config.MAX_STEP_OUTPUT) -> str:
+    """Caps a failed step's output to ``limit`` characters for the record: the windows around failure
+    markers (in order, at most half of ``limit``) plus the start and the end, with the number of omitted
+    characters at each gap. The windows are picked *before* the cut — a marker in the middle would
+    otherwise be lost for the record and for :func:`failure_excerpt`."""
+    if not output or len(output) <= limit:
+        return output or ""
+    lines = output.splitlines(keepends=True)
+    offsets = [0, *accumulate(map(len, lines))]
+    chars = [(offsets[s], offsets[e]) for s, e in _windows(lines)]
+    windows = _within_budget(chars, limit // 2)
+    rest = limit - sum(e - s for s, e in windows)
+    head = rest // 2
+    spans: list[tuple[int, int]] = []
+    for start, end in sorted([(0, head), *windows, (len(output) - (rest - head), len(output))]):
+        if spans and start <= spans[-1][1]:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], end))
+        else:
+            spans.append((start, end))
+    parts: list[str] = []
+    pos = 0
+    for start, end in spans:
+        if start > pos:
+            parts.append(f"\n{t('context.omitted_middle', n=start - pos)}\n")
+        parts.append(output[start:end])
+        pos = end
+    return "".join(parts)

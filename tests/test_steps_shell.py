@@ -48,17 +48,34 @@ def test_shell_fail_summary_without_marker_uses_last_stdout_line(tmp_path):
 
 
 def test_shell_long_failure_output_keeps_head_and_tail(tmp_path, monkeypatch):
-    monkeypatch.setattr("fabrikant.context.cap_ends.__defaults__", (200,))
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (200,))
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo START; seq 1 500; echo VERDICT; exit 1"}, NOOP)
     assert res["output"].startswith("START") and res["output"].rstrip().endswith("VERDICT")
     assert "Zeichen ausgelassen" in res["output"]
 
 
-def test_cap_ends_short_and_empty_unchanged():
-    from fabrikant.context import cap_ends
+def test_shell_long_failure_output_keeps_marker_in_the_middle(tmp_path, monkeypatch):
+    """Regression: the cap cut the middle before the engine looked for a failure marker — the
+    traceback and its diagnostic lines vanished from the record and the log excerpt."""
+    from fabrikant.excerpt import failure_excerpt
 
-    assert cap_ends(None) == "" and cap_ends("abc", 3) == "abc"
-    assert cap_ends("abcdefghij", 4) == "ab\n…[6 Zeichen ausgelassen]…\nij"
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (2000,))
+    cmd = (
+        "seq 1 2000; echo 'Traceback (most recent call last):'; echo '  File \"app.py\", line 3';"
+        " echo 'ZeroDivisionError: boom'; seq 1 2000; exit 1"
+    )
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert len(res["output"]) < 2200
+    for line in ("Traceback (most recent call last):", "ZeroDivisionError: boom"):
+        assert line in res["output"]
+        assert line in failure_excerpt(res["output"]).render()
+
+
+def test_cap_output_short_and_empty_unchanged():
+    from fabrikant.excerpt import cap_output
+
+    assert cap_output(None) == "" and cap_output("abc", 3) == "abc"
+    assert cap_output("abcdefghij", 4) == "ab\n…[6 Zeichen ausgelassen]…\nij"
 
 
 def test_shell_inline_substitution(tmp_path):

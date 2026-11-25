@@ -24,16 +24,6 @@ def _cap(s: str | None, limit: int = config.MAX_STEP_OUTPUT) -> str:
     return s[:limit] + (_t("context.truncated") if len(s) > limit else "")
 
 
-def cap_ends(s: str | None, limit: int = config.MAX_STEP_OUTPUT) -> str:
-    """Truncates to ``limit`` characters but keeps the start *and* the end (a marker with the number of
-    omitted characters in between). For process output: the verdict (test summary, exit reason) is at the end."""
-    if not s or len(s) <= limit:
-        return s or ""
-    head = limit // 2
-    tail = limit - head
-    return f"{s[:head]}\n{_t('context.omitted_middle', n=len(s) - limit)}\n{s[-tail:]}"
-
-
 def _substitute(text: str, ctx: Mapping[str, object]) -> str:
     def repl(m):
         return str(ctx.get(m.group(1), m.group(0)))
