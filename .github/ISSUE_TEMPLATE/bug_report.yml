@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal spec and the commands you ran.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: fabrikant version
+      description: Output of `pip show fabrikant` (or the commit SHA).
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, agent backend.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redact secrets and private hostnames first.
+      render: shell
