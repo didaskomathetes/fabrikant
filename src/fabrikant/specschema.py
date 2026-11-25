@@ -1,16 +1,16 @@
-"""JSON-Schema-Validierung der Spec-Dateien (Issue #131).
+"""JSON-schema validation of the spec files (issue #131).
 
-Das Schema (`fabrikant/fabrikant-spec.schema.json`, im Paket mitgeliefert) ist die maschinenlesbare
-Single Source of Truth für das Spec-Format: Validierung (dieses Modul) und
-generierte Referenz (`docs/spec-reference.md` via
-`scripts/generate-spec-reference.py`) leiten sich beide davon ab.
+The schema (`fabrikant/fabrikant-spec.schema.json`, shipped in the package) is the machine-readable
+single source of truth for the spec format: validation (this module) and the
+generated reference (`docs/spec-reference.md` via
+`scripts/generate-spec-reference.py`) both derive from it.
 
-Das Schema prüft die STRUKTUR (Typen, Enums, Pflichtfelder, Bereiche) der
-EXPANDIERTEN Spec (nach vars/Template/Relay-Expansion). Semantische Prüfungen
-(Backend-Registry, Cron-vs-Retry-Intervalle, Alert-Route-Zyklen,
-Template-Parameter, reservierte Vars) bleiben in `specs._validate_spec` —
-das Schema darf nichts ablehnen, was die Python-Validierung akzeptiert
-(Parität, keine Regressionen).
+The schema checks the STRUCTURE (types, enums, required fields, ranges) of the
+EXPANDED spec (after vars/template/relay expansion). Semantic checks
+(backend registry, cron-vs-retry intervals, alert-route cycles,
+template parameters, reserved vars) stay in `specs._validate_spec` —
+the schema must not reject anything the Python validation accepts
+(parity, no regressions).
 """
 
 from __future__ import annotations
@@ -21,31 +21,31 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-# Liegt im Paket (nicht im Repo-Root), damit es in Wheel-/Nicht-Editable-Installs enthalten ist.
+# Lives in the package (not the repo root) so it is included in wheel/non-editable installs.
 SCHEMA_PATH = Path(__file__).resolve().parent / "fabrikant-spec.schema.json"
 
 
 @lru_cache(maxsize=1)
 def load_schema() -> dict:
-    """Das Spec-Schema laden (einmal pro Prozess, danach gecacht)."""
+    """Load the spec schema (once per process, cached afterwards)."""
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=1)
 def _validator() -> Draft202012Validator:
     validator = Draft202012Validator(load_schema())
-    # Einmalige Meta-Validierung: ein defektes Schema ist ein Programmierfehler.
+    # One-time meta-validation: a broken schema is a programming error.
     Draft202012Validator.check_schema(validator.schema)
     return validator
 
 
 def validate_spec(spec: dict) -> list[str]:
-    """Spec gegen das JSON-Schema prüfen; liefert eine Liste von Fehlermeldungen.
+    """Check a spec against the JSON schema; returns a list of error messages.
 
-    Leere Liste = gültig. Pfade sind JSON-Pointer-artig (`loops/develop/steps/0`),
-    damit die Meldung direkt in `Spec ungültig:`-Fehlerlisten passt. Interne
-    Buchführungsschlüssel (`_path`, …) werden vorher herausgefiltert — das
-    Schema beschreibt das Nutzer-Format, nicht die Laufzeit-Buchführung."""
+    Empty list = valid. Paths are JSON-pointer-like (`loops/develop/steps/0`),
+    so the message fits directly into the spec-invalid error lists. Internal
+    bookkeeping keys (`_path`, …) are filtered out beforehand — the
+    schema describes the user format, not the runtime bookkeeping."""
     public = {k: v for k, v in spec.items() if not k.startswith("_")}
     errors = [
         f"{'/'.join(str(p) for p in err.absolute_path) or '<root>'}: {err.message}"

@@ -279,7 +279,7 @@ def test_push_detects_tree_mismatch(remote):
     repo, _, fake = remote
     fake.corrupt_tree = True
     commit(repo, "one", **{"a.txt": "1\n"})
-    with pytest.raises(GitError, match="Tree weicht ab"):
+    with pytest.raises(GitError, match="Tree mismatch"):
         pusher(repo).push("feat")
 
 
@@ -361,7 +361,7 @@ def test_push_branch_api_mode_non_github_refused_without_credentials(remote, mon
     commit(repo, "one", **{"a.txt": "1\n"})
     with (
         gitops.project_github({gitops.SPEC_COMMIT_VIA_KEY: "api"}),
-        pytest.raises(HostingNotSupported, match="nicht GitHub"),
+        pytest.raises(HostingNotSupported, match="not GitHub"),
     ):
         push_branch(repo, "feat")
 

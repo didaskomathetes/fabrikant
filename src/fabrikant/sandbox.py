@@ -79,7 +79,7 @@ DEFAULT_IMAGE = "fabrikant/agent-sandbox:latest"
 DEFAULT_MEMORY = "4g"
 DEFAULT_CPUS = "2"
 DEFAULT_PIDS_LIMIT = 512
-DEFAULT_NETWORK = "fabrikant-sandbox"  # ADR 0051: internal, kein direkter Egress
+DEFAULT_NETWORK = "fabrikant-sandbox"  # ADR 0051: internal, no direct egress
 # tmpfs for the working clone — counts against --memory (cgroup), hence < DEFAULT_MEMORY.
 DEFAULT_WORK_SIZE = "2g"
 _CONTAINER_PREFIX = "fabrikant-agent-"
@@ -92,7 +92,7 @@ UNPRIVILEGED_USER = "10001:10001"
 # patch before applying. The container is untrusted.
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 MAX_PATCH_BYTES = 128 * 1024 * 1024
-SMALL_TMPFS_SIZE = "256m"  # /tmp und /home/agent (HOME)
+SMALL_TMPFS_SIZE = "256m"  # /tmp and /home/agent (HOME)
 # File modes a result must not create: symlink (points out of the worktree) and
 # gitlink/submodule.
 _FORBIDDEN_MODES = frozenset({"120000", "160000"})
@@ -195,7 +195,7 @@ class SandboxError(RuntimeError):
 
 
 def sandbox_enabled(env: Mapping[str, str] | None = None) -> bool:
-    """`FABRIKANT_SANDBOX` ist gesetzt (1/true/yes/on) → Agent-Container-Modus."""
+    """`FABRIKANT_SANDBOX` is set (1/true/yes/on) → agent container mode."""
     env = os.environ if env is None else env
     return env.get(ENABLE_VAR, "").strip().lower() in _TRUTHY
 
@@ -271,7 +271,7 @@ class Exchange:
 
 
 def container_name(session_id: str) -> str:
-    """Docker-sicherer Name: `fabrikant-agent-<sid>` (nur `[a-zA-Z0-9_-]`, ≤ 63 Z)."""
+    """Docker-safe name: `fabrikant-agent-<sid>` (only `[a-zA-Z0-9_-]`, ≤ 63 chars)."""
     return (_CONTAINER_PREFIX + _SLUG_RE.sub("-", session_id))[:63]
 
 
@@ -326,13 +326,13 @@ def _worktree_commit(workdir: str, tmpdir: Path, carry: tuple[str, ...] = CARRY_
         listing = "\0".join(carried).encode(errors="surrogateescape")
         _git(workdir, *_FORCE_ADD, env={**index_env, "GIT_LITERAL_PATHSPECS": "1"}, stdin=listing)
     tree = _git(workdir, "write-tree", env=index_env).stdout.decode().strip()
-    msg = "fabrikant-sandbox: Worktree-Stand vor dem Agent-Step"
+    msg = "fabrikant-sandbox: worktree state before the agent step"
     return _git(workdir, "commit-tree", tree, "-p", head, "-m", msg, env=index_env).stdout.decode().strip()
 
 
 def prepare_exchange(session_id: str, workdir: str) -> Exchange:
     """Provide the worktree state as a bundle for the container (before `docker run`)."""
-    tmpdir = Path(tempfile.mkdtemp(prefix="fabrikant-sandbox-"))  # 0700: kein anderer Host-User
+    tmpdir = Path(tempfile.mkdtemp(prefix="fabrikant-sandbox-"))  # 0700: no other host user
     ref = _REF_PREFIX + _SLUG_RE.sub("-", session_id)
     try:
         _require_worktree_root(workdir)
@@ -359,7 +359,7 @@ def _reject_unsafe_paths(paths: list[str]) -> None:
 
 
 def _parse_raw_diff(raw: str) -> list[tuple[str, str]]:
-    """`git diff --raw -z` → [(neuer Modus, Pfad)]. Format je Eintrag: `:<alt> <neu> <sha> <sha> <status>\0<pfad>\0`."""
+    """`git diff --raw -z` → [(new mode, path)]. Format per entry: `:<old> <new> <sha> <sha> <status>\0<pfad>\0`."""
     tokens = raw.split("\0")
     entries: list[tuple[str, str]] = []
     for meta, path in zip(tokens[0::2], tokens[1::2], strict=False):
@@ -483,7 +483,7 @@ def render_docker_cmd(
         "--memory",
         cfg.memory,
         "--memory-swap",
-        cfg.memory,  # = memory: kein Swap
+        cfg.memory,  # = memory: no swap
         "--pull",
         "never",  # the image is a deployment artifact; no silent pulling at runtime
         "--cpus",
@@ -545,7 +545,7 @@ def docker_cli_env(base: Mapping[str, str], host: Mapping[str, str] | None = Non
 def stop_container(session_id: str) -> None:
     """Best-effort `docker rm -f` — idempotent (no-op if the container is gone)."""
     # Docker daemon hangs: cancel() should not hang with it.
-    with contextlib.suppress(subprocess.TimeoutExpired, OSError):  # OSError: kein docker installiert
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError):  # OSError: docker not installed
         subprocess.run(
             ["docker", "rm", "-f", container_name(session_id)],
             capture_output=True,

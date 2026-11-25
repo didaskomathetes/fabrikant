@@ -59,7 +59,7 @@ class Source(StrEnum):
 
 @dataclass(frozen=True)
 class Connection:
-    """Eine benannte Verbindung. ``driver``: Agent → Backend-Name; LLM → ``http`` oder CLI-Name."""
+    """A named connection. ``driver``: agent → backend name; LLM → ``http`` or CLI name."""
 
     name: str
     kind: ConnectionKind

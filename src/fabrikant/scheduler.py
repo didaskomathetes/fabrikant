@@ -31,7 +31,7 @@ PR_SEEN_MAX = 2 * RECONCILE_MAX_PAGES * GH_PER_PAGE  # Retention on_pr-Dedup-His
 # The project's other triggers wait at most this long for its `on_start` fires
 # (e.g. if the run hangs in the queue behind busy workers).
 START_GATE_MAX_S = 120
-DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. neue Runs pro Poll und Loop (ADR 0014)
+DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. new runs per poll and loop (ADR 0014)
 
 
 def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[str]):
@@ -136,7 +136,7 @@ def _new_issues(st: dict, issues: list[dict]) -> list[dict]:
     """Event mode: issues that are new since the last poll (first poll: none)."""
     ids = {it["number"] for it in issues}
     if st["seen"] is None:
-        st["seen"] = ids  # initialisieren, nicht feuern
+        st["seen"] = ids  # initialize, don't fire
         return []
     new = ids - st["seen"]
     # Union (not replace): an issue that falls out of the window of 50 and
@@ -313,7 +313,7 @@ def _pr_fire_kind(
             return f"head {head_sha[:7]}"
         return f"update {updated_at}" if per_update and updated_at else "reconcile"
     if prev is None:
-        return None  # Erst-Poll: initialisieren, nicht feuern
+        return None  # first poll: initialize, don't fire
     old = prev.get(num)
     if old == (state, updated_at):
         return None  # unchanged
@@ -339,8 +339,8 @@ class Scheduler(threading.Thread):
         self._slack_pending: set[tuple[str, str, str]] = set()
         self._first_tick = True
         self._tick_n = 0
-        self._started_cron: set[tuple] = set()  # (proj, loop) mit erledigtem `on_start`-Fire
-        # proj -> laufende `on_start`-Fires (Event gesetzt = erledigt, Deadline = monotonic)
+        self._started_cron: set[tuple] = set()  # (proj, loop) whose `on_start` fire is done
+        # proj -> running `on_start` fires (event set = done, deadline = monotonic)
         self._start_gates: dict[str, list[tuple[threading.Event, float]]] = {}
 
     def run(self):
@@ -353,7 +353,7 @@ class Scheduler(threading.Thread):
 
     def tick(self):
         self._tick_n += 1
-        if self._tick_n % 60 == 0:  # ~alle 2 min
+        if self._tick_n % 60 == 0:  # ~every 2 min
             self._check_stale_runs()
         pause.resume_expired()
         now = config.utcnow()
@@ -456,7 +456,7 @@ class Scheduler(threading.Thread):
         loops = [
             (lname, ldef.get("triggers") or [])
             for lname, ldef in spec.get("loops", {}).items()
-            if not pause.trigger_blocked(name, lname)  # paused/disabled: kein Trigger, kein Poll (ADR 0019)
+            if not pause.trigger_blocked(name, lname)  # paused/disabled: no trigger, no poll (ADR 0019)
         ]
         for lname, triggers in loops:
             for trig in triggers:
@@ -483,7 +483,7 @@ class Scheduler(threading.Thread):
         base = Path(spec["root"])
         debounce = float(trig.get("debounce", 60))
         key = f"{name}:{lname}:{pattern}"
-        newest: float | None = None  # None = kein (lesbarer) Treffer
+        newest: float | None = None  # None = no (readable) match
         for path in globmod.glob(str(base / pattern), recursive=True):
             with contextlib.suppress(OSError):
                 mtime = Path(path).stat().st_mtime
@@ -493,7 +493,7 @@ class Scheduler(threading.Thread):
         now = local.timestamp()
         state = self._seen_files.get(key)
         if state is None:
-            # Erst initialisieren (neueste mtime + Zeitpunkt merken), nicht feuern.
+            # Initialize first (remember newest mtime + timestamp), don't fire.
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": False}
             return
         if newest != state["mtime"]:
@@ -595,7 +595,7 @@ class Scheduler(threading.Thread):
             self._start_slack_run(name, lname, path, alert)
 
     def _start_slack_run(self, name: str, lname: str, path: Path, alert: slack.Alert) -> None:
-        """Einen Alert-Run einreihen; `_slack_pending` verhindert Doppel-Einreihung bis Claim/Verwerfen."""
+        """Enqueue an alert run; `_slack_pending` prevents double-enqueueing until claim/discard."""
         pending_key = (name, lname, alert.trigger)
         if pending_key in self._slack_pending:
             return

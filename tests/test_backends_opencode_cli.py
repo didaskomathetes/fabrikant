@@ -111,8 +111,8 @@ def test_config_carries_secret_only_in_content(conn):
     ("conn_value", "ref", "error"),
     [
         (_conn(), "other/qwen", "unbekannt"),
-        (_conn(driver="claude", endpoint=""), "lan/qwen", "kein OpenAI-kompatibler"),
-        (_conn(secret_unreadable=True), "lan/qwen", "nicht entschlüsselbar"),
+        (_conn(driver="claude", endpoint=""), "lan/qwen", "not an OpenAI-compatible"),
+        (_conn(secret_unreadable=True), "lan/qwen", "cannot be decrypted"),
     ],
 )
 def test_config_errors(conn, conn_value, ref, error):
@@ -124,7 +124,7 @@ def test_config_errors(conn, conn_value, ref, error):
 def test_config_rejects_endpoint_host_off_allowlist(conn, monkeypatch):
     """Endpoint-Host ohne Egress-Allowlist-Eintrag → fail-closed mit Hinweis (ADR 0051)."""
     monkeypatch.delenv(egress.ALLOWLIST_VAR, raising=False)  # nur Basis-Allowlist (github.com, …)
-    with pytest.raises(connections.InvalidConnection, match="Egress-Allowlist"):
+    with pytest.raises(connections.InvalidConnection, match="egress allowlist"):
         OpenCodeConfig.from_connection("lan/qwen")
     # Subdomäne eines erlaubten Hosts zählt mit
     conn["conn"] = _conn(endpoint="https://api.github.com/v1/chat/completions")

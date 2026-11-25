@@ -180,7 +180,7 @@ class VerifyCheck:
 
 @dataclass(frozen=True, slots=True)
 class Step:
-    """Ein Step eines Runs."""
+    """A step of a run."""
 
     name: str
     type: str
