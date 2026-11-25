@@ -27,7 +27,10 @@ Trigger types (`config.TRIGGER_TYPES`): `manual`, `cron`, `on_file`, `on_issue`,
   but per head SHA (`on_pr:#N@<sha>`) — every new push fires exactly once, a discarded trigger (lock busy,
   restart) is caught up on the next poll. `reconcile: updated`: like `head`, but per PR change (`updated_at`,
   `on_pr:#N@u<stamp>`) — pushes, comments, reviews and label changes each fire exactly once, also when they
-  happened during a restart (e.g. a loop answering review comments). Additional variable: `{pr_head_sha}`
+  happened during a restart (e.g. a loop answering review comments). The loop's own PR actions (reply comment,
+  push, label) also bump `updated_at` and fire it once more: it needs a gate step that ends without touching the
+  PR when there is nothing new (e.g. `::fabrikant-done::`, see runs.md), otherwise it retriggers itself endlessly.
+  Additional variable: `{pr_head_sha}`
 - **on_webhook** — `POST /api/webhook/<project>/<loop>` (ADR 0027). Auth via HMAC-SHA256 of the raw body in the
   header `X-Fabrikant-Signature: sha256=<hex>`; wrong/missing → `401`. Replay protection via
   `X-Fabrikant-Timestamp`/`X-Fabrikant-Nonce` (ADR 0058). Payload→variables via `map` (dot paths; invalid JSON
