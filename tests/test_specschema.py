@@ -196,6 +196,13 @@ def test_unknown_keys_accepts_plugin_schema_keys(monkeypatch):
     ]
 
 
+def test_newly_declared_keys_keep_accepting_list_values():
+    """Declaring a key must not turn a value the engine accepted (and ignored) into a spec error:
+    specs written for newer versions pass `tools` as a list (claude_code)."""
+    spec = _with_step({"type": "agent", "backend": "claude_code", "model": "m", "prompt": "p", "tools": ["Read"]})
+    assert validate_spec(spec) == []
+
+
 def test_unknown_keys_skips_plugins_without_schema(monkeypatch):
     """The scaffolded `greet` plugin reads `who` without declaring a schema: its keys are unknowable."""
     from fabrikant.steps import registry
