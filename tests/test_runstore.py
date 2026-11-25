@@ -684,3 +684,9 @@ def test_atomic_write_keeps_old_record_on_crash(runs_dir, monkeypatch):
         RunStore().write("p", "r1", _rec(id="r1", status="pass"))
     # Alter Record unverändert — der defekte Zustand landet nur in der (ignorierten) .tmp.
     assert json.loads((runs_dir / "p" / "r1.json").read_text())["status"] == "running"
+
+
+def test_parse_run_golden_round_trip():
+    assert parse_run({"id": "r1", "status": "pass", "golden": "nightly"}, "p").golden == "nightly"
+    assert parse_run({"id": "r1", "status": "pass"}, "p").golden == ""
+    assert parse_run({"id": "r1", "status": "pass", "golden": 5}, "p").golden == ""

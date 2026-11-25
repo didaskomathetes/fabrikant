@@ -259,6 +259,7 @@ class Run:
     retry_after: str = ""  # ISO timestamp (UTC), only for transient
     retry_of: str = ""  # Run id of the previous attempt (ADR 0036); "" = no retry
     replay_of: str = ""  # Run id of the original if this is a replay (ADR 0061); "" = no replay
+    golden: str = ""  # Golden name this run is the baseline of (ADR 0068); "" = not a golden
 
     attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
     worktree_cleanup_error: str = ""
