@@ -438,6 +438,49 @@ def test_safe_run_skips_slack_trigger_with_record(runs_dir, monkeypatch, limit):
     assert events["rejected"].wait(5)
 
 
+@pytest.mark.parametrize("trigger", ["on_pr:#7@abc123", "on_pr:#7@u20261113T142820Z"])
+def test_safe_run_skips_pr_reconcile_trigger_with_record(runs_dir, monkeypatch, limit, trigger):
+    """on_pr-Reconcile-Key (head/updated) mit bestehendem Record: wartende Kopie → verworfen."""
+    d = runs_dir / "prproj"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "r1.json").write_text(
+        json.dumps({"id": "r1", "project": "prproj", "loop": "rev", "trigger": trigger, "status": "pass"})
+    )
+    events, cbs = _callbacks()
+    monkeypatch.setattr(engine, "run_loop", lambda *a, **k: pytest.fail("Doppel-Run"))
+    engine._safe_run("prproj", "rev", trigger, {}, **cbs)
+    assert events["rejected"].wait(5)
+
+
+def test_safe_run_plain_pr_trigger_stays_repeatable(runs_dir, monkeypatch, limit):
+    """Event-Modus `on_pr:#N` feuert bei Updates erneut: bestehender Record verwirft nicht."""
+    d = runs_dir / "prproj2"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "r1.json").write_text(
+        json.dumps({"id": "r1", "project": "prproj2", "loop": "rev", "trigger": "on_pr:#7", "status": "pass"})
+    )
+    ran = threading.Event()
+    events, cbs = _callbacks()
+    monkeypatch.setattr(engine, "run_loop", lambda *a, **k: ran.set())
+    engine._safe_run("prproj2", "rev", "on_pr:#7", {}, **cbs)
+    assert ran.wait(5) and events["claimed"].is_set()
+
+
+@pytest.mark.parametrize(
+    ("trigger", "once"),
+    [
+        ("on_issue:#1", True),
+        ("on_slack:C1:1.0", True),
+        ("on_pr:#7@abc123", True),
+        ("on_pr:#7@u20261113T142820Z", True),
+        ("on_pr:#7", False),
+        ("cron", False),
+    ],
+)
+def test_is_once_trigger(trigger, once):
+    assert engine._is_once_trigger(trigger) is once
+
+
 def test_safe_run_callback_error_does_not_stop_run(monkeypatch, limit, capsys):
     done = threading.Event()
     monkeypatch.setattr(engine, "run_loop", lambda *a, **k: done.set())

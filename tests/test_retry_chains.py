@@ -508,6 +508,13 @@ def test_trigger_for_key_cron():
     assert _trigger_for_key(CRON_KEY) == "cron"
 
 
+def test_trigger_for_key_pr_per_update_uses_updated_at():
+    """`reconcile: updated`: Versuch trägt den beobachteten updated_at-Key, den der Scheduler prüft."""
+    v = {"pr_head_sha": "abc123", "pr_updated_at": "2026-11-13T15:00:00Z"}
+    assert _trigger_for_key(PR_KEY, v, per_update=True) == "on_pr:#7@u20261113T150000Z"
+    assert _trigger_for_key(PR_KEY, {}, per_update=True) == "on_pr:#7"
+
+
 def test_trigger_for_key_pr_uses_head_sha():
     """PR-Versuche tragen den aktuellen Head-SHA (ADR 0023) — Reconcile-Kompatibilität."""
     assert _trigger_for_key(PR_KEY, {"pr_head_sha": "abc123"}) == "on_pr:#7@abc123"
@@ -1571,6 +1578,31 @@ def test_start_due_attempts_pr_trigger_has_head_sha(due_env, monkeypatch):
     start_due_attempts()
     due_env["submitted"][0]()
     assert runs[0]["trigger"] == "on_pr:#7@abc123"
+
+
+@pytest.mark.parametrize(
+    ("last_trigger", "expected"),
+    [
+        ("on_pr:#7@u20261113T142820Z", "on_pr:#7@u20261113T150000Z"),
+        ("on_pr:#7@aaa111", "on_pr:#7@abc123"),
+        (None, "on_pr:#7@abc123"),
+    ],
+)
+def test_start_due_attempts_pr_trigger_keeps_run_key_form(due_env, monkeypatch, last_trigger, expected):
+    """Retry eines `reconcile: updated`-Runs trägt den aktuellen updated_at-Key (den der Scheduler
+    über loop_run_triggers prüft), nicht den Head-SHA — sonst feuert der nächste Poll doppelt."""
+    store = due_env["store"]
+    runs = []
+    v = {"pr_number": 7, "pr_head_sha": "abc123", "pr_updated_at": "2026-11-13T15:00:00Z"}
+    monkeypatch.setattr(retry_chains, "_attempt_vars", lambda key, **kw: (dict(v), False))
+    last = None if last_trigger is None else {"id": "r1", "trigger": last_trigger}
+    monkeypatch.setattr(retry_chains, "get_run", lambda rid, proj: last if rid == "r1" else None)
+    monkeypatch.setattr("fabrikant.runs.claim_run", lambda *a, **k: _FakeClaim())
+    monkeypatch.setattr("fabrikant.engine.run_loop", lambda *a, **k: runs.append(k) or {})
+    _write_chain(store, key=PR_KEY, next_attempt_at=_PAST, last_run_id="r1")
+    start_due_attempts()
+    due_env["submitted"][0]()
+    assert runs[0]["trigger"] == expected
 
 
 def test_attempt_without_slot_is_deferred(due_env, monkeypatch):

@@ -1119,6 +1119,16 @@ _queued_guard = threading.Lock()
 _ONCE_TRIGGER_PREFIXES = ("on_issue:", "on_slack:")
 
 
+def _is_once_trigger(trigger: str) -> bool:
+    """Does the trigger string identify a one-off event (execution-time dedup)?
+
+    Besides on_issue/on_slack also the on_pr reconcile keys ``on_pr:#N@<sha>``
+    (`reconcile: head`, ADR 0023) and ``on_pr:#N@u<stamp>`` (`reconcile: updated`): the
+    scheduler only produces an ``@`` key in these modes and checks it against all run
+    records. The plain ``on_pr:#N`` stays repeatable — event mode fires again on updates."""
+    return trigger.startswith(_ONCE_TRIGGER_PREFIXES) or (trigger.startswith("on_pr:#") and "@" in trigger)
+
+
 def queued_trigger_snapshot() -> list[dict]:
     """Pool queue: queued trigger runs (cron/file/issue/PR), sorted by submission.
 
@@ -1216,12 +1226,12 @@ def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict |
         print(f"[fabrikant] Trigger-Run {name}/{lname} ({trigger}) verworfen: {state}")
         return None
     # Persistent dedup at execution time (one-off events: on_issue,
-    # on_slack): the work item may have sat in the pool queue for a long time while an
-    # earlier run for the same event had already finished and its record
-    # been written. The poll-time dedup is then not enough — otherwise
+    # on_slack, on_pr reconcile keys `@<sha>`/`@u<stamp>`): the work item may have sat in the
+    # pool queue for a long time while an earlier run for the same event had already finished
+    # and its record been written. The poll-time dedup is then not enough — otherwise
     # all queued copies run one after another (double runs, issue #226, Oct 2026).
-    # on_pr stays excluded: event mode intentionally fires again on PR updates.
-    if trigger.startswith(_ONCE_TRIGGER_PREFIXES) and trigger in loop_run_triggers(name, lname):
+    # Plain `on_pr:#N` stays excluded: event mode intentionally fires again on PR updates.
+    if _is_once_trigger(trigger) and trigger in loop_run_triggers(name, lname):
         return None
     # Over the limit (max_parallel), with an active run for loop + issue/PR or
     # a waiting priority claim, the trigger is discarded; the next

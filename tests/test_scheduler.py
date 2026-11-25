@@ -166,6 +166,7 @@ def test_on_pr_vars_include_title_and_body(monkeypatch):
         "pr_url": "https://github.com/o/r/pull/7",
         "pr_head_ref": "feature/y",
         "pr_head_sha": "abc123",
+        "pr_updated_at": "t1",
         "pr_body": "PR-Body-Text",
     }
 

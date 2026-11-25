@@ -123,6 +123,7 @@ def pr_vars(pr: dict) -> dict:
         "pr_url": pr.get("html_url", ""),
         "pr_head_ref": head.get("ref", ""),
         "pr_head_sha": head.get("sha", ""),
+        "pr_updated_at": pr.get("updated_at") or "",
         "pr_body": pr.get("body") or "",
     }
 
