@@ -32,7 +32,7 @@ modal), the history filters by it.
 | `interrupted` | aborted from outside | server restart (reaper), dead-man's switch |
 | `transient` | external dependency briefly gone | exit 75 (`EX_TEMPFAIL`), network error, HTTP 429/5xx (except 501/505), `git fetch` without network, agent backend unreachable, hanging session |
 | `environment` | environment/configuration broken — needs a human | exit 126/127/78 (`EX_CONFIG`), missing file, invalid step configuration, project/loop unknown, HTTP 401/403, token missing |
-| `outcome` | genuine negative result | tests red (`failure_kind: outcome` on the step), review `changes_requested`, merge rejected |
+| `outcome` | genuine negative result | tests red (`failure_kind: outcome` on the step), review `changes_requested`, merge rejected, agent context window exhausted |
 | `unknown` | not classified (default, also legacy data) | everything else |
 
 Classification happens at the source (`src/fabrikant/failures.py`): steps report the class in the result or raise
@@ -47,7 +47,9 @@ carries a failure marker: a pytest `FAILED`/`ERROR` line or `N failed` summary, 
 an `error:` line (uv, ruff, compilers) or a `rot:` verdict of `scripts/ci-matrix-pytest.py`. Without a marker
 it stays the last output line. The run log shows a failure-aware excerpt of the step output: a window around each
 failure marker plus the last lines, at most 120 lines, with the left-out lines stated (`… (N lines)` and a
-closing `[excerpt: …; full output in the run record]`). The run record keeps the full output.
+closing `[excerpt: …; full output in the run record]`). The run record keeps the full output; if a failed shell
+step's output exceeds the record cap (200,000 characters), the record keeps its start and its end, with the number
+of omitted characters in between, so the verdict at the end survives.
 
 ## Verdict (business result)
 

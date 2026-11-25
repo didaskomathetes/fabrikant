@@ -47,6 +47,20 @@ def test_shell_fail_summary_without_marker_uses_last_stdout_line(tmp_path):
     assert res["summary"] == "exit 2: last"
 
 
+def test_shell_long_failure_output_keeps_head_and_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr("fabrikant.context.cap_ends.__defaults__", (200,))
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo START; seq 1 500; echo VERDICT; exit 1"}, NOOP)
+    assert res["output"].startswith("START") and res["output"].rstrip().endswith("VERDICT")
+    assert "Zeichen ausgelassen" in res["output"]
+
+
+def test_cap_ends_short_and_empty_unchanged():
+    from fabrikant.context import cap_ends
+
+    assert cap_ends(None) == "" and cap_ends("abc", 3) == "abc"
+    assert cap_ends("abcdefghij", 4) == "ab\n…[6 Zeichen ausgelassen]…\nij"
+
+
 def test_shell_inline_substitution(tmp_path):
     res = _step_shell(_ctx(tmp_path, issue_number="62"), {"type": "shell", "cmd": "echo issue {issue_number}"}, NOOP)
     assert res["ok"] is True

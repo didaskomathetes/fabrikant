@@ -62,6 +62,12 @@ thread (`_oneshot.py`, `_PipeDrain`): a pipe that is only read after the process
 CLI then blocks or drops the rest of the stream on shutdown (copilot: exit 0, JSONL without a `result` event;
 #153).
 
+A session that fails because the model's context window is exhausted (`prompt is too long`,
+`context_length_exceeded`, `maximum context length`, …, in the error text or the stderr tail) is not restarted,
+even if the backend marks it retryable: the same input fails again. The run log shows a warning to rescope the
+work (smaller ask, split the PR/issue, or point the agent at the relevant files), and the step fails as
+`outcome`.
+
 | Backend | Transport | Model | Notes |
 |---|---|---|---|
 | `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIKANT_AGENT_MODEL` (provider/id) | needs `FABRIKANT_AGENT_ENDPOINT`; session API, polling; containment via edit/bash permissions (relative to the workdir) |
