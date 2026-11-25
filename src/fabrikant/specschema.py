@@ -60,8 +60,22 @@ def validate_spec(spec: dict) -> list[str]:
 _CONDITIONAL = frozenset({"if", "then", "else", "not", "oneOf", "anyOf"})
 
 
+def _object_branch(branches: object) -> dict | None:
+    """The one object-shaped branch of a oneOf/anyOf whose branches all declare a `type`, else None.
+
+    Only then is the choice unambiguous: a mapping can match no other branch, so checking its keys
+    against that branch cannot change which branch matches (`slack: <url> | {url: ...}`)."""
+    if not isinstance(branches, list) or not all(isinstance(b, dict) and "type" in b for b in branches):
+        return None
+    objects = [b for b in branches if "object" in (b["type"] if isinstance(b["type"], list) else [b["type"]])]
+    return objects[0] if len(objects) == 1 else None
+
+
 def _strict(node: object, parent: str = "") -> object:
-    """Copy of a schema node in which every object with `properties` rejects other keys."""
+    """Copy of a schema node in which every object with `properties` rejects other keys.
+
+    The alternatives themselves stay untouched; an unambiguous object branch (`_object_branch`) is
+    additionally checked strictly via `if: {type: object}`, so its own keys are reported too."""
     if isinstance(node, list):
         return [_strict(n, parent) for n in node]
     if not isinstance(node, dict):
@@ -69,6 +83,14 @@ def _strict(node: object, parent: str = "") -> object:
     out = {k: v if k in _CONDITIONAL else _strict(v, k) for k, v in node.items()}
     if "properties" in node and "additionalProperties" not in node and parent not in _CONDITIONAL:
         out["additionalProperties"] = False
+    for keyword in ("oneOf", "anyOf"):
+        branch = _object_branch(node.get(keyword))
+        if branch is not None:
+            all_of = out.get("allOf")
+            out["allOf"] = [
+                *(all_of if isinstance(all_of, list) else []),
+                {"if": {"type": "object"}, "then": _strict(branch)},
+            ]
     return out
 
 
@@ -79,13 +101,19 @@ def _strict_validator() -> Draft202012Validator:
     return Draft202012Validator(strict)
 
 
-def _plugin_keys(instance: object) -> set[str]:
-    """Keys a registered plugin step declares in its own schema (ADR 0069)."""
+def _plugin_keys(instance: object) -> set[str] | None:
+    """Keys a registered plugin step declares in its own schema (ADR 0069).
+
+    None for a plugin without a key list (no schema or no `properties`): its keys are unknowable,
+    so none of them is reported (the scaffolded `greet` reads `who` without declaring it)."""
     from .steps import registry
 
     stype = instance.get("type") if isinstance(instance, dict) else None
     plugin = registry.get_step(stype) if isinstance(stype, str) else None
-    return set(((plugin.schema if plugin else None) or {}).get("properties") or {})
+    if plugin is None:
+        return set()
+    properties = (plugin.schema or {}).get("properties")
+    return set(properties) if properties else None
 
 
 def unknown_keys(spec: dict) -> list[str]:
@@ -98,7 +126,10 @@ def unknown_keys(spec: dict) -> list[str]:
     for err in _strict_validator().iter_errors(public):
         if err.validator != "additionalProperties" or not isinstance(err.instance, dict):
             continue
-        known = set(err.schema.get("properties") or {}) | _plugin_keys(err.instance)
+        plugin_keys = _plugin_keys(err.instance)
+        if plugin_keys is None:
+            continue
+        known = set(err.schema.get("properties") or {}) | plugin_keys
         path = "/".join(str(p) for p in err.absolute_path) or "<root>"
         # PyYAML (YAML 1.1) reads an unquoted `on` key as bool True; retry.py maps it back, so it is known.
         names = ("on" if k is True else str(k) for k in err.instance)

@@ -88,6 +88,10 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `endpoint` | string | optional | agent: backend endpoint override. |
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
+| `sandbox` | string | optional | agent with backend codex: `codex exec --sandbox` mode (default: FABRIKANT_CODEX_SANDBOX or workspace-write). |
+| `tools` | string | optional | agent with backend copilot: `copilot --allow-tool` value (default: FABRIKANT_COPILOT_TOOLS, otherwise --allow-all-tools). |
+| `username` | string / number | optional | agent with backend opencode: server basic-auth user (default: FABRIKANT_AGENT_USERNAME or opencode). |
+| `password` | string / number | optional | agent with backend opencode: server basic-auth password (default: FABRIKANT_AGENT_PASSWORD; prefer the env var or a connection over a password in the spec). |
 | `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
 | `github_identity` | `dev` \| `reviewer` | optional | agent: GitHub identity (token) the agent uses for pushes/PRs. |
 | `workdir` | string | optional | agent: working directory inside the worktree. |

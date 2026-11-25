@@ -196,6 +196,57 @@ def test_unknown_keys_accepts_plugin_schema_keys(monkeypatch):
     ]
 
 
+def test_unknown_keys_skips_plugins_without_schema(monkeypatch):
+    """The scaffolded `greet` plugin reads `who` without declaring a schema: its keys are unknowable."""
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    registry.register_step("greet", lambda ctx, step, emit: {})
+    registry.register_step("required_only", lambda ctx, step, emit: {}, schema={"required": ["who"]})
+    assert unknown_keys(_with_step({"type": "greet", "name": "hi", "who": "world"})) == []
+    assert unknown_keys(_with_step({"type": "required_only", "who": "world"})) == []
+
+
+def test_unknown_keys_accepts_backend_options():
+    """Backend adapters read their own options from the step (codex sandbox, copilot tools, opencode auth)."""
+    steps = [
+        {"type": "agent", "prompt": "p", "backend": "codex", "sandbox": "read-only"},
+        {"type": "agent", "prompt": "p", "backend": "copilot", "tools": "shell(git)"},
+        {"type": "agent", "prompt": "p", "backend": "opencode", "username": "u", "password": 1234},
+    ]
+    for step in steps:
+        assert unknown_keys(_with_step(step)) == [], step
+        assert validate_spec(_with_step(step)) == [], step
+
+
+def test_schema_declares_every_step_key_the_code_reads():
+    """Every `step.get("…")` / `step["…"]` in steps and backends is a documented step property — a key
+    the code consumes must never be warned about as ignored."""
+    import re
+
+    src = REPO_ROOT / "src" / "fabrikant"
+    pattern = re.compile(r"""\bstep(?:\.get\(|\[)["']([a-z_]+)["']""")
+    read = {
+        key
+        for path in [*(src / "steps").glob("*.py"), *(src / "backends").glob("*.py")]
+        for key in pattern.findall(path.read_text(encoding="utf-8"))
+    }
+    assert {"sandbox", "tools", "username", "password"} <= read  # the scan sees the backend options
+    assert read - set(load_schema()["$defs"]["step"]["properties"]) == set()
+
+
+def test_unknown_keys_inside_object_alternatives():
+    """`slack: <url> | {url: ...}`: keys of the object branch are checked, the string branch still matches."""
+    spec = _with_step({"type": "notify", "message": "m", "slack": {"url": "u", "chanel": "c"}})
+    spec["notify"] = {"slack": {"url": "u", "chanel": "c"}}
+    assert unknown_keys(spec) == ["loops/l1/steps/0/slack: chanel", "notify/slack: chanel"]
+    assert validate_spec(spec) == []
+    spec = _with_step({"type": "notify", "message": "m", "slack": {"url": "u"}})
+    spec["notify"] = {"slack": "u"}
+    assert unknown_keys(spec) == []
+
+
 # ------------------------------------------------------------------ invalid specs
 def test_missing_loops():
     errs = validate_spec({"name": "p"})
