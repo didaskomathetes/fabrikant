@@ -510,7 +510,7 @@ MESSAGES: dict[str, str] = {
     "specs.spec_was_changed_externally_hash": "Spec was changed externally (hash mismatch) — reload the draft",
     "specs.approval_and_approval_when_are": "{where}: approval and approval_when are mutually exclusive",
     "specs.approval_when_must_be_a": "{where}: approval_when must be a non-empty mapping (variable → value/values)",
-    "specs.loop_exclusive_group_must_be": "loop {lname}: exclusive_group must be a non-empty string (is {group!r})",
+    "specs.loop_exclusive_group_must_be": "loop {lname}: exclusive_group must not be empty (is {group!r})",
     "specs.loop_worktree_must_be_true": "loop {lname}: worktree must be true/false (is {wt!r})",
     "specs.failure_kind_only_applies_to": "{where}: failure_kind only applies to shell steps (is {v2!r})",
     "specs.failure_kind_must_be_one": "{where}: failure_kind must be one of {v2} (is {value!r})",

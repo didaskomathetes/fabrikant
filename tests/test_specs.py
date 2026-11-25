@@ -200,9 +200,13 @@ def test_validate_loop_exclusive_group(tmp_path):
     s = _valid_spec(str(tmp_path))
     s["loops"]["l1"]["exclusive_group"] = "pr-cycle"
     specs._validate_spec(s)  # no raise
-    s["loops"]["l1"]["exclusive_group"] = " "
-    with pytest.raises(ValueError, match="exclusive_group muss"):
-        specs._validate_spec(s)
+    for bad, needle in ((" ", "exclusive_group darf nicht leer"), (5, "is not of type 'string'")):
+        s["loops"]["l1"]["exclusive_group"] = bad
+        with pytest.raises(ValueError) as exc:
+            specs._validate_spec(s)
+        # Reported exactly once (schema: type, semantic check: empty), not by both.
+        assert sum("exclusive_group" in line for line in str(exc.value).splitlines()[1:]) == 1, str(exc.value)
+        assert needle in str(exc.value)
 
 
 def test_validate_agent_variant(tmp_path):
