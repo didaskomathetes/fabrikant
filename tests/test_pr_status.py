@@ -1039,6 +1039,32 @@ def test_cli_reply_context_and_post_replies(mod, fake_gh, capsys, tmp_path):
     assert mod.main(["post-replies", "7", "--repo", REPO, "--dir", str(out)]) == 1  # no commit → post nothing
 
 
+def test_post_replies_retries_resolution_without_second_reply(mod, fake_gh, capsys, tmp_path):
+    """Regression: reply posted, resolution failed → the next run skipped the draft and left the thread open."""
+    responses, calls = fake_gh
+    (tmp_path / "comments.json").write_text(json.dumps([_comment("7-inline-5", "inline", 5)]))
+    (tmp_path / "replies.json").write_text(json.dumps([{"keys": ["7-inline-5"], "body": "Fixed.", "resolve": True}]))
+    responses["issues/7/comments?"] = []
+    responses["pulls/7/reviews?"] = []
+    responses["pulls/7/comments?"] = [
+        _rest(5, "Nit", 2, path="x.py", line=3),
+        _rest(6, "Fixed.\n\n<!-- fabrikant-reply re=7-inline-5 -->", 3, path="x.py", line=3, in_reply_to_id=5),
+    ]
+    responses["resolveReviewThread"] = {"data": {}}
+    responses["reviewThreads"] = _threads_response([_thread("T1", False, [5, 6])])
+    args = ["post-replies", "7", "--repo", REPO, "--dir", str(tmp_path), "--commit", "abc1234"]
+    assert mod.main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["posted"] == [] and result["skipped"] == ["7-inline-5"]
+    assert not any("--method" in a for a, _ in calls)  # no second reply
+    assert sum("resolveReviewThread" in " ".join(a) for a, _ in calls) == 1
+
+    calls.clear()  # already resolved → nothing to do
+    responses["reviewThreads"] = _threads_response([_thread("T1", True, [5, 6])])
+    assert mod.main(args) == 0
+    assert not any("resolveReviewThread" in " ".join(a) for a, _ in calls)
+
+
 # ── Eskalation an einen Menschen (ADR 0059) ──
 
 C1, C2, C3 = "c" * 40, "d" * 40, "e" * 40

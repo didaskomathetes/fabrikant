@@ -49,6 +49,8 @@ double posts, wrong merges). This script encapsulates that via `gh`:
       Post the agent's reply drafts (DIR/replies.json) (host, after the push): only for
       keys from DIR/comments.json, thread/URL from the same file (never from the agent), `{commit}` =
       new commit of this run, marker `re=<keys>` appended, idempotent via the markers.
+      `"resolve": true` resolves the thread (only with `--commit`); an already answered draft
+      only retries a still open thread's resolution, without a second reply.
       A draft with `"escalate": "blocked" | "scope"` escalates (ADR 0059): escalation marker
       on the comment, then the host sets the label.
       `"refs": [{"issue": N, "relation": "covered_by"|"duplicate_of"|"blocked_by", "why": "…"}]`: references to
@@ -1232,8 +1234,10 @@ def plan_replies(
     answered: set[str],
     refs: RefContext | None = None,
     followups_left: int = MAX_FOLLOWUPS_PER_PR,
-) -> tuple[list[tuple[ReplyDraft, str]], list[str], list[str]]:
-    """(drafts to post with their text, skipped keys, unanswered keys). ValueError on
+) -> tuple[list[tuple[ReplyDraft, str | None]], list[str], list[str]]:
+    """(drafts to post with their text, skipped keys, unanswered keys). An already answered draft
+    that asks for resolution stays in the list with text None: only its thread is resolved (again),
+    in case the resolution failed after the reply was posted. ValueError on
     invalid drafts, `{commit}` without a new commit, or more new follow-ups than `followups_left`.
     Invalid issue references (against `refs`) are dropped with a warning."""
     known = {c["key"]: c for c in comments}
@@ -1253,7 +1257,11 @@ def plan_replies(
             f"{len(new_followups)} neue Follow-ups, erlaubt noch {followups_left} (max. {MAX_FOLLOWUPS_PER_PR} pro PR)"
             " — bei mehr Restarbeit eskalieren (scope)"
         )
-    todo = [(d, d.render(known, commit, ctx)) for d in drafts if not set(d.keys) <= answered]
+    todo: list[tuple[ReplyDraft, str | None]] = [
+        (d, d.render(known, commit, ctx) if not set(d.keys) <= answered else None)
+        for d in drafts
+        if not set(d.keys) <= answered or d.resolve
+    ]
     skipped = sorted(k for d in drafts if set(d.keys) <= answered for k in d.keys)
     unanswered = [c["key"] for c in comments if c["key"] not in covered]
     return todo, skipped, unanswered
@@ -1326,15 +1334,17 @@ def post_replies(repo: str, num: int, directory: Path, *, commit: str, human_lab
     posted = []
     for draft, text in todo:
         root = draft.thread(known)
-        res = _post_comment(repo, num, text, root)
+        if text is not None:
+            res = _post_comment(repo, num, text, root)
+            posted.append({"keys": list(draft.keys), "url": res.get("html_url", "")})
         if (
             root is not None
             and draft.resolve
             and commit
             and (thread := thread_for_comment(fetch_threads(repo, num), root))
+            and not thread.get("isResolved")
         ):
             _gh_json("api", "graphql", "-f", f"query={RESOLVE_MUTATION}", "-f", f"id={thread['id']}")
-        posted.append({"keys": list(draft.keys), "url": res.get("html_url", "")})
     result: dict = {"posted": posted, "skipped": skipped, "unanswered": unanswered}
     created = {k: n for k, n in ctx.followups.items() if k not in have}
     if created:
