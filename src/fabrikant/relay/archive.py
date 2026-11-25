@@ -135,7 +135,7 @@ def verify(archiver: TrailArchive, ref: TrailRef) -> dict[str, bytes]:
 
 
 class GitHubRefs(Protocol):
-    """Was `git-ref` von GitHub braucht (Teil von `commands.GitHubPort`)."""
+    """What `git-ref` needs from GitHub (part of `commands.GitHubPort`)."""
 
     def create_ref(self, ref: str, sha: str) -> None: ...
     def ref_sha(self, ref: str) -> str | None: ...
@@ -192,7 +192,7 @@ class GitRefArchive:
 
 
 class LocalArchive:
-    """Verzeichnis `FABRIKANT_DATA/relay-archive/<projekt>/<N>/audit-<k>/` (nur dieser Rechner)."""
+    """Directory `FABRIKANT_DATA/relay-archive/<project>/<N>/audit-<k>/` (this machine only)."""
 
     method = METHOD_LOCAL
 

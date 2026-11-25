@@ -226,7 +226,7 @@ TRIGGER_TYPES = ("manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook",
 # Polling-Trigger mit `poll`-Intervall (Sekunden, endliche Zahl >= 0).
 POLL_TRIGGER_TYPES = ("on_issue", "on_pr", "on_slack")
 # on_slack (ADR 0040): defaults of the optional trigger fields `max_pages` and `max_alert_chars`.
-SLACK_DEFAULT_MAX_PAGES = 20  # conversations.history-Seiten pro Channel und Poll (je HISTORY_LIMIT Nachrichten)
+SLACK_DEFAULT_MAX_PAGES = 20  # conversations.history pages per channel and poll (HISTORY_LIMIT messages each)
 SLACK_DEFAULT_MAX_ALERT_CHARS = 4000  # longer `alert_text` is truncated with a marker
 # on_pr: allowed PR states for the `states` filter (GitHub API values).
 PR_STATES = ("open", "closed")

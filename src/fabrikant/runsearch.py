@@ -23,7 +23,7 @@ from .runstore import STORE
 
 
 class RunRow(TypedDict):
-    """Eine Zeile der Suchergebnisse."""
+    """One row of the search results."""
 
     id: str
     project: str

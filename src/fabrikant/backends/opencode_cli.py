@@ -1,19 +1,19 @@
-"""opencode als One-Shot-CLI in der Agent-Sandbox (ADR 0054): `opencode run --standalone`.
+"""opencode as a one-shot CLI in the agent sandbox (ADR 0054): `opencode run --standalone`.
 
-Mit `FABRIKANT_SANDBOX=1` spricht der opencode-Adapter keinen geteilten `opencode serve` auf dem Host
-an, sondern startet pro Session eine eigene opencode-Instanz im gehärteten Container (Mechanik:
-:class:`OneShotCliBackend`). Der Container ist die Grenze: kein Host-Mount, Netz nur über den
-Egress-Proxy (ADR 0051), Env nur aus der Allowlist (ADR 0050).
+With `FABRIKANT_SANDBOX=1` the opencode adapter does not talk to a shared `opencode serve` on the host
+but starts its own opencode instance per session in the hardened container (mechanics:
+:class:`OneShotCliBackend`). The container is the boundary: no host mount, network only via the
+egress proxy (ADR 0051), env only from the allowlist (ADR 0050).
 
-Konfiguration: Das Modell heißt `<LLM-Verbindung>/<modell>` (ADR 0052, z. B.
-`llama-cpp/Qwen3.8-27B-GGUF`). Aus der Verbindung entsteht eine minimale opencode-Config
-(:class:`OpenCodeConfig`): ein OpenAI-kompatibler Provider (Endpoint ohne `/chat/completions`
-als `baseURL`, `apiKey` nur, wenn die Verbindung ein Secret hat) plus die Permission-Regeln des
-Steps. Sie geht als `OPENCODE_CONFIG_CONTENT` in den Container — als `-e KEY` ohne Wert im argv.
-Der Host des Endpoints muss auf der Egress-Allowlist stehen.
+Configuration: the model is called `<LLM connection>/<model>` (ADR 0052, e.g.
+`llama-cpp/Qwen3.8-27B-GGUF`). A minimal opencode config is built from the connection
+(:class:`OpenCodeConfig`): an OpenAI-compatible provider (endpoint without `/chat/completions`
+as `baseURL`, `apiKey` only if the connection has a secret) plus the step's permission rules.
+It goes into the container as `OPENCODE_CONFIG_CONTENT` — as `-e KEY` without a value in argv.
+The endpoint host must be on the egress allowlist.
 
-Isolation zusätzlich zur Sandbox: keine Projekt-Config aus dem (untrusted) Repo, keine
-Claude-Code-Übernahme, kein Model-Katalog-Download, kein Auto-Update, kein Sharing.
+Isolation on top of the sandbox: no project config from the (untrusted) repo, no
+Claude Code import, no model-catalog download, no auto-update, no sharing.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from ._oneshot import OneShotCliBackend
 from .opencode import opencode_tokens
 
 CONFIG_CONTENT_VAR = "OPENCODE_CONFIG_CONTENT"
-# opencode-Schalter in der Sandbox: nichts aus dem Repo oder HOME übernehmen, nichts nachladen.
+# opencode switches in the sandbox: take nothing from the repo or HOME, download nothing.
 ISOLATION_ENV = {
     "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
     "OPENCODE_DISABLE_CLAUDE_CODE": "1",
@@ -37,31 +37,31 @@ ISOLATION_ENV = {
 }
 OPENAI_COMPATIBLE_PACKAGE = "@ai-sdk/openai-compatible"
 CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
-# Ohne Step-Regeln: der Container ist die Grenze — Agent darf editieren und die Shell nutzen.
+# Without step rules: the container is the boundary — the agent may edit and use the shell.
 DEFAULT_PERMISSIONS: dict[str, dict[str, str]] = {"edit": {"*": "allow"}, "bash": {"*": "allow"}}
-# opencode 2.x: die Basis-Policy erlaubt ALLES (`*`/`*` allow) und Config-Regeln werden danach
-# angehängt (letzter Treffer gewinnt). Nennt der Step also Regeln, müssen alle eingebauten
-# Permissions auf `*` deny, sonst bleibt Ungenanntes frei (z. B. `bash` bei nur `edit`-Regeln)
-# und der Agent umgeht die Einschränkung über die Shell.
+# opencode 2.x: the base policy allows EVERYTHING (`*`/`*` allow) and config rules are appended
+# afterwards (last match wins). So if the step names rules, all built-in permissions must be set to
+# `*` deny, otherwise unnamed ones stay open (e.g. `bash` with only `edit` rules) and the agent
+# bypasses the restriction through the shell.
 BUILTIN_PERMISSIONS: tuple[str, ...] = ("edit", "bash", "read", "webfetch")
 _FAILURE_TEXT_MAX = 300
 WILDCARD, DENY = "*", "deny"
 
 
 def provider_base_url(endpoint: str) -> str:
-    """Endpoint einer `http`-LLM-Verbindung → `baseURL` für opencode (ohne `/chat/completions`)."""
+    """Endpoint of an `http` LLM connection → `baseURL` for opencode (without `/chat/completions`)."""
     url = endpoint.strip().rstrip("/")
     return url[: -len(CHAT_COMPLETIONS_SUFFIX)] if url.endswith(CHAT_COMPLETIONS_SUFFIX) else url
 
 
 def endpoint_host(endpoint: str) -> str:
-    """Hostname des Endpoints (für Hinweise zur Egress-Allowlist)."""
+    """Hostname of the endpoint (for egress-allowlist hints)."""
     return urlsplit(endpoint).hostname or ""
 
 
 def _host_allowed(host: str) -> bool:
-    """Endpoint-Host auf der Egress-Allowlist (ADR 0051)? Subdomänen zählen mit.
-    Kaputte Allowlist → False (fail-closed; der egress-Start meldet die Ursache)."""
+    """Is the endpoint host on the egress allowlist (ADR 0051)? Subdomains count.
+    Broken allowlist → False (fail-closed; the egress start reports the cause)."""
     try:
         allowed = egress.load_allowlist()
     except RuntimeError:
@@ -70,14 +70,14 @@ def _host_allowed(host: str) -> bool:
 
 
 def permission_rules(rules: list | None) -> dict[str, dict[str, str]]:
-    """Step-`permissions` (1.x-Regeln `{permission, pattern, action}`) → opencode-Config
-    `{permission: {pattern: action}}`. Ohne Regeln: :data:`DEFAULT_PERMISSIONS`.
+    """Step `permissions` (1.x rules `{permission, pattern, action}`) → opencode config
+    `{permission: {pattern: action}}`. Without rules: :data:`DEFAULT_PERMISSIONS`.
 
-    Restriktiv: opencode 2.x erlaubt per Basis-Policy alles (`*`/`*` allow, letzter Treffer
-    gewinnt) — nennt der Step also Regeln, werden alle eingebauten Permissions
-    (:data:`BUILTIN_PERMISSIONS`) auf `*` deny gesetzt, dann die Step-Regeln darüber (sofern
-    der Step `*` nicht selbst setzt). Sonst bliebe Ungenanntes frei — `edit: review.json allow`
-    würde `bash` (und damit jede andere Datei) mit freigeben."""
+    Restrictive: opencode 2.x allows everything by base policy (`*`/`*` allow, last match
+    wins) — so if the step names rules, all built-in permissions
+    (:data:`BUILTIN_PERMISSIONS`) are set to `*` deny first, then the step rules on top (unless
+    the step sets `*` itself). Otherwise unnamed ones would stay open — `edit: review.json allow`
+    would also grant `bash` (and with it every other file)."""
     if not rules:
         return {k: dict(v) for k, v in DEFAULT_PERMISSIONS.items()}
     out: dict[str, dict[str, str]] = {perm: {WILDCARD: DENY} for perm in BUILTIN_PERMISSIONS}
@@ -90,7 +90,7 @@ def permission_rules(rules: list | None) -> dict[str, dict[str, str]]:
 
 @dataclass(frozen=True)
 class OpenCodeConfig:
-    """Minimale opencode-Config für einen Lauf: ein Provider aus einer LLM-Verbindung + Permissions."""
+    """Minimal opencode config for a run: one provider from an LLM connection + permissions."""
 
     provider: str
     model: str
@@ -100,8 +100,8 @@ class OpenCodeConfig:
 
     @classmethod
     def from_connection(cls, model_ref: str, permissions: list | None = None) -> OpenCodeConfig:
-        """`<verbindung>/<modell>` → Config. Fehlt das Modell, gilt das der Verbindung.
-        Wirft :class:`connections.InvalidConnection` bei unbekannter/ungeeigneter Verbindung."""
+        """`<connection>/<model>` → config. If the model is missing, the connection's model applies.
+        Raises :class:`connections.InvalidConnection` for an unknown/unsuitable connection."""
         name, _, model = model_ref.strip().partition("/")
         conn = connections.get_connection(name, connections.ConnectionKind.LLM)
         if conn is None:
@@ -110,15 +110,15 @@ class OpenCodeConfig:
             )
         if conn.driver != connections.DRIVER_HTTP or not conn.endpoint:
             raise connections.InvalidConnection(
-                f"opencode (Sandbox): Verbindung '{name}' ist kein OpenAI-kompatibler http-Endpoint ({conn.driver})"
+                f"opencode (sandbox): connection '{name}' is not an OpenAI-compatible http endpoint ({conn.driver})"
             )
         if conn.secret_unreadable:
-            raise connections.UndecryptableSecret(f"Verbindung '{name}': Secret nicht entschlüsselbar — neu eintragen")
+            raise connections.UndecryptableSecret(f"Connection '{name}': secret cannot be decrypted — enter it again")
         host = endpoint_host(conn.endpoint)
         if host and not _host_allowed(host):
             raise connections.InvalidConnection(
-                f"opencode (Sandbox): Endpoint-Host '{host}' steht nicht auf der Egress-Allowlist (ADR 0051) — "
-                f"Host per {egress.ALLOWLIST_VAR} oder {egress.ALLOWLIST_FILE_VAR} ergänzen"
+                f"opencode (sandbox): endpoint host '{host}' is not on the egress allowlist (ADR 0051) — "
+                f"add the host via {egress.ALLOWLIST_VAR} or {egress.ALLOWLIST_FILE_VAR}"
             )
         return cls(
             provider=name,
@@ -133,7 +133,7 @@ class OpenCodeConfig:
         return f"{self.provider}/{self.model}"
 
     def content(self) -> str:
-        """JSON für `OPENCODE_CONFIG_CONTENT`."""
+        """JSON for `OPENCODE_CONFIG_CONTENT`."""
         options = {"baseURL": self.base_url} | ({"apiKey": self.api_key} if self.api_key else {})
         provider = {
             "npm": OPENAI_COMPATIBLE_PACKAGE,
@@ -155,8 +155,8 @@ class OpenCodeConfig:
 def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
     """JSONL von `opencode run --format json` → (Text, Tokens, Kosten, Tools, Fehler).
 
-    Text = alle `text`-Parts in Reihenfolge; Tokens/Kosten summiert über `step_finish`
-    (Cache-Tokens zählen zum Input, Reasoning zum Output); Fehler = letzte `error`-Meldung."""
+    Text = all `text` parts in order; tokens/cost summed over `step_finish`
+    (cache tokens count as input, reasoning as output); error = the last `error` message."""
     texts: list[str] = []
     tools: list[str] = []
     tokens = TokenCounts()
@@ -174,7 +174,7 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
         if event.get("type") == "error":
             err = event.get("error")
             if isinstance(err, dict):
-                # 2.2.5: `message` liegt direkt im Error-Objekt; ältere Builds: `data.message`.
+                # 2.2.5: `message` sits directly in the error object; older builds: `data.message`.
                 error = str((err.get("data") or {}).get("message") or err.get("message") or err.get("name") or err)
             else:
                 error = str(err)
@@ -203,7 +203,7 @@ class OpenCodeCliBackend(OneShotCliBackend):
         return cls(endpoint, model, stale_after=stale_after, variant=str(step.get("variant") or "") or None)
 
     def create_task(self, workdir: str, title: str, permissions: list | None = None) -> str:
-        # Config pro Task: Verbindung + Permission-Regeln des Steps (Fehler früh, vor dem Container).
+        # Config per task: connection + the step's permission rules (fail early, before the container).
         self._config = OpenCodeConfig.from_connection(self.model, permissions)
         return super().create_task(workdir, title, permissions)
 
@@ -212,13 +212,13 @@ class OpenCodeCliBackend(OneShotCliBackend):
         return "opencode"
 
     def health(self) -> bool:
-        return True  # das Binary liegt im Sandbox-Image, nicht auf dem Host
+        return True  # the binary lives in the sandbox image, not on the host
 
     def diagnose(self) -> str | None:
         return None
 
     def _stale_after(self) -> int | None:
-        return None  # lokale Modelle brauchen lange; die Grenze ist das Step-Timeout
+        return None  # local models are slow; the limit is the step timeout
 
     def _env(self) -> dict:
         if self._config is None:

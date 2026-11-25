@@ -1,20 +1,20 @@
-"""Zugriffsprofile pro Loop/Run + einmalige Grants (ADR 0060, Stufen 3–4).
+"""Access profiles per loop/run + one-time grants (ADR 0060, stages 3–4).
 
-Ein **Profil** fasst zusammen, was ein Run zusätzlich darf (``access:``-Block der
-Projekt-Spec). Drei Seiten:
+A **profile** bundles what a run may additionally do (``access:`` block of the
+project spec). Three sides:
 
-- ``fetch``  → konfiguriert nur den Fetcher (kein Egress im Agent-Container).
-- ``egress`` → erweitert die Allowlist nur für Runs dieses Loops (Proxy pro Run).
-- ``env``/``tools`` → Credentials aus benannten Connections / ``--allowedTools``.
+- ``fetch``  → configures only the fetcher (no egress in the agent container).
+- ``egress`` → extends the allowlist only for runs of this loop (proxy per run).
+- ``env``/``tools`` → credentials from named connections / ``--allowedTools``.
 
-Die ``egress``/``env``/``tools``-Seiten werden hier **geparst und gespeichert**, aber
-nicht angewandt — das Deployment- (Sandbox-/Proxy-) Layer macht das (ADR 0060 §4). Die
-``fetch``-Seite wird hier an den Fetcher übergeben (``fetcher_config_for``).
+The ``egress``/``env``/``tools`` sides are **parsed and stored** here but
+not applied — the deployment (sandbox/proxy) layer does that (ADR 0060 §4). The
+``fetch`` side is handed to the fetcher here (``fetcher_config_for``).
 
-**Einmalige Grants** (Stufe 4): Ein Run, der ein Profil braucht, das sein Loop nicht hat,
-beantragt es als ADR-0059-Eskalation ``access``. Ein Grant gilt für ein **Item mit Ablauf**
-(„PR #123, 24 h" oder „Relay-Task #45, nächste 3 Sessions"), nicht für einen einzelnen Run.
-Jede Nutzung wird protokolliert.
+**One-time grants** (stage 4): a run that needs a profile its loop does not have
+requests it as an ADR 0059 ``access`` escalation. A grant applies to an **item with expiry**
+("PR #123, 24 h" or "relay task #45, next 3 sessions"), not to a single run.
+Every use is logged.
 """
 
 from __future__ import annotations

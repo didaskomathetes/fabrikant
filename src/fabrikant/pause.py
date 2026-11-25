@@ -93,7 +93,9 @@ def _audit(actor: str, project: str, loop: str | None, old: str, new: str, until
     with _audit_path().open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     scope = _key(project, loop)
-    print(f"[fabrikant] State {scope}: {old} → {new}" + (f" bis {until}" if until else "") + t("pause.by", actor=actor))
+    print(
+        f"[fabrikant] State {scope}: {old} → {new}" + (f" until {until}" if until else "") + t("pause.by", actor=actor)
+    )
 
 
 def parse_until(raw: str | None) -> str | None:

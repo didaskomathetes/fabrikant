@@ -106,7 +106,7 @@ class OneShotCliBackend:
         raise NotImplementedError
 
     def billing(self) -> Billing:
-        """Abrechnungsart aus der übergebenen Auth (``fabrikant.billing``); Default: nicht ableitbar."""
+        """Billing kind derived from the passed auth (``fabrikant.billing``); default: not derivable."""
         return Billing.UNKNOWN
 
     def _env(self) -> dict | None:

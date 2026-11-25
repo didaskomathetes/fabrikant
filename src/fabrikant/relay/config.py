@@ -33,7 +33,7 @@ DEFAULT_MAX_SESSION_MINUTES = 35
 DEFAULT_VERIFY_TIMEOUT = 300
 # Two audit phases + steps must stay below FABRIKANT_STALE_HOURS (locally 1 h).
 DEFAULT_AUDIT_TIMEOUT = 1200
-# Puffer zwischen hartem Session-Ende (Prompt) und Agent-Timeout (Kill).
+# Buffer between the hard session end (prompt) and the agent timeout (kill).
 AGENT_TIMEOUT_GRACE_S = 300
 FABRIKANT_URL_ENV = "FABRIKANT_URL"
 # Archive methods for the trail (ADR 0037, addendum 2026-11-03); s3 is planned, not implemented.
