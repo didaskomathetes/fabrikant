@@ -37,6 +37,7 @@ from __future__ import annotations
 import subprocess
 
 from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
+from ..excerpt import failure_reason
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
 from ..gitops import process_env
 from ..i18n import t
@@ -92,8 +93,11 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     out = _redact(stdout + ("\n[stderr]\n" + p.stderr if p.stderr else ""))
     tail = _redact("\n".join((stdout or p.stderr or "").strip().splitlines()[-8:]))
     if p.returncode != 0:
+        # Last failure marker (e.g. `rot: <package>`, `1 failed`) instead of blindly the last stdout line:
+        # that can be a green partial result ("851 passed") and is misleading.
+        reason = failure_reason(out) or (tail.splitlines()[-1] if tail else "kein Output")
         return failed(
-            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'kein Output'}",
+            f"exit {p.returncode}: {reason}",
             _exit_kind(p.returncode, step),
             exit_code=p.returncode,
             output=_cap(out),

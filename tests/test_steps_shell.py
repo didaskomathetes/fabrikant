@@ -35,6 +35,18 @@ def test_shell_fail_exit_code(tmp_path):
     assert "oops" in res["output"]
 
 
+def test_shell_fail_summary_names_last_failure_marker(tmp_path):
+    """Regression: stdout ended with a green partial result, the verdict was on stderr."""
+    cmd = "echo '3 failed, 10 passed'; echo '851 passed'; echo 'warning: noise' >&2; echo 'rot: src/a' >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: rot: src/a"
+
+
+def test_shell_fail_summary_without_marker_uses_last_stdout_line(tmp_path):
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo first; echo last; exit 2"}, NOOP)
+    assert res["summary"] == "exit 2: last"
+
+
 def test_shell_inline_substitution(tmp_path):
     res = _step_shell(_ctx(tmp_path, issue_number="62"), {"type": "shell", "cmd": "echo issue {issue_number}"}, NOOP)
     assert res["ok"] is True

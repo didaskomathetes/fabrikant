@@ -271,6 +271,8 @@ MESSAGES: dict[str, str] = {
     "engine.run_record_not_written": "⚠ Run-Record nicht geschrieben: {e}",
     "engine.blocked_report_path_is_outside": "BLOCKED: Report-Pfad {p} liegt außerhalb der Projekt-Root {root_res} (Path-Traversal-Schutz)",
     "engine.criticality_check_human_approval_if": "Kritizitäts-Check (menschliche Freigabe bei kritisch)",
+    "excerpt.gap": "… ({n} Zeilen)",
+    "excerpt.note": "[Auszug: {shown} von {total} Zeilen; voller Output im Run-Record]",
     "gitops.fabrikant_warning_missing_in": "[fabrikant] Warnung: {v1} fehlt in {v2}",
     "gitops.subpath_does_not_exist_in": "Subpfad {sub} existiert nicht im Worktree {wt}",
     "gitops.not_available_env_or": "{env_key} nicht verfügbar (Env oder {v2})",

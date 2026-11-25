@@ -40,6 +40,15 @@ typed errors; text patterns exist only as a fallback for foreign CLI output (age
 `transient`, a run can carry `retry_after` (UTC), e.g. from `Retry-After`. The class doesn't change the flow
 behavior; auto-retry builds on it (ADR 0036).
 
+## Failure summary and log excerpt
+
+A failed shell step's summary (`exit <code>: <reason>`) names the last line of its output (stdout and stderr) that
+carries a failure marker: a pytest `FAILED`/`ERROR` line or `N failed` summary, a traceback, `Fatal Python error`,
+an `error:` line (uv, ruff, compilers) or a `rot:` verdict of `scripts/ci-matrix-pytest.py`. Without a marker
+it stays the last output line. The run log shows a failure-aware excerpt of the step output: a window around each
+failure marker plus the last lines, at most 120 lines, with the left-out lines stated (`… (N lines)` and a
+closing `[excerpt: …; full output in the run record]`). The run record keeps the full output.
+
 ## Verdict (business result)
 
 The run status says whether the machinery ran; a step can still report a negative *result* — e.g. `relay-audit`:
