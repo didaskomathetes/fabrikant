@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from ..agentenv import CODEX_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
@@ -30,11 +31,24 @@ from ._oneshot import OneShotCliBackend
 
 # ChatGPT login as env (base64 of auth.json); without it the CLI reads ~/.codex/auth.json — billing mode unknown.
 _CHATGPT_LOGIN_VAR = "CODEX_AUTH_JSON_B64"
+_FAILURE_TEXT_MAX = 300
+# `codex exec` writes banners, warnings and the prompt to stderr before the actual error;
+# the cause is in `ERROR: …` lines (e.g. spend cap, auth) — only those count.
+_ERROR_LINE = re.compile(r"^ERROR:\s*(.+)$", re.MULTILINE)
 _EVENT_TURN_COMPLETED = "turn.completed"
 _EVENT_TURN_FAILED = "turn.failed"
 _EVENT_ERROR = "error"
 _EVENT_ITEM_COMPLETED = "item.completed"
 _ITEM_AGENT_MESSAGE = "agent_message"
+
+
+def _failure_text(out: str, err: str) -> str:
+    """Error text of a failed `codex exec` session: the `ERROR:` lines (deduplicated), otherwise
+    stderr/stdout as delivered — truncated, so the run log and the classification (ADR 0035) see the
+    cause instead of the banner."""
+    errors = list(dict.fromkeys(m.strip() for m in _ERROR_LINE.findall(err)))
+    text = "\n".join(errors) or err.strip() or out.strip() or t("backends.codex.codex_no_output")
+    return text[:_FAILURE_TEXT_MAX]
 
 
 class CodexBackend(OneShotCliBackend):
@@ -78,8 +92,9 @@ class CodexBackend(OneShotCliBackend):
         base = {"tokens": tokens.as_poll(), "cost": 0.0, "tools": []}
         if returncode == 0:
             return {**base, "status": "done", "text": text.strip()}
-        reason = error or err.strip() or out.strip() or t("backends.codex.codex_no_output")
-        return {**base, "status": "failed", "text": reason[:300]}
+        if error:
+            return {**base, "status": "failed", "text": error[:_FAILURE_TEXT_MAX]}
+        return {**base, "status": "failed", "text": _failure_text(out, err)}
 
     @staticmethod
     def _read_events(out: str) -> tuple[str, TokenCounts, str]:

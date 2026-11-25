@@ -155,6 +155,32 @@ def test_poll_failed_captures_stderr(tmp_path, monkeypatch):
     assert "boom" in r["text"]
 
 
+_SPEND_CAP = "You hit your spend cap set by the owner of your workspace."
+
+
+def test_poll_failed_reports_error_lines_not_banner(tmp_path, monkeypatch):
+    """Real output: warning + banner + prompt before the error — the cause must not disappear behind
+    the truncation; duplicate ERROR lines once."""
+    be, calls = _mk(tmp_path, monkeypatch)
+    sid = be.create_task("/wd", "t")
+    be.send_prompt(sid, "p", "/wd")
+    banner = "WARNING: could not create PATH aliases\n" + "OpenAI Codex v0.167.0\n" + "x" * 400 + "\n"
+    calls[0].stderr_buf = io.BytesIO(f"{banner}ERROR: {_SPEND_CAP}\nERROR: {_SPEND_CAP}\n".encode())
+    calls[0].returncode = 1
+    r = be.poll(sid, "/wd")
+    assert r["status"] == "failed"
+    assert r["text"] == _SPEND_CAP
+
+
+def test_poll_failed_without_output(tmp_path, monkeypatch):
+    be, calls = _mk(tmp_path, monkeypatch)
+    sid = be.create_task("/wd", "t")
+    be.send_prompt(sid, "p", "/wd")
+    calls[0].stdout_buf = io.BytesIO(b"")
+    calls[0].returncode = 1
+    assert be.poll(sid, "/wd")["text"] == "codex: kein Output"
+
+
 def test_cancel_kills_process_group(tmp_path, monkeypatch):
     be, calls = _mk(tmp_path, monkeypatch)
     sid = be.create_task("/wd", "t")

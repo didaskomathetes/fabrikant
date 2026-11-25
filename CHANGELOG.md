@@ -19,6 +19,9 @@ All notable changes to fabrikant are documented here. The format follows
 - An agent session that exhausts the model's context window is no longer retried with the same input: the run log
   warns to rescope the work and the step fails as `outcome` instead of `unknown`/`transient`
   ([backends](docs/backends.md)).
+- A failed `codex` session reports its `ERROR:` lines (e.g. a spend cap or auth error) as the failure text instead of
+  the first 300 characters of stderr, which were mostly banner and prompt
+  ([codex](docs/backends.md#codex-openai-codex-cli)).
 
 ## [0.1.0] - 2026-11-25
 

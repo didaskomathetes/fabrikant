@@ -102,7 +102,8 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
 
 One-shot: `send_prompt` starts `codex exec --sandbox … [--model …]` in the workdir, prompt via stdin (no argument
 limits, no shell interpolation). `poll` waits for the exit — exit 0 = `done` (stdout as text), otherwise `failed`
-(stderr). `cancel` kills the process group (killpg) — no orphans.
+with the `ERROR:` lines of stderr as the failure text (deduplicated; codex prints banners, warnings and the prompt
+before them), else stderr. `cancel` kills the process group (killpg) — no orphans.
 
 - **Sandbox:** default `workspace-write` (bubblewrap). In gateway/service contexts without bubblewrap:
   `FABRIKANT_CODEX_SANDBOX=danger-full-access` — containment then comes from the user/VM/container, not the
