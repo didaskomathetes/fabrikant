@@ -8,6 +8,7 @@ import re
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .i18n import t
@@ -141,6 +142,8 @@ _REDACT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         ),
         REDACTED,
     ),
+    # Credentials embedded in URLs: scheme://user:password@host
+    (re.compile(r"(\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+(@)", re.I), r"\1" + REDACTED + r"\2"),
     # Generische Assignments: key=…, "token": "…", password: …
     (
         re.compile(
@@ -172,3 +175,66 @@ def redact_log_tail(text: str) -> str:
     except Exception:
         log.warning(t("secrets.log_tail_redaction_failed_alert"), exc_info=True)
         return text
+
+
+# Key-based masking of structured data (specs shown to agents/UI): values of secret-looking keys.
+MASKED_VALUE = "***redacted***"
+_SECRET_KEY_RE = re.compile(r"token|secret|passw|api[_-]?key|credential|authorization|private[_-]?key", re.I)
+# Short names that are secrets only as a whole key (a substring match would hit ``monkey``, ``author``).
+_SECRET_EXACT_KEY_RE = re.compile(r"(?:key|auth|bearer|pat|dsn|pwd)", re.I)
+# Token *counts and limits* (max_tokens, token_budget, ...) are not secrets; masking them would
+# hide ordinary settings from agents and, on a round trip, overwrite them with the mask. The
+# optional prefix may not itself contain a secret word (``secret_max_tokens`` stays masked), and
+# the bare singular ``input_token`` / ``output_token`` forms can be credentials, so only plural counts.
+_NOT_SECRET_KEY_RE = re.compile(
+    r"^(?!.*(?:secret|passw|credential|api[_-]?key|authorization|private[_-]?key))"
+    r"(?:\w*[_-])?(?:(?:max|min|num|n|total)[_-]?tokens?|(?:prompt|completion|input|output)[_-]?tokens)$"
+    r"|^tokens?[_-](?:budget|limit|count|used|usage|ttl|max|min)$",
+    re.I,
+)
+
+
+def is_secret_key(key: object) -> bool:
+    """Whether the value stored under ``key`` should be masked."""
+    name = str(key)
+    if _SECRET_EXACT_KEY_RE.fullmatch(name):
+        return True
+    return bool(_SECRET_KEY_RE.search(name)) and not _NOT_SECRET_KEY_RE.match(name)
+
+
+def redact_secret_keys(obj: Any) -> Any:
+    """Recursively mask values of secret-looking keys (token, password, api key, ...).
+
+    A matching key masks its *entire* value (any type), so a secret held as a list or
+    nested dict (e.g. ``api_keys: [...]``, ``credentials: {user, pass}``) is not returned
+    verbatim.
+    """
+    if isinstance(obj, dict):
+        return {k: MASKED_VALUE if is_secret_key(k) else redact_secret_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_secret_keys(v) for v in obj]
+    return obj
+
+
+def redact_for_agent(obj: Any) -> Any:
+    """Like :func:`redact_secret_keys`, and additionally scrub secret patterns and known secret
+    values out of every string (``DB_URL=postgres://u:p@h``, ``--token abc`` in free text).
+
+    For anything handed to an MCP client: key names alone miss secrets under innocuous keys.
+    """
+    if isinstance(obj, dict):
+        return {k: MASKED_VALUE if is_secret_key(k) else redact_for_agent(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_for_agent(v) for v in obj]
+    if isinstance(obj, str):
+        return _redact(redact_text(obj))
+    return obj
+
+
+def contains_masked_value(obj: Any) -> bool:
+    """Whether ``obj`` holds the mask anywhere (a redacted value echoed back by an agent)."""
+    if isinstance(obj, dict):
+        return any(contains_masked_value(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(contains_masked_value(v) for v in obj)
+    return obj == MASKED_VALUE

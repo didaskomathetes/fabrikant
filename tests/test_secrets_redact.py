@@ -163,3 +163,59 @@ def test_concurrent_redact_and_env_mutation(monkeypatch):
         stop.set()
         t.join()
     assert not errors
+
+
+@pytest.mark.parametrize("key", ["max_tokens", "num_tokens", "completion_tokens", "token_budget", "tokens_used"])
+def test_token_counts_are_not_masked(key):
+    assert secrets.redact_secret_keys({key: 5}) == {key: 5}
+
+
+@pytest.mark.parametrize("key", ["token", "api_token", "access_token", "tokens", "GITHUB_TOKEN", "password"])
+def test_token_secrets_are_still_masked(key):
+    assert secrets.redact_secret_keys({key: "x"}) == {key: secrets.MASKED_VALUE}
+
+
+@pytest.mark.parametrize(
+    "key", ["secret_max_tokens", "input_token", "output_token", "key", "auth", "bearer", "pat", "dsn", "API_KEY"]
+)
+def test_more_secret_key_names_are_masked(key):
+    assert secrets.redact_secret_keys({key: "x"}) == {key: secrets.MASKED_VALUE}
+
+
+@pytest.mark.parametrize("key", ["monkey", "author", "input_tokens", "output_tokens"])
+def test_lookalike_keys_are_not_masked(key):
+    assert secrets.redact_secret_keys({key: 5}) == {key: 5}
+
+
+def test_redact_for_agent_scrubs_strings_under_innocent_keys():
+    out = secrets.redact_for_agent(
+        {"DB_URL": "postgres://u:hunter2@h/db", "args": ["--x", "Bearer abcdefgh12345678"], "n": 3, "ok": "plain"}
+    )
+    dumped = str(out)
+    assert "hunter2" not in dumped and "abcdefgh12345678" not in dumped
+    assert out["n"] == 3 and out["ok"] == "plain"
+
+
+def test_contains_masked_value_finds_nested_mask():
+    mask = secrets.MASKED_VALUE
+    assert secrets.contains_masked_value({"a": [{"b": mask}]})
+    assert not secrets.contains_masked_value({"a": [{"b": "real"}], "n": 1})
+
+
+def test_redact_secret_keys_masks_whole_value_any_type():
+    # A secret-looking key masks its ENTIRE value (any type), so a secret held as a
+    # list or nested dict is not returned verbatim.
+    out = secrets.redact_secret_keys(
+        {
+            "api_keys": ["hunter2", "x"],
+            "credentials": {"user": "u", "password": "pw"},
+            "token": 7,
+            "name": "n",
+            "nested": {"ok": 1, "secret": ["leak"]},
+        }
+    )
+    assert out["api_keys"] == secrets.MASKED_VALUE
+    assert out["credentials"] == secrets.MASKED_VALUE
+    assert out["token"] == secrets.MASKED_VALUE
+    assert out["name"] == "n"
+    assert out["nested"] == {"ok": 1, "secret": secrets.MASKED_VALUE}

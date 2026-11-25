@@ -2,34 +2,41 @@
 
 Roadmap #132: expose runs, specs and approvals to any MCP-capable agent.
 
-Hand-rolled and dependency-free (no ``mcp`` package) to match the "local
-software factory" ethos: self-hosted, zero extra dependencies, always
-available. Speaks MCP protocol ``2025-03-26`` over stdio using
-newline-delimited JSON-RPC 2.0 (one JSON object per line on stdin/stdout).
+Built on the official MCP Python SDK (``mcp``, ``MCPServer``): the SDK owns the protocol, the
+transport and the stdout hygiene (it diverts fd 1 to stderr while serving, so an engine
+``print()`` cannot corrupt the stream). This module keeps what is fabrikant-specific: the tool
+set, its gating flags, redaction, input validation, audit actor and process lifecycle.
 
-The server is a *long-lived* process: the MCP client (e.g. Claude Desktop, an
-opencode agent, ...) starts ``fabrikant mcp`` and keeps it running, exchanging
-JSON lines over the pipe. Run/approval actions spawn worker threads inside
-this process exactly like the HTTP server does, so keep the process alive
-while a triggered run is executing; if the client kills it, the next fabrikant
-server start reaps the orphaned runs (``reap_orphaned_runs``).
+The server is a *long-lived* process: the MCP client (Claude Desktop, opencode, ...) starts
+``fabrikant mcp`` and keeps it running. Run/approval actions spawn worker threads inside this
+process exactly like the HTTP server does, so keep it alive while a triggered run executes;
+if the client kills it, the next fabrikant server start reaps the orphaned runs.
 
-Run it directly with ``fabrikant mcp`` or the ``fabrikant-mcp`` console script.
+Tools are *registered* only when their gate is open, so a hidden tool is also refused at call
+time (unknown tool). Gates: ``--read-only`` hides everything that changes state and wins over
+the opt-ins ``--allow-approvals`` and ``--allow-spec-write``.
+
+Run it with ``fabrikant mcp`` or the ``fabrikant-mcp`` console script.
 """
 
 from __future__ import annotations
 
 import importlib.metadata
-import json
 import os
-import re
 import sys
 import threading
 import traceback
 from collections.abc import Callable
-from typing import Any
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Annotated, Any
 
-from . import config, engine
+from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ToolAnnotations
+from pydantic import BaseModel, ConfigDict, Field
+
+from . import config, engine, spec_proposals
 from .chat import _chat_resume
 from .engine import start_priority_run
 from .runs import (
@@ -40,99 +47,241 @@ from .runs import (
     pending_approvals,
     reap_orphaned_runs,
 )
+from .secrets import redact_for_agent, redact_secret_keys, redact_text
 from .specs import load_projects, load_spec_raw, spec_hash, spec_path
 from .specschema import validate_spec
 
-PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "fabrikant"
 try:
     SERVER_VERSION = importlib.metadata.version("fabrikant")
 except importlib.metadata.PackageNotFoundError:  # running from a bare checkout
     SERVER_VERSION = "0.0.0+unknown"
 MCP_ACTOR = "mcp"  # audit actor for actions taken through the MCP endpoint
-SUPPORTED_PROTOCOLS = (PROTOCOL_VERSION, "2024-11-05")
 READ_ONLY_ENV = "FABRIKANT_MCP_READONLY"  # truthy → mutating tools are hidden and refused
 ALLOW_APPROVALS_ENV = "FABRIKANT_MCP_ALLOW_APPROVALS"  # truthy → approve_run/reject_run are offered (opt-in)
+ALLOW_SPEC_WRITE_ENV = "FABRIKANT_MCP_ALLOW_SPEC_WRITE"  # truthy → propose_spec_change & co. are offered (opt-in)
 _TRUTHY = ("1", "true", "yes", "on")
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 1000
 DEFAULT_LOG_LINES = 2000  # bound for get_run_log when `lines` is omitted
 DRAIN_TIMEOUT_S = 600  # on stdin EOF, wait this long for in-flight run workers
-REDACTED = "***redacted***"
-_SECRET_KEY_RE = re.compile(r"token|secret|passw|api[_-]?key|credential|authorization|private[_-]?key", re.I)
-
-# JSON-RPC error codes.
-ERR_PARSE, ERR_INVALID_REQUEST, ERR_METHOD_NOT_FOUND, ERR_INVALID_PARAMS, ERR_INTERNAL = (
-    -32700,
-    -32600,
-    -32601,
-    -32602,
-    -32603,
-)
-
-
-class ToolError(Exception):
-    """A tool-level failure (bad input / not found) → MCP ``isError`` result."""
-
-
-class RpcError(Exception):
-    """A JSON-RPC protocol error (unknown method / bad params)."""
-
-    def __init__(self, code: int, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
 
 # --------------------------------------------------------------------------- #
-# Tool handlers — each takes the call arguments dict and returns JSON-able data.
+# Options / gating.
 # --------------------------------------------------------------------------- #
-
-
-def _require(args: dict, *keys: str) -> tuple[str, ...]:
-    """Return the named arguments as strings or raise ``ToolError`` if any is missing/empty."""
-    values = tuple(str(args.get(k) or "") for k in keys)
-    if not all(values):
-        raise ToolError(" + ".join(keys) + " required")
-    return values
-
-
-def _int_arg(args: dict, key: str, default: int | None, *, minimum: int = 1, maximum: int | None = None) -> int | None:
-    """Validated integer argument (rejects bool/float/str garbage and out-of-range values)."""
-    value = args.get(key)
-    if value is None:
-        return default
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ToolError(f"{key} must be an integer")
-    if value < minimum or (maximum is not None and value > maximum):
-        bound = f">= {minimum}" if maximum is None else f"between {minimum} and {maximum}"
-        raise ToolError(f"{key} must be {bound}")
-    return value
-
-
-def _redact(obj: Any) -> Any:
-    """Recursively mask values of secret-looking keys (token, password, api key, ...)."""
-    if isinstance(obj, dict):
-        return {
-            k: REDACTED if _SECRET_KEY_RE.search(str(k)) and isinstance(v, (str, int)) else _redact(v)
-            for k, v in obj.items()
-        }
-    if isinstance(obj, list):
-        return [_redact(v) for v in obj]
-    return obj
 
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY
 
 
-def _read_only() -> bool:
-    return _env_flag(READ_ONLY_ENV)
+@dataclass(frozen=True)
+class McpOptions:
+    """Which tool groups this server instance offers (CLI flags and env vars, OR-ed)."""
+
+    read_only: bool = False
+    allow_approvals: bool = False
+    allow_spec_write: bool = False
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        read_only: bool = False,
+        allow_approvals: bool = False,
+        allow_spec_write: bool = False,
+    ) -> McpOptions:
+        """Options from the environment; a ``True`` argument (CLI flag) switches the option on."""
+        return cls(
+            read_only=read_only or _env_flag(READ_ONLY_ENV),
+            allow_approvals=allow_approvals or _env_flag(ALLOW_APPROVALS_ENV),
+            allow_spec_write=allow_spec_write or _env_flag(ALLOW_SPEC_WRITE_ENV),
+        )
+
+    def offers(self, gate: Gate) -> bool:
+        """Whether tools behind ``gate`` are registered. Read-only wins over every opt-in."""
+        if gate is Gate.READ:
+            return True
+        if self.read_only:
+            return False
+        return {
+            Gate.MUTATING: True,
+            # Approve/reject are the human gate; a prompt-injected agent must not get them by default.
+            Gate.APPROVAL: self.allow_approvals,
+            Gate.SPEC_WRITE: self.allow_spec_write,
+        }[gate]
 
 
-def _approvals_enabled() -> bool:
-    """Approve/reject are the human gate; a prompt-injected agent must not get them by default."""
-    return _env_flag(ALLOW_APPROVALS_ENV) and not _read_only()
+class Gate(StrEnum):
+    """Condition under which a tool is offered."""
+
+    READ = "read"
+    MUTATING = "mutating"
+    APPROVAL = "approval"
+    SPEC_WRITE = "spec_write"
+
+
+# --------------------------------------------------------------------------- #
+# Typed arguments and results (the SDK derives input/output JSON schemas from these).
+# --------------------------------------------------------------------------- #
+
+# Strict: bool/float/numeric-string garbage is rejected instead of coerced.
+_Limit = Annotated[int, Field(strict=True, ge=1, le=MAX_LIST_LIMIT, description="Maximum number of runs")]
+_LogLines = Annotated[int, Field(strict=True, ge=1, description="Return only the last N lines")]
+_Project = Annotated[str, Field(min_length=1, description="Project name")]
+_RunId = Annotated[str, Field(min_length=1, description="Run id")]
+_OptProject = Annotated[str | None, Field(description="Project name (default: all projects)")]
+
+
+class ProjectInfo(BaseModel):
+    """One project in ``list_projects``."""
+
+    name: str
+    description: str
+    error: str | None = None
+
+
+class ProjectList(BaseModel):
+    """Result of ``list_projects``."""
+
+    projects: list[ProjectInfo]
+    count: int
+
+
+class ValidationResult(BaseModel):
+    """Validation outcome for one project."""
+
+    project: str
+    valid: bool
+    errors: list[str]
+
+
+class ValidationReport(BaseModel):
+    """Result of ``validate_spec``."""
+
+    valid: bool
+    results: list[ValidationResult]
+    count: int
+
+
+class RunList(BaseModel):
+    """Result of ``list_runs``."""
+
+    runs: list[dict[str, Any]]
+    count: int
+
+
+class RunLog(BaseModel):
+    """Result of ``get_run_log``."""
+
+    run_id: str
+    log: str
+    truncated: bool
+
+
+class StartedRun(BaseModel):
+    """Result of ``start_run``."""
+
+    started: bool
+    queued: bool
+    project: str
+    loop: str
+    run_id: str
+
+
+class RunBrief(BaseModel):
+    """A run in ``queue_status``."""
+
+    id: str | None = None
+    project: str | None = None
+    loop: str | None = None
+    trigger: str | None = None
+    started: str | None = None
+
+
+class PoolStatus(BaseModel):
+    """Worker pool of the run launcher (mirrors ``LauncherStatus``)."""
+
+    workers: int = 0
+    busy: int = 0
+    queue: int = 0
+
+
+class QueueStatus(BaseModel):
+    """Result of ``queue_status``."""
+
+    pool: PoolStatus
+    running: list[RunBrief]
+    queued: list[RunBrief]
+    needs_approval: list[RunBrief]
+
+
+class ApprovalInfo(BaseModel):
+    """An open approval request."""
+
+    id: str
+    project: str | None = None
+    loop: str | None = None
+    started: str | None = None
+    note: str = ""
+    approval: dict[str, Any]
+
+
+class ApprovalList(BaseModel):
+    """Result of ``list_approvals``."""
+
+    approvals: list[ApprovalInfo]
+    count: int
+
+
+class ResumeResult(BaseModel):
+    """Result of ``approve_run`` / ``reject_run``."""
+
+    ok: bool
+    reply: str
+    run_id: str
+
+
+class SpecPatch(BaseModel):
+    """A change to a project spec (same shape as ``PUT /api/projects/<name>/spec``).
+
+    ``loops`` are merged per loop into the existing spec (unknown keys of a loop are kept),
+    ``remove_loops`` deletes loops, ``description`` / ``max_parallel`` update top-level fields.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    loops: dict[str, dict[str, Any]] | None = None
+    remove_loops: list[str] = Field(default_factory=list)
+    description: str | None = None
+    max_parallel: Annotated[int | None, Field(strict=True)] = None
+
+    def to_payload(self) -> dict[str, Any]:
+        """Payload for :meth:`fabrikant.specs.SpecUpdate.from_payload` (unset fields omitted)."""
+        return self.model_dump(exclude_none=True, exclude_defaults=True)
+
+
+class ProposalInfo(BaseModel):
+    """A spec-change proposal. Never echoes spec contents (they may hold secrets)."""
+
+    id: str
+    project: str
+    status: spec_proposals.ProposalStatus
+    changes: list[str]
+    proposed_by: str
+    next_step: str = ""
+
+
+class ProposalList(BaseModel):
+    """Result of ``list_spec_proposals``."""
+
+    proposals: list[ProposalInfo]
+    count: int
+
+
+# --------------------------------------------------------------------------- #
+# Helpers.
+# --------------------------------------------------------------------------- #
 
 
 def _known_project(name: str) -> dict:
@@ -148,417 +297,301 @@ def _known_project(name: str) -> dict:
     return spec
 
 
-def _list_projects(_args: dict) -> dict:
+# --------------------------------------------------------------------------- #
+# Read tools.
+# --------------------------------------------------------------------------- #
+
+
+def list_projects() -> ProjectList:
     """List all fabrikant projects (YAML specs) with their description."""
     out = []
     for name, spec in load_projects().items():
         if isinstance(spec, dict) and spec.get("_error"):
-            out.append({"name": name, "description": "", "error": spec["_error"]})
+            out.append(ProjectInfo(name=name, description="", error=spec["_error"]))
         else:
-            out.append({"name": name, "description": (spec or {}).get("description", ""), "error": None})
-    return {"projects": out, "count": len(out)}
+            out.append(ProjectInfo(name=name, description=(spec or {}).get("description", "")))
+    return ProjectList(projects=out, count=len(out))
 
 
-def _get_spec(args: dict) -> dict:
-    """Expanded spec of a project (loops, steps, triggers) plus content hash."""
-    (name,) = _require(args, "project")
-    spec = _known_project(name)
-    out = _redact({k: v for k, v in spec.items() if k != "_path"})  # no filesystem paths / secrets
-    out["_hash"] = spec_hash(spec_path(name))
+def get_spec(project: _Project) -> dict[str, Any]:
+    """Expanded spec of a project (loops, steps, triggers) plus content hash (``_hash``)."""
+    spec = _known_project(project)
+    out = redact_secret_keys({k: v for k, v in spec.items() if k != "_path"})  # no filesystem paths / secrets
+    out["_hash"] = spec_hash(spec_path(project))
     return out
 
 
-def _get_raw_spec(args: dict) -> dict:
-    """Raw (un-expanded) spec of a project plus content hash (edit source)."""
-    (name,) = _require(args, "project")
-    _known_project(name)
-    path = spec_path(name)
+def get_raw_spec(project: _Project) -> dict[str, Any]:
+    """Raw (un-expanded) spec of a project plus content hash (``_hash``, the edit source)."""
+    _known_project(project)
+    path = spec_path(project)
     if not path.is_file():
-        raise ToolError(f"spec file not found for project {name!r}")
-    raw = _redact(load_spec_raw(path))
+        raise ToolError(f"spec file not found for project {project!r}")
+    raw = redact_secret_keys(load_spec_raw(path))
     raw["_hash"] = spec_hash(path)
     return raw
 
 
-def _validate_spec(args: dict) -> dict:
+def validate_specs(
+    project: Annotated[str | None, Field(description="One project; omit for all")] = None,
+) -> ValidationReport:
     """Validate project specs against the JSON schema (#131), like ``fabrikant validate``.
 
-    The schema describes the *expanded* spec, so this validates the loaded
-    (post vars/template/relay expansion) project specs — not raw YAML. Pass
-    ``project`` for one project, or omit it to validate every project.
+    The schema describes the *expanded* spec, so this validates the loaded (post
+    vars/template/relay expansion) project specs — not raw YAML.
     """
-    name = str(args.get("project") or "")
     specs = load_projects()
-    if name:
-        if name not in specs:
-            raise ToolError(f"unknown project: {name!r} (have: {', '.join(sorted(specs)) or 'none'})")
-        targets = {name: specs[name]}
+    if project:
+        if project not in specs:
+            raise ToolError(f"unknown project: {project!r} (have: {', '.join(sorted(specs)) or 'none'})")
+        targets = {project: specs[project]}
     else:
         targets = specs
     results = []
     for n, spec in targets.items():
         if not isinstance(spec, dict) or spec.get("_error"):
-            err = spec.get("_error") if isinstance(spec, dict) else "failed to load"
-            results.append({"project": n, "valid": False, "errors": [err]})
+            err = (spec.get("_error") if isinstance(spec, dict) else None) or "failed to load"
+            results.append(ValidationResult(project=n, valid=False, errors=[str(err)]))
             continue
         errors = validate_spec(spec)
-        results.append({"project": n, "valid": not errors, "errors": errors})
-    return {"valid": all(r["valid"] for r in results), "results": results, "count": len(results)}
+        results.append(ValidationResult(project=n, valid=not errors, errors=errors))
+    return ValidationReport(valid=all(r.valid for r in results), results=results, count=len(results))
 
 
-def _list_runs(args: dict) -> dict:
-    """Run records, newest first; optional project / status / limit filters."""
-    project = args.get("project") or None
-    limit = _int_arg(args, "limit", DEFAULT_LIST_LIMIT, maximum=MAX_LIST_LIMIT)
-    status = args.get("status") or None
-    runs = list_runs(project, limit)
+def list_runs_tool(
+    project: _OptProject = None,
+    status: Annotated[str | None, Field(description="Only runs with this status")] = None,
+    limit: _Limit | None = None,
+) -> RunList:
+    """Run records, newest first; optional project / status / limit filters.
+
+    The status filter is applied *before* the limit, so ``status`` + ``limit`` return up to
+    ``limit`` runs of that status (not the first ``limit`` runs, of which some may match).
+    """
+    limit = limit or DEFAULT_LIST_LIMIT
+    runs = list_runs(project or None, None if status else limit)
     if status:
-        runs = [r for r in runs if r.get("status") == status]
-    return {"runs": runs, "count": len(runs)}
+        runs = [r for r in runs if r.get("status") == status][:limit]
+    # Run records carry ``vars`` (secrets may have been passed to start_run): mask them.
+    return RunList(runs=[redact_for_agent(r) for r in runs], count=len(runs))
 
 
-def _get_run(args: dict) -> dict:
+def get_run_tool(run_id: _RunId, project: _OptProject = None) -> dict[str, Any]:
     """One run record by id (falls back to all projects if project omitted)."""
-    (run_id,) = _require(args, "run_id")
-    rec = get_run(run_id, args.get("project") or None)
+    rec = get_run(run_id, project or None)
     if rec is None:
         raise ToolError(f"run not found: {run_id!r}")
-    return rec
+    return redact_for_agent(rec)
 
 
-def _get_run_log(args: dict) -> dict:
-    """Run log as plain text; optional ``lines`` tail (like ``?lines=N``)."""
-    (run_id,) = _require(args, "run_id")
-    log = get_run_log(run_id, args.get("project") or None)
+def get_run_log_tool(run_id: _RunId, project: _OptProject = None, lines: _LogLines | None = None) -> RunLog:
+    """Run log as plain text, bounded to the last ``lines`` lines (default 2000)."""
+    log = get_run_log(run_id, project or None)
     if log is None:
         raise ToolError(f"no log for run: {run_id!r}")
-    lines = _int_arg(args, "lines", DEFAULT_LOG_LINES) or DEFAULT_LOG_LINES
+    lines = lines or DEFAULT_LOG_LINES
+    log = redact_text(log)  # command output may contain tokens
     all_lines = log.splitlines()
     truncated = len(all_lines) > lines
-    return {"run_id": run_id, "log": "\n".join(all_lines[-lines:]) if truncated else log, "truncated": truncated}
+    return RunLog(run_id=run_id, log="\n".join(all_lines[-lines:]) if truncated else log, truncated=truncated)
 
 
-def _start_run(args: dict) -> dict:
-    """Start a loop run (mirrors ``POST /api/runs``); queued if at the limit."""
-    name, lname = _require(args, "project", "loop")
-    spec = _known_project(name)
-    loops = spec.get("loops", {})
-    if lname not in loops:
-        raise ToolError(f"unknown loop: {lname!r} (available: {', '.join(sorted(loops)) or 'none'})")
-    note = str(args.get("note") or "")
-    raw_vars = args.get("vars")
-    if raw_vars is not None and not isinstance(raw_vars, dict):
-        raise ToolError("vars must be an object (K=V)")
-    initial_vars = {str(k): str(v) for k, v in (raw_vars or {}).items()} or None
-    run_id = f"{config.now_id()}-{lname}"
-    try:
-        queued = start_priority_run(
-            name, lname, "mcp", run_id=run_id, note=note, initial_vars=initial_vars, actor=MCP_ACTOR
-        )
-    except RuntimeError as e:
-        raise ToolError(f"worker start failed: {e}") from e
-    return {"started": not queued, "queued": queued, "project": name, "loop": lname, "run_id": run_id}
-
-
-def _queue_status(_args: dict) -> dict:
+def queue_status() -> QueueStatus:
     """Worker-pool + run-queue snapshot (running / queued / needs_approval)."""
     records = load_records()
 
-    def brief(r: dict) -> dict:
-        return {
-            "id": r.get("id"),
-            "project": r.get("project"),
-            "loop": r.get("loop"),
-            "trigger": r.get("trigger"),
-            "started": r.get("started"),
-        }
+    def brief(status: str) -> list[RunBrief]:
+        return [RunBrief(**{k: r.get(k) for k in RunBrief.model_fields}) for r in records if r.get("status") == status]
 
-    return {
-        "pool": engine.pool_status(),
-        "running": [brief(r) for r in records if r.get("status") == "running"],
-        "queued": [brief(r) for r in records if r.get("status") == "queued"],
-        "needs_approval": [brief(r) for r in records if r.get("status") == "needs_approval"],
-    }
+    return QueueStatus(
+        pool=PoolStatus(**engine.pool_status()),
+        running=brief("running"),
+        queued=brief("queued"),
+        needs_approval=brief("needs_approval"),
+    )
 
 
-def _list_approvals(args: dict) -> dict:
+def list_approvals(project: _OptProject = None) -> ApprovalList:
     """Open approval requests: runs in status ``needs_approval``, newest first."""
-    project = args.get("project") or None
     approvals = [
-        {
-            "id": r["id"],
-            "project": r.get("project"),
-            "loop": r.get("loop"),
-            "started": r.get("started"),
-            "note": r.get("note", ""),
-            "approval": r.get("approval") or {},
-        }
-        for r in pending_approvals(project)
+        ApprovalInfo(
+            id=r["id"],
+            project=r.get("project"),
+            loop=r.get("loop"),
+            started=r.get("started"),
+            note=redact_for_agent(r.get("note", "")),
+            approval=redact_for_agent(r.get("approval") or {}),
+        )
+        for r in pending_approvals(project or None)
     ]
-    return {"approvals": approvals, "count": len(approvals)}
+    return ApprovalList(approvals=approvals, count=len(approvals))
 
 
-def _resume(args: dict, *, approve: bool) -> dict:
+# --------------------------------------------------------------------------- #
+# Mutating tools.
+# --------------------------------------------------------------------------- #
+
+
+def start_run(
+    project: _Project,
+    loop: Annotated[str, Field(min_length=1, description="Loop name")],
+    note: str = "",
+    vars: Annotated[dict[str, str | int | float | bool] | None, Field(description="Initial variables (K=V)")] = None,
+) -> StartedRun:
+    """Start a loop run (mirrors ``POST /api/runs``); queued if at the parallel limit."""
+    loops = _known_project(project).get("loops", {})
+    if loop not in loops:
+        raise ToolError(f"unknown loop: {loop!r} (available: {', '.join(sorted(loops)) or 'none'})")
+    run_id = f"{config.now_id()}-{loop}"
+    try:
+        queued = start_priority_run(
+            project,
+            loop,
+            "mcp",
+            run_id=run_id,
+            note=note,
+            initial_vars={k: str(v) for k, v in (vars or {}).items()} or None,
+            actor=MCP_ACTOR,
+        )
+    except RuntimeError as e:
+        raise ToolError(f"worker start failed: {e}") from e
+    return StartedRun(started=not queued, queued=queued, project=project, loop=loop, run_id=run_id)
+
+
+# Failure markers of _chat_resume replies: every failure message in the chat.* catalog
+# (run_not_found, not_needs_approval, cannot_approve, cannot_reject) starts with one of
+# these; success replies (approved, rejected, already approved) never do. If the catalog
+# changes, this check must change with it.
+_RESUME_FAILURE_MARKERS = ("✖", "⚠")
+
+
+def _resume(project: str, run_id: str, *, approve: bool) -> ResumeResult:
     """Shared approve/reject: failures (unknown run, wrong status, ...) become tool errors."""
-    name, run_id = _require(args, "project", "run_id")
-    reply, resumed = _chat_resume(name, run_id, approve, actor=MCP_ACTOR)
-    if reply.lstrip().startswith(("✖", "⚠")):
+    reply, resumed = _chat_resume(project, run_id, approve, actor=MCP_ACTOR)
+    if reply.lstrip().startswith(_RESUME_FAILURE_MARKERS):
         raise ToolError(reply)
-    return {"ok": resumed if approve else True, "reply": reply, "run_id": run_id}
+    return ResumeResult(ok=resumed if approve else True, reply=reply, run_id=run_id)
 
 
-def _approve_run(args: dict) -> dict:
-    """Approve a ``needs_approval`` run (resumes it; atomic, audited as MCP)."""
-    return _resume(args, approve=True)
+def approve_run(project: _Project, run_id: _RunId) -> ResumeResult:
+    """Approve a ``needs_approval`` run: resumes it (atomic, audited as actor 'mcp')."""
+    return _resume(project, run_id, approve=True)
 
 
-def _reject_run(args: dict) -> dict:
-    """Reject a ``needs_approval`` run (ends the loop here; atomic, audited)."""
-    return _resume(args, approve=False)
-
-
-# --------------------------------------------------------------------------- #
-# Tool registry (name + JSON-Schema input + handler).
-# --------------------------------------------------------------------------- #
-
-_STR = {"type": "string"}
-_INT = {"type": "integer"}
-
-
-def _schema(properties: dict, required: tuple[str, ...] = ()) -> dict:
-    return {"type": "object", "properties": properties, "required": list(required)}
-
-
-ToolHandler = Callable[[dict], Any]
-
-TOOLS: list[dict] = [
-    {
-        "name": "list_projects",
-        "description": "List all fabrikant projects (YAML specs) with their description.",
-        "inputSchema": _schema({}),
-        "handler": _list_projects,
-    },
-    {
-        "name": "get_spec",
-        "description": "Get the expanded spec of a project (loops, steps, triggers) plus its content hash.",
-        "inputSchema": _schema({"project": _STR}, required=("project",)),
-        "handler": _get_spec,
-    },
-    {
-        "name": "get_raw_spec",
-        "description": "Get the raw (un-expanded) spec of a project plus its content hash (the edit source).",
-        "inputSchema": _schema({"project": _STR}, required=("project",)),
-        "handler": _get_raw_spec,
-    },
-    {
-        "name": "validate_spec",
-        "description": (
-            "Validate project specs against the JSON schema (like `fabrikant validate`). "
-            "Pass `project` for one project, or omit it to validate every project. "
-            "Returns valid + per-project errors."
-        ),
-        "inputSchema": _schema({"project": _STR}),
-        "handler": _validate_spec,
-    },
-    {
-        "name": "list_runs",
-        "description": "List run records, newest first. Optional project, status and limit filters.",
-        "inputSchema": _schema({"project": _STR, "status": _STR, "limit": _INT}),
-        "handler": _list_runs,
-    },
-    {
-        "name": "get_run",
-        "description": "Get one run record by id (falls back to all projects when project is omitted).",
-        "inputSchema": _schema({"run_id": _STR, "project": _STR}, required=("run_id",)),
-        "handler": _get_run,
-    },
-    {
-        "name": "get_run_log",
-        "description": "Get a run's log as plain text; optional `lines` returns only the last N lines.",
-        "inputSchema": _schema({"run_id": _STR, "project": _STR, "lines": _INT}, required=("run_id",)),
-        "handler": _get_run_log,
-    },
-    {
-        "name": "start_run",
-        "description": "Start a loop run (like POST /api/runs). Queued if the project is at its parallel limit.",
-        "inputSchema": _schema(
-            {
-                "project": _STR,
-                "loop": _STR,
-                "note": _STR,
-                "vars": {"type": "object", "additionalProperties": {"type": "string"}},
-            },
-            required=("project", "loop"),
-        ),
-        "handler": _start_run,
-        "mutating": True,
-    },
-    {
-        "name": "queue_status",
-        "description": "Worker-pool and run-queue snapshot: running / queued / needs_approval runs.",
-        "inputSchema": _schema({}),
-        "handler": _queue_status,
-    },
-    {
-        "name": "list_approvals",
-        "description": "List open approval requests (runs in status needs_approval), newest first.",
-        "inputSchema": _schema({"project": _STR}),
-        "handler": _list_approvals,
-    },
-    {
-        "name": "approve_run",
-        "description": "Approve a needs_approval run: resumes it (atomic, audited as actor 'mcp').",
-        "inputSchema": _schema({"project": _STR, "run_id": _STR}, required=("project", "run_id")),
-        "handler": _approve_run,
-        "mutating": True,
-        "approval": True,
-    },
-    {
-        "name": "reject_run",
-        "description": "Reject a needs_approval run: ends the loop here (atomic, audited as actor 'mcp').",
-        "inputSchema": _schema({"project": _STR, "run_id": _STR}, required=("project", "run_id")),
-        "handler": _reject_run,
-        "mutating": True,
-        "approval": True,
-    },
-]
+def reject_run(project: _Project, run_id: _RunId) -> ResumeResult:
+    """Reject a ``needs_approval`` run: ends the loop here (atomic, audited as actor 'mcp')."""
+    return _resume(project, run_id, approve=False)
 
 
 # --------------------------------------------------------------------------- #
-# JSON-RPC dispatch.
+# Spec-write tools (opt-in; the human approves via `fabrikant proposals apply`).
 # --------------------------------------------------------------------------- #
 
-
-def _tool_error(text: str) -> dict:
-    return {"content": [{"type": "text", "text": text}], "isError": True}
+_BaseHash = Annotated[str, Field(min_length=1, description="The `_hash` returned by get_spec / get_raw_spec")]
 
 
-def _visible_tools() -> list[dict]:
-    """Tools offered to the client: mutating ones are hidden in read-only mode, and the
-    approval tools only appear when explicitly enabled (opt-in)."""
-    return [
-        t
-        for t in TOOLS
-        if not (t.get("mutating") and _read_only()) and not (t.get("approval") and not _approvals_enabled())
-    ]
+def _proposal_info(proposal: spec_proposals.SpecProposal) -> ProposalInfo:
+    next_step = (
+        f"a human applies it: fabrikant proposals apply {proposal.id}"
+        if proposal.status is spec_proposals.ProposalStatus.PENDING
+        else ""
+    )
+    return ProposalInfo(
+        id=proposal.id,
+        project=proposal.project,
+        status=proposal.status,
+        changes=proposal.changes,
+        proposed_by=proposal.proposed_by,
+        next_step=next_step,
+    )
 
 
-def _call_tool(params: dict) -> dict:
-    name = params.get("name")
-    args = params.get("arguments")
-    if args is None:
-        args = {}
-    if not isinstance(args, dict):
-        raise RpcError(ERR_INVALID_PARAMS, "arguments must be an object")
-    tool = next((t for t in _visible_tools() if t["name"] == name), None)
-    if tool is None:
-        raise RpcError(ERR_INVALID_PARAMS, f"unknown tool: {name!r}")
+def propose_spec_change(project: _Project, base_hash: _BaseHash, patch: SpecPatch) -> ProposalInfo:
+    """Propose a spec change for human approval; nothing is written until a human applies it.
+
+    The change is validated against the current spec (full schema validation) and refused if
+    invalid or if ``base_hash`` is stale.
+    """
     try:
-        data = tool["handler"](args)
-    except ToolError as e:
-        return _tool_error(str(e))
-    except (KeyError, ValueError, TypeError) as e:
-        return _tool_error(f"bad arguments: {e}")
-    except Exception as e:  # a failing tool must never take the long-lived server down
-        traceback.print_exc(file=sys.stderr)
-        return _tool_error(f"internal error: {type(e).__name__}: {e}")
-    text = json.dumps(data, indent=2, ensure_ascii=False, default=str)
-    return {"content": [{"type": "text", "text": text}], "structuredContent": data, "isError": False}
+        return _proposal_info(spec_proposals.propose(project, patch.to_payload(), base_hash, MCP_ACTOR))
+    except spec_proposals.ProposalError as e:
+        raise ToolError(str(e)) from e
 
 
-def _initialize(params: dict) -> dict:
-    wanted = params.get("protocolVersion")
-    return {
-        "protocolVersion": wanted if wanted in SUPPORTED_PROTOCOLS else PROTOCOL_VERSION,
-        "capabilities": {"tools": {"listChanged": False}},
-        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-    }
+def list_spec_proposals(
+    status: Annotated[spec_proposals.ProposalStatus | None, Field(description="Only this status")] = None,
+) -> ProposalList:
+    """List spec-change proposals (pending / applied / rejected), newest first."""
+    proposals = [_proposal_info(p) for p in spec_proposals.list_proposals(status)]
+    return ProposalList(proposals=proposals, count=len(proposals))
 
 
-def _handle(req: dict) -> dict | None:
-    """Dispatch one JSON-RPC request; None = notification (no response)."""
-    method = req.get("method")
-    if req.get("jsonrpc") != "2.0" or not isinstance(method, str):
-        raise RpcError(ERR_INVALID_REQUEST, "invalid request")
-    params = req.get("params")
-    if params is None:
-        params = {}
-    if not isinstance(params, dict):
-        raise RpcError(ERR_INVALID_PARAMS, "params must be an object")
-    if method == "initialize":
-        return _initialize(params)
-    if method.startswith("notifications/"):
-        return None
-    if method == "ping":
-        return {}
-    if method == "tools/list":
-        return {
-            "tools": [
-                {"name": t["name"], "description": t["description"], "inputSchema": t["inputSchema"]}
-                for t in _visible_tools()
-            ]
-        }
-    if method == "tools/call":
-        return _call_tool(params)
-    raise RpcError(ERR_METHOD_NOT_FOUND, f"method not found: {method!r}")
+# --------------------------------------------------------------------------- #
+# Tool registry.
+# --------------------------------------------------------------------------- #
 
 
-def _envelope(req_id: Any, payload: dict) -> dict:
-    """JSON-RPC 2.0 envelope; errors without a usable id carry ``"id": null`` as the spec requires."""
-    msg: dict[str, Any] = {"jsonrpc": "2.0", "id": req_id}
-    msg["error" if "code" in payload else "result"] = payload
-    return msg
+@dataclass(frozen=True)
+class ToolDef:
+    """A tool: handler, MCP name, description, annotations and the gate that offers it."""
+
+    name: str
+    fn: Callable[..., Any]
+    gate: Gate
+    annotations: ToolAnnotations
+    description: str = ""
 
 
-def _send(req_id: Any, payload: dict, out: Any = None) -> None:
-    """Write one JSON-RPC envelope as a newline-terminated line."""
-    _write(_envelope(req_id, payload), out)
+def _hints(*, read_only: bool = False, destructive: bool = False, idempotent: bool = False) -> ToolAnnotations:
+    """Annotations; fabrikant only ever touches its own state, never an open world."""
+    return ToolAnnotations(
+        read_only_hint=read_only,
+        destructive_hint=destructive,
+        idempotent_hint=idempotent,
+        open_world_hint=False,
+    )
 
 
-def _write(message: Any, out: Any = None) -> None:
-    out = out or sys.stdout
-    out.write(json.dumps(message, ensure_ascii=False) + "\n")
-    out.flush()
+_READ = _hints(read_only=True, idempotent=True)
+
+TOOLS: tuple[ToolDef, ...] = (
+    ToolDef("list_projects", list_projects, Gate.READ, _READ),
+    ToolDef("get_spec", get_spec, Gate.READ, _READ),
+    ToolDef("get_raw_spec", get_raw_spec, Gate.READ, _READ),
+    ToolDef(
+        "validate_spec",
+        validate_specs,
+        Gate.READ,
+        _READ,
+        "Validate project specs against the JSON schema (like `fabrikant validate`). Pass `project` for one "
+        "project, or omit it to validate every project. Returns valid + per-project errors.",
+    ),
+    ToolDef("list_runs", list_runs_tool, Gate.READ, _READ),
+    ToolDef("get_run", get_run_tool, Gate.READ, _READ),
+    ToolDef("get_run_log", get_run_log_tool, Gate.READ, _READ),
+    ToolDef("queue_status", queue_status, Gate.READ, _READ),
+    ToolDef("list_approvals", list_approvals, Gate.READ, _READ),
+    ToolDef("start_run", start_run, Gate.MUTATING, _hints()),
+    ToolDef("approve_run", approve_run, Gate.APPROVAL, _hints()),
+    ToolDef("reject_run", reject_run, Gate.APPROVAL, _hints(destructive=True)),
+    ToolDef("propose_spec_change", propose_spec_change, Gate.SPEC_WRITE, _hints()),
+    ToolDef("list_spec_proposals", list_spec_proposals, Gate.SPEC_WRITE, _READ),
+)
 
 
-def _valid_id(req_id: Any) -> bool:
-    return req_id is None or (isinstance(req_id, (str, int, float)) and not isinstance(req_id, bool))
+def build_server(options: McpOptions | None = None) -> MCPServer:
+    """MCP server offering the tools ``options`` allow (others are not registered → refused)."""
+    options = options or McpOptions.from_env()
+    server = MCPServer(SERVER_NAME, version=SERVER_VERSION)
+    for tool in TOOLS:
+        if options.offers(tool.gate):
+            server.add_tool(tool.fn, name=tool.name, description=tool.description or None, annotations=tool.annotations)
+    return server
 
 
-def _process(req: Any) -> dict | None:
-    """One request object → response envelope, or None for notifications."""
-    if not isinstance(req, dict):
-        return _envelope(None, {"code": ERR_INVALID_REQUEST, "message": "invalid request"})
-    req_id = req.get("id")
-    is_notification = "id" not in req
-    if not _valid_id(req_id):
-        return _envelope(None, {"code": ERR_INVALID_REQUEST, "message": "invalid id"})
-    try:
-        result = _handle(req)
-    except RpcError as e:
-        return None if is_notification else _envelope(req_id, {"code": e.code, "message": e.message})
-    except Exception as e:  # never let one bad request kill the server
-        traceback.print_exc(file=sys.stderr)
-        if is_notification:
-            return None
-        return _envelope(req_id, {"code": ERR_INTERNAL, "message": f"internal error: {type(e).__name__}"})
-    if is_notification:
-        return None
-    return _envelope(req_id, result if result is not None else {})
-
-
-def _process_line(line: str) -> Any:
-    """One input line → response (envelope, list for batches, or None)."""
-    try:
-        data = json.loads(line)
-    except json.JSONDecodeError:
-        return _envelope(None, {"code": ERR_PARSE, "message": "parse error"})
-    if isinstance(data, list):
-        if not data:
-            return _envelope(None, {"code": ERR_INVALID_REQUEST, "message": "empty batch"})
-        responses = [r for r in (_process(item) for item in data) if r is not None]
-        return responses or None
-    return _process(data)
+# --------------------------------------------------------------------------- #
+# Process lifecycle.
+# --------------------------------------------------------------------------- #
 
 
 def _startup_recovery() -> None:
@@ -586,36 +619,19 @@ def _drain_workers(baseline: set[threading.Thread], timeout_s: float = DRAIN_TIM
         timer.cancel()
 
 
-def serve_stdio() -> None:
-    """Read newline-delimited JSON-RPC from stdin, write responses to stdout.
+def serve_stdio(options: McpOptions | None = None) -> None:
+    """Serve MCP over stdio until the client closes stdin, then drain in-flight run workers.
 
-    stdout carries *only* protocol messages: the real stdout is kept for replies
-    and ``sys.stdout`` is pointed at stderr, so ``print()`` calls deep in the
-    engine cannot corrupt the stream.
+    The SDK keeps stdout for protocol messages (fd 1 is diverted to stderr meanwhile).
     """
-    for stream in (sys.stdin, sys.stdout):
-        reconfigure = getattr(stream, "reconfigure", None)  # real text streams only (not StringIO)
-        if reconfigure is not None:
-            reconfigure(encoding="utf-8")
-    out = sys.stdout
-    sys.stdout = sys.stderr
     baseline = set(threading.enumerate())
-    try:
-        _startup_recovery()
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
-            response = _process_line(line)
-            if response is not None:
-                _write(response, out)
-        _drain_workers(baseline)
-    finally:
-        sys.stdout = out
+    _startup_recovery()
+    build_server(options).run("stdio")
+    _drain_workers(baseline)
 
 
 def main() -> None:
-    """Console-script entry point (``fabrikant-mcp`` / ``fabrikant mcp``)."""
+    """Console-script entry point (``fabrikant-mcp``); ``fabrikant mcp`` adds the CLI flags."""
     serve_stdio()
 
 

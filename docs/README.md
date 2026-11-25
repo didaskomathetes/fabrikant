@@ -18,6 +18,7 @@ Current documentation for the fabrikant framework. Architecture decisions are in
 | [runs.md](runs.md) | Run lifecycle, failure classes, verdict, retry, run store, session log. |
 | [chat.md](chat.md) | Chat commands, LLM providers, named connections. |
 | [api.md](api.md) | HTTP API routes. |
+| [mcp.md](mcp.md) | MCP server on stdio (ADR 0064): client config, opt-in tools, spec proposals. |
 | [auth.md](auth.md) | Local users, roles, OIDC login. |
 | [security.md](security.md) | Security controls summary (see also [threat-model.md](threat-model.md)). |
 | [cli.md](cli.md) | CLI command reference. |
