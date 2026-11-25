@@ -1,7 +1,7 @@
-# ADR 0067: Template Library — Curated, Documented, Versioned Loop Templates
+# ADR 0067: Template Library — Curated, Documented Loop Templates
 
 **Status:** Draft (2026-11-23, branch `feat/template-library`)
-**Betrifft:** ADR 0047 (spec sources, vars & templates), `docs/roadmap.md` First win 3 (#133), `src/fabrikant/spec_expand.py`
+**Relates to:** ADR 0047 (spec sources, vars & templates), `docs/roadmap.md` First win 3 (#133), `src/fabrikant/spec_expand.py`
 
 ## Context
 
@@ -57,10 +57,10 @@ template; required parameters (`null` defaults) are emitted as
 - New projects start from a documented, schema-validated loop shape instead of
   an empty spec; the template file is the single source for both docs and
   behavior.
-- `templates.py` reuses `spec_expand._load_template`/`find_template` — one
+- `templates.py` reuses `spec_expand.load_template`/`find_template` — one
   parser, one resolution order; the library cannot drift from what the engine
   accepts.
-- Template content is versioned with the code (repo files); per-template
-  "versioning" is git history — no separate version numbers (YAGNI).
+- Template content lives in the repo with the code; history is git history — templates
+  carry no separate version numbers (YAGNI).
 - User templates in `FABRIKANT_DATA/templates` already overrode bundled ones
   (ADR 0047); `template list`/`create` make that mechanism visible.

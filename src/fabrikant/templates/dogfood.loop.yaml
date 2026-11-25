@@ -16,6 +16,7 @@ params:
   issue_label: fabrikant  # issues this loop picks up
   pr_label: fabrikant-dogfood
   builder_timeout: 3600
+  commit_add: [":/"]  # repo root — workdir may be a subpath
   poll: 120
 loop:
   description: "Dogfood (ADR 0001 on-ramp): issue with label {issue_label} → agent → test → PR (manual merge)"
@@ -46,7 +47,7 @@ loop:
     - name: ship
       type: git
       commit:
-        add: [":/"]  # repo root — workdir may be a subpath
+        add: "{commit_add}"
         message: "{issue_title} (Issue #{issue_number}, auto)"
       push: true
     - name: pr

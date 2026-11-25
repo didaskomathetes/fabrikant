@@ -1,6 +1,6 @@
 # Template Library
 
-Curated, documented, versioned loop templates for fabrikant (ADR 0067). A template
+Curated, documented loop templates for fabrikant (ADR 0067). A template
 is an [ADR 0047](../adr/0047-spec-sources-vars-templates.md) file in
 `src/fabrikant/templates/` (`params:` + `loop:`) that a spec can instantiate with
 `use:`/`with:`.
@@ -17,7 +17,7 @@ fabrikant template create <name>       # scaffold <name>.fabrikant.yaml into the
 fabrikant template create hotfix --project myapi --out ~/specs --force
 ```
 
-`scaffold` writes a spec with one loop instance of the template; required
+`template create` writes a spec with one loop instance of the template; required
 parameters (`null` defaults) come out as `param: null  # TODO`. Fill them in,
 then `fabrikant validate`.
 
@@ -52,6 +52,7 @@ loops:
       builder_model: llama/my-model
       verify_cmd: bash scripts/check-links.sh   # optional; default "true" = no-op
       issue_label: docs                          # issues with this label
+      commit_add: [":/"]                          # paths staged by the ship step (default: repo root)
 ```
 
 ### hotfix — fast path onto a release branch

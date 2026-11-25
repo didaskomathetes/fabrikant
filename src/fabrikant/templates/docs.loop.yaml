@@ -15,6 +15,7 @@ params:
   issue_label: docs  # issues this loop picks up
   pr_label: fabrikant-docs
   builder_timeout: 1800
+  commit_add: [":/"]  # repo root — workdir may be a subpath
   poll: 60
 loop:
   description: "Docs: issue with label {issue_label} → agent writes/updates docs → verify → PR (manual merge)"
@@ -45,7 +46,7 @@ loop:
     - name: ship
       type: git
       commit:
-        add: [":/"]  # repo root — workdir may be a subpath
+        add: "{commit_add}"
         message: "docs: {issue_title} (Issue #{issue_number}, auto)"
       push: true
     - name: pr

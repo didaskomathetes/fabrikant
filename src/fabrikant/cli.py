@@ -104,14 +104,14 @@ def cmd_template(args):
     if args.template_cmd == "list":
         broken = False
         for tpl in templates.list_templates():
-            if "error" in tpl:
+            if tpl.error:
                 broken = True
-                print(f"✖ {tpl['name']}  [{tpl['source']}]  {tpl['error']}")
+                print(t("templates.list_error", name=tpl.name, source=tpl.source, error=tpl.error))
                 continue
-            print(f"● {tpl['name']}  [{tpl['source']}]  {tpl['description']}")
-            print(f"    required: {', '.join(tpl['required']) or '—'}")
-            if tpl["defaults"]:
-                print(f"    defaults: {', '.join(tpl['defaults'])}")
+            print(t("templates.list_ok", name=tpl.name, source=tpl.source, description=tpl.description))
+            print(t("templates.list_required", items=", ".join(tpl.required) or t("templates.list_none")))
+            if tpl.defaults:
+                print(t("templates.list_defaults", items=", ".join(tpl.defaults)))
         if broken:
             sys.exit(1)
         return

@@ -35,17 +35,17 @@ SAMPLE_PARAMS = {
 
 
 def test_at_least_five_templates():
-    names = {t["name"] for t in templates.list_templates()}
+    names = {t.name for t in templates.list_templates() if t.source == "bundled"}
     assert len(names) >= 5
-    assert set(SAMPLE_PARAMS) <= names
+    assert set(SAMPLE_PARAMS) == names
 
 
 def test_list_templates_reports_required_params():
-    by_name = {t["name"]: t for t in templates.list_templates()}
-    assert by_name["develop"]["required"] and "repo" in by_name["develop"]["required"]
-    assert by_name["escalation"]["required"] == ["repo"]
-    assert all(t["source"] in ("bundled", "user") for t in templates.list_templates())
-    assert all(t["description"] for t in templates.list_templates())
+    by_name = {t.name: t for t in templates.list_templates()}
+    assert by_name["develop"].required and "repo" in by_name["develop"].required
+    assert by_name["escalation"].required == ["repo"]
+    assert all(t.source in ("bundled", "user") for t in templates.list_templates())
+    assert all(t.description for t in templates.list_templates())
 
 
 @pytest.mark.parametrize("name", sorted(SAMPLE_PARAMS))
@@ -99,6 +99,50 @@ def test_scaffold_invalid_project_name(tmp_path):
         templates.scaffold_spec("docs", "bad name!", tmp_path)
 
 
+@pytest.mark.parametrize("project", ["../x", "a/b", "-x", "", "demo\n", "a b", ".hidden"])
+def test_scaffold_rejects_odd_project_names(tmp_path, project):
+    with pytest.raises(ValueError):
+        templates.scaffold_spec("docs", project, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+    assert not list(tmp_path.rglob("*.fabrikant.yaml"))
+
+
+@pytest.mark.parametrize("name", ["../x", "a/b", "-x", "", "docs\n"])
+def test_scaffold_rejects_odd_template_names(tmp_path, name):
+    with pytest.raises(ValueError):
+        templates.scaffold_spec(name, "demo", tmp_path)
+    assert not list(tmp_path.glob("*.fabrikant.yaml"))
+
+
+def test_scaffold_force_replaces_symlink_not_target(tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    (tmp_path / "demo.fabrikant.yaml").symlink_to(victim)
+    path = templates.scaffold_spec("docs", "demo", tmp_path, force=True)
+    assert victim.read_text() == "keep me"
+    assert not path.is_symlink()
+    assert yaml.safe_load(path.read_text())["name"] == "demo"
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_scaffold_without_force_keeps_existing(tmp_path):
+    (tmp_path / "demo.fabrikant.yaml").write_text("old")
+    with pytest.raises(FileExistsError):
+        templates.scaffold_spec("docs", "demo", tmp_path)
+    assert (tmp_path / "demo.fabrikant.yaml").read_text() == "old"
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_user_template_with_bad_params_type_is_listed_with_error(tmp_path, monkeypatch):
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    (user_dir / "badp.loop.yaml").write_text("params: [a, b]\nloop: {description: d}\n")
+    monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_dir)
+    by_name = {t.name: t for t in templates.list_templates()}
+    assert by_name["badp"].error
+    assert by_name["develop"].error is None
+
+
 def test_user_template_overrides_bundled(tmp_path, monkeypatch):
     """Same name in the user dir wins over the bundled template."""
     user_dir = tmp_path / "user_templates"
@@ -110,9 +154,9 @@ def test_user_template_overrides_bundled(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_dir)
     files = templates.template_files()
     assert files["escalation"].parent == user_dir
-    by_name = {t["name"]: t for t in templates.list_templates()}
-    assert by_name["escalation"]["source"] == "user"
-    assert "user override" in by_name["escalation"]["description"]
+    by_name = {t.name: t for t in templates.list_templates()}
+    assert by_name["escalation"].source == "user"
+    assert "user override" in by_name["escalation"].description
 
 
 def test_cli_template_list(capsys):
@@ -185,11 +229,55 @@ def test_broken_template_is_listed_with_error_and_does_not_hide_others(tmp_path,
     (user_dir / "bad.loop.yaml").write_text("loop: [not, a, mapping\n")  # YAML syntax error
     (user_dir / "worse.loop.yaml").write_text("just: a string\n")  # no `loop:` mapping
     monkeypatch.setattr(config, "USER_TEMPLATES_DIR", user_dir)
-    by_name = {t["name"]: t for t in templates.list_templates()}
-    assert "error" in by_name["bad"] and "error" in by_name["worse"]
-    assert "error" not in by_name["develop"]
+    by_name = {t.name: t for t in templates.list_templates()}
+    assert by_name["bad"].error and by_name["worse"].error
+    assert by_name["develop"].error is None
     with pytest.raises(SystemExit) as e:
         cli.cmd_template(type("A", (), {"template_cmd": "list"})())
     assert e.value.code == 1
     out = capsys.readouterr().out
     assert "✖ bad" in out and "● develop" in out
+
+
+def test_main_template_create_wires_defaults(monkeypatch, tmp_path, capsys):
+    import fabrikant.cli as cli
+
+    monkeypatch.setattr(config, "PROJECTS_DIR", tmp_path)
+    cli.main(["template", "create", "docs"])  # --project defaults to the template name
+    assert (tmp_path / "docs.fabrikant.yaml").is_file()
+    out_dir = tmp_path / "o"
+    cli.main(["template", "create", "docs", "--project", "p1", "--out", str(out_dir)])
+    assert (out_dir / "p1.fabrikant.yaml").is_file()
+    with pytest.raises(SystemExit) as e:
+        cli.main(["template", "create", "docs", "--project", "p1", "--out", str(out_dir)])
+    assert e.value.code == 1
+    cli.main(["template", "create", "docs", "--project", "p1", "--out", str(out_dir), "--force"])
+
+
+def test_main_template_create_error_prints_message_and_writes_nothing(tmp_path, capsys):
+    import fabrikant.cli as cli
+
+    with pytest.raises(SystemExit) as e:
+        cli.main(["template", "create", "docs", "--project", "../evil", "--out", str(tmp_path / "o")])
+    assert e.value.code == 1
+    assert "../evil" in capsys.readouterr().out
+    assert not (tmp_path / "o").exists()
+    assert not list(tmp_path.rglob("*.fabrikant.yaml"))
+
+
+def test_main_template_list(capsys):
+    import fabrikant.cli as cli
+
+    cli.main(["template", "list"])
+    assert "● develop" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("name", ["docs", "dogfood", "hotfix"])
+def test_commit_add_param_default_and_override(name):
+    def ship_add(extra):
+        spec = {"name": "t", "loops": {name: {"use": name, "with": {**SAMPLE_PARAMS[name], **extra}}}}
+        steps = expand_spec(spec)["loops"][name]["steps"]
+        return next(s["commit"]["add"] for s in steps if s.get("name") == "ship")
+
+    assert ship_add({}) == [":/"]
+    assert ship_add({"commit_add": ["docs"]}) == ["docs"]
