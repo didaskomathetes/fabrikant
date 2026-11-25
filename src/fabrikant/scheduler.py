@@ -30,7 +30,7 @@ PR_SEEN_MAX = 2 * RECONCILE_MAX_PAGES * GH_PER_PAGE  # Retention on_pr-Dedup-His
 # The project's other triggers wait at most this long for its `on_start` fires
 # (e.g. if the run hangs in the queue behind busy workers).
 START_GATE_MAX_S = 120
-DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. neue Runs pro Poll und Loop (ADR 0014)
+DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. new runs per poll and loop (ADR 0014)
 
 
 def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[str]):
@@ -431,7 +431,7 @@ class Scheduler(threading.Thread):
         loops = [
             (lname, ldef.get("triggers") or [])
             for lname, ldef in spec.get("loops", {}).items()
-            if not pause.trigger_blocked(name, lname)  # paused/disabled: kein Trigger, kein Poll (ADR 0019)
+            if not pause.trigger_blocked(name, lname)  # paused/disabled: no trigger, no poll (ADR 0019)
         ]
         for lname, triggers in loops:
             for trig in triggers:
@@ -570,7 +570,7 @@ class Scheduler(threading.Thread):
             self._start_slack_run(name, lname, path, alert)
 
     def _start_slack_run(self, name: str, lname: str, path: Path, alert: slack.Alert) -> None:
-        """Einen Alert-Run einreihen; `_slack_pending` verhindert Doppel-Einreihung bis Claim/Verwerfen."""
+        """Enqueue an alert run; `_slack_pending` prevents double-enqueueing until claim/discard."""
         pending_key = (name, lname, alert.trigger)
         if pending_key in self._slack_pending:
             return

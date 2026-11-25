@@ -118,7 +118,7 @@ def subprocess_env() -> dict[str, str]:
 
 
 def cleared_tokens() -> dict[str, str]:
-    """Alle GitHub-Token-Variablen leer — Subprozess ohne GitHub-Identität (`gh` ignoriert leere Werte)."""
+    """All GitHub token variables empty — subprocess without GitHub identity (`gh` ignores empty values)."""
     return dict.fromkeys((GH_CLI_TOKEN_VAR, *GH_TOKEN_ENV.values()), "")
 
 
@@ -535,7 +535,7 @@ def cleanup_orphaned_worktrees(active_run_ids: set[str] | None = None) -> list[P
         if not spec or spec.get("_error") or not spec.get("repo"):
             continue
         repo_root = Path(spec["root"])
-        if (proj_dir / ".git").exists():  # Legacy: ein gemeinsamer Worktree pro Projekt
+        if (proj_dir / ".git").exists():  # legacy: one shared worktree per project
             remove_worktree(repo_root, proj_dir)
             removed.append(proj_dir)
             continue
@@ -612,7 +612,7 @@ def exclude_dir_locally(workdir: Path, dirname: str) -> None:
 
 GH_WRAPPER_DIR = config.STATE_DIR / "gh-wrapper"
 _GH_WRAPPER_TEMPLATE = """#!/bin/sh
-# fabrikant: gh mit frischem Identity-Token aus FABRIKANT_ENV_FILE (Token lebt nur 1h, ADR 0010).
+# fabrikant: gh with a fresh identity token from FABRIKANT_ENV_FILE (the token lives only 1h, ADR 0010).
 f="${{FABRIKANT_ENV_FILE:-{default_env_file}}}"
 tok=$(sed -n -E "s/^{env_key}=[\\"']?([^\\"']+).*/\\1/p" "$f" 2>/dev/null | head -n 1)
 if [ -n "$tok" ]; then GH_TOKEN=$tok; GITHUB_TOKEN=$tok; export GH_TOKEN GITHUB_TOKEN; fi
@@ -708,7 +708,7 @@ def _gh_api(method: str, url: str, token: str, payload: dict | None = None, acce
     return json.loads(body) if body else {}
 
 
-GH_DEPENDENCIES_PER_PAGE = 100  # GitHub-Maximum; mehr Blocker pro Issue sind unrealistisch
+GH_DEPENDENCIES_PER_PAGE = 100  # GitHub maximum; more blockers per issue are unrealistic
 GH_DEPENDENCY_KINDS = ("blocked_by", "blocking")
 
 

@@ -303,7 +303,7 @@ class _Run:
     state_snapshot: dict = field(default_factory=dict)  # Agent-State-Stand beim Start (ADR 0028)
     aborted_by: int | None = None  # Index of the step that aborted the run (ADR 0035)
     abort_failure: Failure | None = None  # Class of a run abort outside the steps
-    lease: WorktreeLease | None = None  # Heartbeat der Worktree-Lease, solange der Run lebt (ADR 0028)
+    lease: WorktreeLease | None = None  # heartbeat of the worktree lease while the run is alive (ADR 0028)
 
 
 # record["status"] bei gate-Abbruch je Step-Outcome
@@ -430,7 +430,7 @@ def _build_ctx(rn: _Run, loop_name: str, note: str, resume: bool, initial_vars: 
         if spec.get("repo"):
             rn.state_snapshot = agent_state.seed(rn.project, base)
     else:
-        # ADR 0020: kein Worktree → leere Run-Workdir, kein Projekt-Lock.
+        # ADR 0020: no worktree → empty run workdir, no project lock.
         base = config.SCRATCH_DIR / rn.run_id
         if base.exists():
             cleanup_error = _cleanup_scratch(rn.run_id, rn.emit)

@@ -716,8 +716,8 @@ def on_run_finished(spec: dict, project: str, loop_name: str, record: dict) -> d
                     expect_claim=chain.claimed_run_id if chain is not None else None,
                 )
         except ChainStoreCorrupt:
-            raise  # kein Konflikt: defekter Store → on_run_finished_safe meldet ihn
-        except ValueError:  # pending-Kette parallel angelegt / InvalidTransition / ClaimConflict
+            raise  # no conflict: broken store → on_run_finished_safe reports it
+        except ValueError:  # pending chain created in parallel / InvalidTransition / ClaimConflict
             continue
         return _chain_info(chain, policy, decision)
     return {"in_chain": False}

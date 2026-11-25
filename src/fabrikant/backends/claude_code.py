@@ -84,7 +84,7 @@ class ClaudeCodeBackend(OneShotCliBackend):
             # message — the raw JSON beginning (duration_api_ms, …) says nothing (ADR 0035).
             return {**base, "status": "failed", "text": str(d.get("result") or err or out)[:300]}
         usage = d.get("usage") or {}
-        # Anthropic: input_tokens ist nur der ungecachte Rest — Cache-Read/-Write kommen dazu.
+        # Anthropic: input_tokens is only the uncached remainder — cache read/write come on top.
         cache_read = int(usage.get("cache_read_input_tokens") or 0)
         cache_write = int(usage.get("cache_creation_input_tokens") or 0)
         tokens = TokenCounts(

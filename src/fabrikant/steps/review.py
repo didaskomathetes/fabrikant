@@ -117,7 +117,7 @@ def _check_cold_critic(model: str, ctx: dict, label: str) -> dict | None:
 
 
 def _finding_label(f: dict) -> str:
-    """Ein Finding als ``[severity] text`` (fehlende Felder → ``?`` bzw. leer)."""
+    """A finding as ``[severity] text`` (missing fields → ``?`` or empty)."""
     return f"[{f.get('severity', '?')}] {f.get('text', '')}"
 
 

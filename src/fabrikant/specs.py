@@ -304,7 +304,7 @@ def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
         return []
     needs = sorted(_worktree_types(steps))
     if needs:
-        return [f"loop {lname}: worktree: false, aber Steps brauchen den Worktree ({', '.join(needs)})"]
+        return [f"loop {lname}: worktree: false, but steps need the worktree ({', '.join(needs)})"]
     return []
 
 

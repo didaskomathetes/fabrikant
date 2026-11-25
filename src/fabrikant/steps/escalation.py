@@ -1,28 +1,28 @@
-"""Step: escalation — wartender Gate-Run für ein an einen Menschen eskaliertes Item (ADR 0059).
+"""Step: escalation — waiting gate run for an item escalated to a human (ADR 0059).
 
-Das Label (`needs human`, Spec-Feld `label`) setzt `scripts/pr-status.py` (`escalate` /
-`escalation-check --escalate`) mit Marker-Kommentar. Dieser Step macht
-die Eskalation in der fabrikant-UI sichtbar und handlungsfähig:
+The label (`needs human`, spec field `label`) is set by `scripts/pr-status.py` (`escalate` /
+`escalation-check --escalate`) together with a marker comment. This step makes the
+escalation visible and actionable in the fabrikant UI:
 
-1. Erster Lauf: liest das Item (PR oder Issue) und den letzten `fabrikant-escalate`-Marker,
-   pausiert den Run mit ``ApprovalRequest(reason="escalation", kind=…, why=…)``.
-   Trägt das Item das Label nicht (mehr), endet der Step ohne Pause (``done``).
-2. Freigabe = **Fortsetzen**: Label entfernen; review-pr/pr-reply/develop greifen wieder.
-   Die Freigabe gewährt dem Run zusätzlich ein frisches Runden-Budget
-   (``grant_rounds``, Default ``DEFAULT_GRANT_ROUNDS``) als ctx-Variable
-   ``GRANT_ROUNDS_CTX`` — so erschöpft ein fortgesetzter Run nicht sofort wieder und
-   eskaliert nicht erneut (ADR 0059; konsumiert von pr_review und dem nachgelassenen
-   ``exhausted``-Pfad). **Neu zuschneiden** ist dasselbe, nachdem der Mensch ACs/PR-Body
-   angepasst und das in einem PR-Kommentar gesagt hat (regulärer Input für pr-reply).
-3. Ablehnen = **Aufgeben**: der Run endet, das Label bleibt — Loops lassen das Item liegen;
-   PR schließen bleibt dem Menschen überlassen.
+1. First run: reads the item (PR or issue) and the latest `fabrikant-escalate` marker,
+   pauses the run with ``ApprovalRequest(reason="escalation", kind=…, why=…)``.
+   If the item no longer carries the label, the step ends without pausing (``done``).
+2. Approve = **resume**: remove the label; review-pr/pr-reply/develop pick the item up again.
+   The approval also grants the run a fresh round budget
+   (``grant_rounds``, default ``DEFAULT_GRANT_ROUNDS``) as the ctx variable
+   ``GRANT_ROUNDS_CTX`` — so a resumed run does not immediately exhaust its budget and
+   escalate again (ADR 0059; consumed by pr_review and the lapsed
+   ``exhausted`` path). **Re-scope** is the same, after the human has adjusted the ACs/PR body
+   and said so in a PR comment (regular input for pr-reply).
+3. Reject = **give up**: the run ends, the label stays — loops leave the item alone;
+   closing the PR is left to the human.
 
 Step-Def:
     type: escalation
     repo: owner/name
-    item: "{pr_number}"   # optional; Default: ctx pr_number, sonst issue_number
+    item: "{pr_number}"   # optional; default: ctx pr_number, else issue_number
     label: needs human    # optional; Default config.HUMAN_LABEL
-    grant_rounds: 2       # optional; frisches Runden-Budget pro Freigabe (ADR 0059)
+    grant_rounds: 2       # optional; fresh round budget per approval (ADR 0059)
 """
 
 from __future__ import annotations
@@ -36,28 +36,27 @@ from ..failures import ConfigError
 from ..hosting import Provider, get_provider
 
 COMMENTS_PER_PAGE = 100
-MAX_WHY_CHARS = 1500  # Begründung im Gate kurz halten; der Link führt zum vollen Kommentar
+MAX_WHY_CHARS = 1500  # keep the reason in the gate short; the link leads to the full comment
 RESUME_FLAG = "escalation_acknowledged"
-# ADR 0059: eine Freigabe gewährt dem Run ein frisches Runden-Budget, damit ein
-# fortgesetzter Run nicht sofort wieder erschöpft und neu eskaliert. Der Grant ist
-# eine ctx-Variable, die die Runden-budgetierenden Steps (pr_review und der
-# nachgelassene `exhausted`-Pfad) lesen und zu ihrem eigenen Budget addieren.
+# ADR 0059: an approval grants the run a fresh round budget so that a resumed run does not
+# immediately exhaust it and escalate again. The grant is a ctx variable that the
+# round-budgeting steps (pr_review and the lapsed `exhausted` path) read and add to their own budget.
 GRANT_ROUNDS_CTX = "escalation_granted_rounds"
-DEFAULT_GRANT_ROUNDS = 2  # frisches Budget pro Freigabe (entspricht pr_review-Default)
-# Gleiches Format wie scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py prüft das).
+DEFAULT_GRANT_ROUNDS = 2  # fresh budget per approval (matches the pr_review default)
+# Gleiches Format wie scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py checks this).
 ESCALATE_MARKER_RE = re.compile(r"<!-- fabrikant-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
 _ANY_MARKER_RE = re.compile(r"<!--\s*fabrikant-[^>]*-->")
-MANUAL_KIND = "blocked"  # Label ohne Marker (von Hand gesetzt) gilt als Blockade
+MANUAL_KIND = "blocked"  # a label without a marker (set by hand) counts as a block
 ACTIONS = (
-    "Freigeben = Fortsetzen: Label entfernen, Loops laufen weiter. Vorher Hinweise als "
-    "PR-Kommentar schreiben (z. B. „MAS-PR gemergt, bitte erneut verifizieren“) bzw. ACs/PR-Body "
-    "anpassen (Neu zuschneiden). Ablehnen = Aufgeben: Label bleibt, kein Loop greift das Item auf."
+    "Approve = resume: remove the label, loops continue. Beforehand, leave hints as a "
+    "PR comment (e.g. “upstream PR merged, please verify again”) or adjust the ACs/PR body "
+    "(re-scope). Reject = give up: the label stays, no loop picks the item up."
 )
 
 
 @dataclass(frozen=True)
 class Escalation:
-    """Letzte Eskalation eines Items, aus dem Marker-Kommentar gelesen."""
+    """Latest escalation of an item, read from the marker comment."""
 
     kind: str
     why: str
@@ -65,7 +64,7 @@ class Escalation:
 
     @classmethod
     def from_comments(cls, comments: list[dict]) -> Escalation:
-        """Letzter Kommentar mit Marker; unbekannte Art oder kein Marker → manuelle Blockade."""
+        """Latest comment with a marker; unknown kind or no marker → manual block."""
         for comment in reversed(comments):
             body = str(comment.get("body") or "")
             if m := ESCALATE_MARKER_RE.search(body):
@@ -74,19 +73,19 @@ class Escalation:
                 if len(why) > MAX_WHY_CHARS:
                     why = why[:MAX_WHY_CHARS].rstrip() + " …"
                 return cls(kind, why, str(comment.get("html_url") or ""))
-        return cls(MANUAL_KIND, "Label von Hand gesetzt (kein fabrikant-escalate-Kommentar gefunden)")
+        return cls(MANUAL_KIND, "Label set by hand (no fabrikant-escalate comment found)")
 
 
 def _item_number(ctx: dict, step: dict) -> int:
     raw = _substitute(str(step.get("item") or ""), ctx).strip()
     raw = raw or str(ctx.get("pr_number") or ctx.get("issue_number") or "").strip()
     if not raw.isdigit():
-        raise ConfigError(f"escalation: Item-Nummer nicht auflösbar (item: {raw!r}, kein pr_number/issue_number)")
+        raise ConfigError(f"escalation: item number not resolvable (item: {raw!r}, no pr_number/issue_number)")
     return int(raw)
 
 
 def _comments(provider: Provider, repo: str, number: int) -> list[dict]:
-    """Alle Issue-/PR-Kommentare (chronologisch, paginiert) als Raw-Dicts."""
+    """All issue/PR comments (chronological, paginated) as raw dicts."""
     out: list[dict] = []
     page = 1
     while True:
@@ -100,7 +99,7 @@ def _comments(provider: Provider, repo: str, number: int) -> list[dict]:
 
 
 def _remove_label(provider: Provider, repo: str, number: int, label: str) -> bool:
-    """Label entfernen; schon weg (404) → False statt Fehler (Provider ist idempotent)."""
+    """Remove the label; already gone (404) → False instead of an error (provider is idempotent)."""
     return provider.remove_label(repo, number, label)
 
 
@@ -113,15 +112,15 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
     provider = get_provider(repo)
 
     if str(ctx.get(RESUME_FLAG, "")) == "true":
-        # ADR 0059: Freigabe = frisches Runden-Budget (Hook für pr_review und den
-        # nachgelassenen `exhausted`-Pfad), nicht nur Resume mit dem alten Budget.
+        # ADR 0059: approval = fresh round budget (hook for pr_review and the lapsed
+        # `exhausted` path), not just a resume with the old budget.
         granted = max(0, int(step.get("grant_rounds", DEFAULT_GRANT_ROUNDS)))
         ctx[GRANT_ROUNDS_CTX] = granted
         removed = _remove_label(provider, repo, number, label)
-        state = "entfernt" if removed else "war schon entfernt"
+        state = "removed" if removed else "was already removed"
         return {
             "ok": True,
-            "summary": f"escalation: #{number} fortgesetzt — Label '{label}' {state}, +{granted} Runden",
+            "summary": f"escalation: #{number} resumed — label '{label}' {state}, +{granted} rounds",
         }
 
     item = provider.get_issue(repo, number)
@@ -129,11 +128,11 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
         return {
             "ok": True,
             "done": True,
-            "summary": f"escalation: #{number} trägt '{label}' nicht (mehr) — nichts zu tun",
+            "summary": f"escalation: #{number} does not (or no longer) carry '{label}' — nothing to do",
         }
 
     esc = Escalation.from_comments(_comments(provider, repo, number))
-    ctx[RESUME_FLAG] = "true"  # vor der Pause setzen: wird mit record["vars"] persistiert
+    ctx[RESUME_FLAG] = "true"  # set before the pause: persisted with record["vars"]
     link = item.url
     approval = {"reason": "escalation", "kind": esc.kind, "why": esc.why, "what": ACTIONS}
     approval["pr" if item.is_pr else "issue"] = link

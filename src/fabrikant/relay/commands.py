@@ -140,7 +140,7 @@ class RelayContext:
         ws.push(self.cfg.repo, self.github.token())
 
     def commit(self, ws: Workspace, paths: list[str], message: str) -> str:
-        """Als Bot (relay.bot_login) committen — Author und Committer."""
+        """Commit as the bot (relay.bot_login) — author and committer."""
         return ws.commit(paths, message, self.github.commit_identity())
 
     def archive(self, method: str, ws: Workspace | None = None) -> TrailArchive:

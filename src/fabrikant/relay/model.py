@@ -56,7 +56,7 @@ class Action(StrEnum):
 
 
 class HandoffError(ValueError):
-    """Handoff-Datei fehlt die Struktur (Front Matter, Pflichtfelder, Typen)."""
+    """The handoff file lacks structure (front matter, required fields, types)."""
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,7 @@ class Settings:
 
 @dataclass(frozen=True)
 class Brief:
-    """Der Task-Auftrag = Issue-Titel + -Body (Markdown mit `##`-Abschnitten)."""
+    """The task brief = issue title + body (Markdown with `##` sections)."""
 
     title: str
     body: str
@@ -434,7 +434,7 @@ class StatusState:
     note: str = ""  # Reason why the dispatcher does not start (e.g. authorization)
     failures_seen: str = ""  # newest failed run id for which blocking already happened
     trail_sha256: str = ""  # Hash of the trail to which the last audit verdict is bound
-    archive: TrailRef | None = None  # letztes Trail-Archiv; gesetzt → Trail ist vom Branch entfernt
+    archive: TrailRef | None = None  # latest trail archive; set → the trail is removed from the branch
     trail_warning: str = ""  # PR still contains the trail (no `trail_archive` configured)
 
     def to_dict(self) -> dict:

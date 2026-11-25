@@ -70,7 +70,7 @@ class NotFoundError(ValueError):
 
 
 def _local_naive(dt: datetime) -> datetime:
-    """Mit Timezone → lokale, naive Zeit (Vergleichbarkeit mit `datetime.now()`)."""
+    """With a timezone → local naive time (comparable with `datetime.now()`)."""
     return dt.astimezone().replace(tzinfo=None) if dt.tzinfo is not None else dt
 
 
@@ -188,7 +188,7 @@ def add_onetime(project: str, loop: str, at: datetime, note: str = "") -> dict:
 
 
 def list_onetimes() -> list[dict]:
-    """Alle angesetzt One-time-Runs, sortiert nach `at`."""
+    """All scheduled one-time runs, sorted by `at`."""
     with _lock:
         data = _load_onetimes() or {}
     return sorted(data.values(), key=lambda e: e["at"])

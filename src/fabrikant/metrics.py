@@ -42,10 +42,10 @@ def _escape_label_value(value: str) -> str:
 def render_samples(
     name: str, help: str, kind: str, label_names: list[str], items: Iterable[tuple[tuple[str, ...], float]]
 ) -> str:
-    """Eine Metrik-Familie (HELP/TYPE + Samples) als Prometheus-Textformat.
+    """One metric family (HELP/TYPE + samples) in Prometheus text format.
 
-    HELP wird gemäß Expositionsformat escaped (Backslash → ``\\\\``); rohe Backslashes würden die
-    Zeile syntaktisch beschädigen. Label-Werte werden ebenfalls escaped."""
+    HELP is escaped per the exposition format (backslash → ``\\\\``); raw backslashes would corrupt the
+    line syntactically. Label values are escaped as well."""
     help_text = help.replace("\\", "\\\\")
     lines = [f"# HELP {name} {help_text}", f"# TYPE {name} {kind}"]
     for key, val in items:

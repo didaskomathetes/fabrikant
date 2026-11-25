@@ -29,7 +29,7 @@ SLACK_API = "https://slack.com/api"
 DEFAULT_POLL_S = 60
 HISTORY_LIMIT = 100  # Nachrichten pro conversations.history-Aufruf
 HTTP_TIMEOUT_S = 15
-SEEN_MAX = 500  # Retention der Dedup-Historie pro Channel
+SEEN_MAX = 500  # retention of the dedup history per channel
 ACCEPTED_SUBTYPES = (None, "bot_message")  # Joins, edits, deletes etc. are not alerts
 TRIGGER_PREFIX = "on_slack:"
 VAR_TEXT, VAR_CHANNEL, VAR_TS = "alert_text", "alert_channel", "alert_ts"
@@ -49,7 +49,7 @@ class SlackError(Exception):
 
 @dataclass(frozen=True)
 class Alert:
-    """Eine passende Slack-Nachricht = Initial-Variablen eines Runs."""
+    """A matching Slack message = initial variables of a run."""
 
     text: str
     channel: str
@@ -138,7 +138,7 @@ def _ts_float(value: object) -> float:
 
 
 def max_pages(trig: dict) -> int:
-    """Seitenlimit pro Channel und Poll (`max_pages`, validiert in specs)."""
+    """Page limit per channel and poll (`max_pages`, validated in specs)."""
     return int(float(trig.get("max_pages", config.SLACK_DEFAULT_MAX_PAGES)))  # "20"/"20.0" aus `vars`
 
 

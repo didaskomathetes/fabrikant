@@ -195,7 +195,7 @@ class SandboxError(RuntimeError):
 
 
 def sandbox_enabled(env: Mapping[str, str] | None = None) -> bool:
-    """`FABRIKANT_SANDBOX` ist gesetzt (1/true/yes/on) → Agent-Container-Modus."""
+    """`FABRIKANT_SANDBOX` is set (1/true/yes/on) → agent container mode."""
     env = os.environ if env is None else env
     return env.get(ENABLE_VAR, "").strip().lower() in _TRUTHY
 
@@ -326,7 +326,7 @@ def _worktree_commit(workdir: str, tmpdir: Path, carry: tuple[str, ...] = CARRY_
         listing = "\0".join(carried).encode(errors="surrogateescape")
         _git(workdir, *_FORCE_ADD, env={**index_env, "GIT_LITERAL_PATHSPECS": "1"}, stdin=listing)
     tree = _git(workdir, "write-tree", env=index_env).stdout.decode().strip()
-    msg = "fabrikant-sandbox: Worktree-Stand vor dem Agent-Step"
+    msg = "fabrikant-sandbox: worktree state before the agent step"
     return _git(workdir, "commit-tree", tree, "-p", head, "-m", msg, env=index_env).stdout.decode().strip()
 
 

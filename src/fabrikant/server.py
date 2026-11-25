@@ -1328,7 +1328,7 @@ def _exit_on_signals() -> None:
 
 
 def serve(port: int = config.DEFAULT_PORT, host: str | None = None):
-    """Server starten. Nicht-Loopback-Bind ohne Auth wirft ``auth.AuthError`` (ADR 0030)."""
+    """Start the server. A non-loopback bind without auth raises ``auth.AuthError`` (ADR 0030)."""
     # Signal handlers as early as possible: even a SIGTERM/SIGHUP during setup
     # (auth check, worktree cleanup, requeue) should trigger an orderly end.
     _exit_on_signals()

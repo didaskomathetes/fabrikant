@@ -310,16 +310,16 @@ def push_branch(
     host = repo_host(remote_url)
     if host not in (None, GITHUB_HOST):
         raise HostingNotSupported(
-            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
-            f"der Repo-Host ({host}) ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+            "commit_via: api is GitHub-specific (GitHub signs the API commits); "
+            f"the repo host ({host}) is not GitHub — use commit_via: git (ADR 0062)"
         )
     # A bare owner/name slug does not reveal the host — then `hosting:` of the active spec decides.
 
     spec_hosting = current_spec().get(HOSTING_KEY)
     if isinstance(spec_hosting, str) and spec_hosting.strip().lower() != "github":
         raise HostingNotSupported(
-            "commit_via: api ist GitHub-spezifisch (GitHub signiert die API-Commits); "
-            f"hosting: {spec_hosting} ist nicht GitHub — commit_via: git verwenden (ADR 0062)"
+            "commit_via: api is GitHub-specific (GitHub signs the API commits); "
+            f"hosting: {spec_hosting} is not GitHub — use commit_via: git (ADR 0062)"
         )
     if repo is None:
         repo = repo_from_remote(remote_url)
