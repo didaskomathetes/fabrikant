@@ -18,15 +18,6 @@ Jobs run in the repository root (no `working-directory`).
   `pytest -m browser`. Blocking (no `continue-on-error`).
 - `package`: builds the wheel and runs the clean-venv smoke test (`scripts/smoke-wheel.sh`).
 
-## Secrets
-
-- `SONAR_ADMIN_PASSWORD` is set **only** as a GitHub Actions secret (Settings → Secrets and variables → Actions)
-  and passed to a trusted step via `${{ secrets.… }}`. Never put it in the repo, never `echo` it or use `set -x`,
-  and never pass it to jobs that run PR code (e.g. the browser tests). GitHub masks the value in logs. Locally it
-  lives in the git-ignored `fabrikant.env`.
-- `scripts/sonar-init.py` writes the token to `state/sonar-token.txt` with mode `0600` (owner only). `state/` is
-  in `.gitignore`.
-
 ## No leaks through artifacts
 
 `state/` (tokens, SQLite logs) must never be uploaded. The workflow uploads no artifacts; if
