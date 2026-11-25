@@ -20,10 +20,10 @@ Jobs run in the repository root (no `working-directory`).
 
 ## Secrets
 
-- `SONAR_ADMIN_PASSWORD` is set **only** as a GitHub Actions secret (Settings → Secrets and variables → Actions)
-  and passed to a trusted step via `${{ secrets.… }}`. Never put it in the repo, never `echo` it or use `set -x`,
-  and never pass it to jobs that run PR code (e.g. the browser tests). GitHub masks the value in logs. Locally it
-  lives in the git-ignored `fabrikant.env`.
+- The CI workflows need no secrets beyond the built-in `GITHUB_TOKEN`; releases use PyPI Trusted Publishing
+  (no stored token). SonarQube runs locally, not in CI: `SONAR_ADMIN_PASSWORD` lives only in the git-ignored
+  `fabrikant.env` and is used to mint a token. Never put it in the repo or a workflow (`tests/test_ci_workflow.py`
+  enforces this), never `echo` it or use `set -x`.
 - `scripts/sonar-init.py` writes the token to `state/sonar-token.txt` with mode `0600` (owner only). `state/` is
   in `.gitignore`.
 
