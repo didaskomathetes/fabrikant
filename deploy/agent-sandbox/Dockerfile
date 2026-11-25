@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && find /opt/opencode -maxdepth 2 -type f -name opencode -exec install -m 0755 {} /usr/local/bin/opencode \;
 
 # Base: Node (agent CLIs are npm packages), pinned by digest.
-FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 
 ARG CLAUDE_CODE_VERSION=2.1.322
 ARG CODEX_VERSION=0.167.0
