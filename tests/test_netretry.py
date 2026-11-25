@@ -205,3 +205,27 @@ def test_post_is_retried_when_it_never_left(monkeypatch, post):
     with pytest.raises(urllib.error.URLError):
         post()
     assert calls["n"] == 3
+
+
+@pytest.mark.parametrize(
+    ("url", "payload", "expected"),
+    [
+        ("https://api.github.com/repos/o/r/git/blobs", {"content": "x"}, True),
+        ("https://api.github.com/repos/o/r/git/trees", {"tree": []}, True),
+        ("https://api.github.com/graphql", {"query": "  query($n: Int!) { a }"}, True),
+        ("https://api.github.com/graphql", {"query": "{ viewer { login } }"}, True),
+        ("https://api.github.com/graphql", {"query": "mutation { resolveReviewThread }"}, False),
+        ("https://api.github.com/graphql", None, False),
+        ("https://api.github.com/repos/o/r/git/refs", {"ref": "refs/heads/b"}, False),
+        ("https://api.github.com/repos/o/r/issues", {"title": "t"}, False),
+    ],
+)
+def test_side_effect_free_posts_are_replayed(monkeypatch, url, payload, expected):
+    """Git objects are content-addressed and GraphQL queries only read: a replay after a timeout cannot
+    duplicate anything, so they keep the full retry schedule (mutations and other writes do not)."""
+    from fabrikant import gitops
+
+    calls = _count_urlopen(monkeypatch, gitops, TimeoutError("read timed out"))
+    with pytest.raises(TimeoutError):
+        gitops._gh_api("POST", url, "tok", payload)
+    assert calls["n"] == (3 if expected else 1)

@@ -10,8 +10,9 @@ All notable changes to fabrikant are documented here. The format follows
 
 - Network blips (DNS, dropped connections) no longer fail a run whose work is done: GitHub/GitLab API calls and
   `git fetch`/`push`/`pull` retry transient errors with growing waits (about 2 minutes) before the step fails as
-  `transient` ([run retry](docs/runs.md#run-retry-adr-0036)). A POST (new issue or comment) is replayed only if it
-  never reached the server, so a lost answer cannot create a duplicate.
+  `transient` ([run retry](docs/runs.md#run-retry-adr-0036)). A write POST (new issue, comment, GraphQL mutation) is
+  replayed only if it never reached the server, so a lost answer cannot create a duplicate; git blob/tree uploads
+  and GraphQL queries are always replayed.
 - A failed step no longer hides its cause behind a noisy tail: the run log shows a failure-aware excerpt (windows
   around pytest failures, tracebacks, crashes and verdict lines, plus the tail; cuts are stated), and a failed
   shell step's summary names the last failure-marker line instead of the last stdout line, which could be a

@@ -11,11 +11,13 @@ after the server already committed a POST (a new issue or comment would then exi
 
 from __future__ import annotations
 
+import json
 import logging
 import socket
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 from collections.abc import Callable, Sequence
 
 from . import config
@@ -34,12 +36,32 @@ def delays(override: Sequence[float] | None = None) -> tuple[float, ...]:
     return tuple(config.NET_RETRY_DELAYS_S if override is None else override)
 
 
-def may_replay(method: str, exc: BaseException) -> bool:
+# POSTs without a side effect a replay could repeat: GitHub's content-addressed git objects (the same
+# content yields the same sha, nothing references it until a ref moves) and GraphQL queries (reads).
+_REPLAY_SAFE_POST_PATHS = ("/git/blobs", "/git/trees")
+
+
+def _replay_safe_post(url: str, data: object) -> bool:
+    path = urllib.parse.urlsplit(url).path.rstrip("/")
+    if path.endswith(_REPLAY_SAFE_POST_PATHS):
+        return True
+    if not path.endswith("/graphql") or not isinstance(data, bytes):
+        return False
+    try:
+        query = json.loads(data).get("query")
+    except (ValueError, AttributeError):
+        return False
+    # Anonymous `{ … }` or `query …` reads; `mutation` (and anything unexpected) is not replayed.
+    return isinstance(query, str) and query.lstrip().startswith(("{", "query"))
+
+
+def may_replay(method: str, exc: BaseException, url: str = "", data: object = None) -> bool:
     """Whether a failed HTTP request may be sent again. Replay-safe methods: yes. Others (POST): only if
-    the request provably never reached the server — name resolution failed or the connection was refused
-    (urllib wraps errors while connecting as `URLError`). Timeouts and resets are ambiguous: the server may
-    have committed the write before the answer got lost."""
-    if method.upper() in REPLAY_SAFE_METHODS:
+    the request has no side effect a replay could repeat (git blobs/trees, GraphQL queries — needs `url`
+    and `data`) or provably never reached the server — name resolution failed or the connection was
+    refused (urllib wraps errors while connecting as `URLError`). Timeouts and resets are ambiguous for
+    other writes: the server may have committed them before the answer got lost."""
+    if method.upper() in REPLAY_SAFE_METHODS or (url and _replay_safe_post(url, data)):
         return True
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else None
     return isinstance(reason, (socket.gaierror, ConnectionRefusedError))

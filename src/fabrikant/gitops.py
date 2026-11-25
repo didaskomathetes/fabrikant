@@ -681,7 +681,7 @@ def _gh_request(req: urllib.request.Request) -> bytes:
         except urllib.error.HTTPError:
             raise
         except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
-            if attempt == len(waits) or not netretry.may_replay(req.get_method(), e):
+            if attempt == len(waits) or not netretry.may_replay(req.get_method(), e, req.full_url, req.data):
                 raise
             time.sleep(waits[attempt])
     raise AssertionError("unreachable")  # pragma: no cover
