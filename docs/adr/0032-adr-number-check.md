@@ -1,66 +1,66 @@
-# ADR 0032: ADR-Nummern — Vergabe, Kollisionsprüfung, Umnummerierung
+# ADR 0032: ADR numbers — assignment, collision check, renumbering
 
-**Status:** Akzeptiert (2026-10-20, Merge #252; vorgeschlagen 2026-10-20)
-**Herkunft:** Issue #134, PR #204 (dort als „ADR 0019“, selbst eine Kollision mit
-0019-pause-resume-disable). #204 wurde fälschlich als Duplikat von #201 geschlossen;
-#201 enthielt nur eine README-Änderung, Script, ADR und Merge-Check gingen verloren.
+**Status:** Accepted (2026-10-20, merge #252; proposed 2026-10-20)
+**Origin:** Issue #134, PR #204 (there as "ADR 0019", itself a collision with
+0019-pause-resume-disable). #204 was wrongly closed as a duplicate of #201;
+#201 contained only a README change, script, ADR and merge check were lost.
 
-## Kontext
+## Context
 
-Agents wählen die ADR-Nummer als „nächste freie in `docs/adr/`“, und zwar im Stand des
-eigenen Branches. Parallele Branches kollidieren dadurch zwangsläufig. Das gilt für
-develop und für gestapelte ADR-PRs aus pr-reply (ADR 0011). Verweise wie „ADR 0013“
-werden dann mehrdeutig. Feldbefund 2026-10-20:
+Agents choose the ADR number as the "next free one in `docs/adr/`", namely in the state of
+their own branch. Parallel branches therefore inevitably collide. This applies to
+develop and to stacked ADR PRs from pr-reply (ADR 0011). References like "ADR 0013"
+then become ambiguous. Field finding 2026-10-20:
 
-- Auf `main` waren 0013, 0014 und 0018 je doppelt, 0023 dreifach belegt.
-- Drei offene PRs beanspruchten 0024/0025.
-- Code verwies noch auf Branch-Nummern: „ADR 0006“ für Dual-Identity, gemergt als 0010.
+- On `main`, 0013, 0014 and 0018 were each assigned twice, 0023 three times.
+- Three open PRs claimed 0024/0025.
+- Code still referred to branch numbers: "ADR 0006" for dual identity, merged as 0010.
 
-## Entscheidung
+## Decision
 
-1. **Script `scripts/check-adr-numbers.py`** (Muster: `scripts/pr-status.py`), Base
+1. **Script `scripts/check-adr-numbers.py`** (pattern: `scripts/pr-status.py`), base
    `origin/main`:
-   - `check`: im Branch **neue** ADRs mit bereits auf der Base vergebener Nummer
-     → Exit 1. Nur gegen die Base, damit deterministisch.
-   - `next`: höchste Nummer auf der Base **und in allen offenen PRs** + 1. Der PR des
-     eigenen Branches zählt nicht. Ohne `gh` gilt mit Warnung nur die Base.
-   - `fix`: benennt nur kollidierende **neue** ADRs um, dabei auch an Nummern offener
-     PRs vorbei. Umbenannt werden Dateiname, Titelzeile und Dateipfad-Verweise;
-     `ADR NNNN` nur in vom Branch hinzugefügten Zeilen. ADRs der Base und
-     Laufzeitdaten (`runs/`, `state/`) werden nie angefasst.
-2. **Merge-Gate:** `pr-status.py merge-check` liefert `wait`, solange der PR eine ADR mit
-   einer auf der Base vergebenen Nummer anlegt. Das fängt auch Kollisionen zwischen zwei
-   PRs, denn nach dem Merge des ersten liegt dessen Nummer auf der Base. So landet nie
-   eine Doppel-Nummer auf `main`.
-3. **develop-Loop:** Shell-Step `check-adr` (`fix` → `check`) nach dem Agent, vor
-   lint/test/ship. Deterministisch, nicht vom Prompt abhängig; die Reparatur wird
-   mitgetestet und committet.
-4. **Prompts:** develop und pr-reply holen die Nummer per `next`. pr-reply hat keine
-   Shell-Steps und führt nach dem Anlegen bzw. nach einem Rebase selbst `fix` und dann
-   `check` aus.
-5. **CI-Invarianten** (`tests/test_adr_index.py`):
-   - Nummern sind eindeutig.
-   - Die Titelzeile passt zum Dateinamen.
-   - Der Index ist vollständig und sortiert.
-   - Jeder `ADR NNNN`-Verweis zeigt auf eine vorhandene ADR.
-6. **Umnummerierung bei Altlasten:** Die zuerst gemergte ADR behält ihre Nummer; die
-   übrigen rücken in Merge-Reihenfolge ans Ende. Verweise werden nach Kontext
-   umgestellt, nicht per Suchen/Ersetzen.
-7. **Lücken bleiben Lücken:** Eine einmal auf `main` vergebene Nummer wird nie neu
-   vergeben (0007: approval-request-protocol, 2026-10-18 → 0011). Sonst würden alte
-   Verweise in Commits, Issues und Run-Logs mehrdeutig.
+   - `check`: ADRs **new** in the branch with a number already assigned on the base
+     → exit 1. Only against the base, so that it is deterministic.
+   - `next`: highest number on the base **and in all open PRs** + 1. The PR of the
+     own branch does not count. Without `gh` only the base applies, with a warning.
+   - `fix`: renames only colliding **new** ADRs, also skipping past numbers of open
+     PRs. Renamed are file name, title line and file path references;
+     `ADR NNNN` only in lines added by the branch. ADRs of the base and
+     runtime data (`runs/`, `state/`) are never touched.
+2. **Merge gate:** `pr-status.py merge-check` returns `wait` as long as the PR creates an ADR with
+   a number assigned on the base. This also catches collisions between two
+   PRs, because after the merge of the first its number is on the base. So a
+   duplicate number never lands on `main`.
+3. **develop loop:** shell step `check-adr` (`fix` → `check`) after the agent, before
+   lint/test/ship. Deterministic, not dependent on the prompt; the repair is
+   tested and committed along with the rest.
+4. **Prompts:** develop and pr-reply get the number via `next`. pr-reply has no
+   shell steps and, after creating or after a rebase, runs `fix` and then
+   `check` itself.
+5. **CI invariants** (`tests/test_adr_index.py`):
+   - Numbers are unique.
+   - The title line matches the file name.
+   - The index is complete and sorted.
+   - Every `ADR NNNN` reference points to an existing ADR.
+6. **Renumbering of legacy cases:** The ADR merged first keeps its number; the
+   others move to the end in merge order. References are changed according to
+   context, not by search/replace.
+7. **Gaps stay gaps:** A number once assigned on `main` is never
+   reassigned (0007: approval-request-protocol, 2026-10-18 → 0011). Otherwise old
+   references in commits, issues and run logs would become ambiguous.
 
-## Konsequenzen
+## Consequences
 
-- Von zwei parallelen PRs wird der zweite nach dem Merge des ersten umnummeriert. Den
-  Anstoß gibt `merge-check`, die Reparatur macht `fix`.
-- `ADR NNNN`-Verweise in vom Branch hinzugefügten Zeilen gelten als Verweis auf die
-  umbenannte ADR. Im Kollisionsfall sind Verweise auf die gleichnamige Base-ADR nicht
-  unterscheidbar; das bleibt selten und muss im Review geprüft werden.
-- Der Verweis-Check findet nur nicht existierende Nummern. Ein Verweis auf die
-  *falsche*, aber existierende ADR (der 0006/0010-Fall) bleibt Review-Sache.
-- Haben zwei *neue* ADRs dieselbe Nummer, verschiebt `fix` die alphabetisch spätere.
-  Auf einem Umnummerierungs-Branch gelten auch die verschobenen ADRs als neu; dort
-  `fix` nicht blind laufen lassen.
-- Nummern spiegeln die Merge-Reihenfolge nur ungefähr wider; die ADR-Daten im Header
-  sind maßgeblich.
+- Of two parallel PRs, the second is renumbered after the merge of the first. The
+  trigger is given by `merge-check`, the repair is done by `fix`.
+- `ADR NNNN` references in lines added by the branch count as references to the
+  renamed ADR. In case of a collision, references to the base ADR of the same number cannot
+  be distinguished; this stays rare and must be checked in review.
+- The reference check only finds non-existent numbers. A reference to the
+  *wrong* but existing ADR (the 0006/0010 case) remains a matter for review.
+- If two *new* ADRs have the same number, `fix` moves the alphabetically later one.
+  On a renumbering branch the moved ADRs also count as new; do not
+  run `fix` blindly there.
+- Numbers reflect the merge order only approximately; the ADR dates in the header
+  are authoritative.

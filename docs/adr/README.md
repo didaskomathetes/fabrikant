@@ -45,14 +45,14 @@ The ADR merged first kept its number; the others were moved in merge order:
 | [0022](0022-model-choice-is-config.md) | Model choice is configuration, not architecture | Accepted |
 | [0023](0023-on-pr-reconcile-per-head.md) | `on_pr` reconcile per head SHA (`reconcile: head`) | Accepted |
 | [0024](0024-review-verdict-marker.md) | Review as a GitHub review with verdict marker, inline threads, reply lock | Accepted |
-| [0025](0025-alert-dedup-fingerprint.md) | Alert-Deduplizierung per Fingerprint (statt Issue pro Run) | Akzeptiert |
-| [0026](0026-alert-log-tail-redaction.md) | Redaction des Alert-`log_tail` | Akzeptiert |
-| [0027](0027-on-webhook-trigger.md) | `on_webhook`-Trigger (HMAC, Tunnel-CORS) | Akzeptiert |
+| [0025](0025-alert-dedup-fingerprint.md) | Alert deduplication by fingerprint (instead of an issue per run) | Accepted |
+| [0026](0026-alert-log-tail-redaction.md) | Redaction of the alert `log_tail` | Accepted |
+| [0027](0027-on-webhook-trigger.md) | `on_webhook` trigger (HMAC, tunnel CORS) | Accepted |
 | [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-10-23) |
-| [0030](0030-auth-local-users-roles.md) | Authentifizierung + Autorisierung (lokale Benutzer, Rollen) | Akzeptiert |
-| [0031](0031-issue-duplicates-dependencies.md) | Duplikat-/Abhängigkeits-Erkennung im Refine, fehlende Voraussetzungen als Issue, Blocker-Gate im Develop (`skip_blocked`), Backfill | Akzeptiert |
-| [0032](0032-adr-number-check.md) | ADR-Nummern — Vergabe, Kollisionsprüfung, Umnummerierung | Akzeptiert |
-| [0034](0034-run-domain-model-relational-store.md) | Typisiertes Run-Modell + relationales Storage (SQLite / Postgres) | Akzeptiert |
+| [0030](0030-auth-local-users-roles.md) | Authentication + authorization (local users, roles) | Accepted |
+| [0031](0031-issue-duplicates-dependencies.md) | Duplicate/dependency detection in refine, missing prerequisites as an issue, blocker gate in develop (`skip_blocked`), backfill | Accepted |
+| [0032](0032-adr-number-check.md) | ADR numbers — assignment, collision check, renumbering | Accepted |
+| [0034](0034-run-domain-model-relational-store.md) | Typed run model + relational storage (SQLite / Postgres) | Accepted |
 | [0035](0035-failure-classification.md) | Fehlerklassifikation gescheiterter Steps und Runs (`FailureKind`) | Akzeptiert; Amendment `max_wait`-Kappung (Draft) |
 | [0036](0036-run-retry.md) | Run-Retry mit Backoff und Ablage erschöpfter Aufträge | Akzeptiert (inkl. Amendment `max_wait`, Trigger-Schlüssel, Claim) |
 | [0037](0037-relay-tasks.md) | Relay-Tasks — langlaufende Aufgaben als Kette kurzer Agent-Sessions (Issue = Auftrag, Branch = Zustand, blindes Audit) | Draft |
