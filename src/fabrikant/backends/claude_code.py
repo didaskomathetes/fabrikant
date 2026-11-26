@@ -11,6 +11,16 @@ ends, then done/failed. The result is a final JSON on stdout
 - **Permissions:** default `--permission-mode acceptEdits` +
   `--allowedTools Bash` (agent edits files, may use shell). Real
   isolation (non-root/container/VM) is a deployment prerequisite.
+  Restricted per step: `tools` is the hard limit on which built-ins exist (`--tools`);
+  `allowed_tools` are pre-approval rules (`--allowedTools`, e.g.
+  `Edit(/.fabrikant-session/review/review.json)`) and switch the CLI to `dontAsk`,
+  which denies whatever would otherwise prompt. Not an allowlist: calls that need no
+  approval (reads in the workdir, read-only Bash) and calls approved by the user/
+  `settings.json` still run. `tools` does not cover MCP tools.
+  A restricted step also treats the working directory as untrusted (`RESTRICTED_FLAGS`):
+  no project/local settings (hooks, env, `.mcp.json`), no MCP servers, no project/user hooks
+  (administrator-managed hooks still run). Claude Code refuses `--strict-mcp-config` at startup
+  while an enterprise `managed-mcp.json` is deployed — reported as an `environment` failure.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """
@@ -18,11 +28,38 @@ ends, then done/failed. The result is a final JSON on stdout
 from __future__ import annotations
 
 import json
+import re
 
 from ..agentenv import CLAUDE_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
+from ..i18n import t
+from ..runmodel import FailureKind
 from ..tokens import TokenCounts
-from ._oneshot import OneShotCliBackend
+from ._oneshot import OneShotCliBackend, csv_arg
+
+
+def _opt_csv(value: object) -> str | None:
+    """Like `csv_arg`, but an omitted key stays None — an explicit empty value must not mean "default"."""
+    return None if value is None else csv_arg(value)
+
+
+# Restricted steps (`tools`/`allowed_tools`) often run on repo content someone else wrote (a PR head).
+# Headless `claude -p` ignores project `permissions.allow` rules, but still applies the project's hooks,
+# `env` block and `.mcp.json` servers — a PR adding `.claude/settings.json` could run commands despite
+# `tools`, e.g. write the reviewer's payload itself. Only user settings (the operator's) are read; MCP
+# servers and project/user hooks (the CLI flag outranks those settings files) stay off. Hooks from
+# managed (administrator) settings are out of reach: only a managed `disableAllHooks` turns them off.
+RESTRICTED_FLAGS = (
+    "--setting-sources",
+    "user",
+    "--strict-mcp-config",
+    "--settings",
+    json.dumps({"disableAllHooks": True}),
+)
+# A deployed enterprise `managed-mcp.json` makes the CLI exit at startup on `--strict-mcp-config`
+# ("You cannot dynamically configure MCP servers when an enterprise MCP config is present"). The
+# isolation stays mandatory, so this is a host configuration error, not something a retry heals.
+_MANAGED_MCP_CONFLICT = re.compile(r"enterprise MCP config", re.IGNORECASE)
 
 
 class ClaudeCodeBackend(OneShotCliBackend):
@@ -30,21 +67,37 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     name = "claude_code"
 
-    def __init__(self, endpoint: str = "", model: str = "", stale_after: int = 900):
+    def __init__(
+        self,
+        endpoint: str = "",
+        model: str = "",
+        stale_after: int = 900,
+        tools: str | None = None,
+        allowed_tools: str | None = None,
+    ):
         # opencode uses `provider/model`; `claude --model` wants only the model.
         super().__init__(endpoint, model.removeprefix("anthropic/"), stale_after)
+        # None = key omitted (backend default); "" = explicitly empty (no tools / no pre-approvals).
+        self.tools = None if tools is None else tools.strip()
+        self.allowed_tools = None if allowed_tools is None else allowed_tools.strip()
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> ClaudeCodeBackend:
-        return cls(endpoint, model, stale_after=stale_after)
+        return cls(
+            endpoint,
+            model,
+            stale_after=stale_after,
+            tools=_opt_csv(step.get("tools")),
+            allowed_tools=_opt_csv(step.get("allowed_tools")),
+        )
 
     # ------------------------------------------------------------------ Hooks
     def _env(self) -> dict:
-        """Eigene Auth der Claude-Code-CLI explizit durchreichen (ADR 0050)."""
+        """Explicitly pass through the Claude Code CLI's own auth (ADR 0050)."""
         return passthrough(CLAUDE_AUTH_VARS)
 
     def billing(self) -> Billing:
-        """API-Key → ``api`` (gewinnt im ``-p``-Modus immer), OAuth-Token des Abos → ``subscription``."""
+        """API key → ``api`` (always wins in ``-p`` mode), subscription OAuth token → ``subscription``."""
         return from_auth(
             self._env(), api=("ANTHROPIC_API_KEY",), subscription=("CLAUDE_CODE_OAUTH_TOKEN",), api_wins=True
         )
@@ -55,21 +108,23 @@ class ClaudeCodeBackend(OneShotCliBackend):
     def _stale_after(self) -> int | None:
         return None  # no staleness check — the step timeout is the backstop
 
+    def _restricted(self) -> bool:
+        return self.tools is not None or self.allowed_tools is not None
+
     def _build_cmd(self) -> list[str]:
-        # Containment: `acceptEdits` + `--allowedTools Bash` lets the agent
+        cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
+        if self._restricted():
+            cmd += RESTRICTED_FLAGS
+        if self.tools is not None:
+            cmd += ["--tools", self.tools]  # "" = no built-in tools at all
+        if self.allowed_tools is not None:
+            # Restricted: whatever would prompt is denied (no prompt in a headless run).
+            # Empty = no pre-approvals at all — never falls back to the Bash default.
+            cmd += ["--permission-mode", "dontAsk"]
+            return [*cmd, "--allowedTools", self.allowed_tools] if self.allowed_tools else cmd
+        # Default containment: `acceptEdits` + `--allowedTools Bash` lets the agent
         # edit files in the workdir and run shell commands.
-        return [
-            "claude",
-            "-p",
-            "--output-format",
-            "json",
-            "--model",
-            self.model,
-            "--permission-mode",
-            "acceptEdits",
-            "--allowedTools",
-            "Bash",
-        ]
+        return [*cmd, "--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
         base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}
@@ -78,13 +133,16 @@ class ClaudeCodeBackend(OneShotCliBackend):
         except (json.JSONDecodeError, ValueError):
             d = None
         if not isinstance(d, dict):
+            if self._restricted() and _MANAGED_MCP_CONFLICT.search(f"{err}\n{out}"):
+                text = t("backends.claude_code.managed_mcp_conflict", detail=(err or out).strip()[:200])
+                return {**base, "status": "failed", "text": text, "failure_kind": FailureKind.ENVIRONMENT.value}
             return {**base, "status": "failed", "text": (err or out)[:300]}
         if returncode != 0:
             # JSON result despite exit ≠ 0 (e.g. usage limit): `result` is the actual
             # message — the raw JSON beginning (duration_api_ms, …) says nothing (ADR 0035).
             return {**base, "status": "failed", "text": str(d.get("result") or err or out)[:300]}
         usage = d.get("usage") or {}
-        # Anthropic: input_tokens ist nur der ungecachte Rest — Cache-Read/-Write kommen dazu.
+        # Anthropic: input_tokens is only the uncached remainder — cache read/write come on top.
         cache_read = int(usage.get("cache_read_input_tokens") or 0)
         cache_write = int(usage.get("cache_creation_input_tokens") or 0)
         tokens = TokenCounts(

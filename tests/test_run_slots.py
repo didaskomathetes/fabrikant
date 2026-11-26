@@ -438,6 +438,89 @@ def test_safe_run_skips_slack_trigger_with_record(runs_dir, monkeypatch, limit):
     assert events["rejected"].wait(5)
 
 
+@pytest.mark.parametrize("trigger", ["on_pr:#7@abc123", "on_pr:#7@u20261113T142820Z"])
+def test_safe_run_skips_pr_reconcile_trigger_with_record(runs_dir, monkeypatch, limit, trigger):
+    """on_pr-Reconcile-Key (head/updated) mit bestehendem Record: wartende Kopie → verworfen."""
+    d = runs_dir / "prproj"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "r1.json").write_text(
+        json.dumps({"id": "r1", "project": "prproj", "loop": "rev", "trigger": trigger, "status": "pass"})
+    )
+    events, cbs = _callbacks()
+    monkeypatch.setattr(engine, "run_loop", lambda *a, **k: pytest.fail("Doppel-Run"))
+    engine._safe_run("prproj", "rev", trigger, {}, **cbs)
+    assert events["rejected"].wait(5)
+
+
+def test_safe_run_plain_pr_trigger_stays_repeatable(runs_dir, monkeypatch, limit):
+    """Event-Modus `on_pr:#N` feuert bei Updates erneut: bestehender Record verwirft nicht."""
+    d = runs_dir / "prproj2"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "r1.json").write_text(
+        json.dumps({"id": "r1", "project": "prproj2", "loop": "rev", "trigger": "on_pr:#7", "status": "pass"})
+    )
+    ran = threading.Event()
+    events, cbs = _callbacks()
+    monkeypatch.setattr(engine, "run_loop", lambda *a, **k: ran.set())
+    engine._safe_run("prproj2", "rev", "on_pr:#7", {}, **cbs)
+    assert ran.wait(5) and events["claimed"].is_set()
+
+
+@pytest.mark.parametrize(
+    ("project", "trigger", "rejected"),
+    [("race1", "on_pr:#7@u20261113T142820Z", True), ("race2", "on_issue:#7", True), ("race3", "on_pr:#7", False)],
+)
+def test_claim_trigger_run_rechecks_record_after_claim(runs_dir, monkeypatch, limit, project, trigger, rejected):
+    """Lücke Prüfung → Claim: der frühere Run endet (Record geschrieben, Claim frei)
+    genau zwischen beiden. Die One-off-Prüfung läuft mit gehaltenem Claim → verworfen,
+    Claim freigegeben; `on_pr:#N` (Event-Modus) bleibt wiederholbar."""
+    d = runs_dir / project
+    real_claim = engine.claim_run
+
+    def claim_after_first_run_finished(*a, **k):
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "r1.json").write_text(
+            json.dumps({"id": "r1", "project": project, "loop": "rev", "trigger": trigger, "status": "pass"})
+        )
+        return real_claim(*a, **k)
+
+    monkeypatch.setattr(engine, "claim_run", claim_after_first_run_finished)
+    claim = engine._claim_trigger_run(project, "rev", trigger, {"pr_number": 7})
+    assert (claim is None) is rejected
+    if claim is not None:
+        claim.release()
+    again = real_claim(project, "rev", {"pr_number": 7})  # Claim nicht hängen geblieben
+    assert again is not None
+    again.release()
+
+
+def test_claim_trigger_run_releases_claim_on_record_read_error(monkeypatch, limit):
+    def boom(*a, **k):
+        raise PermissionError("simuliert")
+
+    monkeypatch.setattr(engine, "loop_run_triggers", boom)
+    with pytest.raises(PermissionError):
+        engine._claim_trigger_run("raceproj2", "rev", "on_issue:#1", {"issue_number": 1})
+    again = runs.claim_run("raceproj2", "rev", {"issue_number": 1})
+    assert again is not None
+    again.release()
+
+
+@pytest.mark.parametrize(
+    ("trigger", "once"),
+    [
+        ("on_issue:#1", True),
+        ("on_slack:C1:1.0", True),
+        ("on_pr:#7@abc123", True),
+        ("on_pr:#7@u20261113T142820Z", True),
+        ("on_pr:#7", False),
+        ("cron", False),
+    ],
+)
+def test_is_once_trigger(trigger, once):
+    assert engine._is_once_trigger(trigger) is once
+
+
 def test_safe_run_callback_error_does_not_stop_run(monkeypatch, limit, capsys):
     done = threading.Event()
     monkeypatch.setattr(engine, "run_loop", lambda *a, **k: done.set())

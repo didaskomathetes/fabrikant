@@ -1,4 +1,4 @@
-"""Step: http (urllib, method/headers/body/expect/emit → Variable-Store)."""
+"""Step: http (urllib, method/headers/body/expect/emit → variable store)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from ..i18n import t
 
 
 def _step_http(ctx: dict, step: dict, emit) -> dict:
-    """HTTP-Request (urllib); Response/Status → Variable-Store (emit)."""
+    """HTTP request (urllib); response/status → variable store (emit)."""
     url = _substitute(step["url"], ctx)
     method = str(step.get("method", "GET")).upper()
     headers = {k: _substitute(str(v), ctx) for k, v in (step.get("headers") or {}).items()}
@@ -40,5 +40,5 @@ def _step_http(ctx: dict, step: dict, emit) -> dict:
         elif kind == "body":
             ctx[var] = content
         else:
-            raise ConfigError(f"http emit: unbekannter Typ '{kind}' (body|status)")
+            raise ConfigError(f"http emit: unknown type '{kind}' (body|status)")
     return {"ok": True, "output": _cap(content), "summary": f"HTTP {status}, {len(content)} chars"}

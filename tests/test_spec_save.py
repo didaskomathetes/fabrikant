@@ -252,7 +252,7 @@ def test_spec_update_from_payload_remove_loops_not_list():
 
 
 def test_spec_update_from_payload_unknown_field():
-    with pytest.raises(ValueError, match="unbekannte Felder"):
+    with pytest.raises(ValueError, match="unknown fields"):
         specs.SpecUpdate.from_payload({"name": "x"})
 
 

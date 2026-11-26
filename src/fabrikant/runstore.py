@@ -108,7 +108,7 @@ def _require_status(raw: dict, run_id: str, status: RunStatus) -> None:
 
 
 def valid_run_id(run_id: str) -> bool:
-    """Run-Ids landen direkt im Dateipfad (`runs/<projekt>/<id>.json|log`) → Pfad-Traversal ablehnen."""
+    """Run ids land directly in the file path (`runs/<project>/<id>.json|log`) → reject path traversal."""
     return bool(run_id) and "/" not in run_id and "\\" not in run_id and ".." not in run_id
 
 
@@ -141,7 +141,7 @@ def _enum(enum_cls: type[_E], value: Any, what: str) -> _E:
     try:
         return enum_cls(value)
     except ValueError:
-        raise RecordError(f"{what}: unbekannter Status {value!r}") from None
+        raise RecordError(f"{what}: unknown status {value!r}") from None
 
 
 def _parse_usage(d: Any) -> Usage | None:
@@ -306,7 +306,7 @@ def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
 
 @dataclass(frozen=True)
 class LoadFailure:
-    """Ein nicht ladbarer Record: Ort (Datei bzw. ``<projekt>/<id>``) + Grund."""
+    """A record that cannot be loaded: location (file or ``<project>/<id>``) + reason."""
 
     path: Path
     reason: str
@@ -321,7 +321,7 @@ class LoadReport:
 
     @property
     def total(self) -> int:
-        """Anzahl gelesener Records."""
+        """Number of records read."""
         return self.loaded + len(self.failures)
 
 
@@ -336,12 +336,12 @@ def _check_transition(raw: Mapping[str, Any], record: Mapping[str, Any], expect:
     illegal transition → :class:`PreconditionError`."""
     cur, tgt = raw.get("status"), record.get("status")
     if not isinstance(cur, str) or not isinstance(tgt, str):
-        raise RunStoreError(f"defekter Run-Record: unbekannter Status {cur!r}")
+        raise RunStoreError(f"corrupt run record: unknown status {cur!r}")
     try:
         current = RunStatus(cur)
         target = RunStatus(tgt)
     except ValueError as e:
-        raise RunStoreError(f"defekter Run-Record: unbekannter Status {cur!r}") from e
+        raise RunStoreError(f"corrupt run record: unknown status {cur!r}") from e
     run_id = record.get("id") or "?"
     if expect is not None and current is not expect:
         raise PreconditionError(
@@ -421,7 +421,7 @@ class BaseRunStore(ABC):
         hits = sorted(filter(query.matches, self.load_all(query.project)), key=sort_key, reverse=True)
         return hits[: query.limit + 1]
 
-    # ------------------------------------------------------------ Schreiben (ADR 0034, Schritt 2)
+    # ------------------------------------------------------------ Writing (ADR 0034, step 2)
     def _write_with_precondition(
         self,
         project: str,
@@ -590,7 +590,7 @@ class RunStore(BaseRunStore):
 
     @property
     def root(self) -> Path:
-        """Wurzelverzeichnis der Records."""
+        """Root directory of the records."""
         return self._runs_dir or config.RUNS_DIR
 
     def _dirs(self, project: str | None) -> list[Path]:
@@ -609,7 +609,7 @@ class RunStore(BaseRunStore):
         try:
             st = f.stat()
         except FileNotFoundError:
-            raise RecordError("Datei verschwunden") from None
+            raise RecordError("file vanished") from None
         stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
         cached = self._parsed.get(f)
         if cached is not None and cached[0] == stamp:
@@ -624,8 +624,8 @@ class RunStore(BaseRunStore):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            raise RecordError("Datei verschwunden") from None
-        except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
+            raise RecordError("file vanished") from None
+        except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
             raise RecordError(t("runstore.not_valid_json", e=e)) from e
         if not isinstance(data, dict):
             raise RecordError(t("runstore.expected_object_is", v1=type(data).__name__))
@@ -653,7 +653,7 @@ class RunStore(BaseRunStore):
                 del self._parsed[f]
 
     def get_record(self, run_id: str, project: str | None = None) -> dict | None:
-        """Roher Record per Id (``project`` = Ablageort); defekter Record → :class:`RunStoreError`."""
+        """Raw record by id (``project`` = storage location); corrupt record → :class:`RunStoreError`."""
         if not valid_run_id(run_id):
             return None
         for d in self._dirs(project):
@@ -696,7 +696,7 @@ class RunStore(BaseRunStore):
             if raw is not None:
                 yield f, raw
 
-    # ------------------------------------------------------------ Schreibzugriff
+    # ------------------------------------------------------------ Write access
     def _path(self, project: str, run_id: str) -> Path:
         """Path of the run record; invalid project/run ids raise :class:`RunStoreError`."""
         _check_ids(project, run_id)
@@ -708,8 +708,8 @@ class RunStore(BaseRunStore):
             data = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return None
-        except ValueError as e:  # JSONDecodeError und UnicodeDecodeError
-            raise RunStoreError(f"defekter Run-Record {path.name}: {e}") from e
+        except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
+            raise RunStoreError(f"corrupt run record {path.name}: {e}") from e
         if not isinstance(data, dict):
             raise RunStoreError(t("runstore.broken_run_record_expected_object", v1=path.name, v2=type(data).__name__))
         return data

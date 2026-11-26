@@ -472,7 +472,7 @@ def test_poll_failed_on_tool_error_with_text(monkeypatch):
     parts = [{"type": "tool", "text": json.dumps({"name": "bash"}), "state": {"status": "error"}}]
     r = _poll_v1(monkeypatch, [_v1_msg(finish="stop", parts=parts + [{"type": "text", "text": "hat geklappt"}])])
     assert r["status"] == "failed"
-    assert "unzuverlaessig" in r["text"]
+    assert "unreliable" in r["text"]
 
 
 def test_poll_failed_on_empty_finished_message(monkeypatch):

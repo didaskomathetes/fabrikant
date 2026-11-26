@@ -299,7 +299,7 @@ def test_gh_api_empty_body(monkeypatch):
 
 def test_gh_api_retries_transient_network_errors(monkeypatch):
     """DNS-Flakes/Resets → Retry, danach Erfolg."""
-    monkeypatch.setattr(gitops.config, "GH_RETRY_DELAY_S", 0)
+    monkeypatch.setattr(gitops.config, "NET_RETRY_DELAYS_S", (0, 0, 0))
     calls = {"n": 0}
 
     def _fake(req, timeout=None):
@@ -315,7 +315,7 @@ def test_gh_api_retries_transient_network_errors(monkeypatch):
 
 
 def test_gh_api_gives_up_after_max_retries(monkeypatch):
-    monkeypatch.setattr(gitops.config, "GH_RETRY_DELAY_S", 0)
+    monkeypatch.setattr(gitops.config, "NET_RETRY_DELAYS_S", (0, 0, 0))
     calls = {"n": 0}
 
     def _fake(req, timeout=None):
@@ -325,12 +325,12 @@ def test_gh_api_gives_up_after_max_retries(monkeypatch):
     monkeypatch.setattr(gitops.urllib.request, "urlopen", _fake)
     with pytest.raises(urllib.error.URLError):
         gitops._gh_api("GET", "https://api.github.com/x", "tok")
-    assert calls["n"] == gitops.config.GH_RETRIES
+    assert calls["n"] == len(gitops.config.NET_RETRY_DELAYS_S) + 1
 
 
 def test_gh_api_http_error_not_retried(monkeypatch):
     """4xx/5xx ist eine Antwort, kein Flake — kein Retry."""
-    monkeypatch.setattr(gitops.config, "GH_RETRY_DELAY_S", 0)
+    monkeypatch.setattr(gitops.config, "NET_RETRY_DELAYS_S", (0, 0, 0))
     calls = {"n": 0}
     err = http_error(401, "https://x", "unauthorized")
 
@@ -345,7 +345,7 @@ def test_gh_api_http_error_not_retried(monkeypatch):
 
 
 def test_gh_diff_retries_transient_network_errors(monkeypatch):
-    monkeypatch.setattr(gitops.config, "GH_RETRY_DELAY_S", 0)
+    monkeypatch.setattr(gitops.config, "NET_RETRY_DELAYS_S", (0, 0, 0))
     calls = {"n": 0}
 
     def _fake(req, timeout=None):
@@ -400,7 +400,7 @@ def test_gh_dependencies_url_per_kind(monkeypatch, kind):
 def test_gh_dependencies_empty_and_invalid_kind(monkeypatch):
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t: {})
     assert gitops._gh_dependencies("o/r", 7, "tok") == []
-    with pytest.raises(ValueError, match="Dependency-Art"):
+    with pytest.raises(ValueError, match="dependency kind"):
         gitops._gh_dependencies("o/r", 7, "tok", "parent")
 
 
