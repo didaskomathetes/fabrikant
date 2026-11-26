@@ -1,4 +1,4 @@
-"""Step: llm (OpenAI-kompatibel, strukturierte JSON-Ausgabe + Schema-Check)."""
+"""Step: llm (OpenAI-compatible, structured JSON output + schema check)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _validate_schema(parsed: dict, schema: dict) -> list[str]:
         t: type | tuple[type, ...] | None = _SCHEMA_TYPES.get(typ) if isinstance(typ, str) else None
         v = parsed[key]
         if t is None:
-            errs.append(f"'{key}': unbekannter Schema-Typ '{typ}'")
+            errs.append(f"'{key}': unknown schema type '{typ}'")
         elif typ == "integer" and isinstance(v, bool):
             errs.append(_t("steps.llm.should_be_integer_is_bool", key=key))
         elif not isinstance(v, t):
@@ -91,7 +91,7 @@ def _extract_json_object(text: str) -> dict | None:
 
 
 class _ProviderError(Exception):
-    """Kein nutzbarer LLM-Provider (Konfigurationsfehler → FailureKind.ENVIRONMENT)."""
+    """No usable LLM provider (configuration error → FailureKind.ENVIRONMENT)."""
 
 
 def _resolve_provider(step: dict) -> dict:
@@ -203,7 +203,7 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
         res = _complete(prov, step, prompt, model, emit)
         text = (res["text"] or "").strip()
     except Exception as e:
-        return failed(f"LLM-Call fehlgeschlagen: {e}", classify_exception(e), output="")
+        return failed(f"LLM call failed: {e}", classify_exception(e), output="")
     usage = {
         "model": model,
         "provider": prov.get("name") or step.get("provider") or "active",
@@ -220,7 +220,7 @@ def _step_llm(ctx: dict, step: dict, emit) -> dict:
     schema = step.get("schema") or {}
     errs = _validate_schema(parsed, schema)
     if errs:
-        return {"ok": False, "output": _cap(text), "summary": "Schema-Validierung: " + "; ".join(errs)}
+        return {"ok": False, "output": _cap(text), "summary": "Schema validation: " + "; ".join(errs)}
     injected = _inject_schema_keys(parsed, schema, ctx, emit)
     emit(f"  LLM usage: {TokenCounts.from_usage(usage).summary()}")
     return {

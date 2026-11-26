@@ -33,7 +33,7 @@ DEFAULT_MAX_SESSION_MINUTES = 35
 DEFAULT_VERIFY_TIMEOUT = 300
 # Two audit phases + steps must stay below FABRIKANT_STALE_HOURS (locally 1 h).
 DEFAULT_AUDIT_TIMEOUT = 1200
-# Puffer zwischen hartem Session-Ende (Prompt) und Agent-Timeout (Kill).
+# Buffer between the hard session end (prompt) and the agent timeout (kill).
 AGENT_TIMEOUT_GRACE_S = 300
 FABRIKANT_URL_ENV = "FABRIKANT_URL"
 # Archive methods for the trail (ADR 0037, addendum 2026-11-03); s3 is planned, not implemented.
@@ -48,7 +48,7 @@ def fabrikant_url() -> str:
 
 @dataclass(frozen=True)
 class AgentRole:
-    """Backend/Modell einer Relay-Rolle (Builder = Sessions, Reviewer = Audit)."""
+    """Backend/model of a relay role (builder = sessions, reviewer = audit)."""
 
     backend: str | None = None
     model: str | None = None
@@ -109,7 +109,7 @@ def _positive(raw: Any, default: int, where: str, errs: list[str]) -> int:
 
 @dataclass(frozen=True)
 class RelayConfig:
-    """Typisierter `relay:`-Block (Defaults projektneutral, `allowed` ist Pflicht)."""
+    """Typed `relay:` block (project-neutral defaults, `allowed` is required)."""
 
     project: str
     repo: str
@@ -147,7 +147,7 @@ class RelayConfig:
         if not isinstance(raw, dict):
             raise ValueError(t("relay.config.relay_mapping_expected"))
         known = {f for f in cls.__dataclass_fields__ if f not in ("project", "dispatch_cron")} | {"dispatch"}
-        errs += [f"relay.{k}: unbekannter Key" for k in raw if k not in known]
+        errs += [f"relay.{k}: unknown key" for k in raw if k not in known]
         repo = raw.get("repo") or spec.get("github")
         if not isinstance(repo, str) or "/" not in repo:
             errs.append(t("relay.config.relay_repo_or_github_at"))

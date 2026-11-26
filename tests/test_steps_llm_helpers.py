@@ -119,7 +119,7 @@ def test_step_schema_enum_violation_fails(provider, monkeypatch):
     _answer(monkeypatch, '{"label": "evil; rm -rf /"}')
     res, _ = _run({"prompt": "x", "schema": {"label": {"type": "string", "enum": ["bug", "feature"]}}})
     assert res["ok"] is False
-    assert res["summary"].startswith("Schema-Validierung:")
+    assert res["summary"].startswith("Schema validation:")
     assert "nicht in erlaubten Werten" in res["summary"]
 
 
@@ -139,7 +139,7 @@ def test_step_call_error_is_classified(provider, monkeypatch):
     monkeypatch.setattr(llm_step.llm_registry, "complete", boom)
     res, _ = _run({"prompt": "x"})
     assert res["ok"] is False
-    assert res["summary"] == "LLM-Call fehlgeschlagen: timed out"
+    assert res["summary"] == "LLM call failed: timed out"
     assert "failure_kind" in res
 
 

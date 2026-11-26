@@ -64,6 +64,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `approval_when` | object | optional | Conditional approval (ADR 0017): mapping variable -> value or list of values; pauses only when the variable matches. Not combinable with approval: true. |
 | `approval_reason` | string | optional | Template for the approval request text ({variables} allowed). |
 | `failure_kind` | `transient` \| `environment` \| `outcome` | optional | Failure class (ADR 0035) for non-zero exit codes; shell steps only. |
+| `done_marker` | boolean | optional | shell: true = a stdout line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps. |
 | `extra_context` | list of → `context_source` | optional | Step-level prompt context sources for LLM steps (ADR 0008); false disables the project-level context for this step. |
 | `cmd` | string | optional | shell: command (sh -c in the workdir; {variables} substituted). |
 | `timeout` | → `numeric` | optional | Step timeout in seconds (>= 0; shell, http, llm, agent). |
@@ -169,7 +170,7 @@ What starts a loop. `type` selects the trigger kind; the per-type fields are lis
 | `priority_labels` | list of string | optional | on_issue: labels used to sort candidates (first match wins, ADR 0021). |
 | `exclude_labels` | list of string | optional | on_issue/on_pr: issues/PRs with any of these labels do not start the loop (ADR 0059). |
 | `poll` | → `numeric` | optional | on_issue/on_pr/on_slack: poll interval in seconds (>= 0). |
-| `reconcile` | boolean / = `head` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false or 'head' (per head SHA, ADR 0023). |
+| `reconcile` | boolean / `head` \| `updated` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per observed PR state: one run per `updated_at` seen at poll time; several changes between two polls give one run). |
 | `skip_blocked` | boolean | optional | on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031). |
 | `max_per_poll` | → `numeric` | optional | on_issue with reconcile: max runs started per poll (integer >= 1). |
 | `states` | list of `open` \| `closed` | optional | on_pr: PR states to react to (default: open). |

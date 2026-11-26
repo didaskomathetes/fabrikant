@@ -1,13 +1,13 @@
-"""Token-Zähler eines Agent-/LLM-Calls mit Cache-Aufschlüsselung.
+"""Token counters of an agent/LLM call with cache breakdown.
 
-``input`` ist der **gesamte** Prompt-Verbrauch inklusive Cache-Anteil (OpenAI-Semantik von
-``prompt_tokens``). ``cache_read``/``cache_write`` sind Teilmengen davon: aus dem Prompt-Cache gelesen
-bzw. in ihn geschrieben. Ein Agent liest seinen Kontext in jedem Turn neu — der Großteil von
-``input`` ist bei langen Sessions billiger Cache-Read; ``fresh_input`` ist der Rest.
+``input`` is the **total** prompt consumption including the cache share (OpenAI semantics of
+``prompt_tokens``). ``cache_read``/``cache_write`` are subsets of it: read from / written to the prompt
+cache. An agent re-reads its context every turn — in long sessions most of ``input`` is cheap cache
+reads; ``fresh_input`` is the rest.
 
-Zwei Formen an den Grenzen: das Poll-Protokoll der Backends (``{"input", "output", "cache_read",
-"cache_write"}``) und die Step-Usage (``prompt_tokens``, ``completion_tokens``, ``total_tokens``,
-``cache_read_tokens``, ``cache_write_tokens``). ``0`` heißt auch „Backend meldet es nicht“.
+Two shapes at the boundaries: the backends' poll protocol (``{"input", "output", "cache_read",
+"cache_write"}``) and the step usage (``prompt_tokens``, ``completion_tokens``, ``total_tokens``,
+``cache_read_tokens``, ``cache_write_tokens``). ``0`` also means "backend does not report it".
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ _MILLION = 1_000_000
 
 
 def as_count(value: Any) -> int:
-    """Nicht-negativer int aus einem JSON-Wert; alles andere → 0."""
+    """Non-negative int from a JSON value; anything else → 0."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 def compact(n: int) -> str:
-    """Kurzform für Logs: ``950``, ``12.3k``, ``1.30M``."""
+    """Short form for logs: ``950``, ``12.3k``, ``1.30M``."""
     if n >= _MILLION:
         return f"{n / _MILLION:.2f}M"
     if n >= _THOUSAND:
@@ -36,7 +36,7 @@ def compact(n: int) -> str:
 
 @dataclass(frozen=True, slots=True)
 class TokenCounts:
-    """Token-Verbrauch; ``cache_read``/``cache_write`` sind in ``input`` enthalten."""
+    """Token usage; ``cache_read``/``cache_write`` are included in ``input``."""
 
     input: int = 0
     output: int = 0
@@ -53,12 +53,12 @@ class TokenCounts:
 
     @property
     def fresh_input(self) -> int:
-        """Prompt-Tokens, die nicht aus dem Cache kamen (inkl. Cache-Writes)."""
+        """Prompt tokens that did not come from the cache (incl. cache writes)."""
         return max(self.input - self.cache_read, 0)
 
     @classmethod
     def from_poll(cls, d: Any) -> TokenCounts:
-        """Poll-Form (``tokens`` eines Backend-Ergebnisses) → TokenCounts; malformiert → Nullen."""
+        """Poll form (``tokens`` of a backend result) → TokenCounts; malformed → zeros."""
         if not isinstance(d, Mapping):
             return cls()
         return cls(
@@ -81,7 +81,7 @@ class TokenCounts:
         )
 
     def as_poll(self) -> dict[str, int]:
-        """Poll-Form für ``AgentBackend.poll``."""
+        """Poll shape for ``AgentBackend.poll``."""
         return {
             "input": self.input,
             "output": self.output,
@@ -90,7 +90,7 @@ class TokenCounts:
         }
 
     def usage_fields(self) -> dict[str, int]:
-        """Token-Felder der Step-Usage (``total_tokens`` = input + output)."""
+        """Token fields of the step usage (``total_tokens`` = input + output)."""
         return {
             "prompt_tokens": self.input,
             "completion_tokens": self.output,

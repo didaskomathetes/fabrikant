@@ -58,13 +58,13 @@ from ..runmodel import FailureKind
 from .pr import _normalize_labels
 
 ACTIONS = ("create", "edit", "label", "close", "list", "block")
-_NUMBERLESS = ("create", "list")  # Actions ohne Pflicht-`number`
+_NUMBERLESS = ("create", "list")  # actions without a required `number`
 _STATES = ("open", "closed")
 _CLOSE_REASONS = ("completed", "not_planned", "duplicate")
 _PER_PAGE = 100  # host maximum for list endpoints
 LIST_LIMIT = 100  # list: default upper bound (prompt size stays bounded)
-LIST_MAX_PAGES = 5  # list: harte Obergrenze der Pagination (≤ 500 Issues)
-LIST_BODY_CHARS = 200  # list: Body-Auszug pro Issue
+LIST_MAX_PAGES = 5  # list: hard upper bound on pagination (≤ 500 issues)
+LIST_BODY_CHARS = 200  # list: body excerpt per issue
 # block: at most 5 blocked_by (dependencies prompt, ADR 0031); more is LLM noise.
 # The prerequisite (`prerequisite`) is added separately and never falls under the limit.
 MAX_BLOCKERS = 5
@@ -102,7 +102,7 @@ def _skip_reason(ctx: dict, step: dict) -> str:
     if names:
         names = [names] if isinstance(names, str) else names
         if not any(str(ctx.get(n) or "").strip() for n in names):
-            return f"{', '.join(names)} leer"
+            return f"{', '.join(names)} empty"
     return ""
 
 
@@ -128,9 +128,9 @@ def _step_issue(ctx: dict, step: dict) -> dict:
         return _HANDLERS[action](ctx, step, repo, number, provider)
     except urllib.error.HTTPError as e:
         detail = ""
-        with contextlib.suppress(Exception):  # Body-Read ist best-effort
+        with contextlib.suppress(Exception):  # body read is best-effort
             detail = e.read().decode()[:300]
-        return _fail(f"{action} fehlgeschlagen (HTTP {e.code}): {detail}", classify_http(e.code, e.headers))
+        return _fail(f"{action} failed (HTTP {e.code}): {detail}", classify_http(e.code, e.headers))
 
 
 def _text(step: dict, key: str, ctx: dict) -> str | None:
@@ -160,7 +160,7 @@ def _create(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -
     ctx[emit] = str(issue.number)
     if emit == "issue_number" and issue.url:
         ctx["issue_url"] = issue.url
-    return {"ok": True, "summary": f"Issue #{issue.number} erstellt {issue.url}".strip()}
+    return {"ok": True, "summary": f"Issue #{issue.number} created {issue.url}".strip()}
 
 
 def _edit(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
@@ -217,7 +217,7 @@ def _close(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
     # GitHub: `duplicate_issue_id` sets the native duplicate relation (ADR 0031);
     # GitLab ignores the field (no duplicate concept, ADR 0062).
     provider.edit_issue(repo, int(number), state="closed", state_reason=reason or None, duplicate_issue_id=duplicate_id)
-    summary = f"Issue #{number} geschlossen" + (f" ({reason})" if reason else "")
+    summary = f"Issue #{number} closed" + (f" ({reason})" if reason else "")
     if moved:
         summary += t("steps.issue.blockers_moved_to", v1=originals[0], v2=", ".join(moved))
     return {"ok": True, "summary": summary}
@@ -313,7 +313,7 @@ def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
             skipped.append(t("steps.issue.not_found", ref=ref))
             continue
         if blocker.is_pr or blocker.state != "open":
-            skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'geschlossen'})")
+            skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'closed'})")
             continue
         provider.add_issue_dependency(repo, int(number), blocker_id=int(blocker.raw["id"]))
         linked.append(f"#{ref}")

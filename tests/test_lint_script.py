@@ -44,7 +44,7 @@ def test_reports_mode_tolerates_findings_and_converts_pyright(tmp_path):
     p = _run(tmp_path, uv, "--reports", str(out))
     assert p.returncode == 0, p.stdout + p.stderr
     sonar = json.loads((out / "pyright-sonar.json").read_text())
-    assert sonar["issues"][0]["ruleId"] == "r"
+    assert sonar["issues"][0]["ruleId"] == "pyright:r"
 
 
 @pytest.mark.parametrize("tool", ["ruff", "bandit", "pyright"])
@@ -58,4 +58,4 @@ def test_reports_mode_tool_error_is_config(tmp_path, tool):
 def test_reports_mode_broken_pyright_output_is_config(tmp_path):
     p = _run(tmp_path, 'case "$*" in *pyright*) echo "nicht json";; esac', "--reports", str(tmp_path / "r"))
     assert p.returncode == EX_CONFIG, p.stdout + p.stderr
-    assert "FEHLER: pyright_sonar" in p.stdout
+    assert "FEHLER: sonar_issues" in p.stdout

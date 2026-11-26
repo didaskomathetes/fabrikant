@@ -104,7 +104,7 @@ class GitError(StepFailure, RuntimeError):
 
 
 def failed(summary: str, kind: FailureKind | Failure, **extra: Any) -> dict:
-    """Step-Result ``ok: False`` mit Fehlerklasse (ADR 0035): ``failed("…", FailureKind.OUTCOME, output=…)``."""
+    """Step result ``ok: False`` with failure class (ADR 0035): ``failed("…", FailureKind.OUTCOME, output=…)``."""
     failure = kind if isinstance(kind, Failure) else Failure(kind)
     return {"ok": False, "summary": summary, **extra, **failure.fields()}
 
@@ -201,7 +201,7 @@ def classify_exception(exc: BaseException) -> Failure:
     if isinstance(exc, (urllib.error.URLError, ConnectionError, TimeoutError)):
         return Failure(_F.TRANSIENT)
     if isinstance(exc, (FileNotFoundError, PermissionError, NotADirectoryError)):
-        return Failure(_F.ENVIRONMENT)  # fehlendes Tool/File oder fehlende Rechte
+        return Failure(_F.ENVIRONMENT)  # missing tool/file or missing permissions
     # Remainder, also subprocess.TimeoutExpired: whether a command hung or was merely slow is open.
     return Failure(_F.UNKNOWN)
 
@@ -230,8 +230,21 @@ _AGENT_TRANSIENT = re.compile(
     r"|econnreset|etimedout|socket hang up|temporarily unavailable",
     re.IGNORECASE,
 )
+# The model's context window is full (Claude Code, Codex/OpenAI, opencode). A retry with the same prompt
+# fails again → ``outcome``; the agent step warns that the work needs rescoping.
+_AGENT_CONTEXT_EXHAUSTED = re.compile(
+    r"prompt is too long|context[_ ]length[_ ]exceeded|maximum context length"
+    r"|exceeds? (?:the |its )?(?:model'?s? )?context window"
+    r"|context (?:window|limit) (?:exceeded|reached|exhausted|is full)|context ?overflow",
+    re.IGNORECASE,
+)
 # Claude Code reports an exhausted usage window as "Claude AI usage limit reached|<epoch>".
 _USAGE_LIMIT_RESET = re.compile(r"usage limit reached\|(\d{9,11})", re.IGNORECASE)
+
+
+def is_context_exhausted(text: str) -> bool:
+    """True if an agent/LLM CLI reports that its context window is exhausted."""
+    return bool(text) and _AGENT_CONTEXT_EXHAUSTED.search(text) is not None
 
 
 def classify_agent_output(text: str) -> Failure:
@@ -240,6 +253,8 @@ def classify_agent_output(text: str) -> Failure:
         return Failure(_F.UNKNOWN)
     if m := _USAGE_LIMIT_RESET.search(text):
         return Failure(_F.TRANSIENT, datetime.fromtimestamp(int(m.group(1)), UTC))
+    if is_context_exhausted(text):
+        return Failure(_F.OUTCOME)
     if _AGENT_SELF_RESETTING.search(text):
         return Failure(_F.TRANSIENT)
     if _AGENT_ENVIRONMENT.search(text):
@@ -272,9 +287,9 @@ def classify_git_output(text: str) -> FailureKind:
     return _F.UNKNOWN
 
 
-# ---------------------------------------------------------------- Lesen aus Step-Results/Records
+# ---------------------------------------------------------------- Reading from step results/records
 def parse_kind(value: object) -> FailureKind:
-    """Wert aus Step-Result/Record → Klasse; fehlend/unbekannt → ``unknown`` (Altbestand, ADR 0035)."""
+    """Value from step result/record → class; missing/unknown → ``unknown`` (legacy data, ADR 0035)."""
     try:
         return FailureKind(str(value)) if value else _F.UNKNOWN
     except ValueError:

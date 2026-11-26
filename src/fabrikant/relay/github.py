@@ -36,7 +36,7 @@ _TASK_QUERY = (
 
 
 class GitHubError(RuntimeError):
-    """GitHub-API-Antwort ohne verwertbares Ergebnis (GraphQL-errors, fehlendes Issue)."""
+    """GitHub API response without a usable result (GraphQL errors, missing issue)."""
 
 
 def _login(node: Any) -> str | None:
@@ -44,7 +44,7 @@ def _login(node: Any) -> str | None:
 
 
 def task_from_node(node: dict, label: str) -> Task:
-    """GraphQL-Issue-Node → Task (letztes Labeling von `label`, letzte Body-Bearbeitung)."""
+    """GraphQL issue node → Task (latest labeling of `label`, latest body edit)."""
     labeled = [
         n
         for n in (node.get("timelineItems") or {}).get("nodes") or []

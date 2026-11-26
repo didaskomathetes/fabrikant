@@ -101,7 +101,7 @@ class SpecUpdate:
         unknown = sorted(set(payload) - {"loops", "remove_loops", *SPEC_EDITABLE_FIELDS})
         if unknown:
             raise ValueError(
-                f"unbekannte Felder: {', '.join(unknown)} (erlaubt: loops, remove_loops, "
+                f"unknown fields: {', '.join(unknown)} (allowed: loops, remove_loops, "
                 f"{', '.join(SPEC_EDITABLE_FIELDS)})"
             )
         return cls(loops=loops, remove_loops=list(remove), project_fields=fields)
@@ -217,7 +217,7 @@ def save_spec(
         fd.write(merged.encode("utf-8"))
         tmp = Path(fd.name)
     try:
-        os.chmod(tmp, os.stat(path).st_mode)  # Rechte der Original-Datei beibehalten
+        os.chmod(tmp, os.stat(path).st_mode)  # preserve the original file's permissions
         saved = load_spec(tmp)
     except Exception:
         tmp.unlink(missing_ok=True)
@@ -286,7 +286,7 @@ def _validate_approval_when(st: dict, where: str) -> list[str]:
 
 
 def _worktree_types(steps: list) -> set[str]:
-    """Worktree-pflichtige Step-Typen, auch in (verschachtelten) `verify.checks`."""
+    """Step types that require a worktree, also in (nested) `verify.checks`."""
     found: set[str] = set()
     for st in steps:
         if not isinstance(st, dict):
@@ -308,7 +308,7 @@ def _validate_worktree(lname: str, ldef: dict, steps: list) -> list[str]:
         return []
     needs = sorted(_worktree_types(steps))
     if needs:
-        return [f"loop {lname}: worktree: false, aber Steps brauchen den Worktree ({', '.join(needs)})"]
+        return [f"loop {lname}: worktree: false, but steps need the worktree ({', '.join(needs)})"]
     return []
 
 
@@ -322,6 +322,15 @@ def _validate_failure_kind(st: dict, where: str) -> list[str]:
     return []
 
 
+def _validate_done_marker(st: dict, where: str) -> list[str]:
+    """`done_marker` (opt-in for `::fabrikant-done::`): shell steps only, boolean."""
+    if st.get("type") != "shell":
+        return [_t("specs.done_marker_only_applies_to", where=where, v2=st.get("type"))]
+    if not isinstance(st["done_marker"], bool):
+        return [_t("specs.done_marker_must_be_bool", where=where, value=st["done_marker"])]
+    return []
+
+
 def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
     """Check a step's backend field ``key`` against the adapter registry (empty = env default)."""
     value = st.get(key)
@@ -332,7 +341,7 @@ def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
 
 
 def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[str]:
-    """Optionales int-Feld ``key`` (z. B. ``max_rounds``): int >= ``minimum``, kein Bool."""
+    """Optional int field ``key`` (e.g. ``max_rounds``): int >= ``minimum``, not a bool."""
     value = st.get(key)
     if value is None:
         return []
@@ -343,7 +352,7 @@ def _validate_int_field(st: dict, key: str, where: str, minimum: int) -> list[st
 
 def _validate_pr_review_fix(st: dict, where: str) -> list[str]:
     """pr_review-Fix-Runden: ``fix_variant`` String, ``fix_timeout``/``fix_check_timeout`` int >= 1,
-    ``fix_checks`` Liste nicht-leerer Strings."""
+    ``fix_checks`` list of non-empty strings."""
     errs = _validate_int_field(st, "fix_timeout", where, 1) + _validate_int_field(st, "fix_check_timeout", where, 1)
     if st.get("fix_variant") is not None and not isinstance(st["fix_variant"], str):
         errs.append(_t("specs.fix_variant_must_be_a", where=where, v2=st["fix_variant"]))
@@ -484,7 +493,7 @@ def _validate_step_pr_review(st: dict, where: str, spec: dict) -> list[str]:
         errs.append(_t("specs.pr_review_without_model_required", where=where))
     errs += _validate_backend(st, "backend", where, "pr_review backend")
     errs += _validate_backend(st, "fix_backend", where, "pr_review fix_backend")
-    # max_rounds 0 = Review-only (keine Fix-Runden); max_findings >= 1 (ADR 0039).
+    # max_rounds 0 = review-only (no fix rounds); max_findings >= 1 (ADR 0039).
     errs += _validate_int_field(st, "max_rounds", where, 0)
     errs += _validate_int_field(st, "max_findings", where, 1)
     errs += _validate_pr_review_fix(st, where)
@@ -593,6 +602,8 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                         errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
+                    if "done_marker" in st:
+                        errs += _validate_done_marker(st, where)
                     stype = st.get("type")
                     errs += _validate_step_type(stype, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None
@@ -681,9 +692,9 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
                 _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
-        if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
+        if rec is not None and not isinstance(rec, bool) and rec not in config.RECONCILE_MODES:
             errs.append(
-                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=list(config.RECONCILE_MODES), rec=rec)
             )
     return errs
 

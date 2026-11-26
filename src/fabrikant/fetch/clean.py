@@ -1,8 +1,8 @@
-"""Stufe A: deterministische Bereinigung (ADR 0060 §2a) — keine LLM.
+"""Stage A: deterministic cleaning (ADR 0060 §2a) — no LLM.
 
-Nur Text-Transformation, keine Interpretation. Ziel: aus rohem HTML/Text
-einen sauberen, injektionsarmen Klartext machen, bevor er den Agenten
-erreicht. Alle Regeln sind deterministisch und unit-testbar.
+Text transformation only, no interpretation. Goal: turn raw HTML/text into clean,
+low-injection plain text before it reaches the agent.
+All rules are deterministic and unit-testable.
 """
 
 from __future__ import annotations
@@ -11,18 +11,18 @@ import re
 import unicodedata
 from html.parser import HTMLParser
 
-# Zero-Width + BiDi-Override-Zeichen: unsichtbar, aber sie können Text
-# umordnen/verbergen (Right-to-Left-Override). Immer entfernen.
+# Zero-width + BiDi-override characters: invisible, but they can reorder/hide text
+# (right-to-left override). Always remove.
 _INVISIBLE_RE = re.compile(
     "[\u200b\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff]"
 )
-# C0-Steuerzeichen (außer \t\n\r): tauchen in normalisiertem Text nicht vor.
+# C0 control characters (except \t\n\r): do not occur in normalized text.
 _C0_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-# HTML-Kommentare.
+# HTML comments.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # data:-URIs (JS-Payloads in href/src).
 _DATA_URI_RE = re.compile(r"data:[^\"'\s>]+", re.IGNORECASE)
-# Mehrere Leerzeichen/Zeilen zusammenfassen.
+# Collapse multiple spaces/lines.
 _WS_RE = re.compile(r"[ \t]+")
 _NL_RE = re.compile(r"\n{3,}")
 
@@ -99,8 +99,8 @@ def normalize_text(text: str) -> str:
 
 
 def clean_html(html: str) -> str:
-    """HTML → bereinigter Klartext (Stufe A): Kommentar/data-URI raus, sichtbarer
-    Text extrahieren (script/style/hidden weg), dann Zeichen-Ebene normalisieren."""
+    """HTML → cleaned plain text (stage A): drop comment/data-URI, extract the visible
+    text (script/style/hidden removed), then normalize at the character level."""
     html = _COMMENT_RE.sub("", html)  # joined like a browser renders it (no split-word evasion)
     html = _DATA_URI_RE.sub(" ", html)
     extractor = _TextExtractor()
@@ -108,6 +108,6 @@ def clean_html(html: str) -> str:
         extractor.feed(html)
         raw = extractor.text()
     except Exception:
-        # Unsauberes HTML darf den Run nicht killen: Rohtext bereinigen statt crashen.
+        # Dirty HTML must not kill the run: clean the raw text instead of crashing.
         raw = re.sub(r"<[^>]+>", " ", html)
     return normalize_text(raw)

@@ -44,6 +44,7 @@ RESERVED_VARS = frozenset(
         "pr_body",
         "pr_head_ref",
         "pr_head_sha",
+        "pr_updated_at",
         "branch",
         "head",
         *config.DEDUPE_VARS,

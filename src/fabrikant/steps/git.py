@@ -17,7 +17,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .. import config
+from .. import config, netretry
 from ..apicommit import push_branch
 from ..context import _substitute, missing_vars
 from ..failures import GitError, failed
@@ -31,8 +31,16 @@ from ..validation import validate_branch_name
 STAGE_ALL = ":/"
 
 
+# git subcommands with network access: retry on transient errors (netretry).
+_NET_SUBCOMMANDS = frozenset({"fetch", "push", "pull"})
+
+
 def _git(ctx: dict, base: Path, *args: str, check: bool = True) -> str:
-    p = subprocess.run(["git", "-C", str(base), *args], capture_output=True, text=True, timeout=300)
+    cmd = ["git", "-C", str(base), *args]
+    if args and args[0] in _NET_SUBCOMMANDS:
+        p = netretry.run_git(cmd, timeout=300)
+    else:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if check and p.returncode != 0:
         output = p.stderr.strip() or p.stdout.strip()
         raise GitError(f"git {' '.join(args)}: {_redact(output)}", output)
@@ -62,7 +70,7 @@ def _step_git(ctx: dict, step: dict) -> dict:
     if step.get("branch") and (missing := missing_vars(step["branch"], ctx)):
         # Typically a manual run without trigger variables — name it clearly instead of "illegal characters".
         hint = " ".join(f"--var {name}=…" for name in missing)
-        raise ValueError(f"Branch {step['branch']!r}: Variable(n) fehlen: {', '.join(missing)} (manuell: {hint})")
+        raise ValueError(f"Branch {step['branch']!r}: variable(s) missing: {', '.join(missing)} (manual: {hint})")
     branch = _substitute(step["branch"], ctx) if step.get("branch") else None
     if branch:
         validate_branch_name(branch)

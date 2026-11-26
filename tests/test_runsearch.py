@@ -241,7 +241,7 @@ def test_unknown_status_is_excluded_from_search(json_idx):
     assert _ids(runsearch.search_runs("p", status="weird_status")) == []
     loaded, report = STORE.load_report("p")
     assert [r.id for r in loaded] == [good["id"]]
-    assert len(report.failures) == 1 and "unbekannter Status" in report.failures[0].reason
+    assert len(report.failures) == 1 and "unknown status" in report.failures[0].reason
 
 
 def test_same_run_id_in_two_projects_is_kept_separate(json_idx):

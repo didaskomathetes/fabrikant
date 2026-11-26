@@ -23,7 +23,7 @@ from .runstore import STORE
 
 
 class RunRow(TypedDict):
-    """Eine Zeile der Suchergebnisse."""
+    """One row of the search results."""
 
     id: str
     project: str
@@ -34,7 +34,7 @@ class RunRow(TypedDict):
     finished: str
     note: str
     failure_kind: str  # "" for non-failed runs (ADR 0035)
-    verdict: str  # fachliches Ergebnis (runmodel.Run.verdict), "" ohne
+    verdict: str  # business outcome (runmodel.Run.verdict), "" if none
     cost: CostSummary  # Consumption from the step usages (issue #126)
 
 
