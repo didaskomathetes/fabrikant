@@ -5,8 +5,8 @@
 **Status:** Accepted (2026-10-17); UI selector removed (2026-11-04) — API and override state remain
 **Decided by:** Dominic
 **Context:** A project's target branch is fixed in the spec
-(`repo.branch`). Switching branches (e.g. `fabrik` from `main` to
-`fabrik/v0.3`) required a manual YAML edit; the web UI showed the
+(`repo.branch`). Switching branches (e.g. `fabrikant` from `main` to
+`fabrikant/v0.3`) required a manual YAML edit; the web UI showed the
 branch read-only.
 
 ## Decision
@@ -46,7 +46,7 @@ On the next run the worktree syncs to `origin/<branch>`
 - **Reset:** delete the entry (or the file) → the project falls back to the
   spec default.
 - **No security impact:** the endpoints sit behind the existing
-  `FABRIK_TOKEN` gate like all other POST routes; the branch switch itself
+  `FABRIKANT_TOKEN` gate like all other POST routes; the branch switch itself
   is read-only towards the remote (only `fetch` + detached checkout).
 
 ## Amendment 2026-11-04

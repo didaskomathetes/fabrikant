@@ -69,7 +69,7 @@ Der Agent verbindet sich nie selbst mit dem offenen Web. Er **beantragt** Suchen
 - Limits pro URL (Größe, Zeit, Redirects) und pro Session (Anzahl Abrufe, Suchen).
 - Erlaubte Content-Types: `text/html`, `text/plain`, `text/markdown`, `application/pdf`.
 - Der Fetcher läuft als eigener gehärteter Container im Egress-Netz (wie der Proxy, ADR 0051):
-  HTML- und PDF-Parser sind selbst Angriffsfläche und gehören nicht in den fabrik-Prozess.
+  HTML- und PDF-Parser sind selbst Angriffsfläche und gehören nicht in den fabrikant-Prozess.
 
 **Restkanal:** Eine Suchanfrage kann Daten an den Suchanbieter tragen. Das Ziel ist ein fester,
 bekannter Anbieter, nicht ein Server des Angreifers. Wir nehmen das hin und protokollieren alle
@@ -224,7 +224,7 @@ Jede Nutzung eines Grants wird im Run-Record protokolliert.
 
 ## Beispiel: Relay „Deep Research: Software Factories"
 
-1. **Brief** (Issue mit `fabrik-relay`): Ziel, Gliederung des Berichts, `## Verify`: jede Aussage
+1. **Brief** (Issue mit `fabrikant-relay`): Ziel, Gliederung des Berichts, `## Verify`: jede Aussage
    im Bericht hat mindestens eine Quelle aus `sources/`. Projekt-Relay hat Profil `research-web`.
 2. **Session 1** plant und beantragt 8 Suchanfragen. `waiting_fetch`.
 3. **Fetch:** 8 Suchen, 80 Ergebnisse im Herkunftsprotokoll.

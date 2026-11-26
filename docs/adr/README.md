@@ -1,26 +1,29 @@
-# ADR-Index
+# ADR index
 
-Architektur-Entscheidungen (Architecture Decision Records) für fabrikant.
+Architecture Decision Records for fabrikant.
 
-**Konvention:** nächste freie Nummer über `main` **und alle offenen PRs**
-(`python scripts/check-adr-numbers.py next`; Kollision reparieren: `… fix`), Dateiname `NNNN-kurz-titel.md`,
-Status-Header (`Vorgeschlagen` / `Akzeptiert` / `In Überarbeitung` / `Draft` / `Abgelehnt`).
-ADRs ändern nur mit expliziter Freigabe (AGENTS.md) — Drafts laufen als
-gestapelter ADR-PR (ADR 0011). Eindeutige Nummern und ein vollständiger Index
-werden in CI geprüft (`tests/test_adr_index.py`), Kollisionen blockieren den Merge
-(ADR 0032). Lücken werden nie neu vergeben: 0007 war auf `main` vergeben (→ 0011), 0016 gehörte
-zu PR #251 (ungemergt geschlossen), 0033 zu PR #255 (dort zugunsten einer Änderung an ADR 0017
-zurückgezogen), 0029 zu PR #215 (Run-Suchindex; entfällt, Suche direkt auf den Run-Records).
+**Convention:** the next free number across `main` **and all open PRs**
+(`python scripts/check-adr-numbers.py next`; to repair a collision: `… fix`), file name
+`NNNN-short-title.md`, status header (`Proposed` / `Accepted` / `Under revision` / `Draft` /
+`Rejected`; German ADRs: `Vorgeschlagen` / `Akzeptiert` / `In Überarbeitung` / `Draft` /
+`Abgelehnt`).
+ADRs are changed only with explicit approval (AGENTS.md) — drafts run as a
+stacked ADR PR (ADR 0011). Unique numbers and a complete index are checked in CI
+(`tests/test_adr_index.py`), collisions block the merge (ADR 0032). Gaps are never
+reassigned: 0007 was assigned on `main` (→ 0011), 0016 belonged to PR #251 (closed
+unmerged), 0033 to PR #255 (withdrawn there in favour of a change to ADR 0017),
+0029 to PR #215 (run search index; dropped, search works directly on the run records),
+0070 to the rename to fabrikant (removed: not an architecture decision).
 
-**Umnummerierung 2026-10-20:** parallele Branches hatten Nummern doppelt vergeben.
-Die zuerst gemergte ADR behielt ihre Nummer; die übrigen wurden in Merge-Reihenfolge
-verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint → 0025,
+**Renumbering 2026-10-20:** parallel branches had assigned numbers twice.
+The ADR merged first kept its number; the others were moved in merge order:
+0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint → 0025,
 0018-alert-log-tail-redaction → 0026, 0023-on-webhook-trigger → 0027,
 0023-worktree-per-run → 0028.
 
-| # | Titel | Status |
+| # | Title | Status |
 |---|-------|--------|
-| [0001](0001-dogfooding-loops.md) | Fabrik dogfooding — Fabrik develops Fabrik | Accepted |
+| [0001](0001-dogfooding-loops.md) | Fabrikant dogfooding — Fabrikant develops Fabrikant | Accepted |
 | [0002](0002-sessionlog-sqlite.md) | Durable session log in SQLite (end schema) | Accepted, partially superseded by 0034 |
 | [0003](0003-review-step.md) | `review` step — cross-model cold critic | Accepted |
 | [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04) |
@@ -31,17 +34,17 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0010](0010-dual-identity-pr-pipeline.md) | Dual-identity PR pipeline (builder ≠ reviewer, human only when critical) | Accepted; amendment 2026-10-27: concrete identities = config; amendment 2026-11-03: per-project identities, signed API commits |
 | [0011](0011-approval-request-protocol.md) | Approval request protocol (ADR PR stacked on the original PR) | Accepted |
 | [0012](0012-agent-transient-backend-errors.md) | Agent step resilient to transient backend errors | Accepted |
-| [0013](0013-issue-closing-ac-verification.md) | Issue-Abschluss + Verifikation der Acceptance Criteria | Akzeptiert (Stufen 0–2; Stufe 3 optional) |
-| [0014](0014-on-issue-reconcile.md) | Reconcile-Modus für den `on_issue`-Trigger | Akzeptiert; Amendment 2026-10-28: Auto-Retry via ADR 0036 |
-| [0015](0015-queued-approval.md) | Freigaben bei belegtem Projekt-Lock einreihen | Akzeptiert |
-| [0017](0017-refine-conditional-gate.md) | Refine-Loop — Human-Gate nur bei `needs approval` / `close` | Akzeptiert |
-| [0018](0018-issue-step.md) | Nativer `issue`-Step | Akzeptiert |
-| [0019](0019-pause-resume-disable.md) | Pause/Resume/Disable pro Projekt und Loop | Akzeptiert (geändert 2026-10-23) |
-| [0020](0020-worktree-free-loops.md) | Worktree-freie Loops mit eigenem Lock und Scratch-Workdir | Akzeptiert |
-| [0021](0021-issue-priority-labels.md) | Issue-Priorisierung über Phasen-Labels (`priority_labels`) | Akzeptiert |
-| [0022](0022-model-choice-is-config.md) | Modellwahl ist Konfiguration, keine Architektur | Akzeptiert |
-| [0023](0023-on-pr-reconcile-per-head.md) | `on_pr` reconcile pro Head-SHA (`reconcile: head`) | Akzeptiert |
-| [0024](0024-review-verdict-marker.md) | Review als GitHub-Review mit Verdikt-Marker, Inline-Threads, Reply-Sperre | Akzeptiert |
+| [0013](0013-issue-closing-ac-verification.md) | Issue closing + verification of acceptance criteria | Accepted (stages 0–2; stage 3 optional) |
+| [0014](0014-on-issue-reconcile.md) | Reconcile mode for the `on_issue` trigger | Accepted; amendment 2026-10-28: auto-retry via ADR 0036 |
+| [0015](0015-queued-approval.md) | Queue approvals while the project lock is held | Accepted |
+| [0017](0017-refine-conditional-gate.md) | Refine loop — human gate only for `needs approval` / `close` | Accepted |
+| [0018](0018-issue-step.md) | Native `issue` step | Accepted |
+| [0019](0019-pause-resume-disable.md) | Pause/resume/disable per project and loop | Accepted (changed 2026-10-23) |
+| [0020](0020-worktree-free-loops.md) | Worktree-free loops with their own lock and scratch workdir | Accepted |
+| [0021](0021-issue-priority-labels.md) | Issue prioritization via phase labels (`priority_labels`) | Accepted |
+| [0022](0022-model-choice-is-config.md) | Model choice is configuration, not architecture | Accepted |
+| [0023](0023-on-pr-reconcile-per-head.md) | `on_pr` reconcile per head SHA (`reconcile: head`) | Accepted |
+| [0024](0024-review-verdict-marker.md) | Review as a GitHub review with verdict marker, inline threads, reply lock | Accepted |
 | [0025](0025-alert-dedup-fingerprint.md) | Alert-Deduplizierung per Fingerprint (statt Issue pro Run) | Akzeptiert |
 | [0026](0026-alert-log-tail-redaction.md) | Redaction des Alert-`log_tail` | Akzeptiert |
 | [0027](0027-on-webhook-trigger.md) | `on_webhook`-Trigger (HMAC, Tunnel-CORS) | Akzeptiert |
@@ -82,4 +85,3 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0067](0067-template-library.md) | Template library — curated, documented loop templates + `fabrikant template` CLI | Accepted (2026-11-24) |
 | [0068](0068-golden-run-store-mark.md) | Golden Runs — run-store mark + `fabrikant eval --golden <run-id>` | Accepted (2026-11-24) |
 | [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrikant`, Docker, step plugins | Accepted (2026-11-24) |
-| [0070](0070-rename-to-fabrikant.md) | Rename to fabrikant — package, CLI, env, entry points | Accepted (2026-11-24; amended: no legacy compat layer) |

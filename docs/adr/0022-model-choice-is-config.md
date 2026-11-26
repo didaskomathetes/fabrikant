@@ -1,45 +1,44 @@
-# ADR 0022: Modellwahl ist Konfiguration, keine Architektur
+# ADR 0022: Model choice is configuration, not architecture
 
-**Status:** Akzeptiert (2026-10-19)
-**Entscheider:** Dominic
-**Ersetzt:** ADR 0001 §3, Absatz 2 (Bindung von `pr-reply`/`review-pr` an
-konkrete Modelle bzw. an `FABRIK_AGENT_MODEL`) und die Spalte „Modell“ der
-Loop-Tabelle in ADR 0001. Die Invariante Builder ≠ Reviewer (ADR 0001 §3,
-ADR 0003) gilt unverändert.
+**Status:** Accepted (2026-10-19)
+**Deciders:** Dominic
+**Supersedes:** ADR 0001 §3, paragraph 2 (binding of `pr-reply`/`review-pr` to
+concrete models or to `FABRIKANT_AGENT_MODEL`) and the "Model" column of the loop
+table in ADR 0001. The invariant builder ≠ reviewer (ADR 0001 §3, ADR 0003)
+applies unchanged.
 
-## Kontext
+## Context
 
-ADR 0001 legte fest, wie die Loops an Modelle gebunden sind: `pr-reply` über
-das Env `FABRIK_AGENT_MODEL`, `review-pr` über die Copilot CLI. Modelle und
-Backends ändern sich schnell. Copilot zieht Modelle zurück, neue Generationen
-kommen, Preise ändern sich. Jeder Wechsel lief damit gegen den Text einer ADR,
-obwohl er keine Architektur ändert. Beispiel: `develop`/`pr-reply` wechseln
-von opencode (Env-Default) zu `claude_code` mit explizitem Step-Modell.
+ADR 0001 laid down how the loops are bound to models: `pr-reply` via the env
+variable `FABRIKANT_AGENT_MODEL`, `review-pr` via the Copilot CLI. Models and
+backends change quickly. Copilot withdraws models, new generations arrive, prices
+change. Every switch therefore ran against the text of an ADR, although it
+changes no architecture. Example: `develop`/`pr-reply` switch from opencode (env
+default) to `claude_code` with an explicit step model.
 
-## Entscheidung
+## Decision
 
-- **Builder ≠ Reviewer bleibt Architekturentscheidung** (Leitprinzip 4,
-  ADR 0001 §3, ADR 0003): Builder und Reviewer nutzen immer verschiedene
-  Modelle. Welche Modelle das sind, ist Konfiguration — dass sie
-  verschieden sind, nicht. `review`/`pr_review` prüfen das zur Laufzeit
-  (Cross-Model-Check, failt bei gleichem Modell); der Loop `review-pr`
-  (agent-Step) hält die Invariante über den Anker `reviewer_model`. Eine
-  Aufhebung der Invariante braucht eine neue ADR.
-- **Modell und Backend pro Step sind Konfiguration.** Sie stehen in der Spec
-  (`projects/*.fabrik.yaml`) oder in `fabrik.env`, nicht in ADRs. Ein Wechsel
-  braucht keine ADR und keine ADR-Freigabe.
-- **ADRs benennen Rollen, keine Modelle:** Builder, Reviewer, Klassifikator.
-  Welche Rolle welches Modell nutzt, bestimmt die Spec.
-- **Rollen teilen ein Modell über YAML-Anker**, wie eine lokale Variable:
-  in `projects/fabrik.fabrik.yaml` nutzen `develop` und `pr-reply`
-  `*builder_backend`/`*builder_model`, `develop.review` und `review-pr`
+- **Builder ≠ reviewer remains an architecture decision** (guiding principle 4,
+  ADR 0001 §3, ADR 0003): builder and reviewer always use different models. Which
+  models these are is configuration — that they are different is not.
+  `review`/`pr_review` check this at runtime (cross-model check, fails on the same
+  model); the `review-pr` loop (agent step) keeps the invariant via the anchor
+  `reviewer_model`. Lifting the invariant needs a new ADR.
+- **Model and backend per step are configuration.** They live in the spec
+  (`projects/*.fabrikant.yaml`) or in `fabrikant.env`, not in ADRs. A switch needs
+  neither an ADR nor ADR approval.
+- **ADRs name roles, not models:** builder, reviewer, classifier. Which role uses
+  which model is determined by the spec.
+- **Roles share a model via YAML anchors**, like a local variable: in
+  `projects/fabrikant.fabrikant.yaml`, `develop` and `pr-reply` use
+  `*builder_backend`/`*builder_model`, `develop.review` and `review-pr` use
   `*reviewer_model`.
 
-## Konsequenzen
+## Consequences
 
-- Modellwechsel sind normale Spec-Änderungen. Sie laufen durch die üblichen
-  PR-Gates, aber ohne ADR-Freigabe.
-- ADR 0001 §3 bleibt als Begründung der Rollen erhalten. Konkrete Bindungen
-  dort sind historisch.
-- Deployment-Voraussetzungen (CLI im PATH, Tokens) dokumentiert
-  `docs/backends.md`, nicht die ADR.
+- Model switches are normal spec changes. They go through the usual PR gates, but
+  without ADR approval.
+- ADR 0001 §3 is kept as the rationale for the roles. Concrete bindings there are
+  historical.
+- Deployment prerequisites (CLI in PATH, tokens) are documented in
+  `docs/backends.md`, not in the ADR.

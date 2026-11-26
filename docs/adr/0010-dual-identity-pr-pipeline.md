@@ -41,22 +41,22 @@ identities.**
 **Concrete identities are configuration, not architecture** (like
 model choice, ADR 0022): which identities builder and reviewer concretely
 are — GitHub apps, PATs, users, on another host (e.g. GitLab)
-other bot identities — is determined by the project config (spec/`fabrik.env`),
+other bot identities — is determined by the project config (spec/`fabrikant.env`),
 not by this ADR. Another project on GitLab uses other identities;
 the principle (two different identities, review separate from the
 author) stays the same.
 
 *Historical bindings (configuration, not part of the decision):*
 - 2026-10-18: GitHub-App (builder) + personal PAT (reviewer).
-- 2026-10-27 (PR #364): two GitHub apps — `fabrik-builder` (builder) +
-  `fabrik-reviewer` (reviewer), both with 1h installation tokens.
+- 2026-10-27 (PR #364): two GitHub apps — `fabrikant-builder` (builder) +
+  `fabrikant-reviewer` (reviewer), both with 1h installation tokens.
 
 **Example: token handling (GitHub implementation, config):**
 A concrete example of how the two identities are mapped in the project
 config:
 - `GITHUB_TOKEN` = builder installation token (developer). Renewed externally via
   `scripts/gh-token-refresh.py` (cron) every ~30 min and written to
-  `FABRIK_ENV_FILE` (default `~/.config/fabrik/fabrik.env`) — the file
+  `FABRIKANT_ENV_FILE` (default `~/.config/fabrikant/fabrikant.env`) — the file
   is re-read per API call, no restart needed.
 - `GITHUB_REVIEWER_TOKEN` = reviewer installation token (QA). Also valid
   for 1h, renewed via `scripts/gh-token-refresh.py --role reviewer` (cron).
@@ -71,7 +71,7 @@ config:
 - `pr_merge`: squash merge via the developer token after approval.
 - `human_gate`: criticality check on the PR diff. Heuristics (ADR paths,
   diff size, keywords) **and** LLM opinion. Critical → run pauses
-  (`needs_approval`), a human approves via `fabrik approve`. Not critical →
+  (`needs_approval`), a human approves via `fabrikant approve`. Not critical →
   continues automatically. Statically "always human" stays `approval: true` in the
   loop spec (existing semantics).
 
@@ -97,13 +97,13 @@ loops:
         prompt: "Solve the issue {issue_title}: {issue_body}"
       - name: push
         type: git
-        branch: "fabrik/auto/{issue_number}"
-        commit: {message: "fabrik: {issue_title}"}
+        branch: "fabrikant/auto/{issue_number}"
+        commit: {message: "fabrikant: {issue_title}"}
         push: true
       - name: open-pr
         type: pr
         repo: owner/name
-        title: "fabrik: {issue_title} (#{issue_number})"
+        title: "fabrikant: {issue_title} (#{issue_number})"
       - name: review
         type: pr_review
         repo: owner/name
@@ -133,10 +133,10 @@ The invariant (builder ≠ reviewer) remains. Two extensions, both opt-in:
   retry attempts and all subprocesses (shell, agent `gh`, relay CLI) then read
   `GITHUB_TOKEN`/`GITHUB_REVIEWER_TOKEN` **only** from this file; global
   token env values do not apply there (they belong to a different identity).
-  Without the option everything stays as above (env → `FABRIK_ENV_FILE`).
+  Without the option everything stays as above (env → `FABRIKANT_ENV_FILE`).
 - **`commit_via: git|api` (project spec, default `git`):** repos with
   `required_signatures` reject the locally created, unsigned bot commits
-  (squash merge does not help). With `api`, fabrik rebuilds every missing commit via
+  (squash merge does not help). With `api`, fabrikant rebuilds every missing commit via
   the Git Data API, and GitHub signs it for the builder app. Trade-off:
   author/timestamp of the local commits are lost (author = app bot), no
   root commits. Secured by a tree-SHA comparison per commit and a

@@ -1,66 +1,79 @@
-# ADR 0019: Pause/Resume/Disable pro Projekt und Loop
+# ADR 0019: Pause/resume/disable per project and loop
 
-**Status:** Akzeptiert (2026-10-20, Merge #207; vorgeschlagen 2026-10-20); Amendment 2026-10-25 (PR #326): eingereihte, noch nicht gestartete Runs werden zur Ausführungszeit erneut geprüft; geändert 2026-10-23: Worktree-Lease statt Single-Process-Garantie, #237/PR #328
+**Status:** Accepted (2026-10-20, merge #207; proposed 2026-10-20); amendment 2026-10-25 (PR #326): queued runs that have not started yet are checked again at execution time; changed 2026-10-23: worktree lease instead of single-process guarantee, #237/PR #328
 
-## Kontext
+## Context
 
-Bei Fehlerkaskaden (z. B. `review-pr` failt alle 5 Minuten) oder Wartung gab es
-keinen Schalter außer Spec-Edit oder Server-Stopp.
+During failure cascades (e.g. `review-pr` failing every 5 minutes) or
+maintenance there was no switch other than editing the spec or stopping the
+server.
 
-## Entscheidung
+## Decision
 
-- Zustand `active` | `paused` | `disabled`, optional `until` (Auto-Resume), pro Projekt und pro Loop.
-- `paused`: Scheduler-Trigger (cron/on_file/on_issue/on_pr) feuern und pollen nicht; manuelle Runs erlaubt.
-  `disabled`: zusätzlich keine manuellen Runs (UI/CLI/Chat/API). Laufende Runs bleiben unberührt.
-- Projekt-Zustand schlägt Loop-Zustand (Projekt != `active` → gilt für alle Loops).
-- Persistenz in `state/run-states.json` (atomar geschrieben), **nicht** in der Spec → überlebt Restarts und Spec-Änderungen.
-  Nur `paused`/`disabled` werden gespeichert; `active` = kein Eintrag.
-- `until` wird zu jedem Scheduler-Tick geprüft (`resume_expired`); abgelaufene Einträge zählen sofort als `active`.
-- Audit-Log `state/run-state-changes.jsonl` (JSONL: ts, actor, project, loop, from, to, until) + stdout.
-- Schnittstellen: `POST /api/projects/<p>/state` (`{state, loop?, until?}`), CLI `fabrik pause|resume|disable`, Chat, UI-Buttons.
+- State `active` | `paused` | `disabled`, optionally `until` (auto-resume), per
+  project and per loop.
+- `paused`: scheduler triggers (cron/on_file/on_issue/on_pr) neither fire nor
+  poll; manual runs are allowed. `disabled`: additionally no manual runs
+  (UI/CLI/chat/API). Running runs are not affected.
+- The project state beats the loop state (project != `active` → applies to all
+  loops).
+- Persisted in `state/run-states.json` (written atomically), **not** in the spec
+  → survives restarts and spec changes. Only `paused`/`disabled` are stored;
+  `active` = no entry.
+- `until` is checked on every scheduler tick (`resume_expired`); expired entries
+  count as `active` immediately.
+- Audit log `state/run-state-changes.jsonl` (JSONL: ts, actor, project, loop,
+  from, to, until) + stdout.
+- Interfaces: `POST /api/projects/<p>/state` (`{state, loop?, until?}`), CLI
+  `fabrikant pause|resume|disable`, chat, UI buttons.
 
-**Amendment (PR #326):** Die Prüfung von Pause/Disable erfolgt nicht nur beim
-Einreihen (Scheduler bzw. UI/CLI/Chat/API), sondern erneut zur Ausführungszeit:
-Trigger-Runs, die im Worker-Pool-Queue warten, werden verworfen, wenn der Loop
-inzwischen `paused`/`disabled` ist; wartende manuelle Runs (inkl. Resume) werden
-verworfen, wenn der Loop inzwischen `disabled` ist (queued-Record → `error`,
-Resume bleibt `needs_approval` und kann nach Resume erneut freigegeben werden).
-Laufende Runs bleiben weiterhin unberührt.
+**Amendment (PR #326):** Pause/disable is checked not only when enqueuing
+(scheduler or UI/CLI/chat/API), but again at execution time: trigger runs waiting
+in the worker pool queue are discarded if the loop has become
+`paused`/`disabled` in the meantime; waiting manual runs (including resume) are
+discarded if the loop has become `disabled` (queued record → `error`, a resume
+stays `needs_approval` and can be approved again after the loop is resumed).
+Running runs are still not affected.
 
-## Worktree-Lease und Single-Process-Garantie
+## Worktree lease and single-process guarantee
 
-Jeder Run-Worktree hat eine Lease-Datei `<WORKTREES_DIR>/<projekt>/<run_id>.lease`
-(JSON: `pid`, `heartbeat`, `token`; außerhalb des Git-Trees). Sie wird vor dem Anlegen des
-Worktrees geschrieben, per Heartbeat-Thread alle `config.WORKTREE_LEASE_HEARTBEAT_S` (30 s)
-erneuert und bei Run-Ende, Pause und Worktree-Entfernung gelöscht.
-`cleanup_orphaned_worktrees` überspringt einen Worktree, dessen Lease von einem
-**anderen** Prozess stammt, dessen PID lebt und dessen Heartbeat jünger als
-`config.WORKTREE_LEASE_TIMEOUT_S` (300 s) ist. Fehlende/korrupte Lease, eigene PID, tote
-PID oder abgelaufener Heartbeat schützen nicht; `needs_approval` schützt weiterhin.
+Every run worktree has a lease file `<WORKTREES_DIR>/<project>/<run_id>.lease`
+(JSON: `pid`, `heartbeat`, `token`; outside the Git tree). It is written before
+the worktree is created, renewed by a heartbeat thread every
+`config.WORKTREE_LEASE_HEARTBEAT_S` (30 s), and deleted on run end, pause and
+worktree removal. `cleanup_orphaned_worktrees` skips a worktree whose lease
+belongs to **another** process whose PID is alive and whose heartbeat is younger
+than `config.WORKTREE_LEASE_TIMEOUT_S` (300 s). A missing/corrupt lease, the own
+PID, a dead PID or an expired heartbeat do not protect; `needs_approval` still
+protects.
 
-Damit löscht ein zweiter Prozess (Server, `fabrik run`/`approve`) keine Worktrees
-laufender Runs mehr. **Weiterhin offen** und nicht unterstützt: Slots (`max_parallel`),
-Dedup und Vorrang-Warter (`runs.claim_run`) sind prozesslokal; parallele Prozesse auf
-demselben Projekt können das Slot-Limit überschreiten und denselben Trigger doppelt
-starten. Prozessübergreifende Slots/Dedup sind ein Folge-Thema (#280). Einschränkung: PID-Prüfung
-gilt nur auf demselben Host. Details zur Lease-Implementierung stehen in ADR 0028.
+A second process (server, `fabrikant run`/`approve`) therefore no longer deletes
+worktrees of running runs. **Still open** and not supported: slots
+(`max_parallel`), dedup and priority waiters (`runs.claim_run`) are
+process-local; parallel processes on the same project can exceed the slot limit
+and start the same trigger twice. Cross-process slots/dedup are a follow-up topic
+(#280). Limitation: the PID check only applies on the same host. Details of the
+lease implementation are in ADR 0028.
 
-## Specs ohne `repo:`
+## Specs without `repo:`
 
-Specs ohne `repo:` arbeiten ohne Isolation direkt im `root`; parallele Runs würden
-sich dort über Git-Index und Dateien überlappen. Daher gilt für diese Specs fest
-`max_parallel: 1`; ein höherer Wert in der Spec wird ignoriert. `worktree: false`-
-Loops sind davon ausgenommen, da sie ein eigenes Scratch-Workdir verwenden.
+Specs without `repo:` work directly in `root` without isolation; parallel runs
+would overlap there through the Git index and files. Therefore `max_parallel: 1`
+is fixed for these specs; a higher value in the spec is ignored.
+`worktree: false` loops are exempt, because they use their own scratch workdir.
 
-**Known Gap:** Das Problem existiert nur bei geteiltem Dateisystem
-(Single-Machine/Homelab-Betrieb). Bei container-basierten Runs (Sandbox pro Run
-mit eigenem Checkout, vgl. #20) löst es sich auf; der Sync-back von Änderungen
-für repo-less Specs bleibt dort offen.
+**Known gap:** The problem only exists with a shared file system
+(single-machine/homelab operation). With container-based runs (one sandbox per
+run with its own checkout, cf. #20) it goes away; syncing changes back for
+repo-less specs remains open there.
 
-## Konsequenzen / Nicht-Ziele
+## Consequences / non-goals
 
-- Während einer Pause verpasste Cron-Minuten werden nicht nachgeholt; `on_issue` im Event-Modus
-  initialisiert beim ersten Poll nach Resume neu, `reconcile`-Trigger arbeiten den Bestand ab.
-- Rollen (`operator`, #159) existieren noch nicht: Zugriff = bestehende Origin-/`FABRIK_TOKEN`-Prüfung (admin-Fallback).
-  Der `actor` im Audit-Log ist `api:<client-ip>`, `cli:<user>` bzw. `chat`.
-- Globaler Not-Aus und Circuit Breaker (Auto-Pause nach N Fehlschlägen) sind bewusst nicht Teil dieser Änderung.
+- Cron minutes missed during a pause are not caught up; `on_issue` in event mode
+  re-initializes on the first poll after resume, `reconcile` triggers work
+  through the existing stock.
+- Roles (`operator`, #159) do not exist yet: access = the existing
+  origin/`FABRIKANT_TOKEN` check (admin fallback). The `actor` in the audit log is
+  `api:<client-ip>`, `cli:<user>` or `chat`.
+- A global emergency stop and a circuit breaker (auto-pause after N failures) are
+  deliberately not part of this change.

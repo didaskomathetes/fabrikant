@@ -1,7 +1,7 @@
 # ADR 0043: Reconcile-Dedup — eingereihte Trigger und pausierte Runs
 
 **Status:** Vorgeschlagen (2026-10-23)
-**Entscheider:** Fabrik (dogfooding, Issue #256 / #258)
+**Entscheider:** Fabrikant (dogfooding, Issue #256 / #258)
 **Ergänzt:** ADR 0028 (Dedup), ADR 0011 (Approval), ADR 0015 (Vorrang-Claim)
 **Abgrenzung:** Issue #327 (Trigger-Runs überleben Restart) — bewusst nicht Teil
 dieses ADRs, siehe „Abgelehnte Alternativen“.
@@ -47,7 +47,7 @@ Loops + Bezugs kann starten.
   nicht-blockierend; der Chat-/Server-Resume läuft über `blocking=True`).
 
   ```
-  CLI: fabrik approve r1        (r1 = needs_approval, pr_number=5)
+  CLI: fabrikant approve r1        (r1 = needs_approval, pr_number=5)
 
   claim_run(vars={pr_number: 5})                          → None  ✖ (eigener Record)
   claim_run(vars={pr_number: 5}, exclude_run_id="r1")     → Claim ✔

@@ -1,6 +1,6 @@
 # ADR 0051: Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy
 
-**Status:** Akzeptiert (2026-11-19) — umgesetzt (`egress.py`, `fabrik egress`, Denied-Log-Parser)
+**Status:** Akzeptiert (2026-11-19) — umgesetzt (`egress.py`, `fabrikant egress`, Denied-Log-Parser)
 **Betrifft:** Security (Prompt-Injection-Datenabfluss, OWASP ASI01/ASI05), Agent-Container, Deployment.
 **Issue:** #519.
 
@@ -15,15 +15,15 @@ ADR begrenzt, *wohin* es gehen kann.
 
 ## Entscheidung
 
-- **Netzwerktopologie (Docker):** Zwei Netzwerke — `fabrik-egress` (Bridge, mit
-  Internet; Proxy-Container lebt hier) und `fabrik-sandbox` (`internal` — kein direkter
+- **Netzwerktopologie (Docker):** Zwei Netzwerke — `fabrikant-egress` (Bridge, mit
+  Internet; Proxy-Container lebt hier) und `fabrikant-sandbox` (`internal` — kein direkter
   Internetzugang; Agent-Container hängen hier). `ensure_networks` legt sie an **und prüft
   vorhandene** (`internal` und Subnetz müssen passen, sonst Fehler — ein fremdes, nicht
-  internes `fabrik-sandbox` wäre eine stille Isolationslücke). Subnets sind GEPINNT
+  internes `fabrikant-sandbox` wäre eine stille Isolationslücke). Subnets sind GEPINNT
   (`--subnet 172.27.0.0/16` / `--subnet 172.28.0.0/16`, per
-  `FABRIK_EGRESS_SUBNET`/`FABRIK_SANDBOX_SUBNET` überschreibbar) — die gerenderten
+  `FABRIKANT_EGRESS_SUBNET`/`FABRIKANT_SANDBOX_SUBNET` überschreibbar) — die gerenderten
   `Allow`-Zeilen referenzieren genau diese Werte.
-- **Proxy:** Tinyproxy-Container (`fabrik-egress-proxy`), Image **per Digest gepinnt**
+- **Proxy:** Tinyproxy-Container (`fabrikant-egress-proxy`), Image **per Digest gepinnt**
   (`vimagick/tinyproxy`, tinyproxy 1.11.0 — Config-Direktiven sind versionsabhängig; ein
   Update erfordert einen Test mit echtem Proxy). Gehärtet wie die Agent-Container
   (`--cap-drop ALL`, `no-new-privileges`, `--read-only`, Speicher-/PID-Limit) und läuft als
@@ -34,7 +34,7 @@ ADR begrenzt, *wohin* es gehen kann.
   Container landete dagegen auf einer subuid ohne Zugriff auf die `0600`-Config (Proxy startet
   nicht). Ohne Capabilities hat dieser root keine Sonderrechte (`egress.proxy_user`).
   Config + Filter-Datei werden
-  von fabrik gerendert (`egress.render_proxy_config`/`render_filter_file`) und
+  von fabrikant gerendert (`egress.render_proxy_config`/`render_filter_file`) und
   read-only gemountet. Default-Deny = `FilterDefaultDeny Yes` + Filter-DATEI
   (`Filter` in der Tinyproxy-Config ist ein Dateipfad, keine Inline-Patterns; ohne
   `FilterDefaultDeny` würde Tinyproxy ALLES erlauben). Filter-Muster sind ankernde
@@ -44,11 +44,11 @@ ADR begrenzt, *wohin* es gehen kann.
   kommen aus dem Egress-Bridge-Netz, nicht aus 127.0.0.1).
 - **Allowlist:** Builtins (`github.com` — inkl. `api.github.com` als Subdomäne,
   `models.dev`, `api.anthropic.com`, `api.openai.com`) + optionale Datei
-  (`FABRIK_EGRESS_ALLOWLIST_FILE`, Vorlage `deploy/egress-allowlist.txt`) + Env
-  (`FABRIK_EGRESS_ALLOWLIST`, kommasetrennt). Jeder Eintrag wird validiert (Hostname mit
+  (`FABRIKANT_EGRESS_ALLOWLIST_FILE`, Vorlage `deploy/egress-allowlist.txt`) + Env
+  (`FABRIKANT_EGRESS_ALLOWLIST`, kommasetrennt). Jeder Eintrag wird validiert (Hostname mit
   mind. zwei Labels; `com`, IP-Literale, Pfade, Klammern werden abgelehnt) — fail-closed beim
   Start. `169.254.169.254` ist nicht in der Allowlist → unerreichbar.
-- **CLI:** `fabrik egress start|stop|status`. Start legt die Netzwerke idempotent an,
+- **CLI:** `fabrikant egress start|stop|status`. Start legt die Netzwerke idempotent an,
   schreibt Config + Filter-Datei (0600 nach `state/egress/`) und setzt den Container. Danach
   prüft ein Health-Check (Container läuft + Proxy-Port antwortet, `egress.READY_TIMEOUT`);
   sonst Fehler mit Container-Log und der Container wird entfernt (kein stiller toter Proxy).
@@ -68,20 +68,20 @@ ADR begrenzt, *wohin* es gehen kann.
   das ist **Docker-versionsabhängig** und beim Deployment zu prüfen.
 - Agent-Tools, die andere Domänen brauchen (z. B. ein Model-Provider), müssen in die
   Allowlist — eine bewusste, auditierte Entscheidung statt impliziter Erreichbarkeit.
-- Docker ist ab jetzt ein Fabrik-Bedarf im Agent-Betrieb (bisher nur optional für
+- Docker ist ab jetzt ein Fabrikant-Bedarf im Agent-Betrieb (bisher nur optional für
   SonarQube). Der Proxy selbst ist trivial klein (Memory-Default des Containers).
 
 ## Restrisiko
 
 - **Geteilter `opencode serve`-Prozess ist nicht geschützt:** Er läuft unsandboxed auf dem
   Host mit vollem Netzwerkzugang und ist das primäre Agent-Backend. Der Proxy begrenzt nur
-  Agenten in `fabrik-sandbox` (One-Shot-Backends in der Per-Run-Sandbox, Issue #520); der
+  Agenten in `fabrikant-sandbox` (One-Shot-Backends in der Per-Run-Sandbox, Issue #520); der
   Egress von `opencode serve` bleibt ohne Deployment-Änderung offen.
 - **Erlaubte Domänen sind Kanäle:** `github.com` samt Subdomänen (Gist, API, Uploads) erlaubt mit
   dem Token des Steps Schreibzugriffe im Umfang dieses Tokens; die Anbieter-APIs
   (`api.anthropic.com`, `api.openai.com`) nehmen beliebigen Text entgegen. Die Allowlist
   begrenzt das Ziel, nicht den Inhalt. Token-Umfang klein halten (ADR 0050).
-- **Geteiltes Sandbox-Netz:** Gleichzeitige Agent-Container im selben `fabrik-sandbox` sehen
+- **Geteiltes Sandbox-Netz:** Gleichzeitige Agent-Container im selben `fabrikant-sandbox` sehen
   einander (Inter-Container-Verkehr ist an; ihn zu sperren würde auch den Weg zum Proxy
   sperren). Ein Netz pro Run ist ein möglicher Follow-up.
 - **Der Proxy** ist ein Single Point of Failure und sicherheitskritisch: Image-Updates nur per
