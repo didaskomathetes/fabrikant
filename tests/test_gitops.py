@@ -400,7 +400,7 @@ def test_gh_dependencies_url_per_kind(monkeypatch, kind):
 def test_gh_dependencies_empty_and_invalid_kind(monkeypatch):
     monkeypatch.setattr(gitops, "_gh_api", lambda m, u, t: {})
     assert gitops._gh_dependencies("o/r", 7, "tok") == []
-    with pytest.raises(ValueError, match="Dependency-Art"):
+    with pytest.raises(ValueError, match="dependency kind"):
         gitops._gh_dependencies("o/r", 7, "tok", "parent")
 
 

@@ -1,20 +1,20 @@
-"""Factory-KPIs aus dem Run-Store (Issue #127, framework-v1-draft.md §5).
+"""Factory KPIs from the run store (issue #127, framework-v1-draft.md §5).
 
-Rein lesend und store-neutral: arbeitet auf typisierten :class:`~fabrikant.runmodel.Run`-Objekten.
+Read-only and store-neutral: works on typed :class:`~fabrikant.runmodel.Run` objects.
 
-* **Cycle Time**: ``finished - started`` erfolgreicher Runs (Spec-Start → Accept/Merge).
-* **Judge-Veto-Rate**: Anteil der Runs mit Review-Step, in denen ein Review ``changes_requested``
-  lieferte (= ausgelöste Nacharbeit).
-* **Defect Escape**: Der Store kennt keinen Post-Merge-Befund. Proxy: ein fachlich gescheiterter Run
-  (``fail``/``outcome``) desselben Projekts+Loops *nach* einem früheren erfolgreichen Run gilt als
-  *entkommen* (Defekt tauchte nach der Annahme wieder auf). *Gefangen* = Run mit Defekt-Signal
-  (roter ``verify``-Check, ``changes_requested``, Outcome-Fehler), der nicht entkommen ist.
+* **Cycle time**: ``finished - started`` of successful runs (spec start → accept/merge).
+* **Judge veto rate**: share of runs with a review step in which a review returned ``changes_requested``
+  (= triggered rework).
+* **Defect escape**: the store has no post-merge finding. Proxy: a functionally failed run
+  (``fail``/``outcome``) of the same project+loop *after* an earlier successful run counts as
+  *escaped* (the defect resurfaced after acceptance). *Caught* = run with a defect signal
+  (red ``verify`` check, ``changes_requested``, outcome failure) that did not escape.
   ``defect_escape_rate = escaped / (caught + escaped)``.
 
-Dazu Betriebszahlen je Gruppe: erfolgreiche/gescheiterte Runs (``fail``/``error``), Laufzeit aller
-beendeten Runs (Summe/Mittel/Max) und Token-/Kosten-Summen aus :mod:`fabrikant.costs`.
+Plus operational figures per group: successful/failed runs (``fail``/``error``), runtime of all
+finished runs (sum/mean/max) and token/cost sums from :mod:`fabrikant.costs`.
 
-Replayability (§5) ist nicht Teil dieses Moduls.
+Replayability (§5) is not part of this module.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ SECONDS_DIGITS = 1
 
 
 class KpiSummary(TypedDict):
-    """JSON-Projektion von :class:`KpiTotals`; Raten/Zeiten sind ``None``, wenn nicht berechenbar."""
+    """JSON projection of :class:`KpiTotals`; rates/times are ``None`` when not computable."""
 
     runs: int
     passed: int
@@ -57,12 +57,12 @@ def _rate(part: int, whole: int) -> float | None:
 
 
 def cycle_time_s(run: Run) -> float | None:
-    """Dauer eines erfolgreichen Runs in Sekunden; None bei anderem Status, fehlenden/ungültigen/negativen Zeiten."""
+    """Duration of a successful run in seconds; None for other status, missing/invalid/negative times."""
     return runtime_s(run) if run.status is RunStatus.PASS else None
 
 
 def runtime_s(run: Run) -> float | None:
-    """Laufzeit eines beendeten Runs in Sekunden (jeder Status); None bei fehlenden/ungültigen/negativen Zeiten."""
+    """Runtime of a finished run in seconds (any status); None for missing/invalid/negative times."""
     if not run.started or not run.finished:
         return None
     try:
@@ -73,28 +73,28 @@ def runtime_s(run: Run) -> float | None:
 
 
 def is_failed(run: Run) -> bool:
-    """True bei Run-Status ``fail`` oder ``error`` (technisch oder fachlich gescheitert)."""
+    """True for run status ``fail`` or ``error`` (failed technically or functionally)."""
     return run.status in FAILED_RUN_STATUSES
 
 
 def is_vetoed(run: Run) -> bool:
-    """True, wenn ein Review-Step des Runs ``changes_requested`` lieferte."""
+    """True if a review step of the run returned ``changes_requested``."""
     return any(s.review is not None and s.review.verdict == VERDICT_CHANGES_REQUESTED for s in run.steps)
 
 
 def is_outcome_failure(run: Run) -> bool:
-    """True bei Run-Status ``fail`` mit Fehlerklasse ``outcome`` (echtes negatives Ergebnis)."""
+    """True for run status ``fail`` with error class ``outcome`` (a genuine negative result)."""
     return run.status is RunStatus.FAIL and run.failure_kind is FailureKind.OUTCOME
 
 
 def has_defect_signal(run: Run) -> bool:
-    """True bei rotem ``verify``-Check, Review-Veto oder Outcome-Fehler."""
+    """True for a red ``verify`` check, review veto or outcome failure."""
     return is_vetoed(run) or any(not c.ok for s in run.steps for c in s.verify) or is_outcome_failure(run)
 
 
 @dataclass(slots=True)
 class KpiTotals:
-    """Rohzähler der KPIs (summierbar über Loops/Projekte)."""
+    """Raw counters of the KPIs (summable across loops/projects)."""
 
     runs: int = 0
     passed: int = 0
@@ -108,7 +108,7 @@ class KpiTotals:
     defects_escaped: int = 0
 
     def merge(self, other: KpiTotals) -> None:
-        """Addiert eine andere Summe."""
+        """Add another total."""
         self.runs += other.runs
         self.passed += other.passed
         self.failed += other.failed
@@ -122,22 +122,22 @@ class KpiTotals:
 
     @property
     def judge_veto_rate(self) -> float | None:
-        """Vetoed / reviewed Runs; None ohne Review."""
+        """Vetoed / reviewed runs; None without review."""
         return _rate(self.vetoed_runs, self.reviewed_runs)
 
     @property
     def defect_escape_rate(self) -> float | None:
-        """Escaped / (caught + escaped); None ohne Defekte."""
+        """Escaped / (caught + escaped); None without defects."""
         return _rate(self.defects_escaped, self.defects_caught + self.defects_escaped)
 
     @property
     def cycle_time_avg_s(self) -> float | None:
-        """Mittlere Cycle Time in Sekunden; None ohne erfolgreiche Runs."""
+        """Mean cycle time in seconds; None without successful runs."""
         return round(sum(self.cycle_times) / len(self.cycle_times), SECONDS_DIGITS) if self.cycle_times else None
 
     @property
     def cycle_time_median_s(self) -> float | None:
-        """Median der Cycle Time in Sekunden; None ohne erfolgreiche Runs."""
+        """Median cycle time in seconds; None without successful runs."""
         times = sorted(self.cycle_times)
         if not times:
             return None
@@ -147,7 +147,7 @@ class KpiTotals:
 
     @property
     def runtime_total_s(self) -> float:
-        """Summe der Laufzeiten aller beendeten Runs in Sekunden."""
+        """Sum of the durations of all finished runs in seconds."""
         return round(sum(self.runtimes), SECONDS_DIGITS)
 
     def as_dict(self) -> KpiSummary:
@@ -183,7 +183,7 @@ def _chronological(run: Run) -> tuple[str, str]:
 
 
 def loop_kpis(runs: Iterable[Run]) -> KpiTotals:
-    """KPIs der Runs *eines* Loops (Reihenfolge der Eingabe egal; Escape braucht die Chronologie)."""
+    """KPIs of the runs of *one* loop (input order does not matter; escape needs the chronology)."""
     out = KpiTotals()
     accepted_before = False
     for run in sorted(runs, key=_chronological):
@@ -209,7 +209,7 @@ def loop_kpis(runs: Iterable[Run]) -> KpiTotals:
 
 
 def _by_loop(runs: Iterable[Run]) -> dict[tuple[str, str], KpiTotals]:
-    """KPIs je (Projekt, Loop), nach Schlüssel sortiert."""
+    """KPIs per (project, loop), sorted by key."""
     grouped: dict[tuple[str, str], list[Run]] = {}
     for run in runs:
         grouped.setdefault((run.project, run.loop), []).append(run)
@@ -217,7 +217,7 @@ def _by_loop(runs: Iterable[Run]) -> dict[tuple[str, str], KpiTotals]:
 
 
 def kpi_report(runs: Iterable[Run]) -> dict:
-    """KPIs je Projekt (mit Loop-Aufschlüsselung) und insgesamt."""
+    """KPIs per project (with loop breakdown) and overall."""
     per_project: dict[str, dict[str, KpiTotals]] = {}
     for (project, loop), totals in _by_loop(runs).items():
         per_project.setdefault(project, {})[loop] = totals
@@ -233,11 +233,11 @@ def kpi_report(runs: Iterable[Run]) -> dict:
 
 
 def kpis_report(project: str | None = None, date_from: str = "", date_to: str = "") -> dict:
-    """``GET /api/kpis``: Factory-KPIs im Zeitraum. ValueError bei ungültigem Datum."""
+    """``GET /api/kpis``: factory KPIs in the period. ValueError for an invalid date."""
     return kpi_report(runs_in_range(project, date_from, date_to))
 
 
-# Prometheus-Gauges je (project, loop): (Name, HELP, Wert); None-Werte werden nicht exportiert.
+# Prometheus gauges per (project, loop): (name, HELP, value); None values are not exported.
 _PROM_GAUGES: tuple[tuple[str, str, Callable[[KpiTotals], float | None]], ...] = (
     ("fabrikant_kpi_cycle_time_avg_seconds", "Mean cycle time of passed runs", lambda t: t.cycle_time_avg_s),
     ("fabrikant_kpi_judge_veto_rate", "Share of reviewed runs with changes_requested", lambda t: t.judge_veto_rate),
@@ -252,7 +252,7 @@ _PROM_GAUGES: tuple[tuple[str, str, Callable[[KpiTotals], float | None]], ...] =
 
 
 def render_prometheus(runs: Iterable[Run]) -> str:
-    """KPIs je (project, loop) als Prometheus-Gauges (Textformat, ohne abschließende Leerzeile)."""
+    """KPIs per (project, loop) as Prometheus gauges (text format, without trailing blank line)."""
     totals = _by_loop(runs)
     blocks = []
     for name, help_text, value in _PROM_GAUGES:
@@ -261,23 +261,23 @@ def render_prometheus(runs: Iterable[Run]) -> str:
     return "\n".join(blocks)
 
 
-# Scrapes laden sonst bei jedem Request den kompletten Run-Store; ein kurzer TTL-Cache deckelt die Last.
+# Scrapes would otherwise load the entire run store on every request; a short TTL cache caps the load.
 PROMETHEUS_CACHE_TTL_S = 15.0
 _prom_cache: tuple[float, str] | None = None
 _prom_lock = threading.Lock()
 
 
 def reset_prometheus_cache() -> None:
-    """Verwirft den gecachten Prometheus-Text (Tests, Admin-Hooks)."""
+    """Discard the cached Prometheus text (tests, admin hooks)."""
     global _prom_cache
     with _prom_lock:
         _prom_cache = None
 
 
 def prometheus_text() -> str:
-    """Prometheus-Text der KPIs über alle gespeicherten Runs (für ``GET /api/metrics``).
+    """Prometheus text of the KPIs over all stored runs (for ``GET /api/metrics``).
 
-    Für ``PROMETHEUS_CACHE_TTL_S`` Sekunden gecacht — die Berechnung liest den gesamten Run-Store."""
+    Cached for ``PROMETHEUS_CACHE_TTL_S`` seconds — the computation reads the entire run store."""
     global _prom_cache
     with _prom_lock:
         now = time.monotonic()

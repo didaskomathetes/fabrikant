@@ -29,7 +29,7 @@ _UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 
 def parse_duration(raw: object) -> timedelta:
-    """`45s`, `5m`, `2h`, `1d` → timedelta (> 0); ValueError sonst."""
+    """`45s`, `5m`, `2h`, `1d` → timedelta (> 0); ValueError otherwise."""
     m = _DURATION_RE.match(str(raw).strip())
     if not m or int(m.group(1)) <= 0:
         raise ValueError(t("retry.duration_like_5m_2h_expected", raw=raw))
@@ -55,7 +55,7 @@ class RetryPolicy:
         return (kind or FailureKind.UNKNOWN) in self.on
 
     def delay(self, attempt: int) -> timedelta:
-        """Wartezeit vor Versuch `attempt` (1-basiert)."""
+        """Wait time before attempt `attempt` (1-based)."""
         return self.backoff[min(attempt, len(self.backoff)) - 1]
 
     def next_attempt_at(self, attempt: int, finished: datetime, retry_after: datetime | None = None) -> datetime:

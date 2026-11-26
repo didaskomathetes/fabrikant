@@ -1,12 +1,12 @@
-"""Abrechnungsart eines LLM-/Agent-Steps: zählt ``cost_usd`` wirklich als Rechnung oder nur als Schätzung?
+"""Billing kind of an LLM/agent step: does ``cost_usd`` count as a real bill or only as an estimate?
 
-- ``api``: pro Token abgerechnet (API-Key) — ``cost_usd`` ist echtes Geld.
-- ``subscription``: Abo-Login (Claude/ChatGPT-Plan, Copilot) — verbraucht Nutzungslimits/Credits;
-  ``cost_usd`` ist nur das API-Listenpreis-Äquivalent.
-- ``unknown``: nicht ableitbar (z. B. opencode: hängt vom Provider ab — lokal, API-Key oder Abo).
+- ``api``: billed per token (API key) — ``cost_usd`` is real money.
+- ``subscription``: subscription login (Claude/ChatGPT plan, Copilot) — consumes usage limits/credits;
+  ``cost_usd`` is only the API list-price equivalent.
+- ``unknown``: not derivable (e.g. opencode: depends on the provider — local, API key or subscription).
 
-Die Backends leiten die Art aus der Auth ab, die fabrikant der CLI übergibt. Ein Step kann sie mit
-``billing:`` im Projekt-Spec festlegen; das ist bei opencode der einzige Weg.
+The backends derive the kind from the auth that fabrikant passes to the CLI. A step can set it with
+``billing:`` in the project spec; for opencode that is the only way.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ STEP_KEY = "billing"
 
 
 class Billing(StrEnum):
-    """Abrechnungsart einer Usage."""
+    """Billing type of a usage."""
 
     API = "api"
     SUBSCRIPTION = "subscription"
@@ -28,9 +28,9 @@ class Billing(StrEnum):
 def from_auth(
     env: Mapping[str, str], *, api: tuple[str, ...], subscription: tuple[str, ...], api_wins: bool = False
 ) -> Billing:
-    """Art aus den übergebenen Auth-Variablen: genau eine Sorte gesetzt → diese, sonst ``unknown``.
+    """Kind from the passed auth variables: exactly one kind set → that one, else ``unknown``.
 
-    ``api_wins``: die CLI nimmt bei beiden den API-Key (Claude Code im ``-p``-Modus)."""
+    ``api_wins``: the CLI takes the API key when both are set (Claude Code in ``-p`` mode)."""
     has_api = any(env.get(n) for n in api)
     has_sub = any(env.get(n) for n in subscription)
     if has_api and api_wins:
@@ -41,14 +41,14 @@ def from_auth(
 
 
 def for_step(step: Mapping, detected: Billing = Billing.UNKNOWN) -> Billing:
-    """``billing:`` aus dem Step hat Vorrang vor der Erkennung des Backends."""
+    """``billing:`` from the step takes precedence over the backend's detection."""
     value = step.get(STEP_KEY)
     return Billing(value) if value in Billing._value2member_map_ else detected
 
 
 def validate(step: Mapping, where: str) -> list[str]:
-    """Spec-Prüfung von ``billing:`` (optional)."""
+    """Spec check of ``billing:`` (optional)."""
     value = step.get(STEP_KEY)
     if value is None or value in Billing._value2member_map_:
         return []
-    return [f"{where}: billing muss einer von {[b.value for b in Billing]} sein (ist {value!r})"]
+    return [f"{where}: billing must be one of {[b.value for b in Billing]} (is {value!r})"]

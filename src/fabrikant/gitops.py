@@ -35,7 +35,7 @@ from .secrets import _redact
 DEFAULT_ENV_FILE = config.DEFAULT_ENV_FILE
 GH_TOKEN_ENV = {"dev": "GITHUB_TOKEN", "reviewer": "GITHUB_REVIEWER_TOKEN"}
 GITHUB_API = "https://api.github.com"
-GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` bevorzugt GH_TOKEN vor GITHUB_TOKEN  # nosec B105
+GH_CLI_TOKEN_VAR = "GH_TOKEN"  # `gh` prefers GH_TOKEN over GITHUB_TOKEN  # nosec B105
 ENV_FILE_VAR = "FABRIKANT_ENV_FILE"
 # Project token file for subprocesses: marks FABRIKANT_ENV_FILE as a project override so that
 # fabrikant code in the subprocess (`fabrikant.push`, relay CLI) ignores inherited global token env values.
@@ -118,7 +118,7 @@ def subprocess_env() -> dict[str, str]:
 
 
 def cleared_tokens() -> dict[str, str]:
-    """Alle GitHub-Token-Variablen leer — Subprozess ohne GitHub-Identität (`gh` ignoriert leere Werte)."""
+    """All GitHub token variables empty — subprocess without GitHub identity (`gh` ignores empty values)."""
     return dict.fromkeys((GH_CLI_TOKEN_VAR, *GH_TOKEN_ENV.values()), "")
 
 
@@ -162,7 +162,7 @@ def _gh_token_safe(role: str = "dev") -> str:
     only its file counts: global GITHUB_TOKEN env values belong to a different identity."""
     env_key = GH_TOKEN_ENV.get(role)
     if env_key is None:
-        raise ValueError(f"unbekannte GitHub-Rolle: {role!r} (erlaubt: {list(GH_TOKEN_ENV)})")
+        raise ValueError(f"unknown GitHub role: {role!r} (allowed: {list(GH_TOKEN_ENV)})")
     tok = "" if _current().env_file else os.environ.get(env_key, "").strip()
     if tok:
         return tok
@@ -272,7 +272,7 @@ def ensure_worktree(spec: dict, run_id: str) -> Path:
         wt.parent.mkdir(parents=True, exist_ok=True)
         # detached: never collides with the main checkout (e.g. main),
         # tests need no branch, only the state of origin/<branch>
-        with repo_lock(repo_root):  # fetch + add atomar gegen parallele Runs desselben Repos
+        with repo_lock(repo_root):  # fetch + add atomic against parallel runs of the same repo
             _git_fetch(repo_root, branch)
             p = subprocess.run(
                 ["git", "-C", str(repo_root), "worktree", "add", "--detach", str(wt), f"origin/{branch}"],
@@ -307,7 +307,7 @@ def lease_lock(wt: Path) -> contextlib.AbstractContextManager[None]:
 
 @dataclass(frozen=True)
 class LeaseInfo:
-    """Inhalt einer Lease-Datei (ADR 0028): Besitzer-PID, letzter Heartbeat, Besitz-Token."""
+    """Contents of a lease file (ADR 0028): owner PID, last heartbeat, ownership token."""
 
     pid: int
     heartbeat: float
@@ -531,7 +531,7 @@ def cleanup_orphaned_worktrees(active_run_ids: set[str] | None = None) -> list[P
         if not spec or spec.get("_error") or not spec.get("repo"):
             continue
         repo_root = Path(spec["root"])
-        if (proj_dir / ".git").exists():  # Legacy: ein gemeinsamer Worktree pro Projekt
+        if (proj_dir / ".git").exists():  # legacy: one shared worktree per project
             remove_worktree(repo_root, proj_dir)
             removed.append(proj_dir)
             continue
@@ -608,7 +608,7 @@ def exclude_dir_locally(workdir: Path, dirname: str) -> None:
 
 GH_WRAPPER_DIR = config.STATE_DIR / "gh-wrapper"
 _GH_WRAPPER_TEMPLATE = """#!/bin/sh
-# fabrikant: gh mit frischem Identity-Token aus FABRIKANT_ENV_FILE (Token lebt nur 1h, ADR 0010).
+# fabrikant: gh with a fresh identity token from FABRIKANT_ENV_FILE (the token lives only 1h, ADR 0010).
 f="${{FABRIKANT_ENV_FILE:-{default_env_file}}}"
 tok=$(sed -n -E "s/^{env_key}=[\\"']?([^\\"']+).*/\\1/p" "$f" 2>/dev/null | head -n 1)
 if [ -n "$tok" ]; then GH_TOKEN=$tok; GITHUB_TOKEN=$tok; export GH_TOKEN GITHUB_TOKEN; fi
@@ -705,16 +705,16 @@ def _gh_api(method: str, url: str, token: str, payload: dict | None = None, acce
     return json.loads(body) if body else {}
 
 
-GH_DEPENDENCIES_PER_PAGE = 100  # GitHub-Maximum; mehr Blocker pro Issue sind unrealistisch
+GH_DEPENDENCIES_PER_PAGE = 100  # GitHub maximum; more blockers per issue are unrealistic
 GH_DEPENDENCY_KINDS = ("blocked_by", "blocking")
 
 
 def _gh_dependencies(repo: str, number: int | str, token: str, kind: str = "blocked_by") -> list[dict]:
-    """Native Issue-Dependencies (ADR 0031): `blocked_by` = Issues, die `number`
-    blockieren; `blocking` = Issues, die `number` blockiert. Issue-Objekte inkl.
+    """Native issue dependencies (ADR 0031): `blocked_by` = issues that block
+    `number`; `blocking` = issues that `number` blocks. Issue objects incl.
     `id`, `number`, `state`, `state_reason`."""
     if kind not in GH_DEPENDENCY_KINDS:
-        raise ValueError(f"unbekannte Dependency-Art: {kind!r} (erlaubt: {GH_DEPENDENCY_KINDS})")
+        raise ValueError(f"unknown dependency kind: {kind!r} (allowed: {GH_DEPENDENCY_KINDS})")
     url = f"https://api.github.com/repos/{repo}/issues/{number}/dependencies/{kind}?per_page={GH_DEPENDENCIES_PER_PAGE}"
     return cast(list[dict], _gh_api("GET", url, token) or [])
 

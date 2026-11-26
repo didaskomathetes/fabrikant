@@ -70,7 +70,7 @@ def _step_git(ctx: dict, step: dict) -> dict:
     if step.get("branch") and (missing := missing_vars(step["branch"], ctx)):
         # Typically a manual run without trigger variables — name it clearly instead of "illegal characters".
         hint = " ".join(f"--var {name}=…" for name in missing)
-        raise ValueError(f"Branch {step['branch']!r}: Variable(n) fehlen: {', '.join(missing)} (manuell: {hint})")
+        raise ValueError(f"Branch {step['branch']!r}: variable(s) missing: {', '.join(missing)} (manual: {hint})")
     branch = _substitute(step["branch"], ctx) if step.get("branch") else None
     if branch:
         validate_branch_name(branch)

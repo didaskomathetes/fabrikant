@@ -104,7 +104,7 @@ class GitError(StepFailure, RuntimeError):
 
 
 def failed(summary: str, kind: FailureKind | Failure, **extra: Any) -> dict:
-    """Step-Result ``ok: False`` mit Fehlerklasse (ADR 0035): ``failed("…", FailureKind.OUTCOME, output=…)``."""
+    """Step result ``ok: False`` with failure class (ADR 0035): ``failed("…", FailureKind.OUTCOME, output=…)``."""
     failure = kind if isinstance(kind, Failure) else Failure(kind)
     return {"ok": False, "summary": summary, **extra, **failure.fields()}
 
@@ -201,7 +201,7 @@ def classify_exception(exc: BaseException) -> Failure:
     if isinstance(exc, (urllib.error.URLError, ConnectionError, TimeoutError)):
         return Failure(_F.TRANSIENT)
     if isinstance(exc, (FileNotFoundError, PermissionError, NotADirectoryError)):
-        return Failure(_F.ENVIRONMENT)  # fehlendes Tool/File oder fehlende Rechte
+        return Failure(_F.ENVIRONMENT)  # missing tool/file or missing permissions
     # Remainder, also subprocess.TimeoutExpired: whether a command hung or was merely slow is open.
     return Failure(_F.UNKNOWN)
 
@@ -287,9 +287,9 @@ def classify_git_output(text: str) -> FailureKind:
     return _F.UNKNOWN
 
 
-# ---------------------------------------------------------------- Lesen aus Step-Results/Records
+# ---------------------------------------------------------------- Reading from step results/records
 def parse_kind(value: object) -> FailureKind:
-    """Wert aus Step-Result/Record → Klasse; fehlend/unbekannt → ``unknown`` (Altbestand, ADR 0035)."""
+    """Value from step result/record → class; missing/unknown → ``unknown`` (legacy data, ADR 0035)."""
     try:
         return FailureKind(str(value)) if value else _F.UNKNOWN
     except ValueError:

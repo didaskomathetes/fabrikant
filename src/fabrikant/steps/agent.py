@@ -72,15 +72,15 @@ def _emit_agent_prompt(emit, prompt: str) -> None:
         return
     cap = config.AGENT_LOG_PROMPT_CAP
     truncated = len(p) > cap
-    emit(f"  agent prompt ({len(p)} Zeichen):")
+    emit(f"  agent prompt ({len(p)} characters):")
     for line in p[:cap].splitlines():
         emit(f"    {line}")
     if truncated:
-        emit(f"    … (gekappt, {len(p) - cap} Zeichen mehr)")
+        emit(f"    … (truncated, {len(p) - cap} more characters)")
 
 
 def _emit_agent_message(emit, m: dict) -> None:
-    """Eine Assistant-Message ins Run-Log: Text (gekappt) + Tool-Calls."""
+    """Emit an assistant message to the run log: text (truncated) + tool calls."""
     for part in m.get("parts", []):
         t = part.get("type")
         if t == "text":
@@ -165,7 +165,7 @@ def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
     exit_note = f" ({describe_exit(code)})" if isinstance(code, int) else ""
     extra: dict = {"exit_code": code} if isinstance(code, int) else {}
     if tail := _redact(str(last.get("stderr_tail") or "")):
-        emit("  agent stderr (Ende):")
+        emit("  agent stderr (end):")
         for line in tail.splitlines():
             emit(f"    {line}")
         extra["output"] = _cap(tail)
@@ -174,7 +174,7 @@ def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
     exhausted = is_context_exhausted(str(last.get("text") or ""))
     failure = _context_exhausted(sid, emit) if exhausted else _session_failure(last)
     return failed(
-        f"agent session fehlgeschlagen{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
+        f"agent session failed{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
         failure,
         usage=usage,
         **extra,
@@ -342,31 +342,31 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     lg = ctx.get("log")
     sname = step.get("name", "agent")
     sid = None
-    carry: dict = {}  # Verbrauch verworfener Versuche
+    carry: dict = {}  # consumption of discarded attempts
     try:
         for attempt in range(max_retries + 1):
             t0 = time.time()
             sid = be.create_task(workdir, f"fabrikant-{ctx['run_id']}-{sname}", step.get("permissions"))
             emit(
                 f"  agent({backend_name}): session {sid} model={model or '-'} cwd={workdir}"
-                + (f" [Versuch {attempt + 1}/{max_retries + 1}]" if max_retries else "")
+                + (f" [attempt {attempt + 1}/{max_retries + 1}]" if max_retries else "")
             )
             be.send_prompt(sid, prompt, workdir)
             if attempt == 0:
-                _emit_agent_prompt(emit, prompt)  # Prompt nur 1× loggen
+                _emit_agent_prompt(emit, prompt)  # log the prompt only once
                 if lg is not None:  # Full text for the transcript (UI), redacted in the SessionLog
                     lg.event("prompt", step_name=sname, step_type="agent", text=prompt)
             last: dict = {}
             emitted_n = 0
             recorded_n = 0
             fallback_tool_n = 0
-            last_err = ""  # letzter Backend-/Transport-Fehler (leer = gesund)
+            last_err = ""  # last backend/transport error (empty = healthy)
             err_streak = 0  # consecutive poll errors (for backoff)
             progress = _Progress(started=t0)
             while time.time() < t0 + timeout:
                 try:
                     last = be.poll(sid, workdir)
-                    # Konversation live ins Run-Log (neue abgeschlossene Messages).
+                    # Stream the conversation to the run log (newly completed messages).
                     messages = be.transcript(sid, workdir)
                     progress.observe(messages, last)
                     emitted_n = _emit_new_agent_messages(emit, messages, emitted_n)
@@ -457,17 +457,17 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 tools = last.get("tools") or []
                 extra = ""
                 if last_txt:
-                    extra += f" · letzter Text: {last_txt[:160]}"
+                    extra += f" · last text: {last_txt[:160]}"
                 if tools:
                     extra += f" · Tools: {', '.join(tools[:8])}"
                 return failed(
-                    f"agent timeout nach {timeout}s (session {sid}){extra}",
+                    f"agent timeout after {timeout}s (session {sid}){extra}",
                     progress.timeout_kind(time.time(), stale_after, observable=not isinstance(be, OneShotCliBackend)),
                     usage=usage,
                 )
             if last["status"] != "done":
                 continue  # Retry path (transient error) → next for iteration
-            # done: Rest der Konversation ins Log (letzte Message war "in Progress").
+            # done: flush the rest of the conversation to the log (last message was "in progress").
             messages = be.transcript(sid, workdir)
             _emit_new_agent_messages(emit, messages, emitted_n, flush=True)
             if lg is not None:
@@ -503,7 +503,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
         # for loop ended without return = unreachable (every path breaks off).
         raise RuntimeError(_t("steps.agent.agent_retry_loop_without_result", backend_name=backend_name, sid=sid))
     except Exception:
-        if sid:  # Orphan-Schutz: Exception mid-Run bricht die Session ab (H3)
+        if sid:  # orphan guard: an exception mid-run aborts the session (H3)
             try:
                 be.cancel(sid, workdir)
                 emit(_t("steps.agent.agent_session_aborted_after_exception", sid=sid))

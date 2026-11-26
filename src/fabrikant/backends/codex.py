@@ -67,7 +67,7 @@ class CodexBackend(OneShotCliBackend):
 
     # ------------------------------------------------------------------ Hooks
     def _env(self) -> dict:
-        """Eigene Auth der Codex-CLI explizit durchreichen (ADR 0050)."""
+        """Explicitly pass through the Codex CLI's own auth (ADR 0050)."""
         return passthrough(CODEX_AUTH_VARS)
 
     def _cli(self) -> str:

@@ -154,7 +154,7 @@ def test_step_intent_issue_label_shows_number_and_diff():
 
 def test_step_intent_issue_label_scalar_and_empty():
     assert _step_intent({"type": "issue", "action": "label", "number": "5", "labels": "bug"}) == "Issue #5: +bug"
-    assert _step_intent({"type": "issue", "action": "label", "number": "5"}) == "Issue #5: Labels unverändert"
+    assert _step_intent({"type": "issue", "action": "label", "number": "5"}) == "Issue #5: labels unchanged"
 
 
 def test_step_intent_issue_other_action():
@@ -440,7 +440,7 @@ def test_timeout_log_includes_timeout_value(runs_dir, projects_dir, tmp_path):
     rec = run_loop("to_detail", "s")
     assert rec["status"] == "fail"
     log = _log_text(runs_dir, "to_detail", rec["id"])
-    assert "slow Timeout nach 1s" in log
+    assert "slow timed out after 1s" in log
 
 
 def test_exception_log_includes_traceback(runs_dir, projects_dir, tmp_path):

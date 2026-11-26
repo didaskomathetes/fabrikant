@@ -100,7 +100,7 @@ def _warn_connection_refs(name: str, spec: dict) -> None:
 
 
 def cmd_project(args):
-    """project add <repo-pfad> — Zielrepo mit `.fabrikant/fabrikant.yaml` registrieren (ADR 0047)."""
+    """project add <repo-path> — register a target repo with `.fabrikant/fabrikant.yaml` (ADR 0047)."""
     try:
         spec = spec_sources.register_target(args.path)
     except ValueError as e:
@@ -137,7 +137,7 @@ def cmd_template(args):
 
 
 def _cli_actor() -> str:
-    """Audit-Name lokaler CLI-Aufrufer (``started_by``/``approved_by``)."""
+    """Audit name of the local CLI caller (``started_by``/``approved_by``)."""
     return f"cli:{getpass.getuser()}"
 
 
@@ -185,45 +185,39 @@ def _print_steps(rec: dict) -> None:
         print(f"  {STEP_MARKS.get(s['status'], '?')} {s['name']} [{s['type']}] {s.get('summary', '')}")
 
 
-REPLAY_SIDE_EFFECT_NOTICE = (
-    "⚠ Replay führt alle Steps real aus (PRs, Kommentare, Merges, Benachrichtigungen) — "
-    "gepinnt sind nur die Eingaben, nicht die Seiteneffekte."
-)
-
-
 def _confirm_replay(args) -> bool:
-    """Bestätigung vor dem realen Re-Run: `--yes` überspringt; ohne TTY ohne `--yes` Abbruch."""
+    """Confirmation before the real re-run: `--yes` skips it; without a TTY and without `--yes` it aborts."""
     if getattr(args, "yes", False):
         return True
     if not sys.stdin.isatty():
-        print("Abbruch: keine interaktive Eingabe — mit --yes/-y explizit bestätigen.")
+        print(t("cli.replay.no_tty"))
         return False
-    return input(f"Run {args.run_id} jetzt real neu ausführen? [y/N] ").strip().lower() in ("y", "yes", "j", "ja")
+    return input(t("cli.replay.confirm", run_id=args.run_id)).strip().lower() in ("y", "yes", "j", "ja")
 
 
 def cmd_replay(args):
-    """Replay: einen abgeschlossenen Run mit gepinnten Inputs neu ausführen (ADR 0061)."""
+    """Replay: re-run a finished run with pinned inputs (ADR 0061)."""
     orig = get_run(args.run_id, args.project)
     if orig is None:
-        print(f"Fehler: Run {args.run_id} nicht gefunden")
+        print(t("cli.replay.run_not_found", run_id=args.run_id))
         sys.exit(1)
     project, loop = orig["project"], orig["loop"]
     blocked = pause.manual_block_reason(project, loop)
     if blocked:
-        print(f"Fehler: {blocked}")
+        print(t("cli.error", error=blocked))
         sys.exit(1)
-    print(REPLAY_SIDE_EFFECT_NOTICE)
+    print(t("cli.replay.side_effects"))
     if not _confirm_replay(args):
-        print("Abgebrochen.")
+        print(t("cli.replay.aborted"))
         sys.exit(1)
     claim = claim_run(project, loop, None)
     if claim is None:
-        print(f"⚠ {project}: Limit paralleler Runs erreicht oder {loop} läuft bereits.")
+        print(t("cli.replay.busy", project=project, loop=loop))
         sys.exit(1)
     try:
         orig, rec = replay_run(args.run_id, project=project, actor=_cli_actor(), held_scope=claim.scope, original=orig)
-    except Exception as e:  # ReplayError (nicht ersetzbar) und Engine-Fehler werden gleich gemeldet
-        print(f"Fehler: {e}")
+    except Exception as e:  # ReplayError (not replaceable) and engine errors are reported the same way
+        print(t("cli.error", error=e))
         sys.exit(1)
     finally:
         claim.release()
@@ -326,7 +320,7 @@ def cmd_eval(args):
     if blocked:
         print(f"Error: {blocked}")
         sys.exit(EXIT_ERROR)
-    print(REPLAY_SIDE_EFFECT_NOTICE)
+    print(t("cli.replay.side_effects"))
     if not _confirm_eval(args):
         print("Aborted.")
         sys.exit(EXIT_ERROR)
@@ -356,7 +350,7 @@ def cmd_eval(args):
 
 
 def cmd_runs(args):
-    """Run-Historie; `show`/`export` zeigen einen Einzelrun (Record + Session-Log)."""
+    """Run history; `show`/`export` show a single run (record + session log)."""
     if args.runs_cmd == "show":
         out = show_run(args.run_id, args.show_project)
         if out is None:
@@ -478,7 +472,7 @@ def cmd_reject(args):
 
 
 def cmd_state(args):
-    """pause|resume|disable <projekt> [loop] [--until ISO]."""
+    """pause|resume|disable <project> [loop] [--until ISO]."""
     state = {"pause": pause.PAUSED, "resume": pause.ACTIVE, "disable": pause.DISABLED}[args.cmd]
     try:
         pause.set_state(args.project, args.loop, state, until=args.until, actor=f"cli:{getpass.getuser()}")
@@ -500,7 +494,7 @@ def _read_password(args) -> str:
 
 
 def cmd_user(args):
-    """user add|passwd|role — lokale Benutzerverwaltung (ADR 0030)."""
+    """user add|passwd|role — local user management (ADR 0030)."""
     try:
         if args.action == "add":
             auth.add_user(args.name, _read_password(args), args.role or auth.VIEWER)
@@ -556,9 +550,9 @@ def cmd_egress(args):
 
 
 def cmd_fetch(args):
-    """Research-Fetcher (ADR 0060): Seite holen, bereinigen, Injection-Scan,
-    Quelle/Quarantäne schreiben + Herkunftsprotokoll. Auto-Freigaben; Profile
-    via ``--spec``/``--loop`` (Stufe 3)."""
+    """Research fetcher (ADR 0060): fetch a page, clean it, injection scan,
+    write source/quarantine + provenance ledger. Auto-approvals; profiles
+    via ``--spec``/``--loop`` (stage 3)."""
     from .fetch import DetectorUnavailable, Fetcher, build_detectors, fetcher_config_for, resolve_profiles
     from .specs import load_spec_raw
 
@@ -578,7 +572,7 @@ def cmd_fetch(args):
             [n.strip() for n in args.detectors.split(",") if n.strip()] if args.detectors else None
         )
     except (ValueError, DetectorUnavailable) as e:
-        print(f"Fehler: {e}")
+        print(t("cli.error", error=e))
         sys.exit(1)
     fetcher = Fetcher(
         approved_domains=domains, approved_urls=urls, out_dir=args.out, ledger_path=args.ledger, detectors=detectors
@@ -700,12 +694,12 @@ def main(argv=None):
     gc = g.add_parser("capture", help=t("cli.help.golden_capture"))
     gc.add_argument("project")
     gc.add_argument("loop")
-    gc.add_argument("run_id", help="Id des abgeschlossenen Baseline-Runs")
+    gc.add_argument("run_id", help=t("cli.help.golden_run_id"))
     gc.add_argument("--name", default=None, help=t("cli.help.golden_name"))
     gc.add_argument("--force", action="store_true", help=t("cli.help.golden_force"))
     gs = g.add_parser("show", help=t("cli.help.golden_show"))
     gs.add_argument("project")
-    gs.add_argument("name", nargs="?", default=None, help="ein bestimmtes Golden (Default: alle)")
+    gs.add_argument("name", nargs="?", default=None, help=t("cli.help.golden_show_name"))
     p.set_defaults(func=cmd_golden)
 
     p = sub.add_parser("eval", help=t("cli.help.eval"), epilog=EXIT_CODES_HELP)
@@ -719,7 +713,7 @@ def main(argv=None):
         metavar="RUN_ID",
         help=t("cli.help.eval_golden"),
     )
-    p.add_argument("--yes", "-y", action="store_true", help="Rückfrage überspringen (Pflicht ohne TTY)")
+    p.add_argument("--yes", "-y", action="store_true", help=t("cli.help.yes_skip_prompt"))
     p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("runs", help=t("cli.help.runs"))
@@ -814,21 +808,21 @@ def main(argv=None):
     p.add_argument("action", choices=("start", "stop", "status"))
     p.set_defaults(func=cmd_egress)
 
-    p = sub.add_parser("fetch", help="Research-Fetcher: Seite holen, bereinigen, Injection-Scan (ADR 0060)")
-    p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
-    p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
-    p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
-    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
-    p.add_argument("--ledger", default=None, help="Herkunftsprotokoll (JSONL)")
-    p.add_argument("--spec", default=None, help="Projekt-Spec (YAML) mit access-Profilen")
-    p.add_argument("--loop", default=None, help="Loop/Run-Name für Profil-Resolution (Default: relay)")
+    p = sub.add_parser("fetch", help="Research fetcher: fetch a page, clean it, injection scan (ADR 0060)")
+    p.add_argument("url", help="URL to fetch (requires auto-approval)")
+    p.add_argument("--approved-domains", default="", help="Comma-separated domains (auto-approval)")
+    p.add_argument("--approved-urls", default="", help="Comma-separated exact URLs (auto-approval)")
+    p.add_argument("--out", default=None, help="Output dir (sources/ + quarantine/)")
+    p.add_argument("--ledger", default=None, help=t("cli.help.fetch_ledger"))
+    p.add_argument("--spec", default=None, help=t("cli.help.fetch_spec"))
+    p.add_argument("--loop", default=None, help=t("cli.help.fetch_loop"))
     p.add_argument(
         "--detectors",
         default=None,
-        help="Kommagetrennte Injection-Detektoren: regex (Default), llm-guard (Extra injection-llm-guard); "
-        "sonst FABRIKANT_FETCH_DETECTORS",
+        help="Comma-separated injection detectors: regex (default), llm-guard (extra injection-llm-guard); "
+        "otherwise FABRIKANT_FETCH_DETECTORS",
     )
-    p.add_argument("--json", action="store_true", help="Ergebnis als JSON")
+    p.add_argument("--json", action="store_true", help="Result as JSON")
     p.set_defaults(func=cmd_fetch)
 
     args = ap.parse_args(argv)

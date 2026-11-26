@@ -49,6 +49,7 @@ from .specs import load_projects
 # of the job — not the id of the single tick/event/delivery.
 _ISSUE_TRIGGER_RE = re.compile(r"^on_issue:#(\d+)$")
 _PR_TRIGGER_RE = re.compile(r"^on_pr:#(\d+)")
+_PR_UPDATE_TRIGGER_RE = re.compile(r"^on_pr:#\d+@u")
 _GH_KEY_RE = re.compile(r"^(issue|pr):(.+)#(\d+)$")
 
 # A due attempt that could not start (no slot, loop paused,
@@ -58,7 +59,7 @@ ATTEMPT_START_DEFER = timedelta(minutes=1)
 
 
 class ChainState(StrEnum):
-    """Zustand einer Retry-Kette (ADR 0036, Entscheidung 4)."""
+    """State of a retry chain (ADR 0036, decision 4)."""
 
     PENDING = "pending"
     EXHAUSTED = "exhausted"
@@ -716,8 +717,8 @@ def on_run_finished(spec: dict, project: str, loop_name: str, record: dict) -> d
                     expect_claim=chain.claimed_run_id if chain is not None else None,
                 )
         except ChainStoreCorrupt:
-            raise  # kein Konflikt: defekter Store → on_run_finished_safe meldet ihn
-        except ValueError:  # pending-Kette parallel angelegt / InvalidTransition / ClaimConflict
+            raise  # no conflict: broken store → on_run_finished_safe reports it
+        except ValueError:  # pending chain created in parallel / InvalidTransition / ClaimConflict
             continue
         return _chain_info(chain, policy, decision)
     return {"in_chain": False}
@@ -751,22 +752,33 @@ def record_run_end(project: str, record: dict, projects: Mapping[str, dict] | No
 # ---------------------------------------------------------------- Versuche starten
 
 
-def _trigger_for_key(trigger_key: str, initial_vars: dict | None = None) -> str:
+def _trigger_for_key(trigger_key: str, initial_vars: dict | None = None, *, per_update: bool = False) -> str:
     """Trigger string for an attempt from the canonical key.
 
-    PR attempts carry the current head SHA (``on_pr:#N@<sha>``, ADR 0023)
-    — the scheduler reconciles against it; without the SHA a retry on the
-    new head would trigger a second run. The SHA comes from the (freshly
-    loaded) trigger variables of the attempt."""
+    PR attempts carry the current reconcile key the scheduler checks: the head SHA
+    (``on_pr:#N@<sha>``, ADR 0023) or, for a run of a `reconcile: updated` loop
+    (``per_update``), the observed ``updated_at`` (``on_pr:#N@u<stamp>``) — without it a
+    retry on the current PR state would trigger a second run. SHA/stamp come from the
+    (freshly loaded) trigger variables of the attempt."""
     m = _GH_KEY_RE.match(trigger_key)
     if m:
         kind, _repo, num = m.groups()
         if kind == "pr":
-            from .scheduler import _pr_trigger  # lokal: scheduler importiert engine (Zyklus)
+            # lokal: scheduler importiert engine (Zyklus)
+            from .scheduler import _pr_trigger, _pr_update_trigger
 
-            return _pr_trigger(int(num), str((initial_vars or {}).get("pr_head_sha") or ""))
+            v = initial_vars or {}
+            if per_update:
+                return _pr_update_trigger(int(num), str(v.get("pr_updated_at") or ""))
+            return _pr_trigger(int(num), str(v.get("pr_head_sha") or ""))
         return f"on_{kind}:#{num}"
     return "cron"
+
+
+def _is_update_trigger(trigger: str) -> bool:
+    """Is ``trigger`` a `reconcile: updated` key (``on_pr:#N@u<stamp>``)? A head SHA is hex,
+    so ``@u`` is unambiguous."""
+    return bool(_PR_UPDATE_TRIGGER_RE.match(trigger or ""))
 
 
 def _attempt_vars(trigger_key: str, *, accept_closed: bool = False) -> tuple[dict | None, bool]:
@@ -898,6 +910,13 @@ class _Attempt:
         if self.manual:
             self._record_not_started(_t("retry_chains.trigger_no_longer_exists"))
 
+    def _per_update(self) -> bool:
+        """Was the retried run keyed per PR update (``on_pr:#N@u<stamp>``)? The attempt then
+        uses the same key form, so the scheduler's reconcile check sees it."""
+        c = self.chain
+        last = get_run(c.last_run_id, c.project) if c.last_run_id else None
+        return _is_update_trigger(str((last or {}).get("trigger") or ""))
+
     def _record_not_started(self, reason: str) -> None:
         """``error`` record under the run id of a manual attempt that the
         UI has already received — otherwise it would point to a run that never exists.
@@ -910,7 +929,7 @@ class _Attempt:
             "id": self.run_id,
             "project": c.project,
             "loop": c.loop,
-            "trigger": _trigger_for_key(c.trigger_key),
+            "trigger": _trigger_for_key(c.trigger_key, per_update=self._per_update()),
             "note": "",
             "started": now,
             "finished": now,
@@ -967,7 +986,7 @@ class _Attempt:
             run_loop(
                 c.project,
                 c.loop,
-                trigger=_trigger_for_key(c.trigger_key, initial_vars),
+                trigger=_trigger_for_key(c.trigger_key, initial_vars, per_update=self._per_update()),
                 initial_vars=initial_vars,
                 run_id=self.run_id,
                 attempt=self.attempt,
@@ -1033,7 +1052,7 @@ class _Attempt:
 
 
 def _submit(attempt: _Attempt) -> None:
-    from .engine import _get_launcher  # lokal: engine importiert dieses Modul
+    from .engine import _get_launcher  # local: engine imports this module
 
     _get_launcher().submit(attempt.run)
 
@@ -1041,7 +1060,7 @@ def _submit(attempt: _Attempt) -> None:
 def _spawn_manual(attempt: _Attempt) -> None:
     """Start a manual attempt with priority: immediately, or it waits for the
     slot (like manual runs, ADR 0015). RuntimeError if the thread does not start."""
-    from .engine import spawn_priority_worker  # lokal: engine importiert dieses Modul
+    from .engine import spawn_priority_worker  # local: engine imports this module
 
     c = attempt.chain
     spawn_priority_worker(c.project, c.loop, _dedupe_vars(c.trigger_key), work=attempt.run_manual)
@@ -1053,7 +1072,7 @@ def _end_chain(store: ChainStore, chain: RetryChain, to: ChainState, now: dateti
         store.transition(
             chain.project, chain.loop, chain.trigger_key, to=to, now=now, next_attempt_at=None, expect_claim=""
         )
-        print(f"[fabrikant] Retry-Kette {chain.key}: {why} → {to}")
+        print(f"[fabrikant] Retry chain {chain.key}: {why} → {to}")
 
 
 def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
@@ -1085,7 +1104,7 @@ def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
             _end_chain(store, chain, ChainState.EXHAUSTED, now, _t("retry_chains.retry_disabled_for_the_loop"))
             continue
         if pause.trigger_blocked(chain.project, chain.loop):
-            continue  # pausiert/deaktiviert: wartet, kein Budget-Verbrauch
+            continue  # paused/disabled: waits, no budget consumption
         # Derive the attempt number from the last run (ADR 0036, decision 3).
         last = get_run(chain.last_run_id, chain.project) if chain.last_run_id else None
         attempt = attempt_of(last) + 1
@@ -1234,7 +1253,7 @@ def backfill_chains(
                         name, lname, key, next_attempt_at=max(due, now), last_run_id=str(last.get("id") or ""), now=now
                     )
                     summary.pending += 1
-                    print(f"[fabrikant] Bestandsabgleich {name}/{lname} {key}: Kette pending (Klasse {kind.value})")
+                    print(f"[fabrikant] Reconciliation {name}/{lname} {key}: chain pending (class {kind.value})")
                 else:
                     store.create(
                         name,
@@ -1248,7 +1267,7 @@ def backfill_chains(
                     summary.exhausted += 1
                     print(
                         f"[fabrikant] Bestandsabgleich {name}/{lname} {key}: Kette exhausted "
-                        f"(Klasse {kind.value if kind else 'ohne'})"
+                        f"(class {kind.value if kind else 'none'})"
                     )
     return summary
 
@@ -1269,7 +1288,7 @@ def dismiss_chain(project: str, loop: str, trigger_key: str, actor: str = "unkno
         updated = store.set_state(project, loop, trigger_key, ChainState.DISMISSED, config.utcnow())
     except InvalidTransition:
         return store.get(project, loop, trigger_key)  # parallel beendet
-    print(f"[fabrikant] Retry-Kette {chain.key} verworfen ({actor})")
+    print(f"[fabrikant] Retry chain {chain.key} dismissed ({actor})")
     return updated
 
 
@@ -1295,7 +1314,7 @@ def retry_now(project: str, loop: str, trigger_key: str, actor: str | None = Non
     run_id = f"{config.now_id()}-{loop}"
     if not store.claim(project, loop, trigger_key, run_id, config.utcnow(), force=True):
         return None
-    print(f"[fabrikant] Retry-Kette {chain.key}: jetzt erneut ({actor or 'api'}, Run {run_id})")
+    print(f"[fabrikant] Retry chain {chain.key}: retrying now ({actor or 'api'}, run {run_id})")
     spec = load_projects().get(project) or {}
     attempt = _Attempt(
         chain,

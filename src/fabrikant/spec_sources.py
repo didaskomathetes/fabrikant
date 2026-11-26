@@ -33,7 +33,7 @@ def _dir_specs(d: Path) -> list[Path]:
 
 
 def registered_targets() -> list[Path]:
-    """Per `register_target` bekannte Zielrepos (Reihenfolge der Registrierung)."""
+    """Target repos known via `register_target` (in registration order)."""
     try:
         data = json.loads(config.REGISTRY_FILE.read_text())
     except (OSError, ValueError):
