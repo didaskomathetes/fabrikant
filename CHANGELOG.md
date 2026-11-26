@@ -8,6 +8,10 @@ All notable changes to fabrikant are documented here. The format follows
 
 ### Added
 
+- `claude_code` agent steps: `tools` is the hard limit on the available built-in tools (`--tools`);
+  `allowed_tools` sets pre-approval rules (`--allowedTools`) and runs the CLI in `dontAsk` mode, denying calls
+  that would prompt (calls needing no approval and `settings.json` approvals still run). Both keys accept a list
+  or a comma-separated string; copilot's `tools` now accepts a list too.
 - `on_pr` trigger `reconcile: updated`: reconciles per observed PR state (`updated_at` at poll time), so pushes,
   comments, reviews and label changes fire a run, also across a server restart — one run per observed snapshot:
   several changes between two polls collapse into one run. New variable `{pr_updated_at}`.

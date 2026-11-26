@@ -55,7 +55,7 @@ def test_http_emit_vars(monkeypatch):
 
 def test_http_emit_unknown_type(monkeypatch):
     _install(monkeypatch, resp=_FakeResp(200, "x"))
-    with pytest.raises(ValueError, match="unbekannter Typ"):
+    with pytest.raises(ValueError, match="unknown type"):
         http._step_http(_ctx(), {"url": "http://x", "emit": {"v": "bogus"}}, lambda m: None)
 
 

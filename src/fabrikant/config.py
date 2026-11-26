@@ -81,7 +81,7 @@ PROJECTS_DIR = DATA_DIR / "projects"  # primary (writable) spec folder
 BUNDLED_PROJECTS_DIR = (
     FABRIKANT_HOME / "projects"
 )  # lowest priority; the starter spec in `examples/` is only copied by `fabrikant init`
-TEMPLATES_DIR = PACKAGE_DIR / "templates"  # mitgelieferte Loop-Vorlagen
+TEMPLATES_DIR = PACKAGE_DIR / "templates"  # bundled loop templates
 USER_TEMPLATES_DIR = DATA_DIR / "templates"
 RUNS_DIR = FABRIKANT_HOME / "runs"
 WORKTREES_ENV = "FABRIKANT_WORKTREES"
@@ -179,11 +179,11 @@ DEFAULT_HOST = "127.0.0.1"
 MAX_STEP_OUTPUT = 200_000  # chars kept per step in run records
 # Agent conversation in the run log (runs/<project>/<id>.log): caps so that large
 # prompts/texts do not blow up the log (full text stays in the session).
-AGENT_LOG_PROMPT_CAP = 2000  # Zeichen des Agent-Prompts (Input)
-AGENT_LOG_TEXT_CAP = 400  # Zeichen je Assistant-Message (Text-Part)
+AGENT_LOG_PROMPT_CAP = 2000  # characters of the agent prompt (input)
+AGENT_LOG_TEXT_CAP = 400  # characters per assistant message (text part)
 
 PROTECTED_DEFAULT = ["main", "master"]
-# GitHub-API: Retry bei transienten Netzwerkfehlern (DNS-Flakes, Resets).
+# GitHub API: retry on transient network errors (DNS flakes, resets).
 GH_RETRIES = 3
 GH_RETRY_DELAY_S = 2.0
 # GitHub API: upper bound for `per_page` on list endpoints (API limit).
@@ -223,7 +223,7 @@ STEP_TYPES = (
     "escalation",
 )
 TRIGGER_TYPES = ("manual", "cron", "on_file", "on_issue", "on_pr", "on_webhook", "on_alert", "on_slack")
-# Polling-Trigger mit `poll`-Intervall (Sekunden, endliche Zahl >= 0).
+# Polling trigger with `poll` interval (seconds, finite number >= 0).
 POLL_TRIGGER_TYPES = ("on_issue", "on_pr", "on_slack")
 # on_slack (ADR 0040): defaults of the optional trigger fields `max_pages` and `max_alert_chars`.
 SLACK_DEFAULT_MAX_PAGES = 20  # conversations.history pages per channel and poll (HISTORY_LIMIT messages each)
@@ -258,7 +258,7 @@ SQLITE_BUSY_TIMEOUT_MS = 10_000
 
 
 def run_store_backend() -> str:
-    """Aktives Run-Store-Backend aus ``FABRIKANT_RUN_STORE`` (Default ``sql``); unbekannt → ValueError."""
+    """Active run store backend from ``FABRIKANT_RUN_STORE`` (default ``sql``); unknown → ValueError."""
     backend = os.environ.get(RUN_STORE_ENV, RUN_STORE_SQL).strip().lower() or RUN_STORE_SQL
     if backend not in RUN_STORE_BACKENDS:
         raise ValueError(
@@ -287,7 +287,7 @@ ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 
 HUMAN_GATE_ADR_PATHS = ["docs/adr"]
 HUMAN_GATE_MAX_FILES = 40  # more changed files → critical (large refactoring)
-HUMAN_GATE_MAX_LINES = 1500  # mehr +/- Zeilen → kritisch
+HUMAN_GATE_MAX_LINES = 1500  # more +/- lines → critical
 HUMAN_GATE_KEYWORDS = [
     "gdpr",
     "datenschutz",

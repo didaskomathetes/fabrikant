@@ -120,7 +120,7 @@ class Connection:
 
     @classmethod
     def from_payload(cls, name: str, kind: str, data: Mapping[str, Any]) -> Connection:
-        """API-Payload → Verbindung (ohne Secret-Semantik; siehe :func:`save_connection`)."""
+        """API payload → connection (without secret semantics; see :func:`save_connection`)."""
         try:
             parsed_kind = ConnectionKind(kind)
         except ValueError:
@@ -202,7 +202,7 @@ def _store():
 
 
 _secret_cache: list[str] | None = None
-_secret_cache_at = 0.0  # monotonic; Zeitpunkt des letzten erfolgreichen Ladens
+_secret_cache_at = 0.0  # monotonic; time of the last successful load
 _secret_cache_failed_at: float | None = None  # monotonic; set when loading last failed
 SECRET_CACHE_TTL_S = 30.0  # other fabrikant processes on the same DB see changes at the latest then
 SECRET_RETRY_S = 30.0  # after an error, do not query the DB again for this long (masking runs per log line)

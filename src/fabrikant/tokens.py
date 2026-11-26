@@ -36,7 +36,7 @@ def compact(n: int) -> str:
 
 @dataclass(frozen=True, slots=True)
 class TokenCounts:
-    """Token-Verbrauch; ``cache_read``/``cache_write`` sind in ``input`` enthalten."""
+    """Token usage; ``cache_read``/``cache_write`` are included in ``input``."""
 
     input: int = 0
     output: int = 0
@@ -58,7 +58,7 @@ class TokenCounts:
 
     @classmethod
     def from_poll(cls, d: Any) -> TokenCounts:
-        """Poll-Form (``tokens`` eines Backend-Ergebnisses) → TokenCounts; malformiert → Nullen."""
+        """Poll form (``tokens`` of a backend result) → TokenCounts; malformed → zeros."""
         if not isinstance(d, Mapping):
             return cls()
         return cls(
@@ -90,7 +90,7 @@ class TokenCounts:
         }
 
     def usage_fields(self) -> dict[str, int]:
-        """Token-Felder der Step-Usage (``total_tokens`` = input + output)."""
+        """Token fields of the step usage (``total_tokens`` = input + output)."""
         return {
             "prompt_tokens": self.input,
             "completion_tokens": self.output,

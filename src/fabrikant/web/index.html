@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,34 +8,34 @@
 </head>
 <body>
 <header>
-  <div class="logo">FABRIKANT<span class="sub" data-i18n="logo.sub">Software-Fabrik · agentic loops</span></div>
+  <div class="logo">FABRIKANT<span class="sub" data-i18n="logo.sub">Software factory · agentic loops</span></div>
   <div class="hdr-right">
     <div id="health" class="health">…</div>
-    <button id="langtoggle" class="ghost" title="Sprache wechseln" data-i18n-title="header.lang">DE</button>
+    <button id="langtoggle" class="ghost" title="Switch language" data-i18n-title="header.lang">DE</button>
     <span id="whoami" class="hidden"><span id="whoami-name"></span> <button id="logout" class="ghost" data-i18n="header.logout">logout</button></span>
-    <button id="settingstoggle" class="ghost" title="Einstellungen" data-i18n-title="header.settings">⚙</button>
+    <button id="settingstoggle" class="ghost" title="Settings" data-i18n-title="header.settings">⚙</button>
     <button id="chattoggle" class="ghost" data-i18n="header.chat">✉ chat</button>
-    <button id="schattoggle" class="ghost" data-i18n="header.schedule">📅 plan</button>
+    <button id="schattoggle" class="ghost" data-i18n="header.schedule">📅 schedule</button>
     <button id="kpitoggle" class="ghost" data-i18n="header.kpis">📊 KPIs</button>
   </div>
 </header>
 <div id="loginview" class="hidden">
   <form id="loginform">
-    <h2 data-i18n="login.title">Anmelden</h2>
-    <input id="login-user" autocomplete="username" placeholder="Benutzer" data-i18n-ph="login.user" required>
-    <input id="login-pass" type="password" autocomplete="current-password" placeholder="Passwort" data-i18n-ph="login.password" required>
+    <h2 data-i18n="login.title">Sign in</h2>
+    <input id="login-user" autocomplete="username" placeholder="User" data-i18n-ph="login.user" required>
+    <input id="login-pass" type="password" autocomplete="current-password" placeholder="Password" data-i18n-ph="login.password" required>
     <button type="submit" data-i18n="login.submit">login</button>
     <div id="login-error" class="error"></div>
   </form>
   <div id="oidclogin" class="hidden">
-    <h2 data-i18n="login.loggedOut">Abgemeldet</h2>
-    <a href="/api/login/oidc" data-i18n="login.oidc">Über den IdP anmelden</a>
+    <h2 data-i18n="login.loggedOut">Logged out</h2>
+    <a href="/api/login/oidc" data-i18n="login.oidc">Sign in with the IdP</a>
   </div>
 </div>
 <main>
   <section id="projects" class="col left"></section>
   <section id="detail" class="col right">
-    <div id="placeholder" class="placeholder" data-i18n="placeholder.selectProject">Projekt wählen</div>
+    <div id="placeholder" class="placeholder" data-i18n="placeholder.selectProject">Select a project</div>
   </section>
 </main>
 <div id="runbackdrop" class="runbackdrop hidden"></div>
@@ -44,40 +44,40 @@
     <span id="runtitle"></span>
     <span id="runstatus" class="badge"></span>
     <span id="runactions" style="display:flex;gap:6px"></span>
-    <button id="runclose" class="ghost" title="schließen (Esc)" data-i18n-title="run.close">✕</button>
+    <button id="runclose" class="ghost" title="close (Esc)" data-i18n-title="run.close">✕</button>
   </div>
   <div class="runtabbar">
     <span id="runtabs" role="tablist">
-      <button data-tab="overview" class="ghost active" role="tab" data-i18n="run.tab.overview">Übersicht</button>
+      <button data-tab="overview" class="ghost active" role="tab" data-i18n="run.tab.overview">Overview</button>
       <button data-tab="trace" class="ghost" role="tab" data-i18n="run.tab.trace">Trace</button>
       <button data-tab="log" class="ghost" role="tab" data-i18n="run.tab.log">Log</button>
-      <button data-tab="transcript" class="ghost" role="tab" data-i18n="run.tab.transcript">Transkript</button>
+      <button data-tab="transcript" class="ghost" role="tab" data-i18n="run.tab.transcript">Transcript</button>
     </span>
-    <label id="runfollowlabel" class="hidden"><input type="checkbox" id="runfollow" checked> <span data-i18n="run.follow">folgen</span></label>
+    <label id="runfollowlabel" class="hidden"><input type="checkbox" id="runfollow" checked> <span data-i18n="run.follow">follow</span></label>
   </div>
   <div id="runlog"></div>
 </div>
 <div id="settingsbackdrop" class="runbackdrop hidden"></div>
 <div id="settingspanel" class="runpanel settingspanel hidden" role="dialog" aria-modal="true" aria-labelledby="settingstitle">
   <div class="runbar">
-    <span id="settingstitle" data-i18n="settings.title">Einstellungen · Verbindungen</span>
-    <button id="settingsclose" class="ghost" title="schließen (Esc)" data-i18n-title="run.close">✕</button>
+    <span id="settingstitle" data-i18n="settings.title">Settings · Connections</span>
+    <button id="settingsclose" class="ghost" title="close (Esc)" data-i18n-title="run.close">✕</button>
   </div>
   <div id="settingsbody"></div>
 </div>
 <div id="proposalbackdrop" class="runbackdrop hidden"></div>
 <div id="proposalpanel" class="runpanel proposalpanel hidden" role="dialog" aria-modal="true" aria-labelledby="proposaltitle">
   <div class="runbar">
-    <span id="proposaltitle" data-i18n="proposals.title">Spec-Änderungsvorschlag</span>
-    <button class="ghost" title="schließen (Esc)" data-i18n-title="run.close" data-act="prop-close">✕</button>
+    <span id="proposaltitle" data-i18n="proposals.title">Spec change proposal</span>
+    <button class="ghost" title="close (Esc)" data-i18n-title="run.close" data-act="prop-close">✕</button>
   </div>
   <div id="proposalbody"></div>
 </div>
 <div id="chatpanel" class="chatpanel hidden">
   <div class="chatbar">
-    <span><span data-i18n="chat.title">fabrikant-copilot</span> <span style="color:var(--dim);font-size:11px" data-i18n="chat.helpHint">· `help` für Befehle</span></span>
+    <span><span data-i18n="chat.title">fabrikant-copilot</span> <span style="color:var(--dim);font-size:11px" data-i18n="chat.helpHint">· `help` for commands</span></span>
     <span class="chatbar-right">
-      <label class="llm-sel" title="Chat-Modell (aktiver LLM-Provider)" data-i18n-title="chat.llmTitle">
+      <label class="llm-sel" title="Chat model (active LLM provider)" data-i18n-title="chat.llmTitle">
         <span class="llm-label" data-i18n="chat.llm">LLM</span>
         <select id="llmselect"></select>
       </label>
@@ -86,13 +86,13 @@
   </div>
   <div id="chatlog"></div>
   <form id="chatform">
-    <input id="chatinput" placeholder="z. B.  lauf my-app lint  — oder einfach fragen …" data-i18n-ph="chat.inputPlaceholder" autocomplete="off">
+    <input id="chatinput" placeholder="e.g.  run my-app lint  — or just ask …" data-i18n-ph="chat.inputPlaceholder" autocomplete="off">
     <button type="submit" class="ghost">➤</button>
   </form>
 </div>
 <div id="schedpanel" class="schedpanel hidden">
   <div class="chatbar">
-    <span data-i18n="sched.title">Plan</span>
+    <span data-i18n="sched.title">Schedule &amp; one-time</span>
     <span class="chatbar-right"><button id="schedclose" class="ghost">✕</button></span>
   </div>
   <div id="schedform"></div>

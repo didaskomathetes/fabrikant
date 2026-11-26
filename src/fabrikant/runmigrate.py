@@ -34,7 +34,7 @@ from .runstore import RecordError, RunStore, RunStoreError, parse_run
 from .runstore_sql import SqlRunStore, make_engine, migrate, store_for_url
 
 IN_MEMORY_URL = "sqlite://"
-SAMPLE_LIMIT = 10  # so viele Beispiel-Ids je Sammelposten im Text-Report
+SAMPLE_LIMIT = 10  # this many sample ids per aggregate item in the text report
 
 _EVENT_COLS = ("seq", "ts", "kind", "step_name", "step_type", "status", "data")
 _CHECKPOINT_COLS = ("step_idx", "step_name", "status", "data")
@@ -52,7 +52,7 @@ class MigrationIssue:
 
 @dataclass
 class MigrationReport:
-    """Ergebnis eines (Probe-)Imports."""
+    """Result of a (dry-run) import."""
 
     dry_run: bool
     target: str
@@ -66,7 +66,7 @@ class MigrationReport:
     checkpoints_imported: int = 0
     artifacts_imported: int = 0
     sessions_existing: int = 0
-    orphan_sessions: Counter[str] = field(default_factory=Counter)  # Projekt → Anzahl Sessions ohne Run
+    orphan_sessions: Counter[str] = field(default_factory=Counter)  # project → number of sessions without a run
     issues: list[MigrationIssue] = field(default_factory=list)
 
     @property
@@ -75,8 +75,8 @@ class MigrationReport:
         return not self.issues
 
     def lines(self) -> list[str]:
-        """Lesbarer Report (CLI)."""
-        mode = "Probelauf (nichts geschrieben)" if self.dry_run else "Import"
+        """Human-readable report (CLI)."""
+        mode = "Dry run (nothing written)" if self.dry_run else "Import"
         out = [
             f"{mode} → {self.target}",
             t(
@@ -86,16 +86,16 @@ class MigrationReport:
                 v3=self.runs_existing,
             ),
             f"Session-Log: {self.sessions_imported} Sessions ({self.events_imported} Events, "
-            f"{self.checkpoints_imported} Checkpoints, {self.artifacts_imported} Artefakte) importiert, "
-            f"{self.sessions_existing} schon vorhanden",
+            f"{self.checkpoints_imported} checkpoints, {self.artifacts_imported} artifacts) imported, "
+            f"{self.sessions_existing} already present",
         ]
         if self.archive_dir:
-            out.append(f"Archiv: {self.runs_archived} Run-JSON nach {self.archive_dir} verschoben")
+            out.append(f"Archive: {self.runs_archived} run JSON moved to {self.archive_dir}")
         if self.orphan_sessions:
             total = sum(self.orphan_sessions.values())
             top = ", ".join(f"{p} ({n})" for p, n in self.orphan_sessions.most_common(SAMPLE_LIMIT))
             out.append(t("runmigrate.sessions_without_run_record_not", total=total, top=top))
-        out.append(f"Probleme: {len(self.issues)}")
+        out.append(f"Problems: {len(self.issues)}")
         out += [f"  ✖ {i.run_id} [{i.source}]: {i.reason}" for i in self.issues]
         return out
 
@@ -162,7 +162,7 @@ def _import_runs(
         stored = store.get(run_id, project)
         diff = _run_diff(expected, stored) if stored is not None else [t("runmigrate.unreadable")]
         if diff:
-            report.issues.append(MigrationIssue(run_id, where, f"Abweichung nach Import: {', '.join(diff)}"))
+            report.issues.append(MigrationIssue(run_id, where, f"Mismatch after import: {', '.join(diff)}"))
         else:
             archivable.add(path)
     return present, archivable
@@ -181,7 +181,7 @@ def archive_runs(runs_dir: Path, archive_dir: Path, archivable: set[Path]) -> tu
             if dest.exists():
                 issues.append(
                     MigrationIssue(
-                        path.stem, f"{path.parent.name}/{path.name}", "Archiv-Kollision: Ziel existiert schon"
+                        path.stem, f"{path.parent.name}/{path.name}", "Archive collision: target already exists"
                     )
                 )
                 continue
@@ -189,9 +189,7 @@ def archive_runs(runs_dir: Path, archive_dir: Path, archivable: set[Path]) -> tu
             shutil.move(str(path), str(dest))
             moved += 1
         except OSError as e:
-            issues.append(
-                MigrationIssue(path.stem, f"{path.parent.name}/{path.name}", f"Archivierung fehlgeschlagen: {e}")
-            )
+            issues.append(MigrationIssue(path.stem, f"{path.parent.name}/{path.name}", f"Archiving failed: {e}"))
     return moved, issues
 
 
@@ -216,19 +214,19 @@ def _import_session_log(
                 continue
             events = _rows(
                 src,
-                f"SELECT {', '.join(_EVENT_COLS)} FROM events WHERE session_id=? ORDER BY id",  # nosec B608 # konstante Spalten, Werte als ?-Parameter
+                f"SELECT {', '.join(_EVENT_COLS)} FROM events WHERE session_id=? ORDER BY id",  # nosec B608 # constant columns, values as ? parameters
                 session_id,
                 _EVENT_COLS,
             )
             checkpoints = _rows(
                 src,
-                f"SELECT {', '.join(_CHECKPOINT_COLS)} FROM checkpoints WHERE session_id=?",  # nosec B608 # konstante Spalten, Werte als ?-Parameter
+                f"SELECT {', '.join(_CHECKPOINT_COLS)} FROM checkpoints WHERE session_id=?",  # nosec B608 # constant columns, values as ? parameters
                 session_id,
                 _CHECKPOINT_COLS,
             )
             artifacts = _rows(
                 src,
-                f"SELECT {', '.join(_ARTIFACT_COLS)} FROM artifacts WHERE session_id=? ORDER BY id",  # nosec B608 # konstante Spalten, Werte als ?-Parameter
+                f"SELECT {', '.join(_ARTIFACT_COLS)} FROM artifacts WHERE session_id=? ORDER BY id",  # nosec B608 # constant columns, values as ? parameters
                 session_id,
                 _ARTIFACT_COLS,
             )

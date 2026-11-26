@@ -36,6 +36,33 @@ def test_plugin_skeleton_is_valid(tmp_path):
     compile((tmp_path / "plugins" / "my_steps.py").read_text(), "my_steps.py", "exec")
 
 
+def test_init_appends_missing_ignore_rules_and_preserves_the_existing_file(tmp_path):
+    gitignore = tmp_path / ".gitignore"
+    original = b"# existing rules\n.env\nruns/"
+    gitignore.write_bytes(original)
+
+    assert gitignore not in scaffold.init_project(tmp_path)
+    updated = gitignore.read_bytes()
+    assert updated.startswith(original + b"\n")
+    assert updated.count(b"runs/\n") == 1
+    assert {b"fabrikant.env", b"state/", b"sessionlog.db*", b".fabrikant/"} <= set(updated.splitlines())
+    assert scaffold.init_project(tmp_path) == []
+    assert gitignore.read_bytes() == updated
+
+
+def test_init_restores_ignore_rules_after_a_negation(tmp_path):
+    gitignore = tmp_path / ".gitignore"
+    original = b"fabrikant.env\n!*.env\n"
+    gitignore.write_bytes(original)
+
+    scaffold.init_project(tmp_path)
+    updated = gitignore.read_bytes()
+    assert updated.startswith(original)
+    assert updated.rfind(b"fabrikant.env\n") > updated.index(b"!*.env\n")
+    scaffold.init_project(tmp_path)
+    assert gitignore.read_bytes() == updated
+
+
 def test_cli_init(tmp_path, capsys):
     cli.main(["init", str(tmp_path / "x")])
     out = capsys.readouterr().out

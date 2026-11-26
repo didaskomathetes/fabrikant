@@ -25,18 +25,18 @@ class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     NEEDS_APPROVAL = "needs_approval"
-    PASS = "pass"  # nosec B105 # Status-Wert, kein Passwort
+    PASS = "pass"  # nosec B105 # status value, not a password
     FAIL = "fail"
     ERROR = "error"
     REJECTED = "rejected"
 
 
 class StepStatus(StrEnum):
-    """Status eines Steps."""
+    """Status of a step."""
 
     RUNNING = "running"
     WAITING = "waiting"
-    PASS = "pass"  # nosec B105 # Status-Wert, kein Passwort
+    PASS = "pass"  # nosec B105 # status value, not a password
     FAIL = "fail"
     TIMEOUT = "timeout"
     ERROR = "error"
@@ -68,8 +68,8 @@ class FailureKind(StrEnum):
 
     INTERRUPTED = "interrupted"  # aborted from outside (reaper, dead-man's switch)
     TRANSIENT = "transient"  # external dependency briefly unavailable
-    ENVIRONMENT = "environment"  # Umgebung/Konfiguration kaputt — braucht einen Menschen
-    OUTCOME = "outcome"  # echtes negatives Ergebnis (Tests rot, Quality Gate, Review)
+    ENVIRONMENT = "environment"  # environment/configuration broken — needs a human
+    OUTCOME = "outcome"  # genuine negative outcome (tests red, quality gate, review)
     UNKNOWN = "unknown"  # not classified — never handle automatically
 
 
@@ -77,16 +77,16 @@ class FailureKind(StrEnum):
 FAILED_RUN_STATUSES = frozenset({RunStatus.FAIL, RunStatus.ERROR})
 FAILED_STEP_STATUSES = frozenset({StepStatus.FAIL, StepStatus.TIMEOUT, StepStatus.ERROR})
 
-TIER_APPROVAL_STEP = "tier-approval"  # Name des synthetischen Tier-Gate-Steps (waiting_step)
+TIER_APPROVAL_STEP = "tier-approval"  # name of the synthetic tier-gate step (waiting_step)
 
 _S, _R = RunStatus, StepStatus
 _A = ApprovalStatus
 
 # Allowed run transitions (ADR 0034 no. 2). Terminal: pass, fail, error, rejected.
 RUN_TRANSITIONS: Mapping[RunStatus, frozenset[RunStatus]] = {
-    _S.QUEUED: frozenset({_S.RUNNING, _S.ERROR}),  # ERROR: Start gescheitert (Loop unbekannt, Worker-Start)
-    _S.RUNNING: frozenset({_S.NEEDS_APPROVAL, _S.PASS, _S.FAIL, _S.ERROR}),  # ERROR auch: Reaper, Stale-Check
-    _S.NEEDS_APPROVAL: frozenset({_S.RUNNING, _S.REJECTED, _S.ERROR}),  # RUNNING = Resume nach Approve
+    _S.QUEUED: frozenset({_S.RUNNING, _S.ERROR}),  # ERROR: start failed (unknown loop, worker start)
+    _S.RUNNING: frozenset({_S.NEEDS_APPROVAL, _S.PASS, _S.FAIL, _S.ERROR}),  # ERROR also: reaper, stale check
+    _S.NEEDS_APPROVAL: frozenset({_S.RUNNING, _S.REJECTED, _S.ERROR}),  # RUNNING = resume after approve
     _S.PASS: frozenset(),
     _S.FAIL: frozenset(),
     _S.ERROR: frozenset(),
@@ -145,12 +145,12 @@ class Usage:
     cost_usd: float | None = None
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
-    billing: str = ""  # api | subscription | unknown (fabrikant.billing); "" = Altbestand
+    billing: str = ""  # api | subscription | unknown (fabrikant.billing); "" = legacy
 
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """Ein Review-Befund; ``suggestion``: optionaler kleiner Fix-Vorschlag (``pr_review``, ADR 0039)."""
+    """A review finding; ``suggestion``: optional small fix proposal (``pr_review``, ADR 0039)."""
 
     severity: str = ""
     text: str = ""
@@ -159,7 +159,7 @@ class Finding:
 
 @dataclass(frozen=True, slots=True)
 class ReviewResult:
-    """Ergebnis eines ``pr_review``-Steps (``verdict``: ``approved`` | ``changes_requested``)."""
+    """Result of a ``pr_review`` step (``verdict``: ``approved`` | ``changes_requested``)."""
 
     verdict: str = ""
     model: str = ""
@@ -171,7 +171,7 @@ class ReviewResult:
 
 @dataclass(frozen=True, slots=True)
 class VerifyCheck:
-    """Ergebnis eines ``verify``-Checks."""
+    """Result of a ``verify`` check."""
 
     name: str
     ok: bool
@@ -284,7 +284,7 @@ class Run:
     replay_of: str = ""  # Run id of the original if this is a replay (ADR 0061); "" = no replay
     golden: str = ""  # Golden name this run is the baseline of (ADR 0068); "" = not a golden
 
-    attempt: int = 0  # 0-basierte Versuchszahl (ADR 0036); 0 = erster Run
+    attempt: int = 0  # 0-based attempt number (ADR 0036); 0 = first run
     worktree_cleanup_error: str = ""
     # Read-only (MappingProxyType): the run is frozen, ``vars`` too —
     # ``run.vars["x"] = 1`` raises TypeError. :func:`fabrikant.runstore.parse_run` wraps

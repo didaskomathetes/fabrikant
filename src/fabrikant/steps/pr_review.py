@@ -302,7 +302,7 @@ def _run_fix_checks(ctx: dict, step: dict, emit) -> dict | None:
         if not res.get("ok"):
             tail = "\n".join(str(res.get("output") or "").strip().splitlines()[-_CHECK_TAIL_LINES:])
             return failed(
-                f"pr_review: Fix-Check '{cmd}' rot — nichts gepusht ({res.get('summary', '')})\n{tail}".rstrip(),
+                f"pr_review: fix check '{cmd}' red — nothing pushed ({res.get('summary', '')})\n{tail}".rstrip(),
                 from_result(res),
                 exit_code=res.get("exit_code"),
                 output=res.get("output", ""),
@@ -336,7 +336,7 @@ def _fix_round(findings: list[dict], diff: str, ctx: dict, step: dict, emit) -> 
         return failed(t("steps.pr_review.pr_review_blocked_fix_push", branch=branch), FailureKind.ENVIRONMENT)
     pushed = push_branch(base, branch, protected=step.get("protected") or config.PROTECTED_DEFAULT)
     sha = _git(ctx, base, "rev-parse", "HEAD")  # after API push: the signed commit
-    return {"ok": True, "sha": sha, "summary": f"Fix-Runde: commit + {pushed}"}
+    return {"ok": True, "sha": sha, "summary": f"Fix round: commit + {pushed}"}
 
 
 def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
@@ -353,7 +353,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
     max_rounds = max(0, int(step.get("max_rounds", 2))) + int(ctx.get(GRANT_ROUNDS_CTX, 0) or 0)
     pushed_sha = ""  # head after the last fix round; empty = round 1
 
-    previous: list[dict] = []  # Findings der Vorrunde (Konvergenz, ADR 0039)
+    previous: list[dict] = []  # findings of the previous round (convergence, ADR 0039)
 
     for round_i in range(max_rounds + 1):
         if pushed_sha and not _wait_for_head(dev_provider, repo, pr_number, pushed_sha):
@@ -367,7 +367,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
                 FailureKind.TRANSIENT,
             )
         diff = dev_provider.pr_diff(repo, pr_number)
-        emit(f"  Review-Runde {round_i + 1}/{max_rounds + 1} (PR #{pr_number}, Diff {len(diff)} chars)")
+        emit(f"  Review round {round_i + 1}/{max_rounds + 1} (PR #{pr_number}, Diff {len(diff)} chars)")
         verdict, res = _review_diff(diff, ctx, step, emit, previous)
         if verdict is None:
             return failed(
@@ -381,7 +381,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
                 usage=res.get("usage"),
             )
         review_field = _review_field(verdict, (step.get("model") or "").strip(), pr=pr_number, round=round_i + 1)
-        acceptance_block = _format_acceptance(verdict["acceptance"])  # unverifiable sichtbar, blockiert nicht
+        acceptance_block = _format_acceptance(verdict["acceptance"])  # unverifiable is shown, does not block
         if verdict["verdict"] == "approved":
             body = verdict.get("summary") or "approved"
             if acceptance_block:
@@ -390,7 +390,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
             _post_review(reviewer_provider, repo, pr_number, "APPROVE", body)
             return {
                 "ok": True,
-                "summary": f"approved (Runde {round_i + 1}) · {review_field['summary']}".strip(" ·"),
+                "summary": f"approved (round {round_i + 1}) · {review_field['summary']}".strip(" ·"),
                 "review": review_field,
                 "usage": res.get("usage"),
             }
@@ -414,7 +414,7 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
         fix = _fix_round(verdict["findings"], diff, ctx, step, emit)
         if not fix.get("ok"):
             return failed(
-                f"pr_review: Fix-Runde {round_i + 1} fehlgeschlagen: {fix.get('summary', '')}",
+                f"pr_review: fix round {round_i + 1} failed: {fix.get('summary', '')}",
                 from_result(fix),
                 review=review_field,
                 usage=res.get("usage"),
@@ -422,4 +422,4 @@ def _step_pr_review(ctx: dict, step: dict, emit) -> dict:
         pushed_sha = fix["sha"]
         previous = verdict["findings"]
     # unreachable (max_rounds >= 0 guarantees a return above)
-    return {"ok": False, "summary": "pr_review: unerwarteter Ablauf"}
+    return {"ok": False, "summary": "pr_review: unexpected flow"}

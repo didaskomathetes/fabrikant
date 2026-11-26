@@ -138,7 +138,7 @@ def _read_persisted() -> str | None:
 
 
 def active_name() -> str | None:
-    """Name des aktiven Providers (Cache → persistiert → Default)."""
+    """Name of the active provider (cache → persisted → default)."""
     global _active_cache
     with _guard:
         if _active_cache and get_provider(_active_cache):
@@ -152,7 +152,7 @@ def active_name() -> str | None:
 
 
 def set_active(name: str) -> str:
-    """Aktiven Provider setzen + persistieren. Wirft ValueError bei unbekanntem Name."""
+    """Set and persist the active provider. Raises ValueError for an unknown name."""
     global _active_cache
     with _guard:
         if not get_provider(name):
