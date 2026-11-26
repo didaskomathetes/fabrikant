@@ -17,7 +17,7 @@ from .runstore import STORE, RecordError, RunStoreError, parse_run, valid_projec
 
 LOCK_KEY_SEP = "::"  # separates project and loop in the scope key; forbidden in names (specs._validate_spec)
 
-# Status-Marke je Step-Status (CLI `runs show`, `fabrikant run`).
+# Status mark per step status (CLI `runs show`, `fabrikant run`).
 STEP_MARKS = {"pass": "✔", "fail": "✖", "timeout": "⏱", "error": "✖", "waiting": "⏸", StepStatus.SKIPPED.value: "–"}
 
 
@@ -42,7 +42,7 @@ def lock_key(project: str, loop_name: str) -> str:
     """Scope key for ``project``/``loop_name`` per the current spec state.
 
     Unknown project/loop or broken spec → project scope."""
-    from .specs import load_projects  # lokal: specs → branches → … (Import-Zyklus vermeiden)
+    from .specs import load_projects  # local import: specs → branches → … (avoid import cycle)
 
     spec = load_projects().get(project) or {}
     loop = (spec.get("loops") or {}).get(loop_name) if not spec.get("_error") else None
@@ -374,7 +374,7 @@ def reap_orphaned_runs() -> list[str]:
         retry_chains.record_run_end(project, r, projects)
         metrics.FABRIKANT_REAPED_RUNS_TOTAL.inc(reason="restart")
         reaped.append(run_id)
-        print(f"[fabrikant] verwaister Run {run_id} → error (Restart)")
+        print(f"[fabrikant] orphaned run {run_id} → error (restart)")
     # Release remaining claims of runs that are no longer running (ADR 0036,
     # decision 3) — otherwise the chain would stay claimed forever.
     retry_chains.release_stale_claims()
@@ -427,8 +427,8 @@ def show_run(run_id: str, project: str | None = None) -> str | None:
         )
     log = sessionlog.session_log_dump(run_id)
     lines.append(
-        f"  Session-Log: {len(log['events'])} Events, {len(log['checkpoints'])} Checkpoints, "
-        f"{len(log['artifacts'])} Artefakte"
+        f"  Session log: {len(log['events'])} events, {len(log['checkpoints'])} checkpoints, "
+        f"{len(log['artifacts'])} artifacts"
     )
     return "\n".join(lines)
 

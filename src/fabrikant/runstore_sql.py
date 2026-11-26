@@ -95,7 +95,7 @@ from .runstore import (
 from .secrets import _redact_record
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-_WRITE_OPTION = "fabrikant_write"  # Execution-Option: Transaktion als Schreib-Transaktion beginnen
+_WRITE_OPTION = "fabrikant_write"  # execution option: begin the transaction as a write transaction
 
 
 class InvalidRecordError(RunStoreError):
@@ -103,7 +103,7 @@ class InvalidRecordError(RunStoreError):
     DB constraint violated). Nothing is written."""
 
 
-# ---------------------------------------------------------------- Record → Zeilen
+# ---------------------------------------------------------------- Record → rows
 _TEXT, _OPT_TEXT, _BOOL, _INT, _NUM = "text", "opt_text", "bool", "int", "num"
 
 # Scalar run fields → column type (column name = field name). id/project/status come from the operation.
@@ -203,7 +203,7 @@ def _scalar_columns(data: Mapping[str, Any], spec: Mapping[str, str], where: str
 def _reject_unknown(data: Mapping[str, Any], known: Sequence[str] | frozenset[str], where: str) -> None:
     unknown = sorted(set(data) - set(known))
     if unknown:
-        raise InvalidRecordError(f"{where}: unbekannte Felder {', '.join(unknown)}")
+        raise InvalidRecordError(f"{where}: unknown fields {', '.join(unknown)}")
 
 
 def _as_mapping(value: Any, where: str) -> Mapping[str, Any] | None:
@@ -292,7 +292,7 @@ def encode_record(record: Mapping[str, Any], project: str, run_id: str) -> Recor
 
     ``project``/``run_id`` come from the operation (storage location); a deviating ``id`` in the record is rejected."""
     if record.get("id") not in (None, run_id):
-        raise InvalidRecordError(f"Record-id {record.get('id')!r} ≠ Run-Id {run_id!r}")
+        raise InvalidRecordError(f"record id {record.get('id')!r} ≠ run id {run_id!r}")
     _reject_unknown(record, (*_RUN_FIELDS, *_RUN_NESTED, *_RUN_IGNORED), "run")
     cols = _scalar_columns(record, _RUN_FIELDS, "run")
     cols["started"] = cols["started"] or ""
@@ -328,10 +328,10 @@ def _run_status(record: Mapping[str, Any]) -> RunStatus:
     try:
         return RunStatus(str(status))
     except ValueError:
-        raise InvalidRecordError(f"run.status: unbekannter Status {status!r}") from None
+        raise InvalidRecordError(f"run.status: unknown status {status!r}") from None
 
 
-# ---------------------------------------------------------------- Zeilen → Record
+# ---------------------------------------------------------------- Rows → record
 def _present(row: Mapping[str, Any], names: Sequence[str]) -> dict[str, Any]:
     return {n: row[n] for n in names if row[n] is not None}
 
@@ -474,7 +474,7 @@ def alembic_config() -> Config:
 
 
 def migrate(engine: Engine, revision: str = "head") -> None:
-    """Schema per Alembic auf ``revision`` bringen (exklusive Transaktion; parallele Starts warten)."""
+    """Bring the schema to ``revision`` via Alembic (exclusive transaction; concurrent starts wait)."""
     cfg = alembic_config()
     with engine.connect() as conn:
         conn.execution_options(**{_WRITE_OPTION: True})
@@ -490,7 +490,7 @@ def _db_errors() -> Iterator[None]:
     try:
         yield
     except IntegrityError as e:
-        raise InvalidRecordError(f"DB-Constraint verletzt: {e.orig}") from e
+        raise InvalidRecordError(f"DB constraint violated: {e.orig}") from e
     except SQLAlchemyError as e:
         raise RunStoreError(_t("runstore_sql.db_error", e=e)) from e
 
@@ -517,7 +517,7 @@ class SqlRunStore(BaseRunStore):
         with _db_errors(), self.engine.connect() as conn, conn.begin():
             yield conn
 
-    # ------------------------------------------------------------ Schreiben
+    # ------------------------------------------------------------ Writing
     def _modify(self, project: str, run_id: str, mutate: Mutation) -> dict:
         _check_ids(project, run_id)
         with self.write_tx() as conn:

@@ -137,7 +137,7 @@ def cmd_template(args):
 
 
 def _cli_actor() -> str:
-    """Audit-Name lokaler CLI-Aufrufer (``started_by``/``approved_by``)."""
+    """Audit name of the local CLI caller (``started_by``/``approved_by``)."""
     return f"cli:{getpass.getuser()}"
 
 
@@ -472,7 +472,7 @@ def cmd_reject(args):
 
 
 def cmd_state(args):
-    """pause|resume|disable <projekt> [loop] [--until ISO]."""
+    """pause|resume|disable <project> [loop] [--until ISO]."""
     state = {"pause": pause.PAUSED, "resume": pause.ACTIVE, "disable": pause.DISABLED}[args.cmd]
     try:
         pause.set_state(args.project, args.loop, state, until=args.until, actor=f"cli:{getpass.getuser()}")
@@ -494,7 +494,7 @@ def _read_password(args) -> str:
 
 
 def cmd_user(args):
-    """user add|passwd|role — lokale Benutzerverwaltung (ADR 0030)."""
+    """user add|passwd|role — local user management (ADR 0030)."""
     try:
         if args.action == "add":
             auth.add_user(args.name, _read_password(args), args.role or auth.VIEWER)
@@ -808,10 +808,10 @@ def main(argv=None):
     p.add_argument("action", choices=("start", "stop", "status"))
     p.set_defaults(func=cmd_egress)
 
-    p = sub.add_parser("fetch", help="Research-Fetcher: Seite holen, bereinigen, Injection-Scan (ADR 0060)")
-    p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
-    p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
-    p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
+    p = sub.add_parser("fetch", help="Research fetcher: fetch a page, clean it, injection scan (ADR 0060)")
+    p.add_argument("url", help="URL to fetch (requires auto-approval)")
+    p.add_argument("--approved-domains", default="", help="Comma-separated domains (auto-approval)")
+    p.add_argument("--approved-urls", default="", help="Comma-separated exact URLs (auto-approval)")
     p.add_argument("--out", default=None, help="Output dir (sources/ + quarantine/)")
     p.add_argument("--ledger", default=None, help=t("cli.help.fetch_ledger"))
     p.add_argument("--spec", default=None, help=t("cli.help.fetch_spec"))

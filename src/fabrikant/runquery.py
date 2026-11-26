@@ -53,7 +53,7 @@ def _check_date(name: str, value: str) -> str:
 
 
 def date_bounds(date_from: str, date_to: str) -> tuple[datetime | None, datetime | None, bool]:
-    """→ (untere Grenze inkl., obere Grenze, obere exklusiv?). `to` als reines Datum = ganzer Tag."""
+    """→ (lower bound inclusive, upper bound, upper exclusive?). `to` as a bare date = whole day."""
     lower = to_utc(_check_date("from", date_from)) if date_from else None
     if not date_to:
         return lower, None, False
@@ -82,9 +82,9 @@ class RunQuery:
     lower: datetime | None = None
     upper: datetime | None = None
     upper_exclusive: bool = False
-    statuses: frozenset[str] = frozenset()  # RunStatus-Werte; unbekannte treffen nichts
+    statuses: frozenset[str] = frozenset()  # RunStatus values; unknown ones match nothing
     loop: str = ""
-    failure_kinds: frozenset[str] = frozenset()  # FailureKind-Werte
+    failure_kinds: frozenset[str] = frozenset()  # FailureKind values
     after: SortKey | None = None
     limit: int = 50
 
