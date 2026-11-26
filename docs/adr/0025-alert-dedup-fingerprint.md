@@ -1,8 +1,8 @@
 # ADR 0025: Alert deduplication by fingerprint (instead of an issue per run)
 
 **Status:** Accepted (2026-10-19). Numbering: originally 0013, then 0014, since 2026-10-20
-0025 (ADR number cleanup: 0013/0014 were assigned twice).
-**Deciders:** Dominic
+0025 (ADR number cleanup: 0013/0014 were assigned twice); personal name replaced by GitHub handle 2026-11-26
+**Deciders:** didaskomathetes
 **Code PR:** #125
 (implementation, tests, config and this ADR)
 **Context:** `_notify` (channel `github_issue`) opened a new GitHub issue for **every** failed
@@ -51,13 +51,13 @@ Alerts are deduplicated by a stable **fingerprint** of the failure pattern:
      as long as the repo stays private; the same
      precondition applies to new repos (private + operator ACL).
   2. **Risk acceptance:** It is deliberately accepted that logs can contain
-     tokens/keys; owner: Dominic (decider, above).
+     tokens/keys; owner: didaskomathetes (decider, above).
   3. **Follow-up issue with deadline:** A redaction layer for `log_tail` before the
      issue post has been created as
      #132
      (pattern-based, configurable, fail-safe). **Deadline:
      implementation within 2 weeks after the merge of this ADR (by 2026-10-31);
-     owner: Dominic.** Until then the risk acceptance from point 2 applies.
+     owner: didaskomathetes.** Until then the risk acceptance from point 2 applies.
 - **Rate limits:** The lookup reads all open alert issues (typically 1–3).
   Problematic only if alerts are never closed.
 - **Rollback:** PR #125 is squash-merged → rollback =

@@ -23,29 +23,29 @@ The ADR merged first kept its number; the others were moved in merge order:
 
 | # | Title | Status |
 |---|-------|--------|
-| [0001](0001-dogfooding-loops.md) | Fabrikant dogfooding — Fabrikant develops Fabrikant | Accepted |
+| [0001](0001-dogfooding-loops.md) | Fabrikant dogfooding — Fabrikant develops Fabrikant | Accepted; personal name replaced by GitHub handle 2026-11-26 |
 | [0002](0002-sessionlog-sqlite.md) | Durable session log in SQLite (end schema) | Accepted, partially superseded by 0034 |
 | [0003](0003-review-step.md) | `review` step — cross-model cold critic | Accepted |
-| [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04) |
+| [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04); personal name replaced by GitHub handle 2026-11-26 |
 | [0005](0005-opencode-dual-version.md) | opencode backend — dual support 1.x/2.x | Accepted |
-| [0006](0006-issue-refine-loop.md) | Issue refine loop (replaces triage) | Accepted |
+| [0006](0006-issue-refine-loop.md) | Issue refine loop (replaces triage) | Accepted; personal name replaced by GitHub handle 2026-11-26 |
 | [0008](0008-shell-untrusted-input-env.md) | Shell steps with untrusted input — `env:` instead of inline substitution | Accepted (amended 2026-11-03: trust default `extra_context`) |
 | [0009](0009-run-id-response.md) | `run_id` before worker start + `resumed` flag in the API | Draft |
 | [0010](0010-dual-identity-pr-pipeline.md) | Dual-identity PR pipeline (builder ≠ reviewer, human only when critical) | Accepted; amendment 2026-10-27: concrete identities = config; amendment 2026-11-03: per-project identities, signed API commits |
 | [0011](0011-approval-request-protocol.md) | Approval request protocol (ADR PR stacked on the original PR) | Accepted |
 | [0012](0012-agent-transient-backend-errors.md) | Agent step resilient to transient backend errors | Accepted |
-| [0013](0013-issue-closing-ac-verification.md) | Issue closing + verification of acceptance criteria | Accepted (stages 0–2; stage 3 optional); references fixed 2026-11-26 |
+| [0013](0013-issue-closing-ac-verification.md) | Issue closing + verification of acceptance criteria | Accepted (stages 0–2; stage 3 optional); references fixed 2026-11-26; personal name replaced by GitHub handle 2026-11-26 |
 | [0014](0014-on-issue-reconcile.md) | Reconcile mode for the `on_issue` trigger | Accepted; amendment 2026-10-28: auto-retry via ADR 0036 |
 | [0015](0015-queued-approval.md) | Queue approvals while the project lock is held | Accepted; references fixed 2026-11-26 |
-| [0017](0017-refine-conditional-gate.md) | Refine loop — human gate only for `needs approval` / `close` | Accepted; references fixed 2026-11-26 |
+| [0017](0017-refine-conditional-gate.md) | Refine loop — human gate only for `needs approval` / `close` | Accepted; references fixed 2026-11-26; personal name replaced by GitHub handle 2026-11-26 |
 | [0018](0018-issue-step.md) | Native `issue` step | Accepted |
 | [0019](0019-pause-resume-disable.md) | Pause/resume/disable per project and loop | Accepted (changed 2026-10-23) |
 | [0020](0020-worktree-free-loops.md) | Worktree-free loops with their own lock and scratch workdir | Accepted |
 | [0021](0021-issue-priority-labels.md) | Issue prioritization via phase labels (`priority_labels`) | Accepted; references fixed 2026-11-26 |
-| [0022](0022-model-choice-is-config.md) | Model choice is configuration, not architecture | Accepted |
+| [0022](0022-model-choice-is-config.md) | Model choice is configuration, not architecture | Accepted; personal name replaced by GitHub handle 2026-11-26 |
 | [0023](0023-on-pr-reconcile-per-head.md) | `on_pr` reconcile per head SHA (`reconcile: head`) | Accepted |
 | [0024](0024-review-verdict-marker.md) | Review as a GitHub review with verdict marker, inline threads, reply lock | Accepted |
-| [0025](0025-alert-dedup-fingerprint.md) | Alert deduplication by fingerprint (instead of an issue per run) | Accepted |
+| [0025](0025-alert-dedup-fingerprint.md) | Alert deduplication by fingerprint (instead of an issue per run) | Accepted; personal name replaced by GitHub handle 2026-11-26 |
 | [0026](0026-alert-log-tail-redaction.md) | Redaction of the alert `log_tail` | Accepted |
 | [0027](0027-on-webhook-trigger.md) | `on_webhook` trigger (HMAC, tunnel CORS) | Accepted; references fixed 2026-11-26 |
 | [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-10-23) |

@@ -1,8 +1,8 @@
 # ADR 0013: Issue closing + verification of acceptance criteria
 
 **Status:** Accepted (2026-11-04) — stages 0–2 implemented, stage 3 remains
-optional (only if a need is demonstrated); references fixed 2026-11-26
-**Deciders:** Dominic
+optional (only if a need is demonstrated); references fixed 2026-11-26; personal name replaced by GitHub handle 2026-11-26
+**Deciders:** didaskomathetes
 **Context issue:** proposal "QA agent after merge" (chat 2026-10-19)
 
 ## Context
