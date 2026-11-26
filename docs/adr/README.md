@@ -85,3 +85,4 @@ The ADR merged first kept its number; the others were moved in merge order:
 | [0067](0067-template-library.md) | Template library — curated, documented loop templates + `fabrikant template` CLI | Accepted (2026-11-24) |
 | [0068](0068-golden-run-store-mark.md) | Golden Runs — run-store mark + `fabrikant eval --golden <run-id>` | Accepted (2026-11-24) |
 | [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrikant`, Docker, step plugins | Accepted (2026-11-24) |
+| [0071](0071-agent-results-are-data.md) | Agent results are data; the engine performs side effects — `review-pr` via `pr_review`, `schema` for `agent` steps | Proposed (2026-11-26) |
