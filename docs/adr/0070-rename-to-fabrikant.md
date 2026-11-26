@@ -38,10 +38,10 @@ Nothing has been published to PyPI yet, so the plugin contract can still change 
 5. **Repository rename** on GitHub (`fabrik` → `fabrikant`) is a manual step by the owner; GitHub
    redirects the old URL.
 
-6. **ADRs stay historical.** ADR 0069 and earlier keep the old name `fabrik` (decision records are not
-   rewritten); read them with `fabrik` = `fabrikant`.
-   *Amendment 2026-11-26:* ADRs 0013–0024 are an exception: when they were translated to English,
-   their old names were replaced with the new ones.
+6. **Existing ADRs are not renamed, except 0013–0024** (amended 2026-11-26; previously no ADR up to
+   0069 was rewritten). ADRs 0013–0024 were translated to English and use the new names throughout,
+   also where they describe events from before the rename. All other ADRs up to 0069 keep the old
+   name `fabrik`; read it as `fabrikant`.
 
 ## Consequences
 
