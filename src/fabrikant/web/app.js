@@ -1537,8 +1537,8 @@ function generatedLoopCard(name, loop) {
     <div class="graphnode-body">
       ${roSourceNote(name, loop)}
       ${gdef.description ? `<div class="ge-field"><label>description</label><pre class="ge-ro">${esc(gdef.description)}</pre></div>` : ""}
-      <div class="ge-sec">Triggers</div>${trigs || '<div class="ge-empty">keine Triggers</div>'}
-      <div class="ge-sec">Steps</div>${steps || '<div class="ge-empty">keine Steps</div>'}
+      <div class="ge-sec">Triggers</div>${trigs || '<div class="ge-empty">no triggers</div>'}
+      <div class="ge-sec">Steps</div>${steps || '<div class="ge-empty">no steps</div>'}
     </div>`;
 }
 
@@ -1954,14 +1954,14 @@ const GE_STEP_SCHEMAS = {
   ],
   report: [
     ["text", "text", GE_FIELD.area],
-    ["write", "write (Pfad)", GE_FIELD.text],
+    ["write", "write (path)", GE_FIELD.text],
   ],
   http: [
     ["url", "url", GE_FIELD.text, { required: true }],
     ["method", "method", GE_FIELD.sel, { options: ["GET", "POST", "PUT", "PATCH", "DELETE"] }],
     ["headers", "headers (JSON)", GE_FIELD.json],
     ["body", "body", GE_FIELD.area],
-    ["expect", "expect (HTTP-Status)", GE_FIELD.num],
+    ["expect", "expect (HTTP status)", GE_FIELD.num],
     ["timeout", "timeout (s)", GE_FIELD.num],
     ["emit", "emit", GE_FIELD.bool],
   ],
@@ -2038,10 +2038,10 @@ const GE_STEP_SCHEMAS = {
 
 // Fields that apply to EVERY step (approval + gate) — appended to the type schema.
 const GE_STEP_COMMON = [
-  ["gate", "gate (Fehler bricht Run ab)", GE_FIELD.bool, { default: true }],
-  ["approval", "approval (immer pausieren)", GE_FIELD.bool],
+  ["gate", "gate (error aborts the run)", GE_FIELD.bool, { default: true }],
+  ["approval", "approval (always pause)", GE_FIELD.bool],
   ["approval_reason", "approval_reason", GE_FIELD.text],
-  ["approval_when", "approval_when (JSON: Var → Wert)", GE_FIELD.json],
+  ["approval_when", "approval_when (JSON: var → value)", GE_FIELD.json],
 ];
 
 const GE_TRIGGER_SCHEMAS = {
@@ -3215,7 +3215,7 @@ async function refreshSchedule() {
   if (state.schedOpen) renderSchedule();
 }
 
-// KPI-Panel (Issue #127): Factory-KPIs je Projekt aus GET /api/kpis.
+// KPI panel (Issue #127): factory KPIs per project from GET /api/kpis.
 function fmtKpiRate(r) {
   return r === null || r === undefined ? "—" : `${Math.round(r * 100)} %`;
 }
