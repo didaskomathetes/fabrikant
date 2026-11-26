@@ -33,6 +33,14 @@ All notable changes to fabrikant are documented here. The format follows
   early and successfully (without the key the line is ordinary output, so test/lint output or echoed PR text
   cannot skip later gates); lines `::fabrikant-warning::<text>` report non-fatal problems (⚠ in the run log, `WARNING:` at the end of the output).
 
+### Security
+
+- `claude_code` steps with `tools` or `allowed_tools` no longer load the working directory's project/local
+  settings, `.mcp.json` or project/user hooks (`--setting-sources user --strict-mcp-config`, hooks disabled;
+  administrator-managed hooks still apply): a PR under review can no longer run commands through its own
+  `.claude/settings.json`. On hosts with an enterprise `managed-mcp.json` Claude Code refuses
+  `--strict-mcp-config`, so such steps fail as a configuration error (`environment`).
+
 ### Fixed
 
 - Network blips (DNS, dropped connections) no longer fail a run whose work is done: GitHub/GitLab API calls and

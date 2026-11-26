@@ -101,8 +101,17 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   - `allowed_tools` are pre-approval rules (`--allowedTools`) and switch to `--permission-mode dontAsk`: a call
     that would otherwise prompt is denied. This is not an allowlist. Calls that need no approval (file reads in
     the working directory, read-only Bash commands) still run, and so do calls approved by `permissions.allow`
-    rules in the user, project or local `settings.json` of the machine running the agent. To really keep a tool
-    out, leave it out of `tools`.
+    rules in the user `settings.json` of the machine running the agent. To really keep a tool out, leave it out
+    of `tools`.
+  - Either key also treats the working directory as untrusted, since restricted steps typically read content
+    someone else wrote (a PR head): `--setting-sources user` (no project/local settings — their hooks, `env`
+    block and `.mcp.json` servers would otherwise apply in a headless run), `--strict-mcp-config` (no MCP
+    servers) and `--settings '{"disableAllHooks": true}'` (no project, local or user hooks; hooks from managed
+    settings an administrator deployed still run, only a managed `disableAllHooks` turns those off).
+  - Hosts with an enterprise `managed-mcp.json` (e.g. `/etc/claude-code/managed-mcp.json`) can't run restricted
+    steps: Claude Code exits at startup when `--strict-mcp-config` is passed while that file is deployed. The
+    step fails as a configuration error (`failure_kind: environment`) instead of running without the isolation;
+    run such steps on a host without the file.
   - An empty value is rejected by validation; omit the key for the default.
 
   Example for a reviewer that may read the repo and write only its payload (`Write` exists but is not
