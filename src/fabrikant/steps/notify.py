@@ -1,4 +1,4 @@
-"""Step: notify (slack/webhook) + _notify (Alerts laut Spec-Konfiguration)."""
+"""Step: notify (slack/webhook) + _notify (alerts per spec configuration)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from ..secrets import redact_log_tail
 
 log = logging.getLogger("fabrikant.notify")
 
-# Alert-Dedup: Fingerprint-Marker im Issue-Body (HTML-Kommentar, unsichtbar).
+# Alert dedup: fingerprint marker in the issue body (HTML comment, invisible).
 _ALERT_MARKER = "<!-- fabrikant-alert:fp={fp} -->"
 # Run-specific tokens that must not influence the fingerprint —
 # normalized are: UUIDs (8-4-4-4-12) and run/session IDs/hashes
@@ -140,7 +140,7 @@ def _notify(spec: dict, record: dict, retry_state: str | None = None) -> list[st
                 # do NOT fall in here: they propagate and become visible with a
                 # stack trace, instead of being swallowed as an apparently normal
                 # channel status.
-                log.exception("Alert-Issue fehlgeschlagen (Run %s)", record["id"])
+                log.exception("Alert issue failed (Run %s)", record["id"])
                 sent.append(f"issue:error({e})")
     return sent
 
@@ -199,9 +199,9 @@ def _find_open_alert(provider: Provider, gh: str, labels: list[str], marker: str
                 continue
             if marker in it.body:
                 return it.number
-        if len(issues) < per_page:  # letzte Seite → kein Match
+        if len(issues) < per_page:  # last page → no match
             return None
-        if page >= config.ALERT_LOOKUP_MAX_PAGES:  # Rate-Limit-Schutz: Lookup abbrechen
+        if page >= config.ALERT_LOOKUP_MAX_PAGES:  # rate-limit protection: abort the lookup
             log.warning(
                 _t("steps.notify.alert_lookup_d_pages_d"),
                 page,
@@ -242,9 +242,9 @@ def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, t
         existing = None
     if existing is not None:
         try:
-            provider.create_comment(gh, existing, f"Erneut fehlgeschlagen — {run_info}")
+            provider.create_comment(gh, existing, f"Failed again — {run_info}")
         except _GH_API_ERRORS as e:
-            log.exception("Alert-Kommentar fehlgeschlagen (Issue #%s, Run %s)", existing, record["id"])
+            log.exception("Alert comment failed (Issue #%s, Run %s)", existing, record["id"])
             return f"issue:{existing}(+):error({e})"
         return f"issue#{existing}(+)"
     try:
@@ -258,7 +258,7 @@ def _alert_issue(provider: Provider, gh: str, labels: list[str], record: dict, t
             labels=labels,
         )
     except _GH_API_ERRORS as e:
-        log.exception("Alert-Issue-Anlage fehlgeschlagen (Repo %s, Run %s)", gh, record["id"])
+        log.exception("Alert issue creation failed (Repo %s, Run %s)", gh, record["id"])
         return f"issue:error({e})"
     if not issue.number:  # API response without issue number (shape change, error body)
         return _t("steps.notify.issue_error_no_issue_number")
