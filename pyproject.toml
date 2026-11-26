@@ -65,6 +65,10 @@ replacement = '](https://github.com/didaskomathetes/fabrikant/blob/main/\1)'
 [tool.hatch.build.targets.wheel]
 packages = ["src/fabrikant"]
 
+[tool.hatch.build.targets.sdist]
+# Allowlist: only what the wheel build needs. Docs, tests, CI and deploy files are not distributed.
+only-include = ["src/fabrikant", "README.md", "LICENSE"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
