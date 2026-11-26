@@ -56,5 +56,5 @@ def test_missing_dev_token_raises(monkeypatch):
 
 
 def test_unknown_role_raises():
-    with pytest.raises(ValueError, match="Rolle"):
+    with pytest.raises(ValueError, match="role"):
         gitops._gh_token_safe("hacker")

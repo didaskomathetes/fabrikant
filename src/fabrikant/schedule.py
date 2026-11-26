@@ -63,14 +63,14 @@ next_cron_times = cron.next_times
 
 
 class NotFoundError(ValueError):
-    """Unbekanntes Projekt bzw. unbekannter Loop (API: 404 statt 400)."""
+    """Unknown project or loop (API: 404 instead of 400)."""
 
 
 # ---------------------------------------------------------------- When-Parsing
 
 
 def _local_naive(dt: datetime) -> datetime:
-    """Mit Timezone → lokale, naive Zeit (Vergleichbarkeit mit `datetime.now()`)."""
+    """With a timezone → local naive time (comparable with `datetime.now()`)."""
     return dt.astimezone().replace(tzinfo=None) if dt.tzinfo is not None else dt
 
 
@@ -188,14 +188,14 @@ def add_onetime(project: str, loop: str, at: datetime, note: str = "") -> dict:
 
 
 def list_onetimes() -> list[dict]:
-    """Alle angesetzt One-time-Runs, sortiert nach `at`."""
+    """All scheduled one-time runs, sorted by `at`."""
     with _lock:
         data = _load_onetimes() or {}
     return sorted(data.values(), key=lambda e: e["at"])
 
 
 def remove_onetime(project: str, loop: str) -> dict | None:
-    """Angelegten One-time-Run entfernen; `None`, wenn keiner angesetzt war."""
+    """Remove a scheduled one-time run; `None` if none was scheduled."""
     with _lock:
         data = _load_onetimes()
         if data is None:

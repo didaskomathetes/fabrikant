@@ -858,7 +858,7 @@ def test_put_spec_unknown_project_returns_404(fabrikant_url):
 def test_put_spec_unknown_field_returns_400(fabrikant_url):
     status, resp, _ = _req(f"{fabrikant_url}/api/projects/uitest/spec", "PUT", {"name": "x"})
     assert status == 400
-    assert "unbekannte Felder" in json.loads(resp)["error"]
+    assert "unknown fields" in json.loads(resp)["error"]
 
 
 # ---------------------------------------------------------------- Connections (ADR 0052)

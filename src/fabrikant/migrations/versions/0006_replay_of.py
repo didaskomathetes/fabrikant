@@ -1,8 +1,8 @@
-"""Replay-Link: Spalte ``runs.replay_of`` (ADR 0061).
+"""Replay link: column ``runs.replay_of`` (ADR 0061).
 
-Verlinkt einen Replay-Run mit der Run-Id seines Originals; ``''`` = kein Replay.
-Analog zu ``retry_of`` (ADR 0036), rein informativ — beeinflusst weder Claims
-noch Retry-Ketten noch die Planung.
+Links a replay run to the run id of its original; ``''`` = not a replay.
+Analogous to ``retry_of`` (ADR 0036), purely informational — affects neither claims
+nor retry chains nor planning.
 
 Revision ID: 0006
 Revises: 0005
@@ -19,7 +19,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Natives ADD COLUMN (nullable, ohne Constraint) — kein Batch-Modus nötig.
+    # Native ADD COLUMN (nullable, no constraint) — no batch mode needed.
     op.add_column("runs", sa.Column("replay_of", sa.Text(), nullable=True))
 
 

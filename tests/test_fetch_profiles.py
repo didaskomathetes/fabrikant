@@ -147,7 +147,7 @@ def test_validate_conflict_on_write_creds():
     problems = validate_access_spec(SPEC)
     assert len(problems) == 1
     assert "conflicted" in problems[0]
-    assert "fetch-Profil" in problems[0]
+    assert "fetch profile" in problems[0]
 
 
 def test_validate_ignores_ro_egress_with_fetch():
