@@ -1,12 +1,12 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-fancy-pypi-readme>=24.1"]
 build-backend = "hatchling.build"
 
 [project]
 name = "fabrikant"
 version = "0.1.0"
 description = "fabrikant — a local software factory: agentic development loops as YAML specs"
-readme = "README.md"
+dynamic = ["readme"]
 requires-python = ">=3.11"
 keywords = ["agents", "automation", "ci", "software-factory", "llm", "workflow"]
 license = {text = "Apache-2.0"}
@@ -45,6 +45,22 @@ injection-llm-guard = ["llm-guard>=0.3"]
 [project.scripts]
 fabrikant = "fabrikant.cli:main"
 fabrikant-mcp = "fabrikant.mcp_server:main"
+
+# PyPI long description (docs/releasing.md): PyPI renders neither Mermaid nor repo-relative links, so the
+# README is rewritten at build time. The diagram image is rendered from docs/images/architecture.mmd.
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '(?s)```mermaid\n.*?```'
+replacement = '![fabrikant architecture](https://raw.githubusercontent.com/didaskomathetes/fabrikant/main/docs/images/architecture.png)'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\((?!https?://|#)([^)]+)\)'
+replacement = '](https://github.com/didaskomathetes/fabrikant/blob/main/\1)'
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fabrikant"]
