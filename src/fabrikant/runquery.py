@@ -17,7 +17,7 @@ from .runmodel import Run
 
 SortKey = tuple[str, str, str]
 
-# Normalisierte UTC-Zeit mit fester Breite: lexikalische = chronologische Ordnung (SQL-Spalte ``started_utc``).
+# Normalized fixed-width UTC time: lexical = chronological order (SQL column ``started_utc``).
 UTC_SORT_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
 
@@ -28,7 +28,7 @@ def to_utc(value: str) -> datetime:
 
 
 def utc_sort_text(value: str) -> str | None:
-    """ISO-Zeitpunkt → normalisierter UTC-Text (:data:`UTC_SORT_FORMAT`); None, wenn leer/unparsebar."""
+    """ISO timestamp → normalized UTC text (:data:`UTC_SORT_FORMAT`); None if empty/unparseable."""
     try:
         return to_utc(value).strftime(UTC_SORT_FORMAT) if value else None
     except ValueError:
@@ -53,7 +53,7 @@ def _check_date(name: str, value: str) -> str:
 
 
 def date_bounds(date_from: str, date_to: str) -> tuple[datetime | None, datetime | None, bool]:
-    """→ (untere Grenze inkl., obere Grenze, obere exklusiv?). `to` als reines Datum = ganzer Tag."""
+    """→ (lower bound inclusive, upper bound, upper exclusive?). `to` as a bare date = whole day."""
     lower = to_utc(_check_date("from", date_from)) if date_from else None
     if not date_to:
         return lower, None, False
@@ -82,9 +82,9 @@ class RunQuery:
     lower: datetime | None = None
     upper: datetime | None = None
     upper_exclusive: bool = False
-    statuses: frozenset[str] = frozenset()  # RunStatus-Werte; unbekannte treffen nichts
+    statuses: frozenset[str] = frozenset()  # RunStatus values; unknown ones match nothing
     loop: str = ""
-    failure_kinds: frozenset[str] = frozenset()  # FailureKind-Werte
+    failure_kinds: frozenset[str] = frozenset()  # FailureKind values
     after: SortKey | None = None
     limit: int = 50
 

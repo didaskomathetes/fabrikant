@@ -23,7 +23,7 @@ def _overrides_path() -> Path:
 
 
 def load_overrides() -> dict[str, str]:
-    """Liest die Branch-Overrides (projekt → branch). Defekte Datei → leer."""
+    """Read the branch overrides (project → branch). Broken file → empty."""
     p = _overrides_path()
     if not p.is_file():
         return {}

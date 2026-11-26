@@ -52,7 +52,7 @@ def _url(tmp_path):
 
 
 def _step_core(steps):
-    """Kernfelder der Steps (LLM-Fremdfelder wie Review-Finding `file` entfallen im SQL-Store)."""
+    """Core fields of the steps (LLM foreign fields like the review finding `file` are dropped by the SQL store)."""
     return [{k: s.get(k) for k in ("name", "type", "status")} for s in steps]
 
 
@@ -62,12 +62,12 @@ def test_dry_run_reports_without_writing(history, runs_dir, tmp_path):
     assert not (tmp_path / "target.db").exists() and history.read_bytes() == before
     assert (report.runs_found, report.runs_imported) == (5, 2)
     reasons = {(i.run_id, i.reason.split(":")[0]) for i in report.issues}
-    assert ("broken", "defekter Run-Record broken.json") in reasons
-    assert ("weird", "run") in reasons  # unbekannte Felder
+    assert ("broken", "corrupt run record broken.json") in reasons
+    assert ("weird", "run") in reasons  # unknown fields
     assert ("a", "Id schon in Projekt 'p'") in reasons
     assert report.sessions_imported == 1 and report.events_imported == 3 and report.checkpoints_imported == 1
     assert report.orphan_sessions == {"testproj": 1}
-    assert not report.ok and "Probelauf" in report.lines()[0]
+    assert not report.ok and "Dry run" in report.lines()[0]
 
 
 def test_import_writes_runs_and_session_log_and_is_idempotent(history, runs_dir, tmp_path):
@@ -75,7 +75,7 @@ def test_import_writes_runs_and_session_log_and_is_idempotent(history, runs_dir,
     store = store_for_url(_url(tmp_path))
     assert store.get_record("b")["vars"] == {"n": 1}
     finding = store.get_record("a")["steps"][0]["review"]["findings"][0]
-    assert finding == {"severity": "high", "text": "t", "suggestion": "fix it"}  # LLM-Fremdfeld `file` entfällt
+    assert finding == {"severity": "high", "text": "t", "suggestion": "fix it"}  # LLM foreign field `file` is dropped
     with store.engine.connect() as conn:
         counts = [
             conn.execute(text(f"SELECT count(*) FROM {t}")).scalar()
@@ -147,7 +147,7 @@ def test_archive_moves_only_imported_files(history, runs_dir, tmp_path):
 
 def test_deviating_record_stays_in_runs_not_archived(runs_dir, tmp_path):
     """Ein Record, der importiert aber vom gespeicherten Stand abweicht, bleibt in runs/ (nicht archiviert)."""
-    # Review-Finding mit nicht-string `severity`: parse_run → "", SQL-Store → str(5) → Abweichung nach Import
+    # Review-Finding mit nicht-string `severity`: parse_run → "", SQL-Store → str(5) → Mismatch after import
     finding = {"severity": 5, "text": "t", "suggestion": "fix it"}
     _save(
         runs_dir,
@@ -170,7 +170,7 @@ def test_deviating_record_stays_in_runs_not_archived(runs_dir, tmp_path):
     assert report.runs_archived == 0
     assert (runs_dir / "p" / "dev.json").is_file()  # bleibt in runs/ liegen
     assert not (archive / "p" / "dev.json").exists()
-    assert any(i.run_id == "dev" and "Abweichung nach Import" in i.reason for i in report.issues)
+    assert any(i.run_id == "dev" and "Mismatch after import" in i.reason for i in report.issues)
     assert not report.ok
 
 
@@ -207,7 +207,7 @@ def test_archive_collision_keeps_source(history, runs_dir, tmp_path):
     assert report.runs_archived == 1  # nur b
     assert (runs_dir / "p" / "a.json").is_file()  # Kollision → Quelle bleibt liegen
     assert (archive / "p" / "a.json").read_text() == "besteht schon"
-    assert any(i.run_id == "a" and "Archiv-Kollision" in i.reason for i in report.issues)
+    assert any(i.run_id == "a" and "Archive collision" in i.reason for i in report.issues)
     assert not report.ok
 
 
@@ -245,7 +245,7 @@ def test_cli_runs_show_and_export(history, runs_dir, tmp_path, monkeypatch, caps
     assert (
         "a  p/l  pass" in out
         and "✔ r [pr_review]" in out
-        and "Session-Log: 3 Events, 1 Checkpoints, 1 Artefakte" in out
+        and "Session log: 3 events, 1 checkpoints, 1 artifacts" in out
     )
     cli.main(["runs", "export", "a", "--project", "p"])
     rec = json.loads(capsys.readouterr().out)
