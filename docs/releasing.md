@@ -14,3 +14,10 @@ container image goes to GHCR. The maintainers configure both once; contributors 
    `twine check` and the wheel smoke test (`scripts/smoke-wheel.sh`), publishes to PyPI and pushes
    `ghcr.io/didaskomathetes/fabrikant:{X.Y.Z,latest}`.
 3. Verify in a clean venv: `pip install fabrikant==X.Y.Z && fabrikant init demo`.
+
+## PyPI project page
+
+The PyPI description is the README, rewritten at build time by `hatch-fancy-pypi-readme` (see `pyproject.toml`):
+the Mermaid diagram becomes `docs/images/architecture.png` and repo-relative links become absolute GitHub links.
+PyPI only picks up README changes with a new release. After editing the diagram, run
+`bash scripts/render-architecture.sh` and commit the PNG.
