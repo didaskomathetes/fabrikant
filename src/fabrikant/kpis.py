@@ -1,4 +1,4 @@
-"""Factory KPIs from the run store (issue #127, framework-v1-draft.md §5).
+"""Factory KPIs from the run store (issue #127, docs/roadmap.md, Factory KPIs).
 
 Read-only and store-neutral: works on typed :class:`~fabrikant.runmodel.Run` objects.
 

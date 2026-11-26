@@ -1,7 +1,7 @@
 # ADR 0030: Authentication + authorization (local users, roles)
 
-**Status:** Accepted (2026-10-21, merge #248; proposed 2026-10-20)
-**Affects:** README principle "local, 127.0.0.1", security assumptions (issue #159). Complements ADR 0019 (roles).
+**Status:** Accepted (2026-10-21, merge #248; proposed 2026-10-20); references fixed 2026-11-26
+**Affects:** the local-only default (`docs/security.md`: binds to 127.0.0.1), security assumptions (issue #159). Complements ADR 0019 (roles).
 
 ## Context
 

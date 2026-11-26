@@ -1,6 +1,6 @@
 # ADR 0015: Queue approvals while the project lock is held
 
-**Status:** Accepted (2026-10-19, merge #145; proposed 2026-10-19; changed by ADR 0028)
+**Status:** Accepted (2026-10-19, merge #145; proposed 2026-10-19; changed by ADR 0028); references fixed 2026-11-26
 **Context:** Runs of a project share a worktree and are serialized by a project
 lock (`runs.project_lock`). A `needs_approval` run does not hold the lock during
 the pause. If it was approved while another run of the same project was running,
@@ -21,7 +21,7 @@ effectively blocked.
   repeated approve reports "already approved".
 - **Restart-safe:** `serve()` starts a worker again for all `needs_approval` runs
   with `approval_queued` (`requeue_approved_runs`).
-- Serialization itself remains (shared worktree, see framework-v1-draft).
+- Serialization itself remains (shared worktree).
 
 ## Consequences
 

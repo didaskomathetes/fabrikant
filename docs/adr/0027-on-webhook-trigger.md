@@ -1,7 +1,7 @@
 # ADR 0027: `on_webhook` trigger (HMAC, tunnel CORS)
 
-**Status:** Accepted (2026-10-20, merge #189; proposed 2026-10-20; changed by ADR 0028; extended by ADR 0058)
-**Complements:** `docs/framework-v1-draft.md` §1.3 (cut from P0, here P2).
+**Status:** Accepted (2026-10-20, merge #189; proposed 2026-10-20; changed by ADR 0028; extended by ADR 0058); references fixed 2026-11-26
+**Complements:** `docs/roadmap.md` Phase 0 (`on_webhook` cut from P0, here P2).
 
 ## Context
 
