@@ -25,6 +25,7 @@ from typing import Any
 from . import agent_state, config, connections, hosting, pause, retry_chains
 from .approval import ApprovalRequest
 from .context import _PLACEHOLDER_RE, _cap, _cond_matches, _substitute, tier_policy
+from .excerpt import failure_excerpt
 from .failures import Failure, FailureKind, SetupError, classify_exception, failed, from_result, run_failure
 from .gitops import (
     WorktreeLease,
@@ -622,8 +623,9 @@ def _step_fail(rn: _Run, step: dict, step_record: dict, res: dict, dur: float) -
     rn.emit(f"✖ {sname} fehlgeschlagen (exit {res.get('exit_code', '?')}) — {res.get('summary', '')}")
     out = (res.get("output") or "").strip()
     if out:
-        # Output tail into the log: without it "exit 1" is hardly debuggable.
-        rn.emit("  " + "\n  ".join(out.splitlines()[-10:]))
+        # Failure-aware excerpt into the log (markers + tail, cuts are stated): a plain tail showed only
+        # package lists instead of the cause for test steps. The full output is in the record.
+        rn.emit("  " + "\n  ".join(failure_excerpt(out).render().splitlines()))
 
 
 def _execute_step(rn: _Run, step: dict, i: int) -> str:

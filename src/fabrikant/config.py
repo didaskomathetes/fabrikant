@@ -183,9 +183,9 @@ AGENT_LOG_PROMPT_CAP = 2000  # characters of the agent prompt (input)
 AGENT_LOG_TEXT_CAP = 400  # characters per assistant message (text part)
 
 PROTECTED_DEFAULT = ["main", "master"]
-# GitHub API: retry on transient network errors (DNS flakes, resets).
-GH_RETRIES = 3
-GH_RETRY_DELAY_S = 2.0
+# Network retry (GitHub/GitLab API, git fetch/push) on transient errors (DNS flakes, resets): waits
+# between the attempts. ~2 min in total — enough for typical Wi-Fi/DNS blips (netretry).
+NET_RETRY_DELAYS_S: tuple[float, ...] = (5.0, 15.0, 30.0, 60.0)
 # GitHub API: upper bound for `per_page` on list endpoints (API limit).
 GH_MAX_PER_PAGE = 100
 # Alert dedup (notify): page size of the GitHub issue lookup (open issues

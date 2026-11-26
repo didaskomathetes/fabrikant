@@ -35,6 +35,49 @@ def test_shell_fail_exit_code(tmp_path):
     assert "oops" in res["output"]
 
 
+def test_shell_fail_summary_names_last_failure_marker(tmp_path):
+    """Regression: stdout ended with a green partial result, the verdict was on stderr."""
+    cmd = "echo '3 failed, 10 passed'; echo '851 passed'; echo 'warning: noise' >&2; echo 'rot: src/a' >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: rot: src/a"
+
+
+def test_shell_fail_summary_without_marker_uses_last_stdout_line(tmp_path):
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo first; echo last; exit 2"}, NOOP)
+    assert res["summary"] == "exit 2: last"
+
+
+def test_shell_long_failure_output_keeps_head_and_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (200,))
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo START; seq 1 500; echo VERDICT; exit 1"}, NOOP)
+    assert res["output"].startswith("START") and res["output"].rstrip().endswith("VERDICT")
+    assert "Zeichen ausgelassen" in res["output"]
+
+
+def test_shell_long_failure_output_keeps_marker_in_the_middle(tmp_path, monkeypatch):
+    """Regression: the cap cut the middle before the engine looked for a failure marker — the
+    traceback and its diagnostic lines vanished from the record and the log excerpt."""
+    from fabrikant.excerpt import failure_excerpt
+
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (2000,))
+    cmd = (
+        "seq 1 2000; echo 'Traceback (most recent call last):'; echo '  File \"app.py\", line 3';"
+        " echo 'ZeroDivisionError: boom'; seq 1 2000; exit 1"
+    )
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert len(res["output"]) < 2200
+    for line in ("Traceback (most recent call last):", "ZeroDivisionError: boom"):
+        assert line in res["output"]
+        assert line in failure_excerpt(res["output"]).render()
+
+
+def test_cap_output_short_and_empty_unchanged():
+    from fabrikant.excerpt import cap_output
+
+    assert cap_output(None) == "" and cap_output("abc", 3) == "abc"
+    assert cap_output("abcdefghij", 4) == "ab\n…[6 Zeichen ausgelassen]…\nij"
+
+
 def test_shell_inline_substitution(tmp_path):
     res = _step_shell(_ctx(tmp_path, issue_number="62"), {"type": "shell", "cmd": "echo issue {issue_number}"}, NOOP)
     assert res["ok"] is True

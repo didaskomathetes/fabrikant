@@ -230,8 +230,21 @@ _AGENT_TRANSIENT = re.compile(
     r"|econnreset|etimedout|socket hang up|temporarily unavailable",
     re.IGNORECASE,
 )
+# The model's context window is full (Claude Code, Codex/OpenAI, opencode). A retry with the same prompt
+# fails again → ``outcome``; the agent step warns that the work needs rescoping.
+_AGENT_CONTEXT_EXHAUSTED = re.compile(
+    r"prompt is too long|context[_ ]length[_ ]exceeded|maximum context length"
+    r"|exceeds? (?:the |its )?(?:model'?s? )?context window"
+    r"|context (?:window|limit) (?:exceeded|reached|exhausted|is full)|context ?overflow",
+    re.IGNORECASE,
+)
 # Claude Code reports an exhausted usage window as "Claude AI usage limit reached|<epoch>".
 _USAGE_LIMIT_RESET = re.compile(r"usage limit reached\|(\d{9,11})", re.IGNORECASE)
+
+
+def is_context_exhausted(text: str) -> bool:
+    """True if an agent/LLM CLI reports that its context window is exhausted."""
+    return bool(text) and _AGENT_CONTEXT_EXHAUSTED.search(text) is not None
 
 
 def classify_agent_output(text: str) -> Failure:
@@ -240,6 +253,8 @@ def classify_agent_output(text: str) -> Failure:
         return Failure(_F.UNKNOWN)
     if m := _USAGE_LIMIT_RESET.search(text):
         return Failure(_F.TRANSIENT, datetime.fromtimestamp(int(m.group(1)), UTC))
+    if is_context_exhausted(text):
+        return Failure(_F.OUTCOME)
     if _AGENT_SELF_RESETTING.search(text):
         return Failure(_F.TRANSIENT)
     if _AGENT_ENVIRONMENT.search(text):
