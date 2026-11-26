@@ -127,7 +127,7 @@ def assert_public_url(url: str) -> tuple[str, str]:
         raise ValueError(f"Scheme {parsed.scheme!r} not allowed (http/https only)")
     host = parsed.hostname
     if not host:
-        raise ValueError("URL hat keinen Host")
+        raise ValueError("URL has no host")
     try:
         infos = socket.getaddrinfo(
             host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP
@@ -137,7 +137,7 @@ def assert_public_url(url: str) -> tuple[str, str]:
     for info in infos:
         ip = str(info[4][0])
         if _is_blocked_ip(ip):
-            raise ValueError(f"SSRF-Schutz: {host!r} resolves to blocked address {ip} (private/loopback/link-local)")
+            raise ValueError(f"SSRF guard: {host!r} resolves to blocked address {ip} (private/loopback/link-local)")
     return host, url
 
 

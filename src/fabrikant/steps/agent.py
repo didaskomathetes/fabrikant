@@ -64,15 +64,15 @@ def _emit_agent_prompt(emit, prompt: str) -> None:
         return
     cap = config.AGENT_LOG_PROMPT_CAP
     truncated = len(p) > cap
-    emit(f"  agent prompt ({len(p)} Zeichen):")
+    emit(f"  agent prompt ({len(p)} characters):")
     for line in p[:cap].splitlines():
         emit(f"    {line}")
     if truncated:
-        emit(f"    … (gekappt, {len(p) - cap} Zeichen mehr)")
+        emit(f"    … (truncated, {len(p) - cap} more characters)")
 
 
 def _emit_agent_message(emit, m: dict) -> None:
-    """Eine Assistant-Message ins Run-Log: Text (gekappt) + Tool-Calls."""
+    """Emit an assistant message to the run log: text (truncated) + tool calls."""
     for part in m.get("parts", []):
         t = part.get("type")
         if t == "text":
@@ -346,7 +346,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
             while time.time() < t0 + timeout:
                 try:
                     last = be.poll(sid, workdir)
-                    # Konversation live ins Run-Log (neue abgeschlossene Messages).
+                    # Stream the conversation to the run log (newly completed messages).
                     messages = be.transcript(sid, workdir)
                     progress.observe(messages, last)
                     emitted_n = _emit_new_agent_messages(emit, messages, emitted_n)

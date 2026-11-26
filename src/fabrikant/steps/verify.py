@@ -50,7 +50,7 @@ def _step_verify(ctx: dict, step: dict, emit) -> dict:
             res = _dispatch_step(ctx, dict(chk), emit)
         except Exception as e:  # noqa: BLE001 — a check error must not crash the loop
             res = {"ok": False, "output": f"Exception: {e}", "summary": f"Exception: {e}"}
-            kinds.append(classify_exception(e))  # unklassifizierte Exception bleibt unknown (ADR 0035 Nr. 4)
+            kinds.append(classify_exception(e))  # unclassified exceptions stay unknown (ADR 0035 item 4)
         else:
             if not (isinstance(res, dict) and res.get("ok")):
                 kinds.append(_check_failure(res))

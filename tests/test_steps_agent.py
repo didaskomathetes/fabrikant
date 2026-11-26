@@ -445,9 +445,9 @@ def test_agent_prompt_is_capped_in_log(monkeypatch):
     }
     agent_step._step_agent(ctx, step, emits.append)
     joined = "\n".join(emits)
-    assert "agent prompt (5000 Zeichen):" in joined
-    assert "gekappt" in joined
-    # Der volle Prompt (5000 x) darf nicht komplett im Log stehen.
+    assert "agent prompt (5000 characters):" in joined
+    assert "truncated" in joined
+    # The full prompt (5000 x) must not appear completely in the log.
     assert "x" * 2500 not in joined
 
 
