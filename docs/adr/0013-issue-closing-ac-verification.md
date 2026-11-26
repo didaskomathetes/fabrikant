@@ -1,8 +1,8 @@
 # ADR 0013: Issue closing + verification of acceptance criteria
 
 **Status:** Accepted (2026-11-04) — stages 0–2 implemented, stage 3 remains
-optional (only if a need is demonstrated)
-**Deciders:** Dominic
+optional (only if a need is demonstrated); references fixed 2026-11-26; personal name replaced by GitHub handle 2026-11-26
+**Deciders:** didaskomathetes
 **Context issue:** proposal "QA agent after merge" (chat 2026-10-19)
 
 ## Context
@@ -19,7 +19,7 @@ optional (only if a need is demonstrated)
    block of QA suggestions for it.
 
 Critical review of the proposal against the guiding principles
-(`framework-v1-draft.md`):
+(`docs/roadmap.md`):
 
 - **Principle 3 ("verification before review"):** a check that runs only after
   the merge finds the defect when it is already on `main`. The only way out then
@@ -64,7 +64,7 @@ literal format used by the prompt).
 - The verification hint is a **hint** for reviewer/QA, not an executable command.
   Deterministic checks run only as `shell` steps defined in the spec (`lint`,
   `test`, …), never from issue text.
-- This matches the "scenarios/holdouts" idea from `framework-v1-draft.md` §7.
+- This matches the "scenarios/holdouts" idea from the v1 draft (§7, not published).
   Real holdouts (hidden from the builder) are not achievable in the same repo,
   because the develop agent can read the issue. The compensation is
   cross-model: checker ≠ builder (principle 4).

@@ -1,11 +1,11 @@
 # ADR 0061: Replay — Deterministic Re-Execution of a Finished Run
 
-**Status:** Accepted (2026-11-21); proposed 2026-11-20, accepted on merge to main
+**Status:** Accepted (2026-11-21); proposed 2026-11-20, accepted on merge to main; references fixed 2026-11-26
 **Betrifft:** ADR 0036 (run retry, retry chains), ADR 0034 (run store), ADR 0002 (session log)
 
 ## Context
 
-"Definitive local runtime" (framework-v1-draft.md §5) requires that every run can be
+"Definitive local runtime" (`docs/roadmap.md`, Factory KPIs) requires that every run can be
 replayed: re-execute a finished run with pinned inputs and compare the result. This is the
 basis for the eval harness (#130) and the replayability KPI.
 

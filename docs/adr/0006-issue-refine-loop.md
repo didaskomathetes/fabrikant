@@ -3,8 +3,8 @@
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
 **Status:** Accepted (2026-10-18); §"Human gate" **replaced by ADR 0017** (2026-10-19);
-addendum 2026-11-04 (ADR 0013 stage 1): AC format with verification hint
-**Decided by:** Dominic
+addendum 2026-11-04 (ADR 0013 stage 1): AC format with verification hint; personal name replaced by GitHub handle 2026-11-26
+**Decided by:** didaskomathetes
 **Context:** The `triage` loop (ADR 0001) only classified issues (label +
 acceptance criteria for `ready to develop`). Practical feedback: issues need more
 preparation before development, and there was no clean branch for

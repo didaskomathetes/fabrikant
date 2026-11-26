@@ -2,8 +2,8 @@
 
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-**Status:** Accepted (2026-10-17); UI selector removed (2026-11-04) — API and override state remain
-**Decided by:** Dominic
+**Status:** Accepted (2026-10-17); UI selector removed (2026-11-04) — API and override state remain; personal name replaced by GitHub handle 2026-11-26
+**Decided by:** didaskomathetes
 **Context:** A project's target branch is fixed in the spec
 (`repo.branch`). Switching branches (e.g. `fabrikant` from `main` to
 `fabrikant/v0.3`) required a manual YAML edit; the web UI showed the

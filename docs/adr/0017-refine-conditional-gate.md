@@ -1,7 +1,7 @@
 # ADR 0017: Refine loop — human gate only for `needs approval` / `close`
 
-**Status:** Accepted (2026-10-19); change of 2026-10-21 accepted (2026-10-21)
-**Deciders:** Dominic
+**Status:** Accepted (2026-10-19); change of 2026-10-21 accepted (2026-10-21); references fixed 2026-11-26; personal name replaced by GitHub handle 2026-11-26
+**Deciders:** didaskomathetes
 **Change 2026-10-21:** close as a proposal with the label `close proposed`,
 criteria for `needs approval` (see §"Change 2026-10-21").
 **Supersedes:** ADR 0006 §"Human gate" and ADR 0001 §1–2 (triage gate as human
@@ -18,7 +18,7 @@ This contradicts the later line:
 - ADR 0010: "PR pipeline without humans in the loop — except for critical
   decisions". The `develop` loop has `human_gate` for that (ADR paths, diff size,
   keywords, LLM) plus cross-model PR review.
-- framework-v1-draft, guiding principle 3: "A human sits only at
+- `docs/roadmap.md`, guiding principle 3: "A human sits only at
   irreversible/accountability gates."
 
 ADR 0001 §2 justified the triage gate by saying it was *the* human gate for
