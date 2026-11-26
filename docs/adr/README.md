@@ -12,7 +12,8 @@ stacked ADR PR (ADR 0011). Unique numbers and a complete index are checked in CI
 (`tests/test_adr_index.py`), collisions block the merge (ADR 0032). Gaps are never
 reassigned: 0007 was assigned on `main` (→ 0011), 0016 belonged to PR #251 (closed
 unmerged), 0033 to PR #255 (withdrawn there in favour of a change to ADR 0017),
-0029 to PR #215 (run search index; dropped, search works directly on the run records).
+0029 to PR #215 (run search index; dropped, search works directly on the run records),
+0070 to the rename to fabrikant (removed: not an architecture decision).
 
 **Renumbering 2026-10-20:** parallel branches had assigned numbers twice.
 The ADR merged first kept its number; the others were moved in merge order:
@@ -22,7 +23,7 @@ The ADR merged first kept its number; the others were moved in merge order:
 
 | # | Title | Status |
 |---|-------|--------|
-| [0001](0001-dogfooding-loops.md) | Fabrik dogfooding — Fabrik develops Fabrik | Accepted |
+| [0001](0001-dogfooding-loops.md) | Fabrikant dogfooding — Fabrikant develops Fabrikant | Accepted |
 | [0002](0002-sessionlog-sqlite.md) | Durable session log in SQLite (end schema) | Accepted, partially superseded by 0034 |
 | [0003](0003-review-step.md) | `review` step — cross-model cold critic | Accepted |
 | [0004](0004-branch-switching.md) | Branch switching at runtime (UI) | Accepted, UI part removed (2026-11-04) |
@@ -84,4 +85,3 @@ The ADR merged first kept its number; the others were moved in merge order:
 | [0067](0067-template-library.md) | Template library — curated, documented loop templates + `fabrikant template` CLI | Accepted (2026-11-24) |
 | [0068](0068-golden-run-store-mark.md) | Golden Runs — run-store mark + `fabrikant eval --golden <run-id>` | Accepted (2026-11-24) |
 | [0069](0069-distribution-and-plugin-contract.md) | Distribution and Plugin Contract — `pip install fabrikant`, Docker, step plugins | Accepted (2026-11-24) |
-| [0070](0070-rename-to-fabrikant.md) | Rename to fabrikant — package, CLI, env, entry points | Accepted (2026-11-24; amended: no legacy compat layer; 2026-11-26: ADRs 0013–0024 use the new names) |

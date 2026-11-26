@@ -7,7 +7,7 @@
 
 Das Framework-Draft sieht ein ACP-Backend (Agent Client Protocol; z. B. OpenHands über
 SDK/ACP) als optionalen Worker-Standard vor — aber erst, wenn ACP sich durchgesetzt hat.
-Fabrik hat heute pluggable Backends (`opencode`, `claude-code`, `codex`, `copilot`,
+Fabrikant hat heute pluggable Backends (`opencode`, `claude-code`, `codex`, `copilot`,
 oneshot; siehe `docs/backends.md`), die den Bedarf abdecken.
 
 ## Entscheidung
@@ -18,14 +18,14 @@ oneshot; siehe `docs/backends.md`), die den Bedarf abdecken.
   erfüllt sind:
   1. **Stabilität:** ACP-Spec in einer als stabil markierten Version (kein Preview/0.x
      mit Breaking Changes in den letzten 6 Monaten).
-  2. **Verbreitung:** mindestens zwei der von Fabrik genutzten Agents (opencode,
+  2. **Verbreitung:** mindestens zwei der von Fabrikant genutzten Agents (opencode,
      Claude Code, Codex, Copilot) sprechen ACP nativ oder über einen gepflegten Adapter.
   3. **Gleichwertigkeit:** Ein ACP-Client kann die Backend-Schnittstelle
      (`docs/backends.md`: Session, Prompt, Polling/Streaming, Abbruch, Permissions,
-     Token-Usage) ohne Fabrik-Sonderpfade erfüllen; Permission-Requests lassen sich
+     Token-Usage) ohne Fabrikant-Sonderpfade erfüllen; Permission-Requests lassen sich
      auf den Approval-Flow (ADR 0011) abbilden.
   4. **Mehrwert:** Es ersetzt mehr Backend-Code, als es hinzufügt (z. B. ein Adapter
-     statt N Backend-Module) oder erschließt einen Agent, den Fabrik sonst nicht
+     statt N Backend-Module) oder erschließt einen Agent, den Fabrikant sonst nicht
      anbinden kann.
   5. **Betrieb:** Ein Referenz-Client ist wartbar (aktive Releases, Lizenz kompatibel)
      und läuft in CI ohne externe Dienste (Fake-Server).
