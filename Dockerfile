@@ -30,6 +30,6 @@ ENV FABRIKANT_HOME=/data \
 VOLUME /data
 WORKDIR /data
 EXPOSE 8321
-HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8321/', timeout=4)"
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "from urllib.request import urlopen; from fabrikant.config import serve_port; urlopen(f'http://127.0.0.1:{serve_port()}/', timeout=4)"
 ENTRYPOINT ["fabrikant"]
 CMD ["serve", "--host", "0.0.0.0"]
