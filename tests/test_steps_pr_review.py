@@ -517,7 +517,7 @@ def test_fix_check_failure_blocks_commit_and_push(monkeypatch, tmp_path):
     step = {"repo": "o/r", "model": "critic", "fix_checks": ["lint", "test", "never"]}
     res = pr_review._step_pr_review(_ctx(tmp_path), step, lambda m: None)
     assert res["ok"] is False
-    assert "Fix-Check 'test' rot" in res["summary"] and "FAILED test_x" in res["summary"]
+    assert "fix check 'test' red" in res["summary"] and "FAILED test_x" in res["summary"]
     assert res["failure_kind"] == "outcome"
     assert [c for c, _ in ran] == ["lint", "test"]  # stoppt beim ersten roten Check
     assert not any(g[0] in ("add", "commit", "push") for g in calls["git"])

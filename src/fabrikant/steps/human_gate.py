@@ -108,7 +108,7 @@ def _step_human_gate(ctx: dict, step: dict, emit) -> dict:
         if not res.get("ok"):
             # Fail-closed: without an LLM opinion no auto-merge.
             return failed(
-                f"human_gate: LLM-Check fehlgeschlagen (fail-closed): {res.get('summary', '')}",
+                f"human_gate: LLM check failed (fail-closed): {res.get('summary', '')}",
                 from_result(res),
                 output=res.get("output", ""),
                 usage=usage,

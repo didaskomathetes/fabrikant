@@ -370,7 +370,7 @@ class Workspace:
             return None, str(e)
         return (handoff, None) if handoff else (None, t("relay.workspace.file_missing"))
 
-    # ── Audit (Blind-Phase) ──────────────────────────────────────────────────
+    # ── Audit (blind phase) ──────────────────────────────────────────────────
     def hide(self, paths: list[str], base: str) -> list[str]:
         """Take branch changes for the blind phase out of the worktree (content stays in git).
 

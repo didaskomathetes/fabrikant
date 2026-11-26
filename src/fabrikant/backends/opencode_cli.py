@@ -106,7 +106,7 @@ class OpenCodeConfig:
         conn = connections.get_connection(name, connections.ConnectionKind.LLM)
         if conn is None:
             raise connections.InvalidConnection(
-                f"opencode (Sandbox): LLM-Verbindung '{name}' unbekannt — Modell als <verbindung>/<modell> angeben"
+                f"opencode (Sandbox): LLM connection '{name}' unknown — specify the model as <connection>/<model>"
             )
         if conn.driver != connections.DRIVER_HTTP or not conn.endpoint:
             raise connections.InvalidConnection(
@@ -189,7 +189,7 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
 
 
 class OpenCodeCliBackend(OneShotCliBackend):
-    """Agent-Adapter: `opencode run --standalone` als One-Shot im Sandbox-Container."""
+    """Agent adapter: `opencode run --standalone` as a one-shot in the sandbox container."""
 
     name = "opencode"
 

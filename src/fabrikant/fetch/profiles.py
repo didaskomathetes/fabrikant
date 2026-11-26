@@ -49,7 +49,7 @@ def _to_int(x: object, default: int) -> int:
     return default
 
 
-# --- Schreib-Credential-Heuristik (ADR 0060 §4, Validierung) ------------------
+# --- Write-credential heuristic (ADR 0060 §4, validation) ---------------------
 _SECRET_MARKERS = ("secret", "key", "token", "password", "passwd", "credential", "write")
 # Matched on whole `_`-separated parts, never as substrings: `PUBLIC_KEY` (an asymmetric
 # public key) is harmless, but `GITHUB_PUBLIC_REPO_TOKEN` is a write token for public repos.
@@ -84,7 +84,7 @@ def is_write_credential(env_key: str) -> bool:
     return not (is_readonly_credential(env_key) or _is_public_key(env_key))
 
 
-# --- Modelle -------------------------------------------------------------------
+# --- Models --------------------------------------------------------------------
 @dataclass(frozen=True)
 class FetchProfile:
     """The ``fetch`` side of a profile: what the fetcher may do."""
@@ -266,8 +266,8 @@ class Grant:
     profile_name: str
     item: str  # z. B. "PR #123" / "Relay-Task #45"
     granted_at: datetime
-    expires_at: datetime | None = None  # Zeit-Ablauf
-    max_sessions: int | None = None  # Sessions-Ablauf
+    expires_at: datetime | None = None  # time expiry
+    max_sessions: int | None = None  # sessions expiry
     used_sessions: int = 0
 
     def is_active(self, now: datetime) -> bool:

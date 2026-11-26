@@ -270,7 +270,7 @@ class OpenCodeBackend:
         variant = str(step.get("variant") or "").strip() or None
         return cls(endpoint, model, stale_after=stale_after, password=password, username=username, variant=variant)
 
-    # -- Versions-Erkennung ----------------------------------------------
+    # -- Version detection -------------------------------------------------
     def _detect(self) -> _ServeApi | None:
         """Detects the server version (lazy, cached). None = not reachable.
 
@@ -385,7 +385,7 @@ class OpenCodeBackend:
                             "text": _t("backends.opencode.session_inactive_for_s_no", v1=int(age)),
                         }
             return {**base, "status": "running", "text": last_txt}
-        # abgeschlossene Message: Substanz-Check
+        # completed message: substance check
         t = last_txt.strip()
         if t:
             # Tool-call artifact (also malformed, 3b model): text starts like
@@ -422,7 +422,7 @@ class OpenCodeBackend:
             return {
                 **base,
                 "status": "failed",
-                "text": "Tool-Call fehlgeschlagen (state=error), Final-Text unzuverlaessig",
+                "text": "Tool call failed (state=error), final text unreliable",
             }
         if t:
             return {**base, "status": "done", "text": last_txt}

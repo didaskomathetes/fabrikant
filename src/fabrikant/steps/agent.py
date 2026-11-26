@@ -149,12 +149,12 @@ def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
     exit_note = f" ({describe_exit(code)})" if isinstance(code, int) else ""
     extra: dict = {"exit_code": code} if isinstance(code, int) else {}
     if tail := _redact(str(last.get("stderr_tail") or "")):
-        emit("  agent stderr (Ende):")
+        emit("  agent stderr (end):")
         for line in tail.splitlines():
             emit(f"    {line}")
         extra["output"] = _cap(tail)
     return failed(
-        f"agent session fehlgeschlagen{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
+        f"agent session failed{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
         _session_failure(last),
         usage=usage,
         **extra,
@@ -322,14 +322,14 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
     lg = ctx.get("log")
     sname = step.get("name", "agent")
     sid = None
-    carry: dict = {}  # Verbrauch verworfener Versuche
+    carry: dict = {}  # consumption of discarded attempts
     try:
         for attempt in range(max_retries + 1):
             t0 = time.time()
             sid = be.create_task(workdir, f"fabrikant-{ctx['run_id']}-{sname}", step.get("permissions"))
             emit(
                 f"  agent({backend_name}): session {sid} model={model or '-'} cwd={workdir}"
-                + (f" [Versuch {attempt + 1}/{max_retries + 1}]" if max_retries else "")
+                + (f" [attempt {attempt + 1}/{max_retries + 1}]" if max_retries else "")
             )
             be.send_prompt(sid, prompt, workdir)
             if attempt == 0:
@@ -340,7 +340,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
             emitted_n = 0
             recorded_n = 0
             fallback_tool_n = 0
-            last_err = ""  # letzter Backend-/Transport-Fehler (leer = gesund)
+            last_err = ""  # last backend/transport error (empty = healthy)
             err_streak = 0  # consecutive poll errors (for backoff)
             progress = _Progress(started=t0)
             while time.time() < t0 + timeout:
@@ -436,7 +436,7 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                 tools = last.get("tools") or []
                 extra = ""
                 if last_txt:
-                    extra += f" · letzter Text: {last_txt[:160]}"
+                    extra += f" · last text: {last_txt[:160]}"
                 if tools:
                     extra += f" · Tools: {', '.join(tools[:8])}"
                 return failed(

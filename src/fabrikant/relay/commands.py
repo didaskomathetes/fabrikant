@@ -153,7 +153,7 @@ class RelayContext:
             root = ws.root if ws else self.workdir
             fetch = (lambda spec: ws.fetch(self.cfg.repo, self.github.token(), spec)) if ws else None
             return archive.GitRefArchive(self.github, self.cfg.repo, root, fetch)
-        raise RelayError(f"unbekannte Archiv-Methode {method!r}", FailureKind.ENVIRONMENT)
+        raise RelayError(f"unknown archive method {method!r}", FailureKind.ENVIRONMENT)
 
     def trail_warning(self, issue: int) -> str:
         """Warning for the status comment: the relay branch's PR contains the trail (no archive)."""
@@ -364,7 +364,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
     if restored:
         notes.insert(0, restored)
     detail = "; ".join(notes) or d.reason
-    return f"relay #{issue} s{plan.session}/{plan.max_sessions}: Checkout ({detail}) · Ende {plan.hard_deadline}"
+    return f"relay #{issue} s{plan.session}/{plan.max_sessions}: Checkout ({detail}) · end {plan.hard_deadline}"
 
 
 def run_verify(command: str, cwd: Path, timeout: int) -> str:
@@ -596,7 +596,7 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
     try:
         ref = archive.archive_next(archiver, ws, commit, start, ctx.now)
         if digest and ref.sha256 != digest:
-            raise ArchiveError(f"Hash des Archivs {ref.sha256[:12]}… ≠ gebunden {digest[:12]}…")
+            raise ArchiveError(f"Archive hash {ref.sha256[:12]}… ≠ bound {digest[:12]}…")
         archive.verify(archiver, ref)
     except (ArchiveError, StepFailure, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_trail_not_archived"), issue, e)

@@ -147,7 +147,7 @@ class RelayConfig:
         if not isinstance(raw, dict):
             raise ValueError(t("relay.config.relay_mapping_expected"))
         known = {f for f in cls.__dataclass_fields__ if f not in ("project", "dispatch_cron")} | {"dispatch"}
-        errs += [f"relay.{k}: unbekannter Key" for k in raw if k not in known]
+        errs += [f"relay.{k}: unknown key" for k in raw if k not in known]
         repo = raw.get("repo") or spec.get("github")
         if not isinstance(repo, str) or "/" not in repo:
             errs.append(t("relay.config.relay_repo_or_github_at"))

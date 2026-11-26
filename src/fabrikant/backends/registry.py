@@ -20,7 +20,7 @@ from .opencode import OpenCodeBackend
 from .opencode_cli import OpenCodeCliBackend
 from .port import AgentBackend
 
-# name → Adapter-Klasse. Reihenfolge = Reihenfolge in Fehlermeldungen.
+# name → adapter class. Order = order in error messages.
 ADAPTERS: dict[str, type[AgentBackend]] = {
     "opencode": OpenCodeBackend,
     "claude_code": ClaudeCodeBackend,

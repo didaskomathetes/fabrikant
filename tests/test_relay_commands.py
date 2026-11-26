@@ -177,7 +177,7 @@ def fake_verify(result: str):
 def test_checkout_first_session_writes_handoff_and_session_files(repo):
     gh = FakeGitHub([make_task()])
     summary = commands.checkout(make_ctx(repo, gh), ISSUE)
-    assert summary.startswith(f"relay #{ISSUE} s1/5: Checkout (erste Session)")
+    assert summary.startswith(f"relay #{ISSUE} s1/5: Checkout (first session)")
     h = Workspace(repo, ISSUE).read_handoff()
     assert (h.session, h.last_session, h.verify_sha256) == (1, NOW, Brief("t", BODY).verify_sha256)
     session_md = (repo / SESSION_DIR / "SESSION.md").read_text()

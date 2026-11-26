@@ -47,7 +47,7 @@ from ..spec_sources import resolve_script_paths
 
 
 def run_shell(cmd: str, workdir: str, env: dict, timeout: int) -> subprocess.CompletedProcess:
-    """`sh -c cmd` im Workdir (stdout/stderr getrennt erfasst); TimeoutExpired propagiert."""
+    """`sh -c cmd` in the workdir (stdout/stderr captured separately); TimeoutExpired propagates."""
     return subprocess.run(["sh", "-c", cmd], cwd=workdir, env=env, capture_output=True, text=True, timeout=timeout)
 
 

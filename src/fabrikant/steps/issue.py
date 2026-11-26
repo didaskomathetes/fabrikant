@@ -102,7 +102,7 @@ def _skip_reason(ctx: dict, step: dict) -> str:
     if names:
         names = [names] if isinstance(names, str) else names
         if not any(str(ctx.get(n) or "").strip() for n in names):
-            return f"{', '.join(names)} leer"
+            return f"{', '.join(names)} empty"
     return ""
 
 
@@ -130,7 +130,7 @@ def _step_issue(ctx: dict, step: dict) -> dict:
         detail = ""
         with contextlib.suppress(Exception):  # body read is best-effort
             detail = e.read().decode()[:300]
-        return _fail(f"{action} fehlgeschlagen (HTTP {e.code}): {detail}", classify_http(e.code, e.headers))
+        return _fail(f"{action} failed (HTTP {e.code}): {detail}", classify_http(e.code, e.headers))
 
 
 def _text(step: dict, key: str, ctx: dict) -> str | None:
@@ -160,7 +160,7 @@ def _create(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -
     ctx[emit] = str(issue.number)
     if emit == "issue_number" and issue.url:
         ctx["issue_url"] = issue.url
-    return {"ok": True, "summary": f"Issue #{issue.number} erstellt {issue.url}".strip()}
+    return {"ok": True, "summary": f"Issue #{issue.number} created {issue.url}".strip()}
 
 
 def _edit(ctx: dict, step: dict, repo: str, number: str, provider: Provider) -> dict:
@@ -217,7 +217,7 @@ def _close(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
     # GitHub: `duplicate_issue_id` sets the native duplicate relation (ADR 0031);
     # GitLab ignores the field (no duplicate concept, ADR 0062).
     provider.edit_issue(repo, int(number), state="closed", state_reason=reason or None, duplicate_issue_id=duplicate_id)
-    summary = f"Issue #{number} geschlossen" + (f" ({reason})" if reason else "")
+    summary = f"Issue #{number} closed" + (f" ({reason})" if reason else "")
     if moved:
         summary += t("steps.issue.blockers_moved_to", v1=originals[0], v2=", ".join(moved))
     return {"ok": True, "summary": summary}
@@ -313,7 +313,7 @@ def _block(ctx: dict, step: dict, repo: str, number: str, provider: Provider) ->
             skipped.append(t("steps.issue.not_found", ref=ref))
             continue
         if blocker.is_pr or blocker.state != "open":
-            skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'geschlossen'})")
+            skipped.append(f"#{ref} ({'PR' if blocker.is_pr else 'closed'})")
             continue
         provider.add_issue_dependency(repo, int(number), blocker_id=int(blocker.raw["id"]))
         linked.append(f"#{ref}")
