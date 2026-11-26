@@ -130,7 +130,7 @@ def verify(archiver: TrailArchive, ref: TrailRef) -> dict[str, bytes]:
         raise ArchiveError(t("relay.archive.archive_not_found", v1=ref.name, v2=ref.uri))
     files = archiver.restore(ref)
     if (digest := trail_digest(files)) != ref.sha256:
-        raise ArchiveError(f"Archiv {ref.name}: Hash {digest[:12]}… ≠ gebunden {ref.sha256[:12]}…")
+        raise ArchiveError(f"Archive {ref.name}: hash {digest[:12]}… ≠ bound {ref.sha256[:12]}…")
     return files
 
 

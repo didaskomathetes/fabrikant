@@ -52,7 +52,7 @@ class PendingURL:
     url: str
     domain: str
     found_in: str  # where it was found: source id, "search" or "agent"
-    scan: str  # Scan-Ergebnis dieser Quelle (clean/suspicious/quarantined/"")
+    scan: str  # scan result of this source (clean/suspicious/quarantined/"")
     why: str  # the agent's justification
 
     @classmethod
@@ -135,9 +135,9 @@ class AccessRequest:
     def rejected_urls(self) -> list[str]:
         return [u for u, d in self.decided.items() if d == "rejected"]
 
-    # --- Domain-Statistik / „Suggest domain" (Hint, kein Lerneffekt) -----------
+    # --- Domain statistics / "suggest domain" (hint only, no learning) -----------
     def domain_stats(self) -> dict[str, int]:
-        """Entscheidungen (Grant + Reject) pro Domain."""
+        """Decisions (grant + reject) per domain."""
         stats: Counter = Counter()
         for u in self.urls:
             if self.decided.get(u.url) in ("granted", "rejected"):
@@ -145,10 +145,10 @@ class AccessRequest:
         return dict(stats)
 
     def suggest_domain(self, threshold: int = SUGGEST_DOMAIN_THRESHOLD) -> str | None:
-        """Häufigste freigegebene Domain (>= `threshold` Grants) als Hint.
+        """Most frequently granted domain (>= `threshold` grants) as a hint.
 
-        Nur Hinweis für eine Spec-Änderung (Admin nimmt die Domain in die
-        Freigabeliste des Profils auf) — keine automatische Aufnahme.
+        Only a hint for a spec change (an admin adds the domain to the
+        profile's approval list) — never added automatically.
         """
         granted = Counter(u.domain for u in self.urls if self.decided.get(u.url) == "granted")
         if not granted:
@@ -156,12 +156,11 @@ class AccessRequest:
         top, count = granted.most_common(1)[0]
         return top if count >= threshold else None
 
-    # --- Anhängen (spätere Session, gleicher Item) ----------------------------
+    # --- Appending (later session, same item) ----------------------------
     def append(self, new_urls: list[PendingURL], now: datetime | None = None) -> list[PendingURL]:
-        """Neue URLs einer späteren Session anhängen (ADR 0059 §5a: „appended").
+        """Append new URLs from a later session (ADR 0059 §5a: "appended").
 
-        Bereits bekannte URLs werden nicht dupliziert. Returniert die tatsächlich
-        neu hinzugekommenen.
+        Already known URLs are not duplicated. Returns those actually newly added.
         """
         known = {u.url for u in self.urls}
         added = []
@@ -171,13 +170,13 @@ class AccessRequest:
                 known.add(u.url)
                 added.append(u)
         if added and self.status == "expired":
-            # Ein abgelaufener Request lebt für neue URLs nicht auf — bleibt abgelehnt.
+            # An expired request does not revive for new URLs — it stays rejected.
             pass
         return added
 
-    # --- Koppelung an das ADR-0059-Modell -------------------------------------
+    # --- Coupling to the ADR-0059 model -------------------------------------
     def to_approval_request(self) -> ApprovalRequest:
-        """Als `ApprovalRequest` (reason „escalation", kind „access") für die UI."""
+        """As an `ApprovalRequest` (reason \"escalation\", kind \"access\") for the UI."""
         pending = self.pending()
         domains: Counter = Counter(u.domain for u in pending)
         what = ", ".join(f"{d}: {n}" for d, n in domains.most_common())
@@ -232,9 +231,9 @@ class AccessRequest:
 def bundle_access(
     item: str, pending: list[PendingURL] | list[dict], now: datetime | None = None
 ) -> AccessRequest | None:
-    """Aus den offenen URLs einer Session EINEN gebündelten Request bauen.
+    """Build ONE bundled request from a session's open URLs.
 
-    Duplizierte URLs fallen raus. Keine offenen URLs → ``None`` (nichts zu freigegeben).
+    Duplicate URLs are dropped. No open URLs → ``None`` (nothing to approve).
     """
     urls: list[PendingURL] = []
     seen: set[str] = set()

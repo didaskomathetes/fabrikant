@@ -72,11 +72,11 @@ class _PipeDrain:
     def _run(self, proc: subprocess.Popen) -> None:
         try:
             self._result = proc.communicate()
-        except BaseException as e:  # noqa: BLE001 — im Aufrufer-Thread re-raisen
+        except BaseException as e:  # noqa: BLE001 — re-raise in the caller thread
             self._error = e
 
     def result(self) -> tuple:
-        """Wartet auf EOF beider Streams → `(stdout, stderr)`."""
+        """Waits for EOF on both streams → `(stdout, stderr)`."""
         self._thread.join()
         if self._error is not None:
             raise self._error
@@ -191,7 +191,7 @@ class OneShotCliBackend:
             if stale is not None:
                 age = time.time() - s["started"]
                 if age > stale:
-                    if "sandbox" in s:  # Container stoppen, Austausch verwerfen
+                    if "sandbox" in s:  # stop the container, discard the exchange
                         self.cancel(session_id, directory)
                     # `retryable`: a hanging CLI is transient — a fresh
                     # session heals it (agent step retry, ADR 0035).

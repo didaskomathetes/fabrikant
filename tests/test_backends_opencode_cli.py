@@ -110,7 +110,7 @@ def test_config_carries_secret_only_in_content(conn):
 @pytest.mark.parametrize(
     ("conn_value", "ref", "error"),
     [
-        (_conn(), "other/qwen", "unbekannt"),
+        (_conn(), "other/qwen", "unknown"),
         (_conn(driver="claude", endpoint=""), "lan/qwen", "not an OpenAI-compatible"),
         (_conn(secret_unreadable=True), "lan/qwen", "cannot be decrypted"),
     ],

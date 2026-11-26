@@ -107,7 +107,7 @@ def _commits_ahead(provider: Provider, repo_cfg: str, base_branch: str, head_bra
 
     try:
         return provider.compare(repo_cfg, base_branch, head_branch).ahead_by
-    except Exception:  # noqa: BLE001 — Provider-Fehler → Create-Pfad entscheidet
+    except Exception:  # noqa: BLE001 — provider error → create path decides
         return None
 
 
