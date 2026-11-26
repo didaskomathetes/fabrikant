@@ -58,7 +58,7 @@ ATTEMPT_START_DEFER = timedelta(minutes=1)
 
 
 class ChainState(StrEnum):
-    """Zustand einer Retry-Kette (ADR 0036, Entscheidung 4)."""
+    """State of a retry chain (ADR 0036, decision 4)."""
 
     PENDING = "pending"
     EXHAUSTED = "exhausted"
@@ -716,8 +716,8 @@ def on_run_finished(spec: dict, project: str, loop_name: str, record: dict) -> d
                     expect_claim=chain.claimed_run_id if chain is not None else None,
                 )
         except ChainStoreCorrupt:
-            raise  # kein Konflikt: defekter Store → on_run_finished_safe meldet ihn
-        except ValueError:  # pending-Kette parallel angelegt / InvalidTransition / ClaimConflict
+            raise  # no conflict: broken store → on_run_finished_safe reports it
+        except ValueError:  # pending chain created in parallel / InvalidTransition / ClaimConflict
             continue
         return _chain_info(chain, policy, decision)
     return {"in_chain": False}
@@ -1033,7 +1033,7 @@ class _Attempt:
 
 
 def _submit(attempt: _Attempt) -> None:
-    from .engine import _get_launcher  # lokal: engine importiert dieses Modul
+    from .engine import _get_launcher  # local: engine imports this module
 
     _get_launcher().submit(attempt.run)
 
@@ -1041,7 +1041,7 @@ def _submit(attempt: _Attempt) -> None:
 def _spawn_manual(attempt: _Attempt) -> None:
     """Start a manual attempt with priority: immediately, or it waits for the
     slot (like manual runs, ADR 0015). RuntimeError if the thread does not start."""
-    from .engine import spawn_priority_worker  # lokal: engine importiert dieses Modul
+    from .engine import spawn_priority_worker  # local: engine imports this module
 
     c = attempt.chain
     spawn_priority_worker(c.project, c.loop, _dedupe_vars(c.trigger_key), work=attempt.run_manual)
@@ -1053,7 +1053,7 @@ def _end_chain(store: ChainStore, chain: RetryChain, to: ChainState, now: dateti
         store.transition(
             chain.project, chain.loop, chain.trigger_key, to=to, now=now, next_attempt_at=None, expect_claim=""
         )
-        print(f"[fabrikant] Retry-Kette {chain.key}: {why} → {to}")
+        print(f"[fabrikant] Retry chain {chain.key}: {why} → {to}")
 
 
 def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
@@ -1085,7 +1085,7 @@ def start_due_attempts(projects: dict[str, dict] | None = None) -> list[str]:
             _end_chain(store, chain, ChainState.EXHAUSTED, now, _t("retry_chains.retry_disabled_for_the_loop"))
             continue
         if pause.trigger_blocked(chain.project, chain.loop):
-            continue  # pausiert/deaktiviert: wartet, kein Budget-Verbrauch
+            continue  # paused/disabled: waits, no budget consumption
         # Derive the attempt number from the last run (ADR 0036, decision 3).
         last = get_run(chain.last_run_id, chain.project) if chain.last_run_id else None
         attempt = attempt_of(last) + 1
@@ -1234,7 +1234,7 @@ def backfill_chains(
                         name, lname, key, next_attempt_at=max(due, now), last_run_id=str(last.get("id") or ""), now=now
                     )
                     summary.pending += 1
-                    print(f"[fabrikant] Bestandsabgleich {name}/{lname} {key}: Kette pending (Klasse {kind.value})")
+                    print(f"[fabrikant] Reconciliation {name}/{lname} {key}: chain pending (class {kind.value})")
                 else:
                     store.create(
                         name,
@@ -1248,7 +1248,7 @@ def backfill_chains(
                     summary.exhausted += 1
                     print(
                         f"[fabrikant] Bestandsabgleich {name}/{lname} {key}: Kette exhausted "
-                        f"(Klasse {kind.value if kind else 'ohne'})"
+                        f"(class {kind.value if kind else 'none'})"
                     )
     return summary
 
@@ -1269,7 +1269,7 @@ def dismiss_chain(project: str, loop: str, trigger_key: str, actor: str = "unkno
         updated = store.set_state(project, loop, trigger_key, ChainState.DISMISSED, config.utcnow())
     except InvalidTransition:
         return store.get(project, loop, trigger_key)  # parallel beendet
-    print(f"[fabrikant] Retry-Kette {chain.key} verworfen ({actor})")
+    print(f"[fabrikant] Retry chain {chain.key} dismissed ({actor})")
     return updated
 
 
@@ -1295,7 +1295,7 @@ def retry_now(project: str, loop: str, trigger_key: str, actor: str | None = Non
     run_id = f"{config.now_id()}-{loop}"
     if not store.claim(project, loop, trigger_key, run_id, config.utcnow(), force=True):
         return None
-    print(f"[fabrikant] Retry-Kette {chain.key}: jetzt erneut ({actor or 'api'}, Run {run_id})")
+    print(f"[fabrikant] Retry chain {chain.key}: retrying now ({actor or 'api'}, run {run_id})")
     spec = load_projects().get(project) or {}
     attempt = _Attempt(
         chain,

@@ -20,7 +20,7 @@ from .opencode import OpenCodeBackend
 from .opencode_cli import OpenCodeCliBackend
 from .port import AgentBackend
 
-# name → Adapter-Klasse. Reihenfolge = Reihenfolge in Fehlermeldungen.
+# name → adapter class. Order = order in error messages.
 ADAPTERS: dict[str, type[AgentBackend]] = {
     "opencode": OpenCodeBackend,
     "claude_code": ClaudeCodeBackend,
@@ -29,8 +29,8 @@ ADAPTERS: dict[str, type[AgentBackend]] = {
 }
 
 
-# name → Variante für `FABRIKANT_SANDBOX=1` (ADR 0054): Backends, deren Host-Adapter einen fremden
-# Prozess anspricht, laufen in der Sandbox stattdessen als One-Shot im Container.
+# name → variant for `FABRIKANT_SANDBOX=1` (ADR 0054): backends whose host adapter talks to a foreign
+# process run in the sandbox as a one-shot in the container instead.
 SANDBOX_ADAPTERS: dict[str, type[AgentBackend]] = {
     "opencode": OpenCodeCliBackend,
 }

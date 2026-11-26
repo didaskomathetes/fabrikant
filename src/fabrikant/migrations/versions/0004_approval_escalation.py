@@ -1,9 +1,9 @@
-"""Eskalation an einen Menschen (ADR 0059): ``approvals.kind`` und ``reason = 'escalation'``.
+"""Escalation to a human (ADR 0059): ``approvals.kind`` and ``reason = 'escalation'``.
 
-``kind`` ist ein natives ADD COLUMN (nullable). Der ``reason``-CHECK bekommt den neuen Wert; unter
-SQLite heißt das Tabellen-Neubau (Batch). Das DROP der alten ``approvals`` löst die CASCADE-Löschung
-von ``approval_permissions`` aus (Fremdschlüssel sind aktiv, das PRAGMA wirkt in der
-Migrations-Transaktion nicht) — die Zeilen werden deshalb vorher gesichert und danach neu eingefügt.
+``kind`` is a native ADD COLUMN (nullable). The ``reason`` CHECK gets the new value; on SQLite that means
+a table rebuild (batch). Dropping the old ``approvals`` triggers the CASCADE delete of
+``approval_permissions`` (foreign keys are active, the PRAGMA has no effect inside the
+migration transaction) — so the rows are saved beforehand and re-inserted afterwards.
 
 Revision ID: 0004
 Revises: 0003
@@ -34,7 +34,7 @@ def _replace_reason_check(values: tuple[str, ...]) -> None:
         batch.drop_constraint("reason", type_="check")
         batch.create_check_constraint("reason", _reason_check(values))
     if saved:
-        bind.execute(sa.delete(perms))  # falls kein Cascade lief: keine Doppel-Schlüssel
+        bind.execute(sa.delete(perms))  # if no cascade ran: avoid duplicate keys
         bind.execute(sa.insert(perms), saved)
 
 

@@ -285,7 +285,7 @@ def test_docker_missing_or_hanging_raises_runtime_error(monkeypatch):
     with pytest.raises(RuntimeError, match="docker nicht gefunden"):
         egress._docker("ps")
     monkeypatch.setattr(egress.subprocess, "run", boom(subprocess.TimeoutExpired("docker", 1)))
-    with pytest.raises(RuntimeError, match="Timeout"):
+    with pytest.raises(RuntimeError, match="timed out"):
         egress._docker("ps")
 
 

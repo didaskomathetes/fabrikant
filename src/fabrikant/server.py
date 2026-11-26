@@ -69,7 +69,7 @@ from .specs import SpecConflict, SpecUpdate, load_projects, load_spec_raw, save_
 
 # Parameters that switch GET /api/runs into the paginated search mode.
 _RUN_SEARCH_PARAMS = ("q", "from", "to", "status", "loop", "cursor", "failure_kind")
-LEGACY_RUNS_LIMIT = 50  # Default `limit` der einfachen /api/runs-Liste
+LEGACY_RUNS_LIMIT = 50  # default `limit` of the simple /api/runs list
 
 
 def _chains_or_empty() -> list[retry_chains.RetryChain]:
@@ -147,7 +147,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         cross-origin POSTs (same-origin policy)."""
         origin = self.headers.get("Origin", "")
         if not origin:
-            return True  # CLI / curl / Same-Origin ohne Origin-Header
+            return True  # CLI / curl / same-origin without Origin header
         try:
             host = self.headers.get("Host", "")
             return origin.rstrip("/") in (f"http://{host}", f"https://{host}")
@@ -266,7 +266,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         self._json({"ok": True, "proposal": proposal_diff.proposal_meta(decided).to_dict()})
 
     def _auth_ok(self) -> bool:
-        """Optionales Bearer-Token (FABRIKANT_TOKEN). Leert → nur Origin-Check."""
+        """Optional bearer token (FABRIKANT_TOKEN). If empty → origin check only."""
         token = os.environ.get("FABRIKANT_TOKEN", "").strip()
         if not token:
             return True
@@ -357,7 +357,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _oidc_login(self):
-        """GET /api/login/oidc → 302 zum IdP (Authorization Code + PKCE, ADR 0046)."""
+        """GET /api/login/oidc → 302 to the IdP (Authorization Code + PKCE, ADR 0046)."""
         try:
             start = oidc.begin_login(oidc.OidcConfig.from_env())
             self._redirect(start.url, (start.state_cookie(),))
@@ -622,7 +622,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             self._webhook(path)
             return
         if path.startswith(alerts.ALERT_PATH_PREFIX):
-            self._alert(path)  # eigene HMAC-Auth, wie Webhooks (ADR 0045)
+            self._alert(path)  # own HMAC auth, like webhooks (ADR 0045)
             return
         if self._tunnel_blocked(path):
             self._json({"error": t("api.unknown_route")}, 404)
@@ -801,8 +801,8 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             branches.save_override(name, branch)
             self._json({"ok": True, "project": name, "branch": branch})
         elif path in ("/api/retry-chains/dismiss", "/api/retry-chains/retry-now"):
-            # UI-Aktionen an einer Retry-Kette (ADR 0036, Entscheidung 4):
-            # *verwerfen* (pending/exhausted → dismissed) bzw. *jetzt erneut*
+            # UI actions on a retry chain (ADR 0036, Entscheidung 4):
+            # *dismiss* (pending/exhausted → dismissed) or *retry now*
             # (exhausted → sofortiger Run, volles Budget).
             payload = self._read_json()
             if payload is None:
@@ -1069,7 +1069,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
             return None
         try:
             chain = retry_chains.ChainStore().get(project, loop, key)
-        except (OSError, ValueError) as e:  # defekter Store: Run-Ansicht ohne Ketten-Info
+        except (OSError, ValueError) as e:  # corrupt store: run view without chain info
             print(t("server.chains_unreadable", error=e))
             return None
         if chain is None or not chain.is_active:
@@ -1086,7 +1086,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
     def _projects_payload(self):
         projects = []
         exhausted_by_project: dict[str, list[retry_chains.RetryChain]] = {}
-        for c in _chains_or_empty():  # einmal lesen, nicht je Projekt
+        for c in _chains_or_empty():  # read once, not per project
             if c.state is retry_chains.ChainState.EXHAUSTED:
                 exhausted_by_project.setdefault(c.project, []).append(c)
         pending_proposals: dict[str, list[spec_proposals.SpecProposal]] = {}
@@ -1328,7 +1328,7 @@ def _exit_on_signals() -> None:
 
 
 def serve(port: int | None = None, host: str | None = None):
-    """Server starten. Nicht-Loopback-Bind ohne Auth wirft ``auth.AuthError`` (ADR 0030)."""
+    """Start the server. A non-loopback bind without auth raises ``auth.AuthError`` (ADR 0030)."""
     # Signal handlers as early as possible: even a SIGTERM/SIGHUP during setup
     # (auth check, worktree cleanup, requeue) should trigger an orderly end.
     _exit_on_signals()
@@ -1339,10 +1339,10 @@ def serve(port: int | None = None, host: str | None = None):
         oidc.check_ready()  # report a missing extra/config early instead of at the first login
     server = ThreadingHTTPServer((host, port), FabrikantHandler)
     if sandbox.sandbox_enabled() and (n := sandbox.sweep_stale_containers()):
-        print(f"[fabrikant] {n} verwaiste Sandbox-Container entfernt")
+        print(f"[fabrikant] removed {n} orphaned sandbox containers")
     reap_orphaned_runs()  # before scheduler/worker: no 'running' corpses from the previous run
     for wt in cleanup_orphaned_worktrees():  # Reste gecrashter Runs (ADR 0028)
-        print(f"[fabrikant] verwaisten Worktree entfernt: {wt}")
+        print(f"[fabrikant] removed orphaned worktree: {wt}")
     # Register the priority waiters first, THEN start the scheduler — otherwise
     # its first poll grabs the lock before the queued runs.
     for rid in requeue_approved_runs():
