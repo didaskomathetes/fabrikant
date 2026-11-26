@@ -18,7 +18,7 @@ STEP_KEY = "billing"
 
 
 class Billing(StrEnum):
-    """Abrechnungsart einer Usage."""
+    """Billing type of a usage."""
 
     API = "api"
     SUBSCRIPTION = "subscription"

@@ -108,7 +108,7 @@ class KpiTotals:
     defects_escaped: int = 0
 
     def merge(self, other: KpiTotals) -> None:
-        """Addiert eine andere Summe."""
+        """Add another total."""
         self.runs += other.runs
         self.passed += other.passed
         self.failed += other.failed
@@ -122,17 +122,17 @@ class KpiTotals:
 
     @property
     def judge_veto_rate(self) -> float | None:
-        """Vetoed / reviewed Runs; None ohne Review."""
+        """Vetoed / reviewed runs; None without review."""
         return _rate(self.vetoed_runs, self.reviewed_runs)
 
     @property
     def defect_escape_rate(self) -> float | None:
-        """Escaped / (caught + escaped); None ohne Defekte."""
+        """Escaped / (caught + escaped); None without defects."""
         return _rate(self.defects_escaped, self.defects_caught + self.defects_escaped)
 
     @property
     def cycle_time_avg_s(self) -> float | None:
-        """Mittlere Cycle Time in Sekunden; None ohne erfolgreiche Runs."""
+        """Mean cycle time in seconds; None without successful runs."""
         return round(sum(self.cycle_times) / len(self.cycle_times), SECONDS_DIGITS) if self.cycle_times else None
 
     @property
@@ -147,7 +147,7 @@ class KpiTotals:
 
     @property
     def runtime_total_s(self) -> float:
-        """Summe der Laufzeiten aller beendeten Runs in Sekunden."""
+        """Sum of the durations of all finished runs in seconds."""
         return round(sum(self.runtimes), SECONDS_DIGITS)
 
     def as_dict(self) -> KpiSummary:
@@ -268,7 +268,7 @@ _prom_lock = threading.Lock()
 
 
 def reset_prometheus_cache() -> None:
-    """Verwirft den gecachten Prometheus-Text (Tests, Admin-Hooks)."""
+    """Discard the cached Prometheus text (tests, admin hooks)."""
     global _prom_cache
     with _prom_lock:
         _prom_cache = None

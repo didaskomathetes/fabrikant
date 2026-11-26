@@ -58,7 +58,7 @@ class _ClaudeChat(ClaudeCodeBackend):
 
 
 class _CopilotChat(CopilotBackend):
-    """`copilot` ohne Tools/MCP/Custom-Instructions (System-Prompt via stdin)."""
+    """`copilot` without tools/MCP/custom instructions (system prompt via stdin)."""
 
     def _build_cmd(self) -> list[str]:
         cmd = ["copilot", "--output-format", "json", "--no-ask-user"]
@@ -86,7 +86,7 @@ def _run(backend: OneShotCliBackend, prompt: str, timeout: int, cancel_event: th
             raise LlmCliError(t("llm_cli.cancelled"))
         if time.monotonic() > deadline:
             backend.cancel(sid, workdir)
-            raise LlmCliError(f"Timeout nach {timeout}s")
+            raise LlmCliError(f"Timeout after {timeout}s")
         time.sleep(_POLL_INTERVAL_S)
 
 
@@ -105,7 +105,7 @@ def complete(
     elif cli == "copilot":
         res = _run(_CopilotChat(model=model), f"{system}\n\n---\n\n{user}", timeout, cancel_event)
     else:
-        raise LlmCliError(f"unbekannte CLI '{cli}' (erlaubt: {', '.join(CLIS)})", FailureKind.ENVIRONMENT)
+        raise LlmCliError(f"unknown CLI '{cli}' (allowed: {', '.join(CLIS)})", FailureKind.ENVIRONMENT)
     if res["status"] != "done":
         text = str(res.get("text") or "")
         failure = classify_agent_output(text)

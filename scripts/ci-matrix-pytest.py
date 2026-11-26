@@ -19,7 +19,13 @@ SonarQube: packages are then synced *editable* (otherwise the paths point to sit
 the sources), pytest-cov is installed on top (not in the lockfile) and each entry produces
 `D/coverage-<n>.xml` (Cobertura) for the component.
 
-Exit code: 0 = all selected packages green (or none affected), otherwise 1.
+If pytest dies from a signal (e.g. SIGSEGV while loading native libs in the sandbox), that is a
+crash, not a test result: the entry runs once more (`CRASH_RERUNS`). If it still crashes, the
+script exits with 75 (EX_TEMPFAIL → failure class `transient`, ADR 0035) — the run retry kicks in
+instead of discarding the builder's work as "tests red".
+
+Exit code: 0 = all selected packages green (or none affected), 1 = at least one package red,
+75 = no package red, but at least one crashed.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
@@ -39,6 +46,24 @@ DEFAULT_BASE = "origin/main"
 DEFAULT_SHARED = ("libs/", "uv.lock", "pyproject.toml")
 COMPONENT_DEPTH = 2  # src/<component>/… or libs/<lib>/…
 GH_EXPRESSION = "${{"  # values with GitHub expressions cannot be resolved locally
+EXIT_RED = 1
+EX_TEMPFAIL = 75  # sysexits.h; fabrikant classifies this as `transient` (src/fabrikant/failures.py)
+CRASH_RERUNS = 1  # restarts of a crashed entry before it counts as crashed
+_SIGNAL_EXIT_BASE = 128  # shell convention: death by signal n → exit 128+n
+_MAX_SIGNAL = 64
+
+
+class Outcome(StrEnum):
+    """Result of a matrix entry."""
+
+    PASS = "pass"
+    FAIL = "fail"  # sync/install failed or pytest reports red tests
+    CRASH = "crash"  # pytest died from a signal — no test result
+
+
+def is_signal_exit(code: int) -> bool:
+    """True if the process died from a signal (``subprocess``: -n, shell: 128+n)."""
+    return code < 0 or _SIGNAL_EXIT_BASE < code <= _SIGNAL_EXIT_BASE + _MAX_SIGNAL
 
 
 @dataclass(frozen=True)
@@ -97,7 +122,7 @@ def changed_paths(base: str, cwd: Path) -> list[str]:
 COV_PACKAGE = "pytest-cov"
 
 
-def run_entry(entry: MatrixEntry, env: dict[str, str], root: Path, cov_xml: Path | None = None) -> bool:
+def run_entry(entry: MatrixEntry, env: dict[str, str], root: Path, cov_xml: Path | None = None) -> Outcome:
     """Sync the package as in CI and run pytest in test_home.
 
     `cov_xml`: coverage of the component as Cobertura XML (editable sync + pytest-cov, see module docs)."""
@@ -106,16 +131,45 @@ def run_entry(entry: MatrixEntry, env: dict[str, str], root: Path, cov_xml: Path
     if cov_xml is None:
         sync.insert(5, "--no-editable")
     if subprocess.run(sync, cwd=root).returncode != 0:
-        return False
+        return Outcome.FAIL
     python = root / ".venv" / "bin" / "python"
     pytest = [str(python), "-m", "pytest", "-q"]
     if cov_xml is not None:
         install = ["uv", "pip", "install", "--quiet", "--python", str(python), COV_PACKAGE]
         if subprocess.run(install, cwd=root).returncode != 0:
-            return False
+            return Outcome.FAIL
         pytest += [f"--cov={root / entry.component}", f"--cov-report=xml:{cov_xml}"]
     proc = subprocess.run(pytest, cwd=root / entry.test_home, env={**os.environ, **env})
-    return proc.returncode == 0
+    if proc.returncode == 0:
+        return Outcome.PASS
+    return Outcome.CRASH if is_signal_exit(proc.returncode) else Outcome.FAIL
+
+
+def run_entry_with_rerun(entry: MatrixEntry, env: dict[str, str], root: Path, cov_xml: Path | None = None) -> Outcome:
+    """:func:`run_entry`; a crash is retried up to ``CRASH_RERUNS`` times (red tests never)."""
+    outcome = run_entry(entry, env, root, cov_xml)
+    for attempt in range(CRASH_RERUNS):
+        if outcome is not Outcome.CRASH:
+            break
+        print(f"⚠ {entry.test_home}: pytest abgestürzt (Signal) — Neustart {attempt + 1}/{CRASH_RERUNS}", flush=True)
+        outcome = run_entry(entry, env, root, cov_xml)
+    return outcome
+
+
+def exit_status(outcomes: list[tuple[str, Outcome]]) -> int:
+    """Exit code of the matrix from ``(test_home, outcome)``: red beats crashed (a real result
+    counts), otherwise crashed → 75, otherwise 0."""
+    failed = [home for home, o in outcomes if o is Outcome.FAIL]
+    crashed = [home for home, o in outcomes if o is Outcome.CRASH]
+    if crashed:
+        print(f"abgestürzt: {', '.join(crashed)}", file=sys.stderr)
+    if failed:
+        print(f"rot: {', '.join(failed)}", file=sys.stderr)
+        return EXIT_RED
+    if crashed:
+        return EX_TEMPFAIL
+    print(f"grün: {len(outcomes)} Paket(e)")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,16 +196,16 @@ def main(argv: list[str] | None = None) -> int:
         # Absolute: pytest runs in the entry's test_home — a relative path would land there instead of in the repo.
         args.cov_dir = args.cov_dir.resolve()
         args.cov_dir.mkdir(parents=True, exist_ok=True)
-    failed = [
-        e.test_home
+    outcomes = [
+        (
+            e.test_home,
+            run_entry_with_rerun(
+                e, matrix.env, args.root, args.cov_dir / f"coverage-{i}.xml" if args.cov_dir else None
+            ),
+        )
         for i, e in enumerate(selected)
-        if not run_entry(e, matrix.env, args.root, args.cov_dir / f"coverage-{i}.xml" if args.cov_dir else None)
     ]
-    if failed:
-        print(f"rot: {', '.join(failed)}", file=sys.stderr)
-        return 1
-    print(f"grün: {len(selected)} Paket(e)")
-    return 0
+    return exit_status(outcomes)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from fabrikant import specs
-from fabrikant.specschema import SCHEMA_PATH, load_schema, validate_spec
+from fabrikant.specschema import SCHEMA_PATH, load_schema, unknown_keys, validate_spec
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -137,6 +137,141 @@ def test_valid_bundled_specs():
     for f in sorted(REPO_ROOT.glob("projects/*.fabrikant.*")):
         spec = specs.load_spec(f, check_root=False)
         assert validate_spec(spec) == [], f"{f.name}: {validate_spec(spec)}"
+
+
+def test_bundled_specs_have_no_unknown_keys():
+    for f in sorted(REPO_ROOT.glob("projects/*.fabrikant.*")):
+        assert unknown_keys(specs.load_spec(f, check_root=False)) == [], f.name
+
+
+# ------------------------------------------------------------------ unknown keys (warning only)
+def test_unknown_keys_at_every_level():
+    spec = _with_step({"type": "shell", "cmd": "x", "sandboxd": True})
+    spec["colour"] = "red"
+    spec["loops"]["l1"]["exclusive_grup"] = "g"
+    spec["loops"]["l1"]["triggers"] = [{"type": "cron", "cron": "* * * * *", "pol": 5}]
+    spec["loops"]["l1"]["steps"].append({"type": "verify", "checks": [{"type": "shell", "cmd": "x", "tmeout": 1}]})
+    assert unknown_keys(spec) == [
+        "<root>: colour",
+        "loops/l1/steps/0: sandboxd",
+        "loops/l1/steps/1/checks/0: tmeout",
+        "loops/l1/triggers/0: pol",
+        "loops/l1: exclusive_grup",
+    ]
+    assert validate_spec(spec) == []  # still valid: only a warning
+
+
+def test_unknown_keys_exempts_extensions_internal_and_yaml_on():
+    spec = _valid_spec()
+    spec["x-shared"] = {"anything": 1}
+    spec["_path"] = "/p.yaml"
+    spec["loops"]["l1"]["x-note"] = "n"
+    spec["loops"]["l1"]["retry"] = {"max": 1, True: ["transient"]}  # PyYAML: unquoted `on` → True
+    assert unknown_keys(spec) == []
+
+
+def test_unknown_keys_respects_conditional_branches():
+    """`if`/`then` sub-schemas list single keys (state: action): they must stay non-strict, or the
+    condition never matches / a branch reports every other step key as unknown."""
+    from fabrikant.specschema import _strict
+
+    strict = _strict(load_schema())
+    assert isinstance(strict, dict)
+    for cond in strict["$defs"]["step"]["allOf"]:
+        assert "additionalProperties" not in cond["if"]
+        assert "additionalProperties" not in cond.get("then", {})
+    assert strict["$defs"]["step"]["additionalProperties"] is False
+    assert unknown_keys(_with_step({"type": "state", "action": "get", "key": "k"})) == []
+
+
+def test_unknown_keys_accepts_plugin_schema_keys(monkeypatch):
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    schema = {"type": "object", "properties": {"greeting": {"type": "string"}}}
+    registry.register_step("hello", lambda ctx, step, emit: {}, schema=schema)
+    assert unknown_keys(_with_step({"type": "hello", "greeting": "hi", "greting": "x"})) == [
+        "loops/l1/steps/0: greting"
+    ]
+
+
+def test_unknown_keys_honours_plugin_pattern_properties(monkeypatch):
+    """Regression: a key matching the plugin's `patternProperties` is accepted by its schema, so it
+    must not be reported as ignored."""
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    mixed = {"properties": {"label": {"type": "string"}}, "patternProperties": {"^opt_": {"type": "integer"}}}
+    registry.register_step("mixed", lambda ctx, step, emit: {}, schema=mixed)
+    registry.register_step("patterns", lambda ctx, step, emit: {}, schema={"patternProperties": {"^opt_": {}}})
+    registry.register_step("open", lambda ctx, step, emit: {}, schema={**mixed, "additionalProperties": True})
+    registry.register_step("bad", lambda ctx, step, emit: {}, schema={"patternProperties": {"(": {}}})
+    assert unknown_keys(_with_step({"type": "mixed", "label": "l", "opt_foo": 1, "xopt_bar": 2})) == [
+        "loops/l1/steps/0: xopt_bar"
+    ]
+    assert unknown_keys(_with_step({"type": "patterns", "opt_a": 1, "other": 2})) == ["loops/l1/steps/0: other"]
+    assert unknown_keys(_with_step({"type": "open", "anything": 1})) == []
+    assert unknown_keys(_with_step({"type": "bad", "anything": 1})) == []
+
+
+def test_newly_declared_keys_keep_accepting_list_values():
+    """Declaring a key must not turn a value the engine accepted (and ignored) into a spec error:
+    specs written for newer versions pass `tools` as a list (claude_code)."""
+    spec = _with_step({"type": "agent", "backend": "claude_code", "model": "m", "prompt": "p", "tools": ["Read"]})
+    assert validate_spec(spec) == []
+
+
+def test_unknown_keys_skips_plugins_without_schema(monkeypatch):
+    """The scaffolded `greet` plugin reads `who` without declaring a schema: its keys are unknowable."""
+    from fabrikant.steps import registry
+
+    monkeypatch.setattr(registry, "_PLUGINS", {})
+    monkeypatch.setattr(registry, "_entry_points_loaded", True)
+    registry.register_step("greet", lambda ctx, step, emit: {})
+    registry.register_step("required_only", lambda ctx, step, emit: {}, schema={"required": ["who"]})
+    assert unknown_keys(_with_step({"type": "greet", "name": "hi", "who": "world"})) == []
+    assert unknown_keys(_with_step({"type": "required_only", "who": "world"})) == []
+
+
+def test_unknown_keys_accepts_backend_options():
+    """Backend adapters read their own options from the step (codex sandbox, copilot tools, opencode auth)."""
+    steps = [
+        {"type": "agent", "prompt": "p", "backend": "codex", "sandbox": "read-only"},
+        {"type": "agent", "prompt": "p", "backend": "copilot", "tools": "shell(git)"},
+        {"type": "agent", "prompt": "p", "backend": "opencode", "username": "u", "password": 1234},
+    ]
+    for step in steps:
+        assert unknown_keys(_with_step(step)) == [], step
+        assert validate_spec(_with_step(step)) == [], step
+
+
+def test_schema_declares_every_step_key_the_code_reads():
+    """Every `step.get("…")` / `step["…"]` in steps and backends is a documented step property — a key
+    the code consumes must never be warned about as ignored."""
+    import re
+
+    src = REPO_ROOT / "src" / "fabrikant"
+    pattern = re.compile(r"""\bstep(?:\.get\(|\[)["']([a-z_]+)["']""")
+    read = {
+        key
+        for path in [*(src / "steps").glob("*.py"), *(src / "backends").glob("*.py")]
+        for key in pattern.findall(path.read_text(encoding="utf-8"))
+    }
+    assert {"sandbox", "tools", "username", "password"} <= read  # the scan sees the backend options
+    assert read - set(load_schema()["$defs"]["step"]["properties"]) == set()
+
+
+def test_unknown_keys_inside_object_alternatives():
+    """`slack: <url> | {url: ...}`: keys of the object branch are checked, the string branch still matches."""
+    spec = _with_step({"type": "notify", "message": "m", "slack": {"url": "u", "chanel": "c"}})
+    spec["notify"] = {"slack": {"url": "u", "chanel": "c"}}
+    assert unknown_keys(spec) == ["loops/l1/steps/0/slack: chanel", "notify/slack: chanel"]
+    assert validate_spec(spec) == []
+    spec = _with_step({"type": "notify", "message": "m", "slack": {"url": "u"}})
+    spec["notify"] = {"slack": "u"}
+    assert unknown_keys(spec) == []
 
 
 # ------------------------------------------------------------------ invalid specs

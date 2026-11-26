@@ -6,7 +6,8 @@ This page is generated from it (`scripts/generate-spec-reference.py`) — do not
 The schema checks the **structure** (types, enums, required fields, ranges) of the *expanded* spec
 (after `vars:`/template/relay expansion). Semantic checks (backend registry,
 cron-vs-retry intervals, alert route cycles, template parameters) additionally run in
-`src/fabrikant/specs.py`. `fabrikant validate` runs both.
+`src/fabrikant/specs.py`. `fabrikant validate` runs both and warns about keys the schema doesn't know
+(a typo or a key from a newer fabrikant version would otherwise silently have no effect).
 
 Legend: **required** = mandatory, *italic* = optional. Types in ``code``.
 
@@ -64,6 +65,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `approval_when` | object | optional | Conditional approval (ADR 0017): mapping variable -> value or list of values; pauses only when the variable matches. Not combinable with approval: true. |
 | `approval_reason` | string | optional | Template for the approval request text ({variables} allowed). |
 | `failure_kind` | `transient` \| `environment` \| `outcome` | optional | Failure class (ADR 0035) for non-zero exit codes; shell steps only. |
+| `done_marker` | boolean | optional | shell: true = a stdout line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps. |
 | `extra_context` | list of → `context_source` | optional | Step-level prompt context sources for LLM steps (ADR 0008); false disables the project-level context for this step. |
 | `cmd` | string | optional | shell: command (sh -c in the workdir; {variables} substituted). |
 | `timeout` | → `numeric` | optional | Step timeout in seconds (>= 0; shell, http, llm, agent). |
@@ -87,6 +89,11 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `endpoint` | string | optional | agent: backend endpoint override. |
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
+| `sandbox` | string | optional | agent with backend codex: `codex exec --sandbox` mode (default: FABRIKANT_CODEX_SANDBOX or workspace-write). |
+| `username` | string / number | optional | agent with backend opencode: server basic-auth user (default: FABRIKANT_AGENT_USERNAME or opencode). |
+| `password` | string / number | optional | agent with backend opencode: server basic-auth password (default: FABRIKANT_AGENT_PASSWORD; prefer the env var or a connection over a password in the spec). |
+| `tools` | string / list of string | optional | agent (claude_code, copilot): restrict the available tools. claude_code: hard limit on the built-ins that exist, passed to --tools (e.g. [Read, Grep, Edit]; MCP tools unaffected); copilot: --allow-tool value (default: all tools). |
+| `allowed_tools` | string / list of string | optional | agent (claude_code): pre-approval rules passed to --allowedTools (e.g. Edit(/.fabrikant-session/review/review.json)); the CLI then runs in dontAsk mode and denies calls that would prompt. Not an allowlist: calls needing no approval (reads, read-only Bash) and approvals from settings.json files still run; use tools for a hard limit. Default: acceptEdits + Bash. |
 | `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
 | `github_identity` | `dev` \| `reviewer` | optional | agent: GitHub identity (token) the agent uses for pushes/PRs. |
 | `workdir` | string | optional | agent: working directory inside the worktree. |
@@ -167,7 +174,7 @@ What starts a loop. `type` selects the trigger kind; the per-type fields are lis
 | `priority_labels` | list of string | optional | on_issue: labels used to sort candidates (first match wins, ADR 0021). |
 | `exclude_labels` | list of string | optional | on_issue/on_pr: issues/PRs with any of these labels do not start the loop (ADR 0059). |
 | `poll` | → `numeric` | optional | on_issue/on_pr/on_slack: poll interval in seconds (>= 0). |
-| `reconcile` | boolean / = `head` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false or 'head' (per head SHA, ADR 0023). |
+| `reconcile` | boolean / `head` \| `updated` | optional | on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per observed PR state: one run per `updated_at` seen at poll time; several changes between two polls give one run). |
 | `skip_blocked` | boolean | optional | on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031). |
 | `max_per_poll` | → `numeric` | optional | on_issue with reconcile: max runs started per poll (integer >= 1). |
 | `states` | list of `open` \| `closed` | optional | on_pr: PR states to react to (default: open). |

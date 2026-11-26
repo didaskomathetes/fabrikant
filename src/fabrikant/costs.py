@@ -20,7 +20,7 @@ UNKNOWN_BACKEND = "unknown"
 
 
 class CostSummary(TypedDict):
-    """JSON-Projektion von :class:`CostTotals`."""
+    """JSON projection of :class:`CostTotals`."""
 
     prompt_tokens: int
     completion_tokens: int
@@ -64,7 +64,7 @@ class CostTotals:
                 self.subscription_cost_usd += usage.cost_usd
 
     def merge(self, other: CostTotals) -> None:
-        """Addiert eine andere Summe."""
+        """Add another total."""
         self.prompt_tokens += other.prompt_tokens
         self.completion_tokens += other.completion_tokens
         self.total_tokens += other.total_tokens

@@ -28,6 +28,7 @@ except ImportError:
 
 from . import alerts, billing, branches, config, slack, spec_sources, specschema, webhook
 from .backends import known_backends
+from .backends._oneshot import csv_arg
 from .failures import SPEC_FAILURE_KINDS
 from .gitops import GH_TOKEN_ENV, SPEC_ENV_FILE_KEY
 from .hosting import registered_providers
@@ -321,6 +322,15 @@ def _validate_failure_kind(st: dict, where: str) -> list[str]:
     return []
 
 
+def _validate_done_marker(st: dict, where: str) -> list[str]:
+    """`done_marker` (opt-in for `::fabrikant-done::`): shell steps only, boolean."""
+    if st.get("type") != "shell":
+        return [_t("specs.done_marker_only_applies_to", where=where, v2=st.get("type"))]
+    if not isinstance(st["done_marker"], bool):
+        return [_t("specs.done_marker_must_be_bool", where=where, value=st["done_marker"])]
+    return []
+
+
 def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
     """Check a step's backend field ``key`` against the adapter registry (empty = env default)."""
     value = st.get(key)
@@ -439,6 +449,15 @@ def _validate_step_agent(st: dict, where: str, spec: dict) -> list[str]:
     errs += billing.validate(st, where)
     if st.get("variant") is not None and not isinstance(st["variant"], str):
         errs.append(_t("specs.agent_variant_must_be_a", where=where, v2=st["variant"]))
+    for key in ("tools", "allowed_tools"):  # claude_code: --tools / --allowedTools (copilot: tools)
+        val = st.get(key)
+        if val is not None and not (
+            isinstance(val, str) or (isinstance(val, list) and all(isinstance(v, str) for v in val))
+        ):
+            errs.append(_t("specs.agent_tool_list_must_be", where=where, key=key, v2=val))
+        elif val is not None and not csv_arg(val):
+            # Empty would silently mean "no restriction" (no flag passed) — fail closed instead.
+            errs.append(_t("specs.agent_tool_list_empty", where=where, key=key))
     gid = st.get("github_identity")
     if gid is not None and gid not in GH_TOKEN_ENV:
         errs.append(_t("specs.github_identity_must_be_one", where=where, v2=sorted(GH_TOKEN_ENV), gid=gid))
@@ -583,6 +602,8 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                         errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
+                    if "done_marker" in st:
+                        errs += _validate_done_marker(st, where)
                     stype = st.get("type")
                     errs += _validate_step_type(stype, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None
@@ -671,9 +692,9 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
                 _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
-        if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
+        if rec is not None and not isinstance(rec, bool) and rec not in config.RECONCILE_MODES:
             errs.append(
-                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=list(config.RECONCILE_MODES), rec=rec)
             )
     return errs
 

@@ -24,7 +24,7 @@ _EXTRA_SECRET_FILES = [
 MIN_SECRET_LEN = 8
 _extra_secrets_cache: list[str] | None = None
 _env_lock = threading.Lock()
-_runtime_secrets: list[str] = []  # Spec-env-Values, pro Run registriert
+_runtime_secrets: list[str] = []  # spec env values, registered per run
 _sources: list[Callable[[], list[str]]] = []  # weitere Secret-Quellen (z. B. UI-Connections)
 
 

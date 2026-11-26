@@ -30,7 +30,9 @@ is red.
 **Analyzer reports:** before the scan, `scripts/lint.sh --reports .fabrikant/sonar/lint` writes the findings of
 Ruff, Bandit (SAST) and Pyright; Sonar shows them as external issues (they count as new issues for the quality
 gate). Sonar-Python imports Ruff and Bandit natively (`sonar.python.{ruff,bandit}.reportPaths`); it doesn't know
-Pyright, so `scripts/pyright_sonar.py` converts to the generic issue format (`sonar.externalIssuesReportPaths`).
+Pyright, so `scripts/sonar_issues.py` converts to the generic issue format (`sonar.externalIssuesReportPaths`,
+rule IDs `<tool>:<rule>`, e.g. `pyright:reportOptionalMemberAccess`; it also converts ShellCheck output via
+`--shellcheck`).
 Report findings don't fail the scan — the gate for that is plain `scripts/lint.sh` (CI, the `lint` step of
 develop/refactor). "New code" of a branch/PR is computed against the analysis of the target branch, which is why
 `sonar-scan` runs daily on `main`.
@@ -65,7 +67,9 @@ with **Checks: Read & write**; without it the check run fails and the comment is
 `SONAR_SCANNER_ARGS` (`-Dsonar.…`, replaces `[tool.sonar]`), `SONAR_TEST_CMD` + `SONAR_COVERAGE_PATHS`,
 `SONAR_LINT_CMD` (writes `ruff.json`, `bandit.json`, `pyright-sonar.json` to `$SONAR_LINT_DIR`; without it, no
 import for foreign projects). For uv monorepos with a CI test matrix, `scripts/ci-matrix-pytest.py --cov-dir D`
-(`--all` = whole matrix, otherwise only packages affected by the diff) writes `D/coverage-<n>.xml`.
+(`--all` = whole matrix, otherwise only packages affected by the diff) writes `D/coverage-<n>.xml`. If pytest dies
+from a signal (e.g. SIGSEGV), the entry is rerun once; if it still crashes and nothing is red, the script exits
+with 75 (`EX_TEMPFAIL` → failure class `transient`, run retry) instead of 1.
 
 Example: the loops `sonar-main` (daily) and `sonar-pr` (opt-in via the PR label `sonar`, debounced, comment only
 after approval) in a production spec (`FABRIKANT_PROJECTS_PATH`). `gh-upsert-comment.sh` recognizes its own comment
