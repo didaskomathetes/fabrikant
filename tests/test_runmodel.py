@@ -117,3 +117,19 @@ def test_run_verdict_is_the_last_reported_step_verdict():
     )
     assert Run(id="r", project="p", loop="l", status=RunStatus.PASS, steps=steps).verdict == "fail"
     assert Run(id="r", project="p", loop="l", status=RunStatus.PASS).verdict == ""
+
+
+# ---------------------------------------------------------------- warnings / done
+def test_split_warnings_strips_lines_and_skips_empty():
+    from fabrikant.runmodel import WARNING_MARKER, split_warnings
+
+    text = f"a\n{WARNING_MARKER} x  \n{WARNING_MARKER}\nsay {WARNING_MARKER}y\n{WARNING_MARKER}z"
+    assert split_warnings(text) == (f"a\nsay {WARNING_MARKER}y\n", ["x", "z"])
+
+
+def test_split_done_only_whole_lines():
+    from fabrikant.runmodel import DONE_MARKER, split_done
+
+    assert split_done(f"a\n{DONE_MARKER}  \nb\n") == ("a\nb\n", True)
+    assert split_done(f"say {DONE_MARKER}\n") == (f"say {DONE_MARKER}\n", False)  # inline: not a marker
+    assert split_done("x") == ("x", False)

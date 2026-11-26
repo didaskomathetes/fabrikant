@@ -322,6 +322,15 @@ def _validate_failure_kind(st: dict, where: str) -> list[str]:
     return []
 
 
+def _validate_done_marker(st: dict, where: str) -> list[str]:
+    """`done_marker` (opt-in for `::fabrikant-done::`): shell steps only, boolean."""
+    if st.get("type") != "shell":
+        return [_t("specs.done_marker_only_applies_to", where=where, v2=st.get("type"))]
+    if not isinstance(st["done_marker"], bool):
+        return [_t("specs.done_marker_must_be_bool", where=where, value=st["done_marker"])]
+    return []
+
+
 def _validate_backend(st: dict, key: str, where: str, label: str) -> list[str]:
     """Check a step's backend field ``key`` against the adapter registry (empty = env default)."""
     value = st.get(key)
@@ -593,6 +602,8 @@ def _validate_spec(spec: dict, *, check_root: bool = True) -> None:
                         errs.append(_t("specs.approval_reason_must_be_a", where=where))
                     if "failure_kind" in st:
                         errs += _validate_failure_kind(st, where)
+                    if "done_marker" in st:
+                        errs += _validate_done_marker(st, where)
                     stype = st.get("type")
                     errs += _validate_step_type(stype, where)
                     validator = _STEP_VALIDATORS.get(stype) if isinstance(stype, str) else None
@@ -681,9 +692,9 @@ def _validate_trigger(lname: str, i: int, trig: dict, spec: dict) -> list[str]:
                 _t("specs.loop_trigger_on_pr_states", lname=lname, i=i, v3=list(config.PR_STATES), states=states)
             )
         rec = trig.get("reconcile")
-        if rec is not None and not isinstance(rec, bool) and rec != config.RECONCILE_PER_HEAD:
+        if rec is not None and not isinstance(rec, bool) and rec not in config.RECONCILE_MODES:
             errs.append(
-                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=config.RECONCILE_PER_HEAD, rec=rec)
+                _t("specs.loop_trigger_on_pr_reconcile", lname=lname, i=i, v3=list(config.RECONCILE_MODES), rec=rec)
             )
     return errs
 

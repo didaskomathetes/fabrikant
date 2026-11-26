@@ -204,6 +204,29 @@ _VERDICT_RE = re.compile(r"[a-z][a-z_-]{0,19}")
 _VERDICT_LINE_RE = re.compile(r"^" + re.escape(VERDICT_MARKER) + r"(\S*)[ \t]*(?:\r?\n|\Z)", re.M)
 
 
+# A shell step reports "nothing to do": an output line `::fabrikant-done::` ends the run successfully after
+# this step (remaining steps are skipped) — e.g. a gate without new work.
+DONE_MARKER = "::fabrikant-done::"
+_DONE_LINE_RE = re.compile(r"^" + re.escape(DONE_MARKER) + r"[ \t]*(?:\r?\n|\Z)", re.M)
+
+
+# A shell step reports a problem that does not fail the step (e.g. discarded invalid agent input): a line
+# `::fabrikant-warning::<text>` on stdout or stderr. It appears as a ⚠ line in the run log and as
+# `WARNING: <text>` in the step output.
+WARNING_MARKER = "::fabrikant-warning::"
+_WARNING_LINE_RE = re.compile(r"^" + re.escape(WARNING_MARKER) + r"[ \t]*(.*?)[ \t]*(?:\r?\n|\Z)", re.M)
+
+
+def split_warnings(text: str) -> tuple[str, list[str]]:
+    """(Text without warning lines, non-empty warnings in order)."""
+    return _WARNING_LINE_RE.sub("", text), [w for w in _WARNING_LINE_RE.findall(text) if w]
+
+
+def split_done(text: str) -> tuple[str, bool]:
+    """(Text without done lines, whether a done line was present)."""
+    return _DONE_LINE_RE.sub("", text), bool(_DONE_LINE_RE.search(text))
+
+
 def verdict_line(verdict: str) -> str:
     """Output line with which a shell step reports its verdict (ValueError on an invalid word)."""
     if not _VERDICT_RE.fullmatch(verdict):
