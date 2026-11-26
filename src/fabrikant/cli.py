@@ -812,7 +812,7 @@ def main(argv=None):
     p.add_argument("url", help="URL zu holen (braucht Auto-Freigabe)")
     p.add_argument("--approved-domains", default="", help="Kommagetrennte Domains (Auto-Freigabe)")
     p.add_argument("--approved-urls", default="", help="Kommagetrennte exakte URLs (Auto-Freigabe)")
-    p.add_argument("--out", default=None, help="Output dir (sources/ + quarantine/)")
+    p.add_argument("--out", default=None, help="Ausgabe-Dir (sources/ + quarantine/)")
     p.add_argument("--ledger", default=None, help=t("cli.help.fetch_ledger"))
     p.add_argument("--spec", default=None, help=t("cli.help.fetch_spec"))
     p.add_argument("--loop", default=None, help=t("cli.help.fetch_loop"))

@@ -106,7 +106,7 @@ class OpenCodeConfig:
         conn = connections.get_connection(name, connections.ConnectionKind.LLM)
         if conn is None:
             raise connections.InvalidConnection(
-                f"opencode (Sandbox): LLM-Verbindung '{name}' unbekannt — Modell als <verbindung>/<modell> angeben"
+                f"opencode (Sandbox): LLM connection '{name}' unknown — specify the model as <connection>/<model>"
             )
         if conn.driver != connections.DRIVER_HTTP or not conn.endpoint:
             raise connections.InvalidConnection(
@@ -153,7 +153,7 @@ class OpenCodeConfig:
 
 
 def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
-    """JSONL von `opencode run --format json` → (Text, Tokens, Kosten, Tools, Fehler).
+    """JSONL from `opencode run --format json` → (text, tokens, cost, tools, error).
 
     Text = all `text` parts in order; tokens/cost summed over `step_finish`
     (cache tokens count as input, reasoning as output); error = the last `error` message."""
@@ -189,7 +189,7 @@ def parse_events(out: str) -> tuple[str, dict[str, int], float, list[str], str]:
 
 
 class OpenCodeCliBackend(OneShotCliBackend):
-    """Agent-Adapter: `opencode run --standalone` als One-Shot im Sandbox-Container."""
+    """Agent adapter: `opencode run --standalone` as a one-shot in the sandbox container."""
 
     name = "opencode"
 
@@ -222,7 +222,7 @@ class OpenCodeCliBackend(OneShotCliBackend):
 
     def _env(self) -> dict:
         if self._config is None:
-            raise RuntimeError("opencode: create_task vor send_prompt aufrufen")
+            raise RuntimeError("opencode: call create_task before send_prompt")
         return {CONFIG_CONTENT_VAR: self._config.content(), **ISOLATION_ENV}
 
     def _build_cmd(self) -> list[str]:

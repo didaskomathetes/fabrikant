@@ -153,7 +153,7 @@ class RelayContext:
             root = ws.root if ws else self.workdir
             fetch = (lambda spec: ws.fetch(self.cfg.repo, self.github.token(), spec)) if ws else None
             return archive.GitRefArchive(self.github, self.cfg.repo, root, fetch)
-        raise RelayError(f"unbekannte Archiv-Methode {method!r}", FailureKind.ENVIRONMENT)
+        raise RelayError(f"unknown archive method {method!r}", FailureKind.ENVIRONMENT)
 
     def trail_warning(self, issue: int) -> str:
         """Warning for the status comment: the relay branch's PR contains the trail (no archive)."""
@@ -339,7 +339,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
         handoff.verify_sha256 = brief.verify_sha256
         notes.append(t("relay.commands.adopted_new_verify_version"))
     if handoff.status is not Status.ACTIVE:
-        notes.append(f"fortgesetzt nach `{handoff.status}` (Label entfernt)")
+        notes.append(t("relay.commands.resumed_after", status=handoff.status))
         handoff.status, handoff.blocked_reason = Status.ACTIVE, ""
     handoff.session += 1
     handoff.last_session = ctx.now
@@ -364,7 +364,7 @@ def checkout(ctx: RelayContext, issue: int) -> str:
     if restored:
         notes.insert(0, restored)
     detail = "; ".join(notes) or d.reason
-    return f"relay #{issue} s{plan.session}/{plan.max_sessions}: Checkout ({detail}) · Ende {plan.hard_deadline}"
+    return f"relay #{issue} s{plan.session}/{plan.max_sessions}: Checkout ({detail}) · end {plan.hard_deadline}"
 
 
 def run_verify(command: str, cwd: Path, timeout: int) -> str:
@@ -525,7 +525,7 @@ def audit_reveal(ctx: RelayContext, issue: int) -> str:
 
 
 def parse_verdict(report: str | None) -> str:
-    """Letzter `<!-- relay-audit verdict=… -->`-Marker; fehlt er → fail."""
+    """Letzter `<!-- relay-audit verdict=… -->`-Marker; if missing → fail."""
     found = _VERDICT_RE.findall(report or "")
     return found[-1] if found else "fail"
 
@@ -596,7 +596,7 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
     try:
         ref = archive.archive_next(archiver, ws, commit, start, ctx.now)
         if digest and ref.sha256 != digest:
-            raise ArchiveError(f"Hash des Archivs {ref.sha256[:12]}… ≠ gebunden {digest[:12]}…")
+            raise ArchiveError(f"Archive hash {ref.sha256[:12]}… ≠ bound {digest[:12]}…")
         archive.verify(archiver, ref)
     except (ArchiveError, StepFailure, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_trail_not_archived"), issue, e)
@@ -612,7 +612,7 @@ def archive_and_strip(ctx: RelayContext, ws: Workspace, state: StatusState, dige
     )
     ctx.push(ws)
     state.archive, state.trail_warning = ref, ""
-    return f"Trail archiviert ({ref.name}, {len(removed)} Datei(en) entfernt)" + sync_pr_trail(ctx, issue, ref)
+    return t("relay.commands.trail_archived", name=ref.name, n=len(removed)) + sync_pr_trail(ctx, issue, ref)
 
 
 def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
@@ -632,7 +632,7 @@ def sync_pr_trail(ctx: RelayContext, issue: int, ref: TrailRef | None) -> str:
         new = status.with_pr_trail(body, block)
         if new != body:
             ctx.github.set_pr_body(pr, new)
-        return f" · PR #{pr}: Trail-Link " + ("gesetzt" if ref else "entfernt")
+        return t("relay.commands.pr_trail_link_set", pr=pr) if ref else t("relay.commands.pr_trail_link_removed", pr=pr)
     except (GitHubError, urllib.error.URLError) as e:
         log.warning(t("relay.commands.relay_s_pr_body_not"), issue, e)
         return t("relay.commands.pr_body_not_updated")

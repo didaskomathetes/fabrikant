@@ -43,7 +43,7 @@ RESUME_FLAG = "escalation_acknowledged"
 # round-budgeting steps (pr_review and the lapsed `exhausted` path) read and add to their own budget.
 GRANT_ROUNDS_CTX = "escalation_granted_rounds"
 DEFAULT_GRANT_ROUNDS = 2  # fresh budget per approval (matches the pr_review default)
-# Gleiches Format wie scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py checks this).
+# Same format as scripts/pr-status.py ESCALATE_MARKER_RE (tests/test_escalation.py checks this).
 ESCALATE_MARKER_RE = re.compile(r"<!-- fabrikant-escalate kind=(\w+)(?: re=([\w,-]+))? -->")
 _ANY_MARKER_RE = re.compile(r"<!--\s*fabrikant-[^>]*-->")
 MANUAL_KIND = "blocked"  # a label without a marker (set by hand) counts as a block
@@ -106,7 +106,7 @@ def _remove_label(provider: Provider, repo: str, number: int, label: str) -> boo
 def _step_escalation(ctx: dict, step: dict, emit) -> dict:
     repo = str(step.get("repo") or "").strip()
     if not repo:
-        raise ConfigError("escalation: 'repo: owner/name' fehlt")
+        raise ConfigError("escalation: 'repo: owner/name' is missing")
     label = str(step.get("label") or config.HUMAN_LABEL)
     number = _item_number(ctx, step)
     provider = get_provider(repo)
@@ -143,5 +143,5 @@ def _step_escalation(ctx: dict, step: dict, emit) -> dict:
         "ok": True,
         "needs_approval": True,
         "approval": approval,
-        "summary": f"escalation: #{number} ({esc.kind}) wartet auf einen Menschen",
+        "summary": f"escalation: #{number} ({esc.kind}) is waiting for a human",
     }

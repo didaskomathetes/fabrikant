@@ -59,8 +59,8 @@ def _run(args: argparse.Namespace, cfg: RelayConfig) -> int:
                 print(verdict_line(verdict))  # before the summary: its last line is the step summary
             print(summary)
     except Exception as e:  # noqa: BLE001 — every error is classified and reported as an exit code
-        # Exit-Code = Fehlerklasse (ADR 0035): 75 transient (Netz, 5xx, Rate-Limit), 78 environment
-        # (401/403 — meist abgelaufenes App-Token —, falsches bot_login), sonst 1 (unknown).
+        # Exit code = failure class (ADR 0035): 75 transient (Netz, 5xx, Rate-Limit), 78 environment
+        # (401/403 — usually an expired app token —, wrong bot_login), otherwise 1 (unknown).
         failure = classify_exception(e)
         if failure.kind is FailureKind.UNKNOWN and not isinstance(e, commands.RelayError):
             traceback.print_exc()  # unexpected: stack trace for the run log

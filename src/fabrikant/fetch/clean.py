@@ -18,11 +18,11 @@ _INVISIBLE_RE = re.compile(
 )
 # C0 control characters (except \t\n\r): do not occur in normalized text.
 _C0_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-# HTML-Kommentare.
+# HTML comments.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # data:-URIs (JS-Payloads in href/src).
 _DATA_URI_RE = re.compile(r"data:[^\"'\s>]+", re.IGNORECASE)
-# Mehrere Leerzeichen/Zeilen zusammenfassen.
+# Collapse multiple spaces/lines.
 _WS_RE = re.compile(r"[ \t]+")
 _NL_RE = re.compile(r"\n{3,}")
 
@@ -99,8 +99,8 @@ def normalize_text(text: str) -> str:
 
 
 def clean_html(html: str) -> str:
-    """HTML → bereinigter Klartext (Stufe A): Kommentar/data-URI raus, sichtbarer
-    Text extrahieren (script/style/hidden weg), dann Zeichen-Ebene normalisieren."""
+    """HTML → cleaned plain text (stage A): drop comment/data-URI, extract the visible
+    text (script/style/hidden removed), then normalize at the character level."""
     html = _COMMENT_RE.sub("", html)  # joined like a browser renders it (no split-word evasion)
     html = _DATA_URI_RE.sub(" ", html)
     extractor = _TextExtractor()
