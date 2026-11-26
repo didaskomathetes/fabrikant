@@ -209,6 +209,18 @@ def test_validate_loop_exclusive_group(tmp_path):
         assert needle in str(exc.value)
 
 
+@pytest.mark.parametrize("key", ["tools", "allowed_tools"])
+def test_validate_agent_tool_lists(tmp_path, key):
+    base = _valid_spec(str(tmp_path))
+    specs._validate_spec(_step(base, {"type": "agent", "prompt": "x", key: ["Read", "Edit(/a.json)"]}))
+    specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: "Read,Grep"}))
+    with pytest.raises(ValueError, match=f"{key} muss String oder Liste"):
+        specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: [1]}))
+    for empty in ("", " ", " , ", [], [" "]):  # would mean "no restriction" — rejected
+        with pytest.raises(ValueError, match=f"{key} darf nicht leer sein"):
+            specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", key: empty}))
+
+
 def test_validate_agent_variant(tmp_path):
     base = _valid_spec(str(tmp_path))
     specs._validate_spec(_step(base, {"type": "agent", "prompt": "x", "variant": "medium"}))  # kein Raise

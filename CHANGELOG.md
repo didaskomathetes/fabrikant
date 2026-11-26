@@ -12,6 +12,10 @@ All notable changes to fabrikant are documented here. The format follows
   review loop and a fix loop on one PR). A trigger run blocked this way is dropped like one over `max_parallel`
   (with `reconcile` it fires again on the next poll); queued manual runs and resumes wait. A run paused for
   approval keeps holding its issue/PR for the whole group.
+- `claude_code` agent steps: `tools` is the hard limit on the available built-in tools (`--tools`);
+  `allowed_tools` sets pre-approval rules (`--allowedTools`) and runs the CLI in `dontAsk` mode, denying calls
+  that would prompt (calls needing no approval and `settings.json` approvals still run). Both keys accept a list
+  or a comma-separated string; copilot's `tools` now accepts a list too.
 
 ## [0.1.0] - 2026-11-25
 

@@ -293,7 +293,7 @@ def test_tampered_local_archive_fails_the_step_as_environment(repo, local_base):
     ref = not_none(gh.states[ISSUE].archive)
     (Path(ref.uri) / "trail" / "scripts" / "s1-01.sql").write_text("drop table x")
     reopen(gh)
-    with pytest.raises(commands.RelayError, match="nicht wiederherstellbar.*Hash") as e:
+    with pytest.raises(commands.RelayError, match="nicht wiederherstellbar.*hash") as e:
         commands.checkout(make_ctx(repo, gh, trail_archive=LOCAL), ISSUE)
     assert e.value.failure.kind is FailureKind.ENVIRONMENT
 
@@ -326,7 +326,7 @@ def test_dispatcher_blocks_when_the_archive_is_unreadable(repo, no_runs, local_b
 
 
 def test_unknown_archive_method_is_an_environment_error(repo):
-    with pytest.raises(commands.RelayError, match="unbekannte Archiv-Methode"):
+    with pytest.raises(commands.RelayError, match="unknown archive method"):
         make_ctx(repo, FakeGitHub([make_task()])).archive("s3")
 
 
@@ -362,4 +362,4 @@ def test_dispatcher_skips_the_archive_for_finished_tasks(repo, no_runs, local_ba
     gh = FakeGitHub([make_task(labels=(LABELS.task, LABELS.done, LABELS.audited))])
     gh.states[ISSUE] = StatusState(archive=TrailRef("local", ISSUE, 1, str(local_base / "gone"), "0" * 64, "a", ""))
     out = commands.dispatch(make_ctx(repo, gh), start=starter([]))
-    assert f"#{ISSUE}: skip — fertig" in out
+    assert f"#{ISSUE}: skip — done" in out

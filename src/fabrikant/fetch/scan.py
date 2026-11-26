@@ -1,10 +1,9 @@
-"""Stufe B: deterministischer Prompt-Injection-Scan (ADR 0060 §2b) — kein LLM.
+"""Stage B: deterministic prompt-injection scan (ADR 0060 §2b) — no LLM.
 
-Jede Regel ist ein (id, Pattern, Schweregrad). Ein Treffer wird als
-:class:`ScanFinding` mit einem kurzen Snippet protokolliert. Der Scan ist
-rein heuristisch: er fängt offensichtliche Injection-Versuche ab, ist aber
-kein Sicherheitsbeweis. ``quarantine``-Treffer isolieren die Quelle,
-``suspicious``-Treffer markieren sie für Nachschau.
+Each rule is an (id, pattern, severity). A hit is logged as a
+:class:`ScanFinding` with a short snippet. The scan is purely heuristic:
+it catches obvious injection attempts but is no proof of safety.
+``quarantine`` hits isolate the source, ``suspicious`` hits flag it for review.
 """
 
 from __future__ import annotations
@@ -61,8 +60,8 @@ def _c(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
 
-# Schweregrad je Gruppe: Instruktion-Overrides und Exfiltration isolieren
-# (quarantine), die übrigen markieren (suspicious).
+# Severity per group: instruction overrides and exfiltration isolate
+# (quarantine), the rest flag (suspicious).
 _RULES: list[Rule] = [
     # --- Instruktion-Override (quarantine) ---
     Rule("override_ignore", _c(r"ignore\s+(all\s+)?(previous|prior|above|earlier)\s+instructions"), QUARANTINE),
@@ -93,7 +92,7 @@ _RULES: list[Rule] = [
         SUSPICIOUS,
         css=True,
     ),
-    # --- Encodierte Blöcke (suspicious) ---
+    # --- Encoded blocks (suspicious) ---
     Rule("blob_base64", _c(r"[A-Za-z0-9+/]{200,}={0,2}"), SUSPICIOUS),
     Rule("blob_hex", _c(r"\b[0-9a-fA-F]{120,}\b"), SUSPICIOUS),
     # --- Exfiltration / Reverse Shell (quarantine) ---
@@ -124,7 +123,7 @@ def _snippet(text: str, start: int, end: int) -> str:
 
 
 def scan(text: str) -> list[ScanFinding]:
-    """Text deterministisch scannen; liefert alle Treffer (geordnet nach Regel)."""
+    """Scan text deterministically; returns all hits (ordered by rule)."""
     # Fold compatibility forms (fullwidth etc.) and drop invisible characters so
     # that obfuscated phrases match; the same normalisation the agent-facing text gets.
     text = normalize_text(text)
@@ -138,7 +137,7 @@ def scan(text: str) -> list[ScanFinding]:
 
 
 def verdict(findings: list[ScanFinding]) -> str:
-    """``clean`` / ``suspicious`` / ``quarantined`` aus den Treffern ableiten."""
+    """Derive ``clean`` / ``suspicious`` / ``quarantined`` from the hits."""
     if any(f.severity == QUARANTINE for f in findings):
         return "quarantined"
     if findings:
@@ -147,7 +146,7 @@ def verdict(findings: list[ScanFinding]) -> str:
 
 
 def rules() -> list[Rule]:
-    """Alle Scan-Regeln (für Tests/Doku)."""
+    """All scan rules (for tests/docs)."""
     return list(_RULES)
 
 

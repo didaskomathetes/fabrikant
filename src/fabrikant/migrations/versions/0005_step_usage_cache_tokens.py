@@ -1,6 +1,6 @@
-"""Cache-Aufschlüsselung und Abrechnungsart: ``step_usage.cache_read_tokens``/``cache_write_tokens``/``billing``.
+"""Cache breakdown and billing kind: ``step_usage.cache_read_tokens``/``cache_write_tokens``/``billing``.
 
-Alle nullable (native ADD COLUMN); Alt-Zeilen bleiben NULL = „nicht gemeldet“.
+All nullable (native ADD COLUMN); old rows stay NULL = "not reported".
 
 Revision ID: 0005
 Revises: 0004

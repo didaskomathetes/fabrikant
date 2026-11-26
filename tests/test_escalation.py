@@ -67,7 +67,7 @@ def test_latest_marker_wins_and_text_is_cleaned():
 def test_unknown_kind_and_missing_marker_fall_back_to_blocked(monkeypatch):
     assert escalation.Escalation.from_comments([_comment("<!-- fabrikant-escalate kind=panic -->")]).kind == "blocked"
     manual = escalation.Escalation.from_comments([_comment("nur Text")])
-    assert manual.kind == "blocked" and "von Hand" in manual.why
+    assert manual.kind == "blocked" and "set by hand" in manual.why
     monkeypatch.setattr(escalation, "MAX_WHY_CHARS", 5)
     assert escalation.Escalation.from_comments([_comment("abcdefgh <!-- fabrikant-escalate kind=scope -->")]).why == (
         "abcde …"
@@ -101,7 +101,7 @@ def test_step_without_label_is_done(monkeypatch):
     assert res["done"] and not res.get("needs_approval") and len(calls) == 1
 
 
-@pytest.mark.parametrize(("status", "word"), [(None, "entfernt"), (404, "schon entfernt")])
+@pytest.mark.parametrize(("status", "word"), [(None, "removed"), (404, "was already removed")])
 def test_step_resume_removes_label(monkeypatch, status, word):
     calls = _fake_github(monkeypatch, {}, [], delete_status=status)
     res = escalation._step_escalation(

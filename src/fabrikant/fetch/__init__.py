@@ -1,12 +1,12 @@
-"""Gehärteter Research-Fetcher (ADR 0060, Stufen 1–2).
+"""Hardened research fetcher (ADR 0060, stages 1–2).
 
-Externe Web-Daten sind untrusted (Leitprinzip 7). Der Fetcher holt Seiten,
-bereinigt sie deterministisch (Stufe A), scannt sie deterministisch auf
-Prompt-Injection (Stufe B, ohne LLM) und liefert ein Ergebnis mit Status
-``clean`` / ``suspicious`` / ``quarantined`` plus Herkunftsprotokoll.
+External web data is untrusted (guiding principle 7). The fetcher fetches pages,
+cleans them deterministically (stage A), scans them deterministically for
+prompt injection (stage B, no LLM) and returns a result with status
+``clean`` / ``suspicious`` / ``quarantined`` plus a provenance ledger.
 
-Auto-Freigaben (Herkunft + ``approved_domains``) werden geholt; offene URLs
-werden gebündelt zu EINEM ``access``-Freigabe-Request (Stufe 2, ADR 0059 §5a).
+Auto-approvals (provenance + ``approved_domains``) are fetched; open URLs
+are bundled into ONE ``access`` approval request (stage 2, ADR 0059 §5a).
 """
 
 from __future__ import annotations

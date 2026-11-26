@@ -35,7 +35,7 @@ def parse_offset(raw: str | None) -> int:
 
 
 def sse(event: str, data: object, event_id: int | None = None) -> str:
-    """Ein SSE-Event (JSON-Payload, einzeilig) als Wire-Text."""
+    """An SSE event (JSON payload, single line) as wire text."""
     head = f"id: {event_id}\n" if event_id is not None else ""
     return f"{head}event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 

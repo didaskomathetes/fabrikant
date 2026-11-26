@@ -368,7 +368,7 @@ def test_block_links_open_issues_and_skips_invalid(routed):
     posts = [c for c in api.calls if c[0] == "POST"]
     assert posts == [("POST", "https://api.github.com/repos/o/r/issues/7/dependencies/blocked_by", {"issue_id": 1012})]
     assert ctx["blockers"] == "#12"
-    assert "#13 (geschlossen)" in res["summary"] and "#14 (PR)" in res["summary"]
+    assert "#13 (closed)" in res["summary"] and "#14 (PR)" in res["summary"]
     assert "#99 (nicht gefunden)" in res["summary"]
 
 

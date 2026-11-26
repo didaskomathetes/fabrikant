@@ -80,7 +80,7 @@ def test_validate_worktree_false_with_shell_ok(tmp_path):
 @pytest.mark.parametrize("step_type", config.WORKTREE_STEP_TYPES)
 def test_validate_worktree_false_rejects_worktree_steps(tmp_path, step_type):
     loop = {"worktree": False, "steps": [{"type": "shell", "cmd": "true"}, {"type": step_type}]}
-    with pytest.raises(ValueError, match=f"brauchen den Worktree \\({step_type}\\)"):
+    with pytest.raises(ValueError, match=f"need the worktree \\({step_type}\\)"):
         _validate_spec(_spec(tmp_path, loop))
 
 
@@ -89,7 +89,7 @@ def test_validate_worktree_false_rejects_nested_verify_checks(tmp_path, step_typ
     """verify dispatcht seine Checks selbst — auch verschachtelt (verify in verify) geprüft."""
     inner = {"type": "verify", "checks": [{"type": step_type}]}
     loop = {"worktree": False, "steps": [{"type": "verify", "checks": [{"type": "shell", "cmd": "true"}, inner]}]}
-    with pytest.raises(ValueError, match=f"brauchen den Worktree \\({step_type}\\)"):
+    with pytest.raises(ValueError, match=f"need the worktree \\({step_type}\\)"):
         _validate_spec(_spec(tmp_path, loop))
 
 

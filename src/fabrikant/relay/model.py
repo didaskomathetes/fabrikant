@@ -56,7 +56,7 @@ class Action(StrEnum):
 
 
 class HandoffError(ValueError):
-    """Handoff-Datei fehlt die Struktur (Front Matter, Pflichtfelder, Typen)."""
+    """The handoff file lacks structure (front matter, required fields, types)."""
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ def normalize_login(login: str | None) -> str:
 
 
 def parse_time(value: object) -> datetime | None:
-    """ISO-Zeit (str, YAML-datetime, `Z`-Suffix) → aware UTC-datetime; leer → None."""
+    """ISO time (str, YAML-datetime, `Z` suffix) → aware UTC datetime; empty → None."""
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
@@ -96,7 +96,7 @@ def format_time(dt: datetime | None) -> str:
 
 
 def markdown_sections(text: str) -> dict[str, str]:
-    """`## Heading`-Abschnitte → {heading (lower): Inhalt}; erster Abschnitt gewinnt."""
+    """`## Heading` sections → {heading (lower): content}; the first section wins."""
     text = text.replace("\r\n", "\n")
     matches = list(_HEADING_RE.finditer(text))
     sections: dict[str, str] = {}
@@ -140,7 +140,7 @@ class Settings:
 
 @dataclass(frozen=True)
 class Brief:
-    """Der Task-Auftrag = Issue-Titel + -Body (Markdown mit `##`-Abschnitten)."""
+    """The task brief = issue title + body (Markdown with `##` sections)."""
 
     title: str
     body: str
@@ -164,7 +164,7 @@ class Brief:
 
     @property
     def verify_command(self) -> str | None:
-        """Optionaler ```verify-Block: deterministische Fortschrittsmessung (letzte Zeile)."""
+        """Optional ```verify block: deterministic progress measurement (last line)."""
         m = _VERIFY_CMD_RE.search(self.verify)
         return m.group(1).strip() if m and m.group(1).strip() else None
 
@@ -334,7 +334,7 @@ class RunOutcome:
 
     run_id: str  # starts with the start time → lexicographically sortable
     published: bool  # publish/audit-publish went through (progress is on the branch)
-    failure_kind: FailureKind | None = None  # ADR 0035; None = `unknown` (Altbestand / nicht klassifiziert)
+    failure_kind: FailureKind | None = None  # ADR 0035; None = `unknown` (legacy / unclassified)
     finished: datetime | None = None
     retry_after: datetime | None = None  # ADR 0035: earliest sensible attempt (only for `transient`)
 
@@ -426,7 +426,7 @@ class TrailRef:
 
 @dataclass
 class StatusState:
-    """Maschinenlesbarer Teil des Status-Kommentars (Dispatcher ↔ Sessions)."""
+    """Machine-readable part of the status comment (dispatcher ↔ sessions)."""
 
     verify_pending: str | None = None  # new verify version for which blocking already happened
     audit: str = ""  # "", "pass", "fail"
@@ -434,7 +434,7 @@ class StatusState:
     note: str = ""  # Reason why the dispatcher does not start (e.g. authorization)
     failures_seen: str = ""  # newest failed run id for which blocking already happened
     trail_sha256: str = ""  # Hash of the trail to which the last audit verdict is bound
-    archive: TrailRef | None = None  # letztes Trail-Archiv; gesetzt → Trail ist vom Branch entfernt
+    archive: TrailRef | None = None  # latest trail archive; set → the trail is removed from the branch
     trail_warning: str = ""  # PR still contains the trail (no `trail_archive` configured)
 
     def to_dict(self) -> dict:
@@ -472,7 +472,7 @@ class Decision:
     action: Action
     reason: str = ""
     repin: bool = False  # adopt new verify version (a human unblocked)
-    notify: bool = False  # SKIP-Grund im Status-Kommentar zeigen
+    notify: bool = False  # show the SKIP reason in the status comment
     verify_pending: str | None = None
     failures_seen: str = ""
 
@@ -508,10 +508,10 @@ def evaluate(
         return held
     if labels.done in task.labels:
         if audit and labels.audited not in task.labels:
-            return Decision(Action.AUDIT, "fertig — Audit ausstehend")
-        return Decision(Action.SKIP, "fertig")
+            return Decision(Action.AUDIT, "done — audit pending")
+        return Decision(Action.SKIP, "done")
     if handoff is None:
-        return Decision(Action.SESSION, "erste Session")
+        return Decision(Action.SESSION, "first session")
     repin = False
     if handoff.verify_sha256 != brief.verify_sha256:
         if state.verify_pending != brief.verify_sha256:

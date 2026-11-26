@@ -34,7 +34,7 @@ from sqlalchemy import (
 
 from .runmodel import ApprovalReason, ApprovalStatus, FailureKind, RunStatus, StepStatus
 
-# Benennungskonvention: stabile Constraint-Namen (Alembic-Migrationen, Fehlermeldungen in Tests).
+# Naming convention: stable constraint names (Alembic migrations, error messages in tests).
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
@@ -212,10 +212,10 @@ approvals = Table(
     "approvals",
     metadata,
     Column("run_id", Text, _run_fk(), primary_key=True),
-    # Abgeleiteter Zustand (ADR 0034 Nr. 2): pending | queued | approved | rejected.
+    # Derived state (ADR 0034 no. 2): pending | queued | approved | rejected.
     Column("status", Text, nullable=False),
     Column("reason", Text),
-    Column("kind", Text),  # Eskalationsart bei reason = escalation (ADR 0059)
+    Column("kind", Text),  # escalation kind when reason = escalation (ADR 0059)
     Column("step", Text),
     Column("condition", Text),
     Column("why", Text),
