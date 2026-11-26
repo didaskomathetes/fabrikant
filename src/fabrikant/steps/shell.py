@@ -47,7 +47,7 @@ from ..spec_sources import resolve_script_paths
 
 
 def run_shell(cmd: str, workdir: str, env: dict, timeout: int) -> subprocess.CompletedProcess:
-    """`sh -c cmd` im Workdir (stdout/stderr getrennt erfasst); TimeoutExpired propagiert."""
+    """`sh -c cmd` in the workdir (stdout/stderr captured separately); TimeoutExpired propagates."""
     return subprocess.run(["sh", "-c", cmd], cwd=workdir, env=env, capture_output=True, text=True, timeout=timeout)
 
 
@@ -93,7 +93,7 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     tail = _redact("\n".join((stdout or p.stderr or "").strip().splitlines()[-8:]))
     if p.returncode != 0:
         return failed(
-            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'kein Output'}",
+            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'no output'}",
             _exit_kind(p.returncode, step),
             exit_code=p.returncode,
             output=_cap(out),

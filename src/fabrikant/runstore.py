@@ -306,7 +306,7 @@ def parse_run(rec: Mapping[str, Any], project: str | None = None) -> Run:
 
 @dataclass(frozen=True)
 class LoadFailure:
-    """Ein nicht ladbarer Record: Ort (Datei bzw. ``<projekt>/<id>``) + Grund."""
+    """A record that cannot be loaded: location (file or ``<project>/<id>``) + reason."""
 
     path: Path
     reason: str

@@ -90,7 +90,7 @@ def test_step_git_branch_substitutes_variables(tmp_path):
 def test_step_git_branch_names_missing_variable(tmp_path):
     # Manueller Run ohne --var issue_number: klare Meldung statt "unzulässige Zeichen".
     repo = _make_repo(tmp_path)
-    with pytest.raises(ValueError, match=r"Variable\(n\) fehlen: issue_number \(manuell: --var issue_number=…\)"):
+    with pytest.raises(ValueError, match=r"variable\(s\) missing: issue_number \(manual: --var issue_number=…\)"):
         git._step_git(_ctx(repo), {"branch": "fabrikant/relay/{issue_number}"})
 
 

@@ -170,7 +170,7 @@ def test_notify_log_tail_redaction_disabled(runs_dir: Path, monkeypatch: pytest.
 
 
 # ---------------------------------------------------------------- Alert-Dedup
-_COPILOT_FAIL = "agent session fehlgeschlagen: copilot: Session endete ohne finale Antwort (session copilot-{sid})"
+_COPILOT_FAIL = "agent session failed: copilot: Session endete ohne finale Antwort (session copilot-{sid})"
 
 
 def _failed(rid: str, sid: str = "8a1f1b454c95", summary: str = _COPILOT_FAIL, step: str = "review") -> dict:
