@@ -146,3 +146,17 @@ def test_catalog_placeholders_match(lang):
         de_ph = set(re.findall(r"\{(\w+)\}", de[key]))
         en_ph = set(re.findall(r"\{(\w+)\}", en[key]))
         assert de_ph == en_ph, f"{key}: Platzhalter de={sorted(de_ph)} ≠ en={sorted(en_ph)}"
+
+
+def test_document_language_matches_the_static_fallback_text():
+    """Before (or without) JavaScript, assistive technology reads the static labels in the language of
+    `<html lang>`: it must name the language those labels are written in (the runtime switch sets it later)."""
+    import html
+
+    src = _index_html()
+    lang = re.search(r'<html lang="([^"]+)"', src)
+    assert lang is not None
+    catalog = _catalog(lang.group(1))
+    pairs = re.findall(r'data-i18n="([^"]+)"[^>]*>([^<]+)<', src)
+    assert pairs
+    assert [k for k, text in pairs if catalog.get(k) != html.unescape(text).strip()] == []

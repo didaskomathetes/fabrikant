@@ -149,7 +149,7 @@ def test_complete_failed_raises(clean_llm_env, monkeypatch):
 
 
 def test_complete_unknown_cli_raises():
-    with pytest.raises(llm_cli.LlmCliError, match="unbekannte CLI"):
+    with pytest.raises(llm_cli.LlmCliError, match="unknown CLI"):
         llm_cli.complete("bash", "m", "s", "u", 10)
 
 

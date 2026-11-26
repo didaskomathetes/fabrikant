@@ -74,7 +74,7 @@ class CopilotBackend(OneShotCliBackend):
         return cmd
 
     def billing(self) -> Billing:
-        """Copilot rechnet Premium Requests des GitHub-Plans ab — nie pro Token."""
+        """Copilot bills premium requests of the GitHub plan — never per token."""
         return Billing.SUBSCRIPTION
 
     def _env(self) -> dict:

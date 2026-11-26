@@ -142,5 +142,8 @@ def live_server():
 
 @pytest.fixture(autouse=True)
 def _default_message_language(monkeypatch):
-    """Server messages are asserted in the default language (de), independent of the host env."""
-    monkeypatch.delenv("FABRIKANT_LANG", raising=False)
+    """Server messages are asserted in German (the suite predates the English default), independent of the host env.
+
+    Tests of the default language itself unset the variable explicitly (see test_backend_i18n.py).
+    """
+    monkeypatch.setenv("FABRIKANT_LANG", "de")

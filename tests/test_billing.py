@@ -72,7 +72,7 @@ def test_step_override_wins_over_detection():
 def test_validate_rejects_unknown_values():
     assert billing.validate({"billing": "subscription"}, "s") == []
     assert billing.validate({}, "s") == []
-    assert "billing muss" in billing.validate({"billing": "flat"}, "s")[0]
+    assert "billing must be one of" in billing.validate({"billing": "flat"}, "s")[0]
 
 
 def test_costs_split_subscription_share():

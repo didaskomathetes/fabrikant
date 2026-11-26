@@ -88,8 +88,8 @@ def db_path() -> Path:
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
-    """Globaler Connection (Homelab-Skalierung) + WAL. Tests tauschen per
-    monkeypatch.setattr(sessionlog, "_conn", …) aus."""
+    """Global connection (homelab scale) + WAL. Tests swap it via
+    monkeypatch.setattr(sessionlog, "_conn", …)."""
     global _conn
     with _conn_guard:
         if _conn is None:
@@ -289,7 +289,7 @@ def _fetch_totals(session_id: str) -> dict | None:
         return None
 
 
-# Agent-Turn-Events des Transkripts → Rolle (user = Prompt, tool = Tool-Call).
+# Agent-turn events of the transcript → role (user = prompt, tool = tool call).
 TRANSCRIPT_ROLES = {"prompt": "user", "tool_call": "tool", "message": "assistant"}
 TRANSCRIPT_PAGE = 500  # Default page size (lazy loading)
 

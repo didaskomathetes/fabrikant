@@ -55,8 +55,8 @@ def test_directory_name_wins_over_record_project():
         ({"id": "", "status": "pass", "project": "p"}, "id"),
         ({"id": 3, "status": "pass", "project": "p"}, "id"),
         ({"id": "r", "status": "pass"}, "project"),
-        ({"id": "r", "project": "p", "status": "weird"}, "unbekannter Status 'weird'"),
-        ({"id": "r", "project": "p"}, "unbekannter Status None"),
+        ({"id": "r", "project": "p", "status": "weird"}, "unknown status 'weird'"),
+        ({"id": "r", "project": "p"}, "unknown status None"),
         ({"id": "r", "project": "p", "status": "pass", "steps": [{"name": "a"}]}, "Step 1"),
     ],
 )
@@ -168,7 +168,7 @@ def test_store_load_all_report_and_get(runs_dir):
     reasons = {f.path.name: f.reason for f in report.failures}
     assert "kein gültiges JSON" in reasons["broken.json"]
     assert "erwartet Object, ist list" in reasons["list.json"]
-    assert "unbekannter Status" in reasons["bad.json"]
+    assert "unknown status" in reasons["bad.json"]
     assert [r.id for r in store.load_all("q")] == ["b"] and store.load_all("../x") == []
     assert store.get("a").status is RunStatus.PASS  # type: ignore[union-attr]
     assert store.get("a", "q") is None and store.get("b").project == "q"  # type: ignore[union-attr]
@@ -188,7 +188,7 @@ def test_store_race_with_delete(runs_dir, monkeypatch):
     store = RunStore()
     monkeypatch.setattr(type(runs_dir), "read_text", lambda self, *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
     loaded, report = store.load_report()
-    assert loaded == [] and report.failures[0].reason == "Datei verschwunden"
+    assert loaded == [] and report.failures[0].reason == "file vanished"
 
 
 def test_store_reuses_parsed_run_until_file_changes(runs_dir):
@@ -230,7 +230,7 @@ def test_store_stat_race_with_delete(runs_dir, monkeypatch):
 
     monkeypatch.setattr(Path, "stat", flaky_stat)
     loaded, report = RunStore().load_report("p")
-    assert loaded == [] and report.failures[0].reason == "Datei verschwunden"
+    assert loaded == [] and report.failures[0].reason == "file vanished"
 
 
 def test_runs_typed_readers(runs_dir):
@@ -665,7 +665,8 @@ def test_write_fails_on_corrupt_on_disk_record(runs_dir, content):
     d = runs_dir / "p"
     d.mkdir(exist_ok=True)
     (d / "r1.json").write_text(content)
-    with pytest.raises(RunStoreError, match="defekter Run-Record"):
+    # `{` → broken JSON (f-string), `[]` → i18n message (de catalog)
+    with pytest.raises(RunStoreError, match="corrupt run record|defekter Run-Record"):
         RunStore().write("p", "r1", _rec(id="r1", status="running"))
     assert (d / "r1.json").read_text() == content
 

@@ -33,8 +33,8 @@ from ..runmodel import FailureKind
 
 _MERGE_METHODS = ("squash", "merge", "rebase")
 _MERGE_REFUSED_STATUSES = frozenset({405, 409})  # GitHub: not mergeable or conflict/head changed
-_UPDATE_CONFLICT_STATUS = 422  # update-branch: Merge-Konflikt bzw. expected_head_sha veraltet
-_UPDATE_WAIT_TIMEOUT_S = 120  # GitHub berechnet Head/Mergebarkeit nach update-branch asynchron
+_UPDATE_CONFLICT_STATUS = 422  # update-branch: merge conflict or stale expected_head_sha
+_UPDATE_WAIT_TIMEOUT_S = 120  # GitHub recomputes head/mergeability asynchronously after update-branch
 _UPDATE_POLL_INTERVAL_S = 3
 
 
@@ -84,7 +84,7 @@ def _update_branch_if_behind(provider: Provider, repo: str, pr_number: int) -> s
     pr = provider.get_pr(repo, pr_number)
     head = pr.head_sha
     if pr.mergeable is False or pr.raw.get("mergeable_state") == "dirty":
-        raise _UpdateBranchError(_conflict(repo, pr_number, "Konflikt vor update-branch"))
+        raise _UpdateBranchError(_conflict(repo, pr_number, "conflict before update-branch"))
     base_ref = pr.base_ref
     if not (head and base_ref):
         return ""
@@ -95,7 +95,7 @@ def _update_branch_if_behind(provider: Provider, repo: str, pr_number: int) -> s
         provider.update_branch(repo, pr_number, expected_head_sha=head)
     except urllib.error.HTTPError as e:
         if e.code == _UPDATE_CONFLICT_STATUS:
-            raise _UpdateBranchError(_conflict(repo, pr_number, "update-branch abgelehnt (HTTP 422)")) from e
+            raise _UpdateBranchError(_conflict(repo, pr_number, "update-branch rejected (HTTP 422)")) from e
         raise
     return _wait_for_updated_head(provider, repo, pr_number, head)
 
@@ -125,12 +125,12 @@ def _step_pr_merge(ctx: dict, step: dict) -> dict:
         except _UpdateBranchError as e:
             return e.failure
         except urllib.error.HTTPError as e:
-            return failed(f"pr_merge: update-branch fehlgeschlagen (HTTP {e.code})", classify_http(e.code, e.headers))
+            return failed(f"pr_merge: update-branch failed (HTTP {e.code})", classify_http(e.code, e.headers))
     try:
         res = provider.merge_pr(repo, pr_number, method=method, sha=sha)
     except urllib.error.HTTPError as e:
         detail = ""
-        with contextlib.suppress(Exception):  # Body-Read ist best-effort
+        with contextlib.suppress(Exception):  # body read is best-effort
             detail = e.read().decode()[:300]
         return failed(
             t("steps.pr_merge.pr_merge_merge_rejected_http", v1=e.code, detail=detail),

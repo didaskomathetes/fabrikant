@@ -100,8 +100,8 @@ def test_agent_timeout_summary_includes_last_text_and_tools(monkeypatch):
     assert res["ok"] is False
     assert "timeout" in res["summary"]
     assert "ses_fake" in res["summary"]
-    # Diagnose: letzter Text + Tools sind im Summary enthalten.
-    assert "letzter Text: ich arbeite gerade an der PR" in res["summary"]
+    # Diagnose: last text + tools are in the summary.
+    assert "last text: ich arbeite gerade an der PR" in res["summary"]
     assert "Tools: shell, read" in res["summary"]
     assert fake.cancelled is True
 
@@ -111,7 +111,7 @@ def test_agent_timeout_without_text_or_tools_is_plain(monkeypatch):
     res, _ = _run(monkeypatch, [running])
     assert res["ok"] is False
     assert "timeout" in res["summary"]
-    assert "letzter Text" not in res["summary"]
+    assert "last text" not in res["summary"]
     assert "Tools:" not in res["summary"]
 
 
@@ -445,9 +445,9 @@ def test_agent_prompt_is_capped_in_log(monkeypatch):
     }
     agent_step._step_agent(ctx, step, emits.append)
     joined = "\n".join(emits)
-    assert "agent prompt (5000 Zeichen):" in joined
-    assert "gekappt" in joined
-    # Der volle Prompt (5000 x) darf nicht komplett im Log stehen.
+    assert "agent prompt (5000 characters):" in joined
+    assert "truncated" in joined
+    # The full prompt (5000 x) must not appear completely in the log.
     assert "x" * 2500 not in joined
 
 
@@ -707,6 +707,6 @@ def test_session_failed_without_exit_info_keeps_old_shape():
     """Backends ohne Exit-Infos (opencode serve): Summary wie bisher, kein output/exit_code."""
     lines: list[str] = []
     res = agent_step._session_failed({"status": "failed", "text": "boom"}, "s1", {}, lines.append)
-    assert res["summary"] == "agent session fehlgeschlagen: boom (session s1)"
+    assert res["summary"] == "agent session failed: boom (session s1)"
     assert "exit_code" not in res and "output" not in res
     assert lines == []

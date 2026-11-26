@@ -118,7 +118,7 @@ def _apply(ctx: dict, step: dict, emit, p: Path, action: str, key: str) -> dict:
         emit(f"  state set {key} = {raw!r} → {p}")
         return {"ok": True, "state_value": raw, "summary": f"state {key} = {raw!r}"}
 
-    # add: numerisch addieren, sonst an Liste appenden
+    # add: sum numerically, otherwise append to a list
     cur = data.get(key, 0)
     new: object
     try:
