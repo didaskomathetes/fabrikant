@@ -1,126 +1,122 @@
-# ADR 0017: Refine-Loop — Human-Gate nur bei `needs approval` / `close`
+# ADR 0017: Refine loop — human gate only for `needs approval` / `close`
 
-**Status:** Akzeptiert (2026-10-19); Änderung 2026-10-21 akzeptiert (2026-10-21)
-**Entscheider:** Dominic
-**Änderung 2026-10-21:** Close als Vorschlag mit Label `close proposed`,
-Kriterien für `needs approval` (siehe §„Änderung 2026-10-21").
-**Ersetzt:** ADR 0006 §„Human-Gate" sowie ADR 0001 §1–2 (Triage-Gate als
-Human-Gate). Der Rest von ADR 0006 (Steps, Label-Semantik, Close-Pfad) gilt
-weiter.
+**Status:** Accepted (2026-10-19); change of 2026-10-21 accepted (2026-10-21)
+**Deciders:** Dominic
+**Change 2026-10-21:** close as a proposal with the label `close proposed`,
+criteria for `needs approval` (see §"Change 2026-10-21").
+**Supersedes:** ADR 0006 §"Human gate" and ADR 0001 §1–2 (triage gate as human
+gate). The rest of ADR 0006 (steps, label semantics, close path) still applies.
 
-## Kontext
+## Context
 
-ADR 0006 setzte ein statisches `approval: true` auf `apply-label`: **jeder**
-refine-Run pausierte, auch wenn das Issue bereits fertig spezifiziert war und
-als `ready for development` klassifiziert wurde (Feldbefund 2026-10-19, Issue
-#16: Issue mit vollständigen Annahme-Kriterien musste trotzdem freigegeben
-werden).
+ADR 0006 put a static `approval: true` on `apply-label`: **every** refine run
+paused, even when the issue was already fully specified and was classified as
+`ready for development` (field finding 2026-10-19, issue #16: an issue with
+complete acceptance criteria still had to be approved).
 
-Das widerspricht der späteren Linie:
-- ADR 0010: „PR-Pipeline ohne Menschen im Loop — außer bei kritischen
-  Entscheidungen". Der `develop`-Loop hat dafür `human_gate` (ADR-Pfade,
-  Diff-Größe, Keywords, LLM) plus Cross-Model-PR-Review.
-- framework-v1-draft, Leitprinzip 3: „Mensch sitzt nur an
-  irreversiblen/Accountability-Gates."
+This contradicts the later line:
+- ADR 0010: "PR pipeline without humans in the loop — except for critical
+  decisions". The `develop` loop has `human_gate` for that (ADR paths, diff size,
+  keywords, LLM) plus cross-model PR review.
+- framework-v1-draft, guiding principle 3: "A human sits only at
+  irreversible/accountability gates."
 
-ADR 0001 §2 begründete das Triage-Gate damit, dass es *das* Human-Gate für
-`develop` sei. Seit ADR 0010 sichert `develop` sich selbst ab — das
-Refine-Gate für unkritische Issues ist damit redundant.
+ADR 0001 §2 justified the triage gate by saying it was *the* human gate for
+`develop`. Since ADR 0010 `develop` secures itself — the refine gate for
+uncritical issues is therefore redundant.
 
-Zusätzlich war `needs approval` doppelt manuell: Die Freigabe setzte nur das
-Label `needs approval`, danach musste der Mensch auf GitHub von Hand
-umlabeln.
+In addition, `needs approval` was manual twice over: approving only set the label
+`needs approval`, after which the human had to relabel by hand on GitHub.
 
-## Entscheidung
+## Decision
 
-Der Mensch entscheidet im refine-Loop **nur noch**, wenn der Classify-Step
-Architektur-Impact / Widerspruch zu ADRs (`needs approval`) oder einen Close
-erkennt:
+In the refine loop the human decides **only** when the classify step detects
+architecture impact / contradiction with ADRs (`needs approval`) or a close:
 
-| `classify` | vor der Pause | Approve | Reject |
+| `classify` | before the pause | Approve | Reject |
 |---|---|---|---|
-| `ready for development` | Label sofort, **keine Pause** → `develop` startet | — | — |
-| `needs approval` | Label `needs approval` sofort (sichtbar auf GitHub) | `needs approval` → `ready for development` (develop startet) | Label bleibt, Run endet; Mensch entscheidet manuell |
-| `close proposed` | Label `close proposed` + Abschnitt „Close-Vorschlag" im Body sofort | Begründungs-Kommentar + Close | Label bleibt, Run endet; Mensch entscheidet manuell |
+| `ready for development` | label immediately, **no pause** → `develop` starts | — | — |
+| `needs approval` | label `needs approval` immediately (visible on GitHub) | `needs approval` → `ready for development` (develop starts) | label stays, run ends; human decides manually |
+| `close proposed` | label `close proposed` + section "Close-Vorschlag" (close proposal) in the body immediately | reasoning comment + close | label stays, run ends; human decides manually |
 
-**Engine: bedingtes Gate `approval_when`** (Step-Feld, `engine._approval_condition`):
+**Engine: conditional gate `approval_when`** (step field, `engine._approval_condition`):
 
 ```yaml
 approval_when:
-  label: "needs approval"      # Wert oder Liste von Werten
+  label: "needs approval"      # value or list of values
 ```
 
-- Pausiert VOR dem Step nur, wenn jede genannte Run-Variable einen der Werte
-  hat (AND über Variablen, OR über Werte, Vergleich als String). Fehlende
-  Variable → kein Gate.
-- Gleiche Resume-Semantik wie `approval: true`: der gepauste Step läuft nach
-  Approval ohne erneutes Gate. Der Approval-Kontext trägt die erfüllte
-  Bedingung (`approval.condition`, Log-Zeile `bedingung:`).
-- Nicht mit `approval: true` kombinierbar (Spec-Validierung).
-- Ersetzt das Tier-Gate (T2+) **nicht** — nur statisches `approval: true` tut
-  das, weil `approval_when` unerfüllt bleiben kann.
+- Pauses BEFORE the step only if every named run variable has one of the values
+  (AND across variables, OR across values, comparison as string). Missing
+  variable → no gate.
+- Same resume semantics as `approval: true`: after approval the paused step runs
+  without another gate. The approval context carries the satisfied condition
+  (`approval.condition`, log line `condition:`).
+- Cannot be combined with `approval: true` (spec validation).
+- Does **not** replace the tier gate (T2+) — only static `approval: true` does,
+  because `approval_when` may stay unsatisfied.
 
-**Refine-Loop:** `classify → … → propose-close → apply-label →
+**Refine loop:** `classify → … → propose-close → apply-label →
 promote (approval_when: needs approval) → close-issue (approval_when: close proposed) →
-report`. Der Classify-Prompt sagt explizit, dass `ready for development` ohne
-Freigabe in die Entwicklung geht. Die Kriterien für `needs approval` stehen im
-classify-Prompt (`projects/fabrik.fabrik.yaml`) und werden von
-`tests/test_fabrik_spec.py` festgehalten; im Zweifel `ready for development`.
+report`. The classify prompt says explicitly that `ready for development` goes
+into development without approval. The criteria for `needs approval` are in the
+classify prompt (`projects/fabrikant.fabrikant.yaml`) and are pinned by
+`tests/test_fabrikant_spec.py`; when in doubt, `ready for development`.
 
-## Begründung
+## Rationale
 
-- **Ein Gate pro kritischer Entscheidung:** unkritische Issues werden in
-  `develop` durch `human_gate` + Review abgesichert; doppelte Gates kosten
-  Aufmerksamkeit und trainieren reflexhaftes Durchwinken.
-- **Freigabe = Entscheidung:** Approve bei `needs approval` heißt „darf
-  entwickelt werden" und setzt das passende Label — kein Nacharbeiten auf
-  GitHub.
-- **Close bleibt gegated** (Begründung aus ADR 0006 unverändert): falsche
-  Duplikat-Erkennung ist für den Reporter kaum umkehrbar.
-- **`approval_when` statt Step-Ergebnis-Gate:** Die Bedingung steht
-  deklarativ in der Spec (prüfbar, testbar), statt in Shell-Logik versteckt;
-  `human_gate` bleibt für dynamische, diff-basierte Kritikalität (ADR 0010).
+- **One gate per critical decision:** uncritical issues are secured in `develop`
+  by `human_gate` + review; duplicate gates cost attention and train reflexive
+  waving through.
+- **Approval = decision:** approving `needs approval` means "may be developed"
+  and sets the matching label — no follow-up work on GitHub.
+- **Close stays gated** (rationale from ADR 0006 unchanged): a wrong duplicate
+  detection is hardly reversible for the reporter.
+- **`approval_when` instead of a step-result gate:** the condition is declared in
+  the spec (checkable, testable) instead of hidden in shell logic; `human_gate`
+  remains for dynamic, diff-based criticality (ADR 0010).
 
-## Konsequenzen
+## Consequences
 
-+ Unkritische Issues fließen ohne menschliche Interaktion in `develop`
-+ `needs approval`-Issues sind auf GitHub sofort als solche markiert
-+ Generisches Engine-Feature, auch für andere Loops nutzbar
-- Die Classify-Einschätzung (LLM) entscheidet jetzt, ob ein Mensch das Issue
-  vor der Entwicklung sieht. Fehlklassifikation `ready for development` statt
-  `needs approval` fängt erst `human_gate` am PR-Diff ab.
-- Bereits pausierte refine-Runs (alte Spec) laufen nach Approve mit der neuen
-  Spec weiter: `needs approval`-Runs pausieren dann ein zweites Mal am
-  `promote`-Step (einmaliger Übergangseffekt).
++ Uncritical issues flow into `develop` without human interaction
++ `needs approval` issues are immediately marked as such on GitHub
++ Generic engine feature, usable for other loops too
+- The classify assessment (LLM) now decides whether a human sees the issue before
+  development. A misclassification as `ready for development` instead of
+  `needs approval` is only caught by `human_gate` on the PR diff.
+- Refine runs that are already paused (old spec) continue with the new spec after
+  approval: `needs approval` runs then pause a second time at the `promote` step
+  (one-time transition effect).
 
-## Abgelehnte Alternativen
+## Rejected alternatives
 
-- **Gate komplett entfernen:** Close ohne Freigabe ist zu riskant (ADR 0006).
-- **Bedingung in Shell (`exit` + Step-Result):** Shell-Steps können nicht
-  pausieren; ein eigener Step-Typ nur dafür wäre mehr Fläche als ein Feld.
-- **`needs approval` weiterhin nur labeln (ohne Pause):** dann gäbe es keinen
-  Freigabeweg in der fabrik-UI; der Mensch müsste auf GitHub suchen.
+- **Remove the gate completely:** closing without approval is too risky (ADR 0006).
+- **Condition in shell (`exit` + step result):** shell steps cannot pause; a
+  dedicated step type just for this would be more surface than one field.
+- **Keep only labelling `needs approval` (without a pause):** then there would be
+  no approval path in the fabrikant UI; the human would have to search on GitHub.
 
-## Änderung 2026-10-21 (Akzeptiert)
+## Change 2026-10-21 (accepted)
 
-**Kontext:** Der classify-Prompt nannte Themen statt Gründe und endete mit
-„im Zweifel: `needs approval`" — fast jedes Issue mit Engine-Bezug wurde gegated
-(z. B. #241, #237). Ein gegateter Close war nur in der fabrik-UI sichtbar, nicht
-auf GitHub.
+**Context:** The classify prompt named topics instead of reasons and ended with
+"when in doubt: `needs approval`" — almost every issue touching the engine was
+gated (e.g. #241, #237). A gated close was visible only in the fabrikant UI, not on
+GitHub.
 
-**Entscheidung:**
-- `needs approval` nur bei benanntem Grund (Architektur/ADR, sehr groß,
-  kritisch); im Zweifel `ready for development`. Die Gründe stehen im Prompt.
-- Close wird zum Vorschlag: Label `close proposed` und Begründung im Body
-  sofort, Close erst nach Freigabe — für jeden `close_kind`. Werte und Folgen
-  definiert ADR 0031: `duplicate` (mit `duplicate_of`; Blocker der Abhängigen
-  wandern auf das Original), `completed` (gibt abhängige Issues frei),
-  `not_planned` (Abhängige bleiben blockiert); leer = GitHub-Default `completed`.
+**Decision:**
+- `needs approval` only with a named reason (architecture/ADR, very large,
+  critical); when in doubt `ready for development`. The reasons are in the prompt.
+- Close becomes a proposal: label `close proposed` and reasoning in the body
+  immediately, close only after approval — for every `close_kind`. Values and
+  consequences are defined by ADR 0031: `duplicate` (with `duplicate_of`;
+  blockers of the dependents move to the original), `completed` (unblocks
+  dependent issues), `not_planned` (dependents stay blocked); empty = GitHub
+  default `completed`.
 
-**Abgelehnte Alternativen:**
-- *Duplikat/„bereits gelöst" ohne Gate schließen:* Ein Reopen triggert refine
-  nicht erneut (Reconcile merkt sich die Issue-Nummer), und ein `completed`-Close
-  gibt abhängige Issues sofort für develop frei (ADR 0031). Fehler wären still
-  und teuer, die Freigabe eines Close dagegen selten und schnell.
-- *Reject → `needs approval`:* bräuchte einen Reject-Hook in der Engine; der
-  manuelle Weg genügt und entspricht dem Reject von `needs approval`.
+**Rejected alternatives:**
+- *Close duplicates / "already solved" without a gate:* a reopen does not trigger
+  refine again (reconcile remembers the issue number), and a `completed` close
+  immediately unblocks dependent issues for develop (ADR 0031). Mistakes would be
+  silent and expensive, while approving a close is rare and quick.
+- *Reject → `needs approval`:* would need a reject hook in the engine; the manual
+  path is enough and matches rejecting `needs approval`.

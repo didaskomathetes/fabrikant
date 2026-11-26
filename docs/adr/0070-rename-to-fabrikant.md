@@ -1,6 +1,6 @@
 # ADR 0070: Rename to fabrikant
 
-**Status:** Accepted (2026-11-24, merged to main). Amended 2026-11-24: the legacy compatibility layer (decision 2) was removed before the first public release; the project had no external users.
+**Status:** Accepted (2026-11-24, merged to main). Amended 2026-11-24: the legacy compatibility layer (decision 2) was removed before the first public release; the project had no external users. Amended 2026-11-26: ADRs 0013–0024 use the new names (decision 6).
 **Affects:** ADR 0069 (distribution and plugin contract), ADR 0047 (spec sources), ADR 0063 (provider registry).
 
 ## Context
@@ -40,6 +40,8 @@ Nothing has been published to PyPI yet, so the plugin contract can still change 
 
 6. **ADRs stay historical.** ADR 0069 and earlier keep the old name `fabrik` (decision records are not
    rewritten); read them with `fabrik` = `fabrikant`.
+   *Amendment 2026-11-26:* ADRs 0013–0024 are an exception: when they were translated to English,
+   their old names were replaced with the new ones.
 
 ## Consequences
 
