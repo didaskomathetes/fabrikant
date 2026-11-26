@@ -45,7 +45,7 @@ verschoben: 0013-review-verdict-marker → 0024, 0014-alert-dedup-fingerprint �
 | [0025](0025-alert-dedup-fingerprint.md) | Alert-Deduplizierung per Fingerprint (statt Issue pro Run) | Akzeptiert |
 | [0026](0026-alert-log-tail-redaction.md) | Redaction des Alert-`log_tail` | Akzeptiert |
 | [0027](0027-on-webhook-trigger.md) | `on_webhook`-Trigger (HMAC, Tunnel-CORS) | Akzeptiert |
-| [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-10-23) |
+| [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-11-26: Dedup inkl. `exclusive_group` prozesslokal) |
 | [0030](0030-auth-local-users-roles.md) | Authentifizierung + Autorisierung (lokale Benutzer, Rollen) | Akzeptiert |
 | [0031](0031-issue-duplicates-dependencies.md) | Duplikat-/Abhängigkeits-Erkennung im Refine, fehlende Voraussetzungen als Issue, Blocker-Gate im Develop (`skip_blocked`), Backfill | Akzeptiert |
 | [0032](0032-adr-number-check.md) | ADR-Nummern — Vergabe, Kollisionsprüfung, Umnummerierung | Akzeptiert |

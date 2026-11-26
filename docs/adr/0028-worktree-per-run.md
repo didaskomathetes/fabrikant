@@ -1,6 +1,6 @@
 # ADR 0028: Worktree pro Run statt Projekt-Lock
 
-**Status:** Akzeptiert (2026-10-20, Merge #238; vorgeschlagen 2026-10-20; geändert 2026-10-23: Worktree-Lease statt Single-Process-Garantie, #237/PR #328)
+**Status:** Akzeptiert (2026-10-20, Merge #238; vorgeschlagen 2026-10-20; geändert 2026-10-23: Worktree-Lease statt Single-Process-Garantie, #237/PR #328; geändert 2026-11-26: Dedup inkl. `exclusive_group` prozesslokal, nur pausierte `needs_approval`-Runs prozessübergreifend, PR #20)
 **Ersetzt:** den Projekt-Lock (`runs.project_lock`, Referenz im Issue: ADR 0001 §4).
 **Ändert:** ADR 0015 (Warten auf den Projekt-Lock wird zum Warten auf einen Run-Slot) und
 ADR 0020 (`worktree: false`-Loops belegen keinen Slot statt eines eigenen Locks).
