@@ -8,6 +8,13 @@ All notable changes to fabrikant are documented here. The format follows
 
 ### Added
 
+- `fabrikant validate` warns about spec keys the schema doesn't know (`⚠ <project>: unknown spec key <path>: <key>`).
+  The engine ignores them, so a typo or a key from a newer fabrikant version would otherwise silently have no
+  effect. `x-` keys and keys a step plugin declares in its schema (literal or via `patternProperties`) are exempt
+  (steps of a plugin without a key list or with open `additionalProperties` are not checked); the exit code is
+  unchanged.
+- The spec schema documents the backend step options `sandbox` (codex), `tools` (copilot) and `username`/`password`
+  (opencode).
 - `scripts/pr-status.py`: new subcommands `review-check` (did the reviewer actually post a marker review for the
   head?), `sync-base` (keep a PR on its base via `update-branch`, conflict label), `reply-context` / `post-replies`
   (host-side gate and posting for the pr-reply loop: reply drafts with `re=` markers, checked issue references,

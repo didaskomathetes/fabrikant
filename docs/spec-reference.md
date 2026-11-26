@@ -6,7 +6,8 @@ This page is generated from it (`scripts/generate-spec-reference.py`) — do not
 The schema checks the **structure** (types, enums, required fields, ranges) of the *expanded* spec
 (after `vars:`/template/relay expansion). Semantic checks (backend registry,
 cron-vs-retry intervals, alert route cycles, template parameters) additionally run in
-`src/fabrikant/specs.py`. `fabrikant validate` runs both.
+`src/fabrikant/specs.py`. `fabrikant validate` runs both and warns about keys the schema doesn't know
+(a typo or a key from a newer fabrikant version would otherwise silently have no effect).
 
 Legend: **required** = mandatory, *italic* = optional. Types in ``code``.
 
@@ -88,6 +89,9 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `endpoint` | string | optional | agent: backend endpoint override. |
 | `connection` | string | optional | agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state). |
 | `variant` | string | optional | agent: backend variant. |
+| `sandbox` | string | optional | agent with backend codex: `codex exec --sandbox` mode (default: FABRIKANT_CODEX_SANDBOX or workspace-write). |
+| `username` | string / number | optional | agent with backend opencode: server basic-auth user (default: FABRIKANT_AGENT_USERNAME or opencode). |
+| `password` | string / number | optional | agent with backend opencode: server basic-auth password (default: FABRIKANT_AGENT_PASSWORD; prefer the env var or a connection over a password in the spec). |
 | `tools` | string / list of string | optional | agent (claude_code, copilot): restrict the available tools. claude_code: hard limit on the built-ins that exist, passed to --tools (e.g. [Read, Grep, Edit]; MCP tools unaffected); copilot: --allow-tool value (default: all tools). |
 | `allowed_tools` | string / list of string | optional | agent (claude_code): pre-approval rules passed to --allowedTools (e.g. Edit(/.fabrikant-session/review/review.json)); the CLI then runs in dontAsk mode and denies calls that would prompt. Not an allowlist: calls needing no approval (reads, read-only Bash) and approvals from settings.json files still run; use tools for a hard limit. Default: acceptEdits + Bash. |
 | `billing` | `api` \| `subscription` \| `unknown` | optional | llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection. |
