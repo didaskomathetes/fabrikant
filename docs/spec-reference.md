@@ -64,7 +64,7 @@ One step of a loop. `type` selects the step kind; the per-type fields are listed
 | `approval_when` | object | optional | Conditional approval (ADR 0017): mapping variable -> value or list of values; pauses only when the variable matches. Not combinable with approval: true. |
 | `approval_reason` | string | optional | Template for the approval request text ({variables} allowed). |
 | `failure_kind` | `transient` \| `environment` \| `outcome` | optional | Failure class (ADR 0035) for non-zero exit codes; shell steps only. |
-| `done_marker` | boolean | optional | shell: true = an output line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps. |
+| `done_marker` | boolean | optional | shell: true = a stdout line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps. |
 | `extra_context` | list of → `context_source` | optional | Step-level prompt context sources for LLM steps (ADR 0008); false disables the project-level context for this step. |
 | `cmd` | string | optional | shell: command (sh -c in the workdir; {variables} substituted). |
 | `timeout` | → `numeric` | optional | Step timeout in seconds (>= 0; shell, http, llm, agent). |

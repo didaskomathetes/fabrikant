@@ -51,7 +51,7 @@ red, otherwise neutral. Flow, retry and alerts stay untouched. Relay reports `pa
 handoff status (`active`/`blocked`/`done`, session).
 
 A shell step with `done_marker: true` can also end the run early and successfully with a line
-`::fabrikant-done::` (exit 0 only), e.g. a gate that finds no new work: the remaining steps are recorded as
+`::fabrikant-done::` (stdout, exit 0 only), e.g. a gate that finds no new work: the remaining steps are recorded as
 skipped. The key is an explicit opt-in: without it the line is ordinary output (kept, no effect), so the output of
 tests, linters or echoed PR text cannot skip later gates — set it only on trusted gate steps. Lines
 `::fabrikant-warning::<text>` (stdout or stderr, also on failure) report problems that don't fail the step: they

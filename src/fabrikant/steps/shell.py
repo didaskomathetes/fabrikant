@@ -25,7 +25,7 @@ Timeout: `timeout` (default 600 s). The command runs in its own process group
 Verdict: an output line `::fabrikant-verdict::<word>` (`runmodel.verdict_line`) reports the domain
 result of the step (e.g. `fail` of an audit, the step itself stays green). It is removed from output and
 summary and lands as `verdict` in the step record; the UI shows it as a badge.
-With `done_marker: true` (opt-in, shell steps only), a line `::fabrikant-done::` (exit 0 only)
+With `done_marker: true` (opt-in, shell steps only), a stdout line `::fabrikant-done::` (exit 0 only)
 ends the run successfully after this step — the remaining steps are skipped (gate without work).
 Without the key the line is ordinary output (not removed, no effect): output of tests, linters or
 echoed PR text must not be able to skip later gates.

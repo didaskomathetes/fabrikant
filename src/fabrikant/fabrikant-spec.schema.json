@@ -324,7 +324,7 @@
         },
         "done_marker": {
           "type": "boolean",
-          "description": "shell: true = an output line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps."
+          "description": "shell: true = a stdout line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps."
         },
         "extra_context": {
           "type": "array",
