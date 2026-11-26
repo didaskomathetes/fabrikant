@@ -1,16 +1,38 @@
 """Tests für den Fetcher (ADR 0060 §1): SSRF, Auto-Freigabe, Ledger, End-to-End.
 
-Netzwerk wird via Monkeypatch von ``Fetcher._http_get`` gemockt — keine echten Calls.
+No real network access: ``Fetcher._http_get`` is monkeypatched per test, and the test domain's
+DNS lookup (done by the SSRF guard before any request) is stubbed for the whole module.
 """
 
 from __future__ import annotations
 
 import json
+import socket
 
 import pytest
 
 from fabrikant.fetch import fetcher
 from fabrikant.fetch.fetcher import Fetcher, _SafeRedirectHandler
+
+_TEST_DOMAIN = "example.com"
+# Any globally routable address passes the SSRF guard; documentation ranges would be blocked.
+_PUBLIC_IP = "93.184.215.14"
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns(monkeypatch):
+    """Resolve the test domain to a public address, so tests do not depend on external DNS.
+
+    Other hosts (IP literals, ``localhost``) need no network and keep their real resolution.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def resolve(host, port, *args, **kwargs):
+        if host != _TEST_DOMAIN:
+            return real_getaddrinfo(host, port, *args, **kwargs)
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (_PUBLIC_IP, port))]
+
+    monkeypatch.setattr(fetcher.socket, "getaddrinfo", resolve)
 
 
 def _mk(approved_domains=(), approved_urls=(), out_dir=None, ledger=None):
@@ -70,8 +92,6 @@ def test_quarantined_on_injection_override(tmp_path, monkeypatch):
 
 def test_ssrf_blocked_loopback(tmp_path, monkeypatch):
     # Host auflösung liefert Loopback → muss blockiert werden.
-    import socket
-
     def fake_getaddrinfo(host, port, *a, **k):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))]
 
