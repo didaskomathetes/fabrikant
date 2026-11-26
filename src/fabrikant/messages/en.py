@@ -528,6 +528,8 @@ MESSAGES: dict[str, str] = {
     "specs.verify_needs_checks_as_a": "{where}: verify needs 'checks' as a list",
     "specs.agent_without_prompt_prompt_file": "{where}: agent without prompt/prompt_file",
     "specs.agent_variant_must_be_a": "{where}: agent variant must be a string (is {v2!r})",
+    "specs.agent_tool_list_empty": "{where}: agent {key} must not be empty (omit the key for the backend default)",
+    "specs.agent_tool_list_must_be": "{where}: agent {key} must be a string or a list of strings (is {v2!r})",
     "specs.github_identity_must_be_one": "{where}: github_identity must be one of {v2} (is {gid!r})",
     "specs.agent_workdir_must_be_a": "{where}: agent workdir must be a string",
     "specs.review_without_model_required_builder": "{where}: review without model (required, ≠ builder model)",

@@ -11,6 +11,12 @@ ends, then done/failed. The result is a final JSON on stdout
 - **Permissions:** default `--permission-mode acceptEdits` +
   `--allowedTools Bash` (agent edits files, may use shell). Real
   isolation (non-root/container/VM) is a deployment prerequisite.
+  Restricted per step: `tools` is the hard limit on which built-ins exist (`--tools`);
+  `allowed_tools` are pre-approval rules (`--allowedTools`, e.g.
+  `Edit(/.fabrikant-session/review/review.json)`) and switch the CLI to `dontAsk`,
+  which denies whatever would otherwise prompt. Not an allowlist: calls that need no
+  approval (reads in the workdir, read-only Bash) and calls approved by the user/
+  project/local `settings.json` still run. `tools` does not cover MCP tools.
 - **Staleness:** disabled (`_stale_after() → None`) — no inactive
   server state as with opencode; the step timeout is the backstop.
 """
@@ -22,7 +28,12 @@ import json
 from ..agentenv import CLAUDE_AUTH_VARS, passthrough
 from ..billing import Billing, from_auth
 from ..tokens import TokenCounts
-from ._oneshot import OneShotCliBackend
+from ._oneshot import OneShotCliBackend, csv_arg
+
+
+def _opt_csv(value: object) -> str | None:
+    """Like `csv_arg`, but an omitted key stays None — an explicit empty value must not mean "default"."""
+    return None if value is None else csv_arg(value)
 
 
 class ClaudeCodeBackend(OneShotCliBackend):
@@ -30,13 +41,29 @@ class ClaudeCodeBackend(OneShotCliBackend):
 
     name = "claude_code"
 
-    def __init__(self, endpoint: str = "", model: str = "", stale_after: int = 900):
+    def __init__(
+        self,
+        endpoint: str = "",
+        model: str = "",
+        stale_after: int = 900,
+        tools: str | None = None,
+        allowed_tools: str | None = None,
+    ):
         # opencode uses `provider/model`; `claude --model` wants only the model.
         super().__init__(endpoint, model.removeprefix("anthropic/"), stale_after)
+        # None = key omitted (backend default); "" = explicitly empty (no tools / no pre-approvals).
+        self.tools = None if tools is None else tools.strip()
+        self.allowed_tools = None if allowed_tools is None else allowed_tools.strip()
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> ClaudeCodeBackend:
-        return cls(endpoint, model, stale_after=stale_after)
+        return cls(
+            endpoint,
+            model,
+            stale_after=stale_after,
+            tools=_opt_csv(step.get("tools")),
+            allowed_tools=_opt_csv(step.get("allowed_tools")),
+        )
 
     # ------------------------------------------------------------------ Hooks
     def _env(self) -> dict:
@@ -56,20 +83,17 @@ class ClaudeCodeBackend(OneShotCliBackend):
         return None  # no staleness check — the step timeout is the backstop
 
     def _build_cmd(self) -> list[str]:
-        # Containment: `acceptEdits` + `--allowedTools Bash` lets the agent
+        cmd = ["claude", "-p", "--output-format", "json", "--model", self.model]
+        if self.tools is not None:
+            cmd += ["--tools", self.tools]  # "" = no built-in tools at all
+        if self.allowed_tools is not None:
+            # Restricted: whatever would prompt is denied (no prompt in a headless run).
+            # Empty = no pre-approvals at all — never falls back to the Bash default.
+            cmd += ["--permission-mode", "dontAsk"]
+            return [*cmd, "--allowedTools", self.allowed_tools] if self.allowed_tools else cmd
+        # Default containment: `acceptEdits` + `--allowedTools Bash` lets the agent
         # edit files in the workdir and run shell commands.
-        return [
-            "claude",
-            "-p",
-            "--output-format",
-            "json",
-            "--model",
-            self.model,
-            "--permission-mode",
-            "acceptEdits",
-            "--allowedTools",
-            "Bash",
-        ]
+        return [*cmd, "--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
 
     def _parse(self, out: str, err: str, returncode: int) -> dict:
         base = {"tokens": TokenCounts().as_poll(), "cost": 0.0, "tools": []}
