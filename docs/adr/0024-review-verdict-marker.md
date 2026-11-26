@@ -1,81 +1,82 @@
-# ADR 0024: Review als GitHub-Review mit Verdikt-Marker, Inline-Threads, Reply-Sperre
+# ADR 0024: Review as a GitHub review with verdict marker, inline threads, reply lock
 
-**Status:** Akzeptiert (2026-10-19, Merge #130; vorgeschlagen 2026-10-19)
-**Entscheider:** Mensch (Freigabe ausstehend)
-**Kontext:** PR #124 hing in einer Review-Schleife. Der PR wurde vom
-persönlichen Account erstellt — derselbe Account, mit dem `review-pr` reviewt.
-GitHub verbietet Approve **und** Request-Changes auf eigene PRs
-(`Can not approve your own pull request`); ADR 0010 löst das nur für
-`develop`-PRs (App erstellt, PAT reviewt). Folge: Der Review landete nur als
-PR-Kommentar, `reviews` blieb leer, der Merge-Check in `pr-reply` (letzte
-Review `APPROVED`) konnte nie greifen. Retries posteten denselben Review doppelt.
+**Status:** Accepted (2026-10-19, merge #130; proposed 2026-10-19)
+**Deciders:** Human (approval pending)
+**Context:** PR #124 was stuck in a review loop. The PR was created by the
+personal account — the same account that `review-pr` reviews with. GitHub forbids
+both approve **and** request-changes on one's own PRs
+(`Can not approve your own pull request`); ADR 0010 only solves this for
+`develop` PRs (the app creates, the PAT reviews). Result: the review only ended
+up as a PR comment, `reviews` stayed empty, and the merge check in `pr-reply`
+(latest review `APPROVED`) could never apply. Retries posted the same review
+twice.
 
-Zweitens setzte `pr-reply` auf Thread-Replies (`in_reply_to`) als
-Self-Loop-Sperre. PR-Kommentare (Issue-Comments-API) haben keine Threads —
-jede Antwort war top-level und galt im nächsten Run als "neu". Nur das
-LLM-Urteil ("klingt nach meiner eigenen Antwort") verhinderte die Endlosschleife.
+Secondly, `pr-reply` relied on thread replies (`in_reply_to`) as a self-loop
+lock. PR comments (issue comments API) have no threads — every answer was
+top-level and counted as "new" in the next run. Only the LLM's judgement ("sounds
+like my own answer") prevented the endless loop.
 
-Drittens konnte der Reviewer nur einen Block Prosa schreiben — konkrete,
-zeilengenaue Hinweise und übernehmbare Suggestions waren nicht möglich.
+Thirdly, the reviewer could only write a block of prose — concrete, line-precise
+remarks and applicable suggestions were not possible.
 
-## Entscheidung
+## Decision
 
-**Ein Review pro Head-SHA als GitHub-Review-Objekt**, gepostet und ausgewertet
-**deterministisch** von `scripts/pr-status.py` (nicht vom Agent):
+**One review per head SHA as a GitHub review object**, posted and evaluated
+**deterministically** by `scripts/pr-status.py` (not by the agent):
 
-- **Summary** = Review-Body, letzte Zeile ist der Verdikt-Marker
-  `<!-- fabrik-review verdict=approved|changes_requested sha=<headRefOid> -->`.
-- **Inline-Kommentare** (optional, nach Urteil des Reviewers, max. 10) im selben
-  Review, gern mit ```` ```suggestion ````-Blöcken.
-- `post-review`: Event `COMMENT` auf eigenen PRs, sonst `APPROVE` /
-  `REQUEST_CHANGES` aus dem Marker; `commit_id` = Marker-SHA; idempotent pro
-  SHA (Retry-Schutz); lehnt GitHub Inline-Zeilen ab (HTTP 422), wird ohne
-  Inline gepostet und die Anmerkungen wandern in die Summary.
-- `merge-check`: Freigabe = jüngster Marker des Reviewer-Accounts (`gh api user`)
-  ist `approved` **für den aktuellen Head-SHA**, sonst eine GitHub-Review
-  `APPROVED` ohne Marker (Mensch, `pr_review`-Step). Gesperrt durch
-  `CHANGES_REQUESTED` ohne Marker und durch **offene Review-Threads**.
-- `pr-reply` antwortet auf Inline-Kommentare im Thread, übernimmt passende
-  Suggestions und löst den Thread auf (`resolve-thread`) nur, wenn das
-  Anliegen an der Zeile vollständig umgesetzt ist. Abgelehnte oder nur
-  teilweise umgesetzte Punkte bleiben offen und blockieren den Merge, bis ein
-  Mensch entscheidet.
-- `<!-- fabrik-reply -->` — letzte Zeile jeder `pr-reply`-Antwort;
-  `new-comments` liefert solche Kommentare nie als neu. Quellen: PR-Kommentare,
-  Review-Summaries, Inline-Kommentare (State-Keys `<num>-<id>`,
-  `<num>-review-<id>`, `<num>-inline-<id>`).
+- **Summary** = review body, the last line is the verdict marker
+  `<!-- fabrikant-review verdict=approved|changes_requested sha=<headRefOid> -->`.
+- **Inline comments** (optional, at the reviewer's discretion, max. 10) in the
+  same review, preferably with ```` ```suggestion ```` blocks.
+- `post-review`: event `COMMENT` on own PRs, otherwise `APPROVE` /
+  `REQUEST_CHANGES` from the marker; `commit_id` = marker SHA; idempotent per SHA
+  (retry protection); if GitHub rejects inline lines (HTTP 422), the review is
+  posted without inline comments and the remarks move into the summary.
+- `merge-check`: approval = the latest marker of the reviewer account
+  (`gh api user`) is `approved` **for the current head SHA**, otherwise a GitHub
+  review `APPROVED` without marker (human, `pr_review` step). Blocked by
+  `CHANGES_REQUESTED` without marker and by **open review threads**.
+- `pr-reply` answers inline comments in the thread, applies fitting suggestions
+  and resolves the thread (`resolve-thread`) only if the concern at that line is
+  fully implemented. Rejected or only partially implemented points stay open and
+  block the merge until a human decides.
+- `<!-- fabrikant-reply -->` — last line of every `pr-reply` answer; `new-comments`
+  never returns such comments as new. Sources: PR comments, review summaries,
+  inline comments (state keys `<num>-<id>`, `<num>-review-<id>`,
+  `<num>-inline-<id>`).
 
-## Begründung
+## Rationale
 
-- `event: COMMENT` ist auf eigenen PRs erlaubt — ein Mechanismus für Bot- und
-  Mensch-PRs, ohne neue Identität.
-- SHA-Bindung: Nach neuen Commits ist die alte Freigabe ungültig — Re-Review
-  ist Pflicht, wie bei "dismiss stale reviews".
-- Inline-Threads haben echte Threads und einen Resolved-Status — das ist der
-  natürliche Ort für "erledigt?" statt LLM-Urteil über Kommentarketten.
-- Script statt Prompt-jq: testbar (`tests/test_pr_status.py`), kein LLM-Raten
-  über Roh-JSON, keine Doppel-Posts.
+- `event: COMMENT` is allowed on own PRs — one mechanism for bot and human PRs,
+  without a new identity.
+- SHA binding: after new commits the old approval is invalid — a re-review is
+  mandatory, as with "dismiss stale reviews".
+- Inline threads are real threads and have a resolved status — that is the
+  natural place for "done?" instead of an LLM judgement over comment chains.
+- Script instead of prompt jq: testable (`tests/test_pr_status.py`), no LLM
+  guessing over raw JSON, no double posts.
 
-## Abgelehnte Alternativen
+## Rejected alternatives
 
-- **Zweite Identität für Mensch-PRs** (App approvet): sauberste GitHub-Semantik,
-  aber die App bräuchte Review-Rechte und ADR 0010 (App = Developer) würde aufgeweicht.
-- **Verdikt als PR-Kommentar + separate Inline-Review**: zwei Posts,
-  zwei Notifications, nicht atomar.
-- **`reviewDecision`**: bleibt bei eigenen PRs leer.
-- **Autor-Filter für Replies**: Reviewer und Developer teilen sich bei
-  Mensch-PRs den Account — nicht unterscheidbar.
+- **Second identity for human PRs** (the app approves): cleanest GitHub
+  semantics, but the app would need review rights and ADR 0010 (app = developer)
+  would be watered down.
+- **Verdict as a PR comment + separate inline review:** two posts, two
+  notifications, not atomic.
+- **`reviewDecision`:** stays empty on own PRs.
+- **Author filter for replies:** reviewer and developer share the account on
+  human PRs — not distinguishable.
 
-## Folgen
+## Consequences
 
-- Mensch-PRs mit `fabrik`-Label werden nach LLM-Freigabe (Marker, keine offenen
-  Threads) automatisch gemergt — wie Bot-PRs. Wer das nicht will, setzt kein
-  `fabrik`-Label.
-- Grenze: `pr-reply` nutzt denselben Account wie der Reviewer und *könnte*
-  einen Review-Marker schreiben oder Threads ungerechtfertigt auflösen. Der
-  Prompt verbietet Ersteres; Kommentare sind untrusted. Echte Trennung bräuchte
-  getrennte Tokens für die beiden Loops.
-- Inline-Zeilen muss das Modell aus dem Diff korrekt ableiten; Fehler kosten
-  nur die Zeilenbindung (422-Fallback), nicht den Review.
-- Bestehende Antworten ohne Marker stehen im State (`replied-comments.json`)
-  und bleiben ausgeblendet.
+- Human PRs with the `fabrikant` label are merged automatically after LLM approval
+  (marker, no open threads) — like bot PRs. Whoever does not want that sets no
+  `fabrikant` label.
+- Limit: `pr-reply` uses the same account as the reviewer and *could* write a
+  review marker or resolve threads without justification. The prompt forbids the
+  former; comments are untrusted. Real separation would need separate tokens for
+  the two loops.
+- The model has to derive inline lines correctly from the diff; mistakes only
+  cost the line binding (422 fallback), not the review.
+- Existing answers without a marker are in the state (`replied-comments.json`)
+  and stay hidden.

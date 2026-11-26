@@ -1,7 +1,7 @@
 # ADR 0045: Incident-Roundtrip (Sentry/CloudWatch → Triage → Hotfix-PR)
 
-**Status:** Akzeptiert (2026-11-13)
-**Bezug:** `docs/framework-v1-draft.md` Phase 3 + §4, ADR 0027 (`on_webhook`), ADR 0011 (Approval),
+**Status:** Akzeptiert (2026-11-13); references fixed 2026-11-26
+**Bezug:** `docs/roadmap.md` Phase 3, ADR 0027 (`on_webhook`), ADR 0011 (Approval),
 Issue #33 (`on_slack`), #34 (`on_datadog`).
 
 ## Kontext
@@ -14,7 +14,7 @@ Payload→Variablen, kennt aber keine Alert-Formate und keine Triage.
 
 - **Intake:** neuer Trigger `on_alert` (`source: sentry|cloudwatch`, `secret_env`) und Route
   `POST /api/alert/<projekt>/<loop>`. Auth wie ADR 0027 (HMAC-SHA256 über den Raw-Body,
-  `X-Fabrik-Signature`; für Sentry zusätzlich `Sentry-Hook-Signature`); alles andere → einheitlich
+  `X-Fabrikant-Signature`; für Sentry zusätzlich `Sentry-Hook-Signature`); alles andere → einheitlich
   401. Die Route ist wie der Webhook von Origin/Token ausgenommen und über den Tunnel-Host erreichbar.
   Payloads werden in `alerts.Alert` normalisiert und als `alert_*`-Variablen über die gemeinsame
   Run-Start-Funktion (`_start_run`) an den Triage-Loop gegeben. CloudWatch-Zustand ≠ `ALARM` →

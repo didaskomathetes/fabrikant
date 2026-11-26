@@ -406,7 +406,7 @@ class FabrikantHandler(BaseHTTPRequestHandler):
         """Start a run with initial variables (the only internal start function).
 
         Shared for `POST /api/runs` and `on_webhook` (no separate webhook
-        code path, framework-v1-draft §1.3). Returns `(payload, http_code)`."""
+        code path). Returns `(payload, http_code)`."""
         # Generate the run id BEFORE the worker start: the response goes out
         # before the worker writes the record to disk. The UI needs the
         # id to follow the new run via /api/run/<id> — otherwise its

@@ -1,34 +1,35 @@
-# ADR 0018: Nativer `issue`-Step
+# ADR 0018: Native `issue` step
 
-**Status:** Akzeptiert (2026-10-20, Merge #184; vorgeschlagen 2026-10-20)
-**Ergänzt:** ADR 0001 §5 (`gh`-CLI als Übergang bis der `issue`-Step existiert).
+**Status:** Accepted (2026-10-20, merge #184; proposed 2026-10-20)
+**Extends:** ADR 0001 §5 (`gh` CLI as a stopgap until the `issue` step exists).
 
-## Kontext
+## Context
 
-Triage-/Refine-/Sweep-Loops machten Issue-Operationen per `shell` + `gh`. Das ist
-fragil (Substitution im Shell-String, ADR 0008 braucht `env:`-Workarounds,
-mktemp/trap-Boilerplate) und die API-Aufrufe sind nicht isoliert testbar.
+Triage/refine/sweep loops performed issue operations via `shell` + `gh`. This is
+fragile (substitution in the shell string, ADR 0008 needs `env:` workarounds,
+mktemp/trap boilerplate) and the API calls cannot be tested in isolation.
 
-## Entscheidung
+## Decision
 
-- Neuer deterministischer Step-Typ `issue` (`create|edit|label|close`) auf Basis der
-  vorhandenen GitHub-REST-Helfer (`_gh_api`, `GITHUB_TOKEN`, wie `pr`/`pr_merge`).
-  Werte gehen als JSON-Payload an die API, nie durch eine Shell.
-- `create` setzt `issue_number`/`issue_url` im Variable-Store.
-- Bedingte Ausführung step-lokal über `only_if` (gleiche Semantik wie `approval_when`,
-  geteilter Helfer `_cond_matches`) und `skip_if_empty`; `edit` unterstützt
-  `append` + `unless_contains` (Idempotenz-Marker statt Shell-`case`).
-- `label` legt fehlende Labels implizit an (GitHub-Verhalten). Die bisherigen
-  `ensure-labels`-Steps (`gh label create --color`) entfallen; Label-Farben müssen
-  einmalig manuell gesetzt werden. Bewusst kein fünfter Action-Typ.
-- Triage-, Refine- und refactor-sweep-Loops nutzen `issue`-Steps. Der Sweep-Agent
-  liefert nur noch JSON-Kandidaten; ein `llm`-Step extrahiert sie, max. 3
-  `create`-Steps legen die Issues an. Einige Specs bleiben vorerst auf `shell` + `gh`
-  (außerhalb des Scopes).
-- Token-Schutz: `GITHUB_TOKEN` erscheint nie in Step-Ergebnissen; zusätzlich greift das
-  bestehende Secret-Masking in Logs und Run-Records.
+- New deterministic step type `issue` (`create|edit|label|close`) based on the
+  existing GitHub REST helpers (`_gh_api`, `GITHUB_TOKEN`, as in
+  `pr`/`pr_merge`). Values go to the API as a JSON payload, never through a shell.
+- `create` sets `issue_number`/`issue_url` in the variable store.
+- Conditional execution local to the step via `only_if` (same semantics as
+  `approval_when`, shared helper `_cond_matches`) and `skip_if_empty`; `edit`
+  supports `append` + `unless_contains` (idempotency marker instead of a shell
+  `case`).
+- `label` creates missing labels implicitly (GitHub behaviour). The previous
+  `ensure-labels` steps (`gh label create --color`) are dropped; label colours
+  have to be set manually once. Deliberately no fifth action type.
+- Triage, refine and refactor-sweep loops use `issue` steps. The sweep agent now
+  only delivers JSON candidates; an `llm` step extracts them, and at most 3
+  `create` steps create the issues. Some specs stay on `shell` + `gh` for now
+  (out of scope).
+- Token protection: `GITHUB_TOKEN` never appears in step results; in addition,
+  the existing secret masking applies to logs and run records.
 
-## Folgen
+## Consequences
 
-- Weniger Shell-Injection-Fläche, testbare Issue-Logik ohne `gh`.
-- Weitere Specs können später analog migriert werden.
+- Less shell injection surface, testable issue logic without `gh`.
+- Further specs can be migrated analogously later.

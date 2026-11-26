@@ -1,6 +1,6 @@
 # Releasing fabrikant
 
-Releases are tag-driven (`.github/workflows/release.yml`); see ADR 0069 and ADR 0070.
+Releases are tag-driven (`.github/workflows/release.yml`); see ADR 0069.
 
 ## Prerequisites
 

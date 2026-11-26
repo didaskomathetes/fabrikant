@@ -1,33 +1,32 @@
-# ADR 0015: Freigaben bei belegtem Projekt-Lock einreihen
+# ADR 0015: Queue approvals while the project lock is held
 
-**Status:** Akzeptiert (2026-10-19, Merge #145; vorgeschlagen 2026-10-19; geändert durch ADR 0028)
-**Kontext:** Runs eines Projekts teilen sich einen Worktree und werden per
-Projekt-Lock serialisiert (`runs.project_lock`). Ein `needs_approval`-Run hält
-den Lock während der Pause nicht. Wurde er freigegeben, während ein anderer Run
-desselben Projekts lief, lehnte `_chat_resume` mit „läuft bereits“ ab. Die
-Freigabe ging verloren, und der Mensch musste warten und dann erneut klicken.
-Mit vielen Trigger-Runs (on_issue/on_pr-Reconcile, ADR 0014) ist das Projekt
-fast immer belegt, die Freigabe war damit praktisch blockiert.
+**Status:** Accepted (2026-10-19, merge #145; proposed 2026-10-19; changed by ADR 0028); references fixed 2026-11-26
+**Context:** Runs of a project share a worktree and are serialized by a project
+lock (`runs.project_lock`). A `needs_approval` run does not hold the lock during
+the pause. If it was approved while another run of the same project was running,
+`_chat_resume` rejected it with "already running". The approval was lost, and the
+human had to wait and then click again. With many trigger runs (on_issue/on_pr
+reconcile, ADR 0014) the project is almost always busy, so approving was
+effectively blocked.
 
-## Entscheidung
+## Decision
 
-- Approve bei belegtem Lock wird **angenommen und eingereiht**: Der Run-Record
-  bekommt `approval_queued: <ISO-Zeit>` und bleibt `needs_approval`. Ein
-  Resume-Worker-Thread wartet **blockierend** auf den Projekt-Lock und setzt
-  danach fort. `resumed` im API-Response ist `true`.
-- Nach dem Lock-Erwerb prüft der Worker den Status erneut: Ein **Reject während
-  des Wartens gewinnt** (kein Resume).
-- **Idempotent:** pro Run höchstens ein Worker pro Prozess (`_resume_workers`).
-  Ein erneutes Approve meldet „bereits freigegeben“.
-- **Restart-fest:** `serve()` startet für alle `needs_approval`-Runs mit
-  `approval_queued` wieder einen Worker (`requeue_approved_runs`).
-- Die Serialisierung selbst bleibt (gemeinsamer Worktree, siehe
-  framework-v1-draft).
+- Approving while the lock is held is **accepted and queued**: the run record
+  gets `approval_queued: <ISO time>` and stays `needs_approval`. A resume worker
+  thread waits **blocking** for the project lock and then continues. `resumed` in
+  the API response is `true`.
+- After acquiring the lock the worker checks the status again: a **reject while
+  waiting wins** (no resume).
+- **Idempotent:** at most one worker per run per process (`_resume_workers`). A
+  repeated approve reports "already approved".
+- **Restart-safe:** `serve()` starts a worker again for all `needs_approval` runs
+  with `approval_queued` (`requeue_approved_runs`).
+- Serialization itself remains (shared worktree).
 
-## Konsequenzen
+## Consequences
 
-- Freigaben gehen nicht mehr verloren. Die UI zeigt den Wartezustand an.
-- Ein wartender Worker blockiert einen Thread, bis der laufende Run endet.
-  Hängt der Run, wartet die Freigabe mit (der Step-Timeout begrenzt das).
-- Der CLI-Pfad (`fabrik approve`, eigener Prozess) bleibt synchron. Sein Lock
-  ist prozesslokal und von diesem Problem nicht betroffen.
+- Approvals are no longer lost. The UI shows the waiting state.
+- A waiting worker blocks a thread until the running run ends. If that run hangs,
+  the approval waits with it (the step timeout limits this).
+- The CLI path (`fabrikant approve`, separate process) stays synchronous. Its lock
+  is process-local and not affected by this problem.

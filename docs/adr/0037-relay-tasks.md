@@ -4,7 +4,7 @@
 `retry` um `max_wait`/`retry_after` ergänzt, Exit-Code-Klassen der Relay-Steps, Label-Pflicht bei der
 Autorisierung, `bot_login`-Prüfung, Audit schreibt nur den Report; 2026-11-03 Nachtrag: Archiv des
 Audit-Trails, Trail aus dem PR entfernen)
-**Umsetzung:** `src/fabrik/relay/`, `prompts/relay/`
+**Umsetzung:** `src/fabrikant/relay/`, `prompts/relay/`
 **Baut auf:** ADR 0008 (untrusted Input in Shell-Steps), ADR 0010 (Dual-Identity), ADR 0020
 (worktree-freie Loops), ADR 0028 (Worktree pro Run).
 **Verwendet:** ADR 0035 (Fehlerklassifikation) und ADR 0036 (Run-Retry). Relay übernimmt deren
@@ -14,7 +14,7 @@ Wiederholung liegt am Task statt in einer eigenen Kette.
 ## Kontext
 
 Manche Aufgaben passen nicht in einen Run: ein historischer Datenimport, eine Migration, eine
-Analyse über Stunden oder Tage. Ein Run dauert höchstens `FABRIK_STALE_HOURS` (lokal 1 h). Ein
+Analyse über Stunden oder Tage. Ein Run dauert höchstens `FABRIKANT_STALE_HOURS` (lokal 1 h). Ein
 Server-Neustart bricht laufende Runs ab, und ein langer Run belegt den einzigen Worker. Solche
 Aufgaben sind außerdem selten Code mit PR: oft entstehen nur Ad-hoc-Skripte, SQL und Daten in einem
 Zielsystem. Ein klassisches Code-Review greift dann nicht.
@@ -25,12 +25,12 @@ der Erfolg wird unabhängig geprüft.
 
 ## Entscheidung
 
-1. **Issue = Auftrag, Branch = Zustand.** Ein Issue mit Opt-in-Label (Default `fabrik-relay`) ist
+1. **Issue = Auftrag, Branch = Zustand.** Ein Issue mit Opt-in-Label (Default `fabrikant-relay`) ist
    der *Brief*. Pflichtabschnitte sind `## Goal`, `## Session` (wie eine Session arbeitet) und
    `## Verify` (Invarianten, optional mit ```` ```verify ````-Kommando). Optional:
    `## Audit access` (read-only Zugang für den Prüfer) und `## Settings` (`max_sessions`,
-   `session_minutes`, `scope`). Der Zustand liegt auf dem Branch `fabrik/relay/<N>` in
-   `.fabrik/relay/<N>/`:
+   `session_minutes`, `scope`). Der Zustand liegt auf dem Branch `fabrikant/relay/<N>` in
+   `.fabrikant/relay/<N>/`:
    - `HANDOFF.md`: YAML-Front-Matter (`status: active|blocked|done`, `session`, `progress`,
      `not_before`, …) plus Markdown (`## State`, `## Next`, `## Audit facts`, `## Log`)
    - `scripts/`: jedes ausgeführte Skript und SQL
@@ -63,7 +63,7 @@ der Erfolg wird unabhängig geprüft.
    Loops einen laufenden Relay-Run übersehen und einen zweiten starten).
 
 4. **Session = checkout → Agent → checkin → publish.**
-   - `checkout` prüft die Freigabe erneut, schreibt den Handoff fort und legt `.fabrik-session/`
+   - `checkout` prüft die Freigabe erneut, schreibt den Handoff fort und legt `.fabrikant-session/`
      an (git-ignoriert): Brief, Deadlines, Scope.
    - Der Agent (`gate: false`) arbeitet in kleinen Einheiten, protokolliert alles und aktualisiert
      den Handoff nach jeder Einheit; ein Kill verliert höchstens eine Einheit.
@@ -110,7 +110,7 @@ der Erfolg wird unabhängig geprüft.
    Status-Kommentar liest der Dispatcher nur von der Builder-Identität.
 
 8. **Wiederholung nach dem Run-Retry (ADR 0036).** `relay.retry` hat dieselbe Form und
-   Bedeutung wie `retry` in ADR 0036 (geteiltes Modul `src/fabrik/retry.py`), Default aus:
+   Bedeutung wie `retry` in ADR 0036 (geteiltes Modul `src/fabrikant/retry.py`), Default aus:
 
    ```yaml
    retry:
@@ -162,9 +162,9 @@ der Erfolg wird unabhängig geprüft.
 
 ## Abgelehnte Alternativen
 
-- **Ein langer Run mit hohem Timeout:** scheitert an `FABRIK_STALE_HOURS` und Neustarts und
+- **Ein langer Run mit hohem Timeout:** scheitert an `FABRIKANT_STALE_HOURS` und Neustarts und
   blockiert den Worker.
-- **Handoff lokal im fabrik-State:** unsichtbar für das Team, verloren mit dem Rechner.
+- **Handoff lokal im fabrikant-State:** unsichtbar für das Team, verloren mit dem Rechner.
 - **Cron direkt auf `relay-session`:** startet jede Viertelstunde einen Agent, auch ohne fällige
   Aufgabe; Agent-Steps lassen sich nicht bedingt überspringen.
 - **Ein Kommentar pro Session:** zu laut. Die Geschichte gehört auf den Branch, der Kommentar zeigt
@@ -184,10 +184,10 @@ der Erfolg wird unabhängig geprüft.
 - (−) Sicherheit hängt an der Allowlist und an `bot_login`. Der Agent läuft weiterhin ohne Sandbox
   als OS-User (ADR 0010 Vorbedingung); Harness-Prüfungen schützen vor Drift, nicht vor einem
   böswilligen Agent.
-- (−) Read-only Zugang für den Prüfer muss das Projekt bereitstellen; fabrik kann ihn nicht
+- (−) Read-only Zugang für den Prüfer muss das Projekt bereitstellen; fabrikant kann ihn nicht
   erzwingen. Ohne ihn bricht das Audit ab und meldet das.
 - (−) Ein Relay-Run pro Projekt gleichzeitig; mehrere Tasks laufen reihum.
-- Session-Länge (`max_session_minutes`) plus Audit-Timeouts müssen unter `FABRIK_STALE_HOURS`
+- Session-Länge (`max_session_minutes`) plus Audit-Timeouts müssen unter `FABRIKANT_STALE_HOURS`
   bleiben.
 
 ## Offene Fragen
@@ -202,8 +202,8 @@ der Erfolg wird unabhängig geprüft.
 
 ## Nachtrag 2026-11-03: Archiv des Audit-Trails, Trail aus dem PR entfernen
 
-**Kontext.** Der Trail (`.fabrik/relay/<N>/`: Handoff, Skripte, Session-Logs, `AUDIT.md`,
-`audit/`) liegt nach Entscheidung 1 auf dem Branch `fabrik/relay/<N>`. Entsteht dabei Code mit PR,
+**Kontext.** Der Trail (`.fabrikant/relay/<N>/`: Handoff, Skripte, Session-Logs, `AUDIT.md`,
+`audit/`) liegt nach Entscheidung 1 auf dem Branch `fabrikant/relay/<N>`. Entsteht dabei Code mit PR,
 landet der Trail im PR-Diff und mit dem Merge auf `main`. Bei den ersten produktiven Tasks
 (zwei Produktionsspecs, je Issue → PR)
 waren 42 bzw. 41 von 48 Dateien Trail. Die PR-Beschreibungen versprachen „wird vor dem Merge
@@ -217,7 +217,7 @@ Abfrageergebnisse und Stichproben aus Produktivdaten enthalten, die nicht in ein
 1. **Zwei getrennte Schritte: archivieren, dann entfernen.**
    - *Archivieren* legt den Trail dauerhaft ab. Wie und wo, hängt vom Anbieter und von den Daten ab
      und ist austauschbar.
-   - *Entfernen* ist ein normaler Lösch-Commit von `.fabrik/relay/<N>/` auf dem Relay-Branch
+   - *Entfernen* ist ein normaler Lösch-Commit von `.fabrikant/relay/<N>/` auf dem Relay-Branch
      (Weg wie jeder Relay-Push, also auch `commit_via: api`). Er ist für alle Anbieter gleich.
    - **Entfernt wird nur nach erfolgreichem, verifiziertem Archiv.** Ohne Archiv bleibt der Trail auf
      dem Branch; der Status-Kommentar warnt dann, dass der PR den Trail noch enthält.
@@ -226,7 +226,7 @@ Abfrageergebnisse und Stichproben aus Produktivdaten enthalten, die nicht in ein
    - `archive(issue, commit) → TrailRef` mit `uri` (wo der Trail liegt), `sha256` (Hash über den
      Trail-Inhalt, kanonisch: sortierte Pfade + Dateihashes), `commit` (Stand des Branches) und
      Zeitpunkt
-   - `restore(ref) → Dateien` (stellt `.fabrik/relay/<N>/` wieder her)
+   - `restore(ref) → Dateien` (stellt `.fabrikant/relay/<N>/` wieder her)
    - `exists(ref) → bool`
 
    Eine Methode muss **unveränderliche** Ablage zusagen (kein Überschreiben eines vorhandenen
@@ -261,14 +261,14 @@ Abfrageergebnisse und Stichproben aus Produktivdaten enthalten, die nicht in ein
    Status-Kommentar, wenn ein PR vom Branch existiert).
 
 6. **Methoden.**
-   - `git-ref` (erste Umsetzung, GitHub): versteckter Ref `refs/fabrik/relay/<N>/audit-<k>` auf den
+   - `git-ref` (erste Umsetzung, GitHub): versteckter Ref `refs/fabrikant/relay/<N>/audit-<k>` auf den
      auditierten Commit, angelegt über `POST /git/refs`. Erscheint nicht in Tag- oder Branch-Listen,
      wird von `git clone`/`git fetch` ohne expliziten Refspec nicht geholt, löst keine
      Tag-Workflows aus und hält den Commit auch nach dem Löschen des Branches erreichbar. `uri` ist
      der Commit-Link (`…/tree/<sha>`). Am 2026-11-03 per
      API und `git push` getestet; in der Ziel-Organisation vor dem ersten Einsatz einmal zu prüfen.
    - `local` (erste Umsetzung, Entwicklung/Tests): Archiv als Verzeichnis unter
-     `FABRIK_DATA/relay-archive/<projekt>/<N>/audit-<k>/`. Nicht für Teams geeignet: nur auf diesem
+     `FABRIKANT_DATA/relay-archive/<projekt>/<N>/audit-<k>/`. Nicht für Teams geeignet: nur auf diesem
      Rechner.
    - `s3` (vorgesehen, Daten-Tasks): `s3://<bucket>/<prefix>/<projekt>/<N>/audit-<k>.tar.gz` mit
      Manifest (Commit, Hash, Verdikt). Unveränderlichkeit über S3 Object Lock bzw. eine
@@ -285,10 +285,10 @@ Abfrageergebnisse und Stichproben aus Produktivdaten enthalten, die nicht in ein
   Aufbewahrung); deshalb ist S3 keine Notlösung, sondern die vorgesehene Methode dafür.
 
 **Abgelehnte Alternativen.**
-- **Tags** (`fabrik-relay/<N>/audit-<k>`): sichtbar in Tag- und Release-Listen, stören Werkzeuge,
+- **Tags** (`fabrikant-relay/<N>/audit-<k>`): sichtbar in Tag- und Release-Listen, stören Werkzeuge,
   die alle Tags sortieren, und lösen `on: push: tags`-Workflows im Zielrepo aus.
 - **Archiv-Branch**: veränderlich und erscheint in der Branch-Liste.
-- **GitHub Action im Zielrepo, die `.fabrik/` vor dem Merge entfernt**: muss in jedes Team-Repo,
+- **GitHub Action im Zielrepo, die `.fabrikant/` vor dem Merge entfernt**: muss in jedes Team-Repo,
   hängt vom Anbieter ab, und die Evidenz geht mit dem Merge verloren.
 - **Trail von Anfang an auf einem separaten Orphan-Branch**: sauberster PR, aber Umbau von
   Entscheidung 1 (Handoff-Ort, Push, Checkout, Audit lesen aus zwei Branches). Bleibt eine Option
