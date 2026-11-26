@@ -45,7 +45,7 @@ def kill_group(proc: subprocess.Popen) -> None:
     Deliberately SIGKILL (not SIGTERM): the groups are test runs, `git` and agent CLIs —
     an orderly shutdown gains nothing, and an ignoring child would otherwise block
     the end of the server/step."""
-    with contextlib.suppress(OSError):  # ProcessLookupError: Gruppe schon beendet
+    with contextlib.suppress(OSError):  # ProcessLookupError: group already gone
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 

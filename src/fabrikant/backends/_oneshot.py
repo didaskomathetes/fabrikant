@@ -49,6 +49,15 @@ from ..tokens import TokenCounts
 STDERR_TAIL_CHARS = 4000
 
 
+def csv_arg(value: object) -> str:
+    """Step value (list or comma-separated string) → comma-separated string for a CLI flag."""
+    if isinstance(value, list | tuple):
+        return ",".join(str(v).strip() for v in value if str(v).strip())
+    text = str(value or "").strip()
+    # Only separators (" , ") count as empty; otherwise unchanged — commas may sit inside a rule.
+    return text if text.strip(", ") else ""
+
+
 def _tail(text: str, limit: int = STDERR_TAIL_CHARS) -> str:
     """Last `limit` characters of `text`, starting at a line boundary (if there is one in the excerpt)."""
     text = text.rstrip()
@@ -72,11 +81,11 @@ class _PipeDrain:
     def _run(self, proc: subprocess.Popen) -> None:
         try:
             self._result = proc.communicate()
-        except BaseException as e:  # noqa: BLE001 — im Aufrufer-Thread re-raisen
+        except BaseException as e:  # noqa: BLE001 — re-raise in the caller thread
             self._error = e
 
     def result(self) -> tuple:
-        """Wartet auf EOF beider Streams → `(stdout, stderr)`."""
+        """Waits for EOF on both streams → `(stdout, stderr)`."""
         self._thread.join()
         if self._error is not None:
             raise self._error
@@ -106,7 +115,7 @@ class OneShotCliBackend:
         raise NotImplementedError
 
     def billing(self) -> Billing:
-        """Abrechnungsart aus der übergebenen Auth (``fabrikant.billing``); Default: nicht ableitbar."""
+        """Billing kind derived from the passed auth (``fabrikant.billing``); default: not derivable."""
         return Billing.UNKNOWN
 
     def _env(self) -> dict | None:
@@ -191,7 +200,7 @@ class OneShotCliBackend:
             if stale is not None:
                 age = time.time() - s["started"]
                 if age > stale:
-                    if "sandbox" in s:  # Container stoppen, Austausch verwerfen
+                    if "sandbox" in s:  # stop the container, discard the exchange
                         self.cancel(session_id, directory)
                     # `retryable`: a hanging CLI is transient — a fresh
                     # session heals it (agent step retry, ADR 0035).

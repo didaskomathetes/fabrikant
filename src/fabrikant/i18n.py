@@ -1,8 +1,8 @@
-"""Backend messages (run log, chat, CLI, API errors, approval context) in de/en.
+"""Backend messages (run log, chat, CLI, API errors, approval context) in en/de.
 
-Language: ``FABRIKANT_LANG`` (``de`` | ``en``, default ``de`` = previous behavior). The web UI has
-its own catalogs (``web/i18n``, ADR 0049); this covers text the server produces itself, including
-text persisted in run records. Missing keys fall back to ``de``, then to the key.
+Language: ``FABRIKANT_LANG`` (``en`` | ``de``, default ``en``). The web UI has its own catalogs
+(``web/i18n``, ADR 0049); this covers text the server produces itself, including text persisted in
+run records. Missing keys fall back to ``en``, then to the key.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ import os
 
 from .messages import de, en
 
-DEFAULT_LANG = "de"
-SUPPORTED_LANGS = ("de", "en")
+DEFAULT_LANG = "en"
+SUPPORTED_LANGS = ("en", "de")
 
 _CATALOGS: dict[str, dict[str, str]] = {"de": de.MESSAGES, "en": en.MESSAGES}
 

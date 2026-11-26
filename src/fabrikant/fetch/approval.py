@@ -1,18 +1,17 @@
-"""Stufe 2 (ADR 0060 §3, ADR 0059 §5a): gebündelte menschliche Freigabe.
+"""Stage 2 (ADR 0060 §3, ADR 0059 §5a): bundled human approval.
 
-Eine Session, die URLs abrufen will, die weder im Herkunftsprotokoll noch in der
-Freigabeliste stehen, bekommt für ALL diese URLs **einen** gebündelten `access`-
-Request — nicht einen pro URL (Gegen Ermüdung). Besonderheiten gegenüber den anderen
-Eskalationsarten (ADR 0059 §5a):
+A session that wants to fetch URLs that are neither in the provenance ledger nor in the
+allowlist gets **one** bundled `access` request for ALL of those URLs — not one per URL
+(against fatigue). Differences from the other escalation kinds (ADR 0059 §5a):
 
-- **Kein Label, kein Stop.** Das Item läuft weiter; offene URLs bleiben unabgerufen.
-- **Ablauf.** Nach `access_timeout` (Default 24 h) gilt der Request als abgelehnt.
-- **Grant/Reject** pro URL oder „all". Grant-Information erreicht nie den Agenten als
-  untrusted Input (kein PR-/Issue-Kommentar).
-- **Suggest domain** ist nur ein Hint (Spec-Änderung durch einen Admin), kein Lerneffekt.
+- **No label, no stop.** The item keeps running; open URLs stay unfetched.
+- **Expiry.** After `access_timeout` (default 24 h) the request counts as rejected.
+- **Grant/reject** per URL or "all". Grant information never reaches the agent as
+  untrusted input (no PR/issue comment).
+- **Suggest domain** is only a hint (spec change by an admin), not a learning effect.
 
-Deterministisch, ohne LLM. Der Request hängt am bestehenden `ApprovalRequest`-Modell
-(ADR 0059) ab, damit er durch die gleiche UI-Operation läuft.
+Deterministic, no LLM. The request hangs off the existing `ApprovalRequest` model
+(ADR 0059) so that it runs through the same UI operation.
 """
 
 from __future__ import annotations
@@ -24,11 +23,11 @@ from typing import Any
 
 from fabrikant.approval import ApprovalRequest
 
-#: Default-Ablauf für offene `access`-Requests (ADR 0059 §5a).
+#: Default expiry for open `access` requests (ADR 0059 §5a).
 ACCESS_TIMEOUT_HOURS = 24.0
 
-#: Mindestanzahl wiederholter Grants pro Domain, bevor „Suggest domain" einen
-#: Hinweis liefert (ADR 0060 §3, „Gegen Ermüdung").
+#: Minimum number of repeated grants per domain before "Suggest domain" gives a
+#: hint (ADR 0060 §3, "against fatigue").
 SUGGEST_DOMAIN_THRESHOLD = 2
 
 
@@ -48,13 +47,13 @@ def _parse_dt(value: Any) -> datetime | None:
 
 @dataclass(frozen=True)
 class PendingURL:
-    """Eine URL, die Freigabe braucht (ADR 0060 §3)."""
+    """A URL that needs approval (ADR 0060 §3)."""
 
     url: str
     domain: str
-    found_in: str  # wo gefunden: source-id, "search" oder "agent"
-    scan: str  # Scan-Ergebnis dieser Quelle (clean/suspicious/quarantined/"")
-    why: str  # Begründung des Agenten
+    found_in: str  # where it was found: source id, "search" or "agent"
+    scan: str  # scan result of this source (clean/suspicious/quarantined/"")
+    why: str  # the agent's justification
 
     @classmethod
     def from_dict(cls, data: object) -> PendingURL | None:
@@ -77,7 +76,7 @@ class PendingURL:
 
 @dataclass
 class AccessRequest:
-    """Ein gebündelter `access`-Freigabe-Request für ein Item (ADR 0059 §5a)."""
+    """One bundled `access` approval request for an item (ADR 0059 §5a)."""
 
     item: str
     urls: list[PendingURL] = field(default_factory=list)
@@ -88,7 +87,7 @@ class AccessRequest:
 
     # --- Anblick / Selektion ---------------------------------------------------
     def pending(self) -> list[PendingURL]:
-        """Noch unentschiedene URLs (Reihenfolge wie beantragt)."""
+        """URLs still undecided (in the order requested)."""
         return [u for u in self.urls if self.decided.get(u.url) not in ("granted", "rejected")]
 
     def is_expired(self, now: datetime | None = None) -> bool:
@@ -96,7 +95,7 @@ class AccessRequest:
         return self.created_at + timedelta(hours=self.timeout_hours) < now
 
     def check_expiry(self, now: datetime | None = None) -> None:
-        """Ablauf anwenden: offener Request älter als `timeout_hours` → `expired`."""
+        """Apply expiry: an open request older than `timeout_hours` → `expired`."""
         if self.status == "open" and self.is_expired(now):
             self.status = "expired"
 
@@ -111,7 +110,7 @@ class AccessRequest:
         applied = []
         for url in targets:
             if self.decided.get(url) in ("granted", "rejected"):
-                continue  # bereits entschieden — nicht doppelt
+                continue  # already decided — not twice
             if any(u.url == url for u in self.urls):
                 self.decided[url] = decision
                 applied.append(url)
@@ -119,11 +118,11 @@ class AccessRequest:
         return applied
 
     def grant(self, urls: str | list[str]) -> list[str]:
-        """Freigeben (pro URL oder „all"). Returniert die freigegebenen URLs."""
+        """Grant (per URL or "all"). Returns the granted URLs."""
         return self._apply(urls, "granted")
 
     def reject(self, urls: str | list[str]) -> list[str]:
-        """Ablehnen (pro URL oder „all"). Returniert die abgelehnten URLs."""
+        """Reject (per URL or "all"). Returns the rejected URLs."""
         return self._apply(urls, "rejected")
 
     def _maybe_resolve(self) -> None:
@@ -136,9 +135,9 @@ class AccessRequest:
     def rejected_urls(self) -> list[str]:
         return [u for u, d in self.decided.items() if d == "rejected"]
 
-    # --- Domain-Statistik / „Suggest domain" (Hint, kein Lerneffekt) -----------
+    # --- Domain statistics / "suggest domain" (hint only, no learning) -----------
     def domain_stats(self) -> dict[str, int]:
-        """Entscheidungen (Grant + Reject) pro Domain."""
+        """Decisions (grant + reject) per domain."""
         stats: Counter = Counter()
         for u in self.urls:
             if self.decided.get(u.url) in ("granted", "rejected"):
@@ -146,10 +145,10 @@ class AccessRequest:
         return dict(stats)
 
     def suggest_domain(self, threshold: int = SUGGEST_DOMAIN_THRESHOLD) -> str | None:
-        """Häufigste freigegebene Domain (>= `threshold` Grants) als Hint.
+        """Most frequently granted domain (>= `threshold` grants) as a hint.
 
-        Nur Hinweis für eine Spec-Änderung (Admin nimmt die Domain in die
-        Freigabeliste des Profils auf) — keine automatische Aufnahme.
+        Only a hint for a spec change (an admin adds the domain to the
+        profile's approval list) — never added automatically.
         """
         granted = Counter(u.domain for u in self.urls if self.decided.get(u.url) == "granted")
         if not granted:
@@ -157,12 +156,11 @@ class AccessRequest:
         top, count = granted.most_common(1)[0]
         return top if count >= threshold else None
 
-    # --- Anhängen (spätere Session, gleicher Item) ----------------------------
+    # --- Appending (later session, same item) ----------------------------
     def append(self, new_urls: list[PendingURL], now: datetime | None = None) -> list[PendingURL]:
-        """Neue URLs einer späteren Session anhängen (ADR 0059 §5a: „appended").
+        """Append new URLs from a later session (ADR 0059 §5a: "appended").
 
-        Bereits bekannte URLs werden nicht dupliziert. Returniert die tatsächlich
-        neu hinzugekommenen.
+        Already known URLs are not duplicated. Returns those actually newly added.
         """
         known = {u.url for u in self.urls}
         added = []
@@ -172,13 +170,13 @@ class AccessRequest:
                 known.add(u.url)
                 added.append(u)
         if added and self.status == "expired":
-            # Ein abgelaufener Request lebt für neue URLs nicht auf — bleibt abgelehnt.
+            # An expired request does not revive for new URLs — it stays rejected.
             pass
         return added
 
-    # --- Koppelung an das ADR-0059-Modell -------------------------------------
+    # --- Coupling to the ADR-0059 model -------------------------------------
     def to_approval_request(self) -> ApprovalRequest:
-        """Als `ApprovalRequest` (reason „escalation", kind „access") für die UI."""
+        """As an `ApprovalRequest` (reason \"escalation\", kind \"access\") for the UI."""
         pending = self.pending()
         domains: Counter = Counter(u.domain for u in pending)
         what = ", ".join(f"{d}: {n}" for d, n in domains.most_common())
@@ -233,9 +231,9 @@ class AccessRequest:
 def bundle_access(
     item: str, pending: list[PendingURL] | list[dict], now: datetime | None = None
 ) -> AccessRequest | None:
-    """Aus den offenen URLs einer Session EINEN gebündelten Request bauen.
+    """Build ONE bundled request from a session's open URLs.
 
-    Duplizierte URLs fallen raus. Keine offenen URLs → ``None`` (nichts zu freigegeben).
+    Duplicate URLs are dropped. No open URLs → ``None`` (nothing to approve).
     """
     urls: list[PendingURL] = []
     seen: set[str] = set()

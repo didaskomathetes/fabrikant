@@ -57,7 +57,7 @@ class ContextSource:
 
     name: str
     kind: str  # one of SOURCE_KINDS
-    source: str  # Pfad, Befehl oder Template
+    source: str  # path, command or template
     trusted: bool = False
     timeout: int = DEFAULT_CMD_TIMEOUT_S
     max_chars: int = EXTRA_CONTEXT_MAX_CHARS

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import glob as globmod
 import os
+import re
 import threading
 import time
 import traceback
@@ -30,7 +31,7 @@ PR_SEEN_MAX = 2 * RECONCILE_MAX_PAGES * GH_PER_PAGE  # Retention on_pr-Dedup-His
 # The project's other triggers wait at most this long for its `on_start` fires
 # (e.g. if the run hangs in the queue behind busy workers).
 START_GATE_MAX_S = 120
-DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. neue Runs pro Poll und Loop (ADR 0014)
+DEFAULT_MAX_PER_POLL = 2  # on_issue reconcile: max. new runs per poll and loop (ADR 0014)
 
 
 def _iter_open_issues_oldest_first(repo: str, provider: Provider, labels: list[str]):
@@ -63,12 +64,30 @@ def _list_pulls(repo: str, provider: Provider, state: str, labels: list[str]) ->
     return out
 
 
+_UPDATE_KEY_RE = re.compile(r"[^0-9TZ]")
+
+
+def _pr_update_trigger(num: int, updated_at: str) -> str:
+    """Trigger string for `reconcile: updated`: ``on_pr:#N@u<compact updated_at>``
+    (e.g. ``@u20261113T142820Z``); without `updated_at` the PR key ``on_pr:#N``."""
+    stamp = _UPDATE_KEY_RE.sub("", updated_at)
+    return f"on_pr:#{num}@u{stamp}" if stamp else f"on_pr:#{num}"
+
+
 def _pr_trigger(num: int, head_sha: str = "") -> str:
     """Trigger string of an on_pr run: ``on_pr:#N`` or ``on_pr:#N@<sha>`` (ADR 0023).
 
     Without SHA (missing in the API response) → PR key ``on_pr:#N``; the caller
     then additionally matches it against all ``on_pr:#N@…`` records."""
     return f"on_pr:#{num}@{head_sha}" if head_sha else f"on_pr:#{num}"
+
+
+def _pr_run_trigger(num: int, head_sha: str, updated_at: str, *, per_head: bool, per_update: bool) -> str:
+    """Trigger string of an on_pr run per reconcile mode: per change (`updated`), per head
+    (`head`, ADR 0023) or per PR."""
+    if per_update:
+        return _pr_update_trigger(num, updated_at)
+    return _pr_trigger(num, head_sha if per_head else "")
 
 
 def _cron_chain_pending(project: str, loop: str, spec: dict) -> bool:
@@ -104,6 +123,7 @@ def pr_vars(pr: dict) -> dict:
         "pr_url": pr.get("html_url", ""),
         "pr_head_ref": head.get("ref", ""),
         "pr_head_sha": head.get("sha", ""),
+        "pr_updated_at": pr.get("updated_at") or "",
         "pr_body": pr.get("body") or "",
     }
 
@@ -116,7 +136,7 @@ def _new_issues(st: dict, issues: list[dict]) -> list[dict]:
     """Event mode: issues that are new since the last poll (first poll: none)."""
     ids = {it["number"] for it in issues}
     if st["seen"] is None:
-        st["seen"] = ids  # initialisieren, nicht feuern
+        st["seen"] = ids  # initialize, don't fire
         return []
     new = ids - st["seen"]
     # Union (not replace): an issue that falls out of the window of 50 and
@@ -261,6 +281,7 @@ def _pr_fire_kind(
     per_head: bool,
     head_sha: str,
     done: set[str],
+    per_update: bool = False,
 ) -> str | None:
     """Fire decision for a polled PR: kind of fire event or
     ``None`` (do not fire). Pure function without I/O — the only place with
@@ -276,19 +297,23 @@ def _pr_fire_kind(
       ``on_pr:#N@…`` record also counts as done (ADR 0023). Otherwise ``"neu"`` (PR unknown
       and above `floor`) or ``"head <sha[:7]">`` (`per_head`) or
       ``"reconcile"`` (catch up a known PR).
+    - `per_update` (`reconcile: updated`): like `per_head`, keyed per observed `updated_at`
+      (``on_pr:#N@u<stamp>``, one run per snapshot, not per change); kind ``"update <updated_at>"``.
     - Event mode: ``None`` on the first poll, for an unchanged PR (state +
       `updated_at` equal) and for PRs displaced below `floor`. Otherwise
       ``"neu"``, ``"state-wechsel <old>→<new>"`` or ``"aktualisiert"``.
     """
     if reconcile:
-        trigger = _pr_trigger(num, head_sha if per_head else "")
+        trigger = _pr_run_trigger(num, head_sha, updated_at, per_head=per_head, per_update=per_update)
         if trigger in done or (per_head and not head_sha and any(t.startswith(f"{trigger}@") for t in done)):
             return None
         if prev is None or (num not in prev and num > floor):
             return "neu"
-        return f"head {head_sha[:7]}" if per_head and head_sha else "reconcile"
+        if per_head and head_sha:
+            return f"head {head_sha[:7]}"
+        return f"update {updated_at}" if per_update and updated_at else "reconcile"
     if prev is None:
-        return None  # Erst-Poll: initialisieren, nicht feuern
+        return None  # first poll: initialize, don't fire
     old = prev.get(num)
     if old == (state, updated_at):
         return None  # unchanged
@@ -314,8 +339,8 @@ class Scheduler(threading.Thread):
         self._slack_pending: set[tuple[str, str, str]] = set()
         self._first_tick = True
         self._tick_n = 0
-        self._started_cron: set[tuple] = set()  # (proj, loop) mit erledigtem `on_start`-Fire
-        # proj -> laufende `on_start`-Fires (Event gesetzt = erledigt, Deadline = monotonic)
+        self._started_cron: set[tuple] = set()  # (proj, loop) whose `on_start` fire is done
+        # proj -> running `on_start` fires (event set = done, deadline = monotonic)
         self._start_gates: dict[str, list[tuple[threading.Event, float]]] = {}
 
     def run(self):
@@ -328,7 +353,7 @@ class Scheduler(threading.Thread):
 
     def tick(self):
         self._tick_n += 1
-        if self._tick_n % 60 == 0:  # ~alle 2 min
+        if self._tick_n % 60 == 0:  # ~every 2 min
             self._check_stale_runs()
         pause.resume_expired()
         now = config.utcnow()
@@ -431,7 +456,7 @@ class Scheduler(threading.Thread):
         loops = [
             (lname, ldef.get("triggers") or [])
             for lname, ldef in spec.get("loops", {}).items()
-            if not pause.trigger_blocked(name, lname)  # paused/disabled: kein Trigger, kein Poll (ADR 0019)
+            if not pause.trigger_blocked(name, lname)  # paused/disabled: no trigger, no poll (ADR 0019)
         ]
         for lname, triggers in loops:
             for trig in triggers:
@@ -458,7 +483,7 @@ class Scheduler(threading.Thread):
         base = Path(spec["root"])
         debounce = float(trig.get("debounce", 60))
         key = f"{name}:{lname}:{pattern}"
-        newest: float | None = None  # None = kein (lesbarer) Treffer
+        newest: float | None = None  # None = no (readable) match
         for path in globmod.glob(str(base / pattern), recursive=True):
             with contextlib.suppress(OSError):
                 mtime = Path(path).stat().st_mtime
@@ -468,7 +493,7 @@ class Scheduler(threading.Thread):
         now = local.timestamp()
         state = self._seen_files.get(key)
         if state is None:
-            # Erst initialisieren (neueste mtime + Zeitpunkt merken), nicht feuern.
+            # Initialize first (remember newest mtime + timestamp), don't fire.
             self._seen_files[key] = {"mtime": newest, "stable_since": now, "fired": False}
             return
         if newest != state["mtime"]:
@@ -570,7 +595,7 @@ class Scheduler(threading.Thread):
             self._start_slack_run(name, lname, path, alert)
 
     def _start_slack_run(self, name: str, lname: str, path: Path, alert: slack.Alert) -> None:
-        """Einen Alert-Run einreihen; `_slack_pending` verhindert Doppel-Einreihung bis Claim/Verwerfen."""
+        """Enqueue an alert run; `_slack_pending` prevents double-enqueueing until claim/discard."""
         pending_key = (name, lname, alert.trigger)
         if pending_key in self._slack_pending:
             return
@@ -621,6 +646,12 @@ class Scheduler(threading.Thread):
         (without I/O); only polling/throttling, label filter,
         dedup state (`seen`/`floor`) and run starting via `_safe_run` remain here.
 
+        `reconcile: updated` like `head`, but per observed PR state (`updated_at` at poll
+        time, trigger `on_pr:#N@u<stamp>`): comments, reviews and labels fire too — one run
+        per observed snapshot, restart-proof (e.g. a reply loop: a comment during a restart is
+        not lost). Several changes between two polls collapse into the latest `updated_at`
+        and fire one run, not one per change — the loop must read the current PR state.
+
         `exclude_labels` (ADR 0059, e.g. `[needs human]`): PRs with one of these labels do not
         fire; removing the label is itself a change and fires again afterwards.
         """
@@ -635,6 +666,7 @@ class Scheduler(threading.Thread):
         st["ts"] = time.time()
         reconcile = bool(trig.get("reconcile"))
         per_head = trig.get("reconcile") == config.RECONCILE_PER_HEAD
+        per_update = trig.get("reconcile") == config.RECONCILE_PER_UPDATE
         required_labels = [str(x) for x in (trig.get("labels") or [])]
         # Dedup (order kept): `states: [open, open]` would otherwise call the API
         # twice and add the same PRs twice to `prs` → duplicate runs.
@@ -679,11 +711,12 @@ class Scheduler(threading.Thread):
             state = pr.get("state", "open")
             upd = pr.get("updated_at", "")
             head_sha = (pr.get("head") or {}).get("sha", "")
-            kind = _pr_fire_kind(prev, state, upd, num, floor, reconcile, per_head, head_sha, done)
+            kind = _pr_fire_kind(prev, state, upd, num, floor, reconcile, per_head, head_sha, done, per_update)
             if kind is None:
                 continue
             print(f"[fabrikant] PR {repo}#{num} ({kind}): {pr.get('title', '')}")
-            _safe_run(name, lname, _pr_trigger(num, head_sha if per_head else ""), initial_vars=pr_vars(pr))
+            trigger = _pr_run_trigger(num, head_sha, upd, per_head=per_head, per_update=per_update)
+            _safe_run(name, lname, trigger, initial_vars=pr_vars(pr))
 
     def _check_stale_runs(self):
         """Dead-man's switch: runs in 'running' older than X h → error + alert."""

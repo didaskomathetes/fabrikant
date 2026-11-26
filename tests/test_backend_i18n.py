@@ -1,4 +1,4 @@
-"""Backend-i18n: Kataloge de/en haben dieselben Keys; Fallbacks."""
+"""Backend i18n: the en/de catalogs have the same keys; fallbacks."""
 
 from fabrikant import i18n
 
@@ -19,11 +19,13 @@ def test_placeholders_match():
 
 def test_lang_selection_and_fallback(monkeypatch):
     monkeypatch.delenv("FABRIKANT_LANG", raising=False)
-    assert i18n.current_lang() == "de"
-    monkeypatch.setenv("FABRIKANT_LANG", "EN")
+    assert i18n.current_lang() == "en"
     assert i18n.t("approval.why") == "why"
-    monkeypatch.setenv("FABRIKANT_LANG", "xx")
+    monkeypatch.setenv("FABRIKANT_LANG", "DE")
     assert i18n.current_lang() == "de"
+    assert i18n.t("approval.why") != "why"
+    monkeypatch.setenv("FABRIKANT_LANG", "xx")
+    assert i18n.current_lang() == "en"
     assert i18n.t("no.such.key") == "no.such.key"
     assert i18n.t("approval.tier_what", tier=2).startswith("Tier 2")
 

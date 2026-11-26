@@ -161,6 +161,12 @@ def test_send_prompt_tools_override_uses_allow_tool(monkeypatch):
     assert "--allow-all-tools" not in cmd
 
 
+def test_create_accepts_tools_list(monkeypatch):
+    monkeypatch.delenv("FABRIKANT_COPILOT_TOOLS", raising=False)
+    be = CopilotBackend.create({"tools": ["shell", "write"]}, "", "", 900)
+    assert be.tools == "shell,write"
+
+
 def test_send_prompt_sets_auto_update_env(monkeypatch):
     be = CopilotBackend()
     sid = be.create_task("/tmp/wd", "t")

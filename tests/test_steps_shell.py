@@ -355,3 +355,49 @@ def test_shell_verdict_line_becomes_field_and_leaves_output_and_summary(tmp_path
 def test_shell_without_verdict_has_no_field(tmp_path):
     res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo hi"}, NOOP)
     assert "verdict" not in res
+
+
+# ---------------------------------------------------------------- warnings / done
+@pytest.mark.parametrize("exit_code", [0, 3])
+def test_shell_warning_lines_go_to_log_and_output_end(tmp_path, exit_code):
+    log: list[str] = []
+    cmd = f"echo '::fabrikant-warning::ref verworfen' >&2; echo '::fabrikant-warning::zweite'; echo done; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, log.append)
+    assert [m for m in log if "⚠" in m] == ["  ⚠ zweite", "  ⚠ ref verworfen"]
+    assert "fabrikant-warning" not in res["output"]
+    assert res["output"].endswith("[warnings]\nWARNING: zweite\nWARNING: ref verworfen")
+    assert res["summary"].endswith("done")
+
+
+def test_shell_done_marker_ends_run_and_is_stripped(tmp_path):
+    step = {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is True and res.get("done") is True
+    assert "::fabrikant-done::" not in res["output"] and res["summary"] == "nichts zu tun"
+
+
+def test_shell_done_marker_without_opt_in_is_plain_output(tmp_path):
+    """Without `done_marker: true` the line is ordinary output: kept, no early end (untrusted output)."""
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::"}, NOOP)
+    assert res["ok"] is True and "done" not in res
+    assert "::fabrikant-done::" in res["output"] and res["summary"] == "::fabrikant-done::"
+
+
+def test_shell_done_marker_ignored_on_failure(tmp_path):
+    step = {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is False and not res.get("done")
+
+
+@pytest.mark.parametrize(("exit_code", "ok"), [(0, True), (2, False)])
+def test_shell_only_warning_output_is_summary(tmp_path, exit_code, ok):
+    cmd = f"echo '::fabrikant-warning::config fehlt'; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["ok"] is ok
+    assert res["summary"].endswith("WARNING: config fehlt")
+
+
+def test_shell_blank_stdout_after_markers_falls_back_to_stderr(tmp_path):
+    cmd = "echo; echo '::fabrikant-warning::w'; echo oops >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: oops"
