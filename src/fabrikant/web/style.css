@@ -27,7 +27,7 @@ header {
 .logo .sub { font-size: 11px; letter-spacing: 0; color: var(--dim); font-weight: 400; margin-left: 10px; }
 .health { font-family: var(--mono); font-size: 12px; color: var(--dim); }
 .hdr-right { display: flex; align-items: center; gap: 14px; }
-/* Sprach-Umschalter: feste Breite, damit der Header bei de/en nicht springt. */
+/* Language switcher: fixed width so the header doesn't jump between de/en. */
 #langtoggle { min-width: 44px; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; }
 .chatbar-right { display: flex; align-items: center; gap: 8px; }
 .llm-sel { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; }
@@ -75,7 +75,7 @@ body.chat-open .col { padding-bottom: calc(var(--chat-h) + 16px); }
 .ploopstatus.pass { color: var(--ok); }
 .ploopstatus.fail, .ploopstatus.error { color: var(--err); }
 
-/* Offene Freigabe-Anfragen (needs_approval) im Projekt-View: Badge + Liste */
+/* Open approval requests (needs_approval) in the project view: badge + list */
 .apprbadge {
   font-family: var(--mono); font-size: 11px; font-weight: 700;
   color: #0d0f12; background: var(--acc); border-radius: 10px;
@@ -115,7 +115,7 @@ body.chat-open .col { padding-bottom: calc(var(--chat-h) + 16px); }
 .shelvedline .shelvedactions { margin-left: auto; display: flex; gap: 4px; }
 .shelvedline .shelvedactions button { font-size: 10px; padding: 1px 6px; }
 
-/* Retry-Info im Run-Modal (ADR 0036, Entscheidung 6) */
+/* Retry info in the run modal (ADR 0036, decision 6) */
 .runretry {
   font-family: var(--mono); font-size: 12px; color: var(--warn, #d9a441);
   margin: 4px 0 8px; padding: 4px 8px; border-radius: 5px;
@@ -244,7 +244,7 @@ a { color: var(--run); }
 .specview::-webkit-scrollbar-thumb:hover { background: #ffc678; }
 .specview.hidden { display: none; }
 
-/* ---- Spec-Graph (Cytoscape) — View-Modus, ersetzt die Loop-Liste ---- */
+/* ---- Spec graph (Cytoscape) — view mode, replaces the loop list ---- */
 .graphview {
   position: relative; width: 100%;
   height: min(640px, calc(100vh - 240px));
@@ -300,7 +300,7 @@ a { color: var(--run); }
   padding: 6px 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .graphctx.hidden { display: none; }
-/* Form-Editor: Sektionen, Step-/Trigger-Karten, Felder (in der Knoten-Karte). */
+/* Form editor: sections, step/trigger cards, fields (in the node card). */
 .ge-sec {
   font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--dim); margin: 12px 0 6px;
@@ -341,7 +341,7 @@ a { color: var(--run); }
 .ge-extra label { color: var(--warn); }
 /* Fields directly in the card (loop/step card); in .ge-step-body gap handles it. */
 .graphnode-body > .ge-field { margin-bottom: 6px; }
-/* Read-only-Werte (generierte Loops, Template-Steps): umbrechen statt scrollen, lange Prompts begrenzt. */
+/* Read-only values (generated loops, template steps): wrap instead of scrolling, long prompts limited. */
 .ge-ro {
   flex: 1; min-width: 0; margin: 0; padding: 4px 8px; background: var(--panel); border: 1px dashed var(--line);
   border-radius: 4px; color: var(--text); font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
@@ -365,7 +365,7 @@ a { color: var(--run); }
   white-space: pre-wrap; max-height: 160px; overflow-y: auto;
 }
 .runerr { color: var(--err); margin-top: 8px; }
-/* Rohes Run-Log (per Toggle): Monospace, lange Zeilen umbrechen, kein Extra-Margin */
+/* Raw run log (via toggle): monospace, long lines wrap, no extra margin */
 .runrawlog {
   margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
   white-space: pre-wrap; word-break: break-word; color: #aeb9c8;
@@ -410,7 +410,7 @@ a { color: var(--run); }
 .trace-artifact { font-size: 11px; color: var(--dim); margin-bottom: 3px; word-break: break-all; }
 .trace-artifactmeta { color: var(--dim); opacity: 0.7; }
 
-/* Freigabe-Kontext: WAS wird freigegeben, welche Rechte, welches Issue */
+/* Approval context: WHAT is being approved, which permissions, which issue */
 .runapproval {
   margin: 0 0 12px; padding: 10px 12px;
   background: rgba(255, 198, 120, 0.08);
@@ -522,7 +522,7 @@ a { color: var(--run); }
    browsers that deliver no mouse events on disabled controls. */
 .runlock button { pointer-events: none; }
 
-/* Login (Auth-Modus local, ADR 0030) */
+/* Login (auth mode local, ADR 0030) */
 #loginview { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--bg, #111); }
 #loginview.hidden, #whoami.hidden, #loginform.hidden, #oidclogin.hidden { display: none; }
 #loginform { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
@@ -542,7 +542,7 @@ a { color: var(--run); }
 .histactions { display: flex; gap: 6px; }
 .histempty { color: var(--dim); font-size: 12px; padding: 6px 0; }
 
-/* Fehlerklasse (ADR 0035): environment braucht einen Menschen → hervorgehoben. */
+/* Failure kind (ADR 0035): environment needs a human → highlighted. */
 .badge.kind { margin-left: 4px; color: var(--dim); border-style: dashed; }
 .badge.kind.transient, .badge.kind.interrupted { color: var(--run); border-color: var(--run); }
 .badge.kind.environment { color: #fff; background: var(--err); border-color: var(--err); border-style: solid; font-weight: 700; }
@@ -552,7 +552,7 @@ a { color: var(--run); }
 .badge.verdict.good { color: #fff; background: var(--ok); border-color: var(--ok); }
 .badge.verdict.bad { color: #fff; background: var(--err); border-color: var(--err); font-weight: 700; }
 
-/* Step-Leiste im Log-Tab: aktiver Step pulsiert, Klick filtert das Log */
+/* Step bar in the log tab: active step pulses, click filters the log */
 .logsteps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; position: sticky; top: 0; background: var(--panel); padding: 4px 0; }
 .logchip { font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
   background: transparent; color: var(--dim); border: 1px solid var(--line); }
@@ -568,7 +568,7 @@ a { color: var(--run); }
 .runmetabox .appr-row { display: flex; gap: 8px; margin-bottom: 3px; font-size: 12px; }
 .runmetabox .appr-k { color: var(--dim); min-width: 52px; flex-shrink: 0; }
 .runmetabox a { color: var(--acc); }
-/* ---- Einstellungen: Verbindungen (ADR 0052) ---- */
+/* ---- Settings: connections (ADR 0052) ---- */
 .settingspanel #settingsbody { padding: 12px 16px; overflow-y: auto; font-family: var(--mono); font-size: 12px; }
 .conntable { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
 .conntable th { text-align: left; color: var(--dim); font-weight: normal; padding: 4px 8px; border-bottom: 1px solid var(--line); }

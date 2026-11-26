@@ -81,7 +81,7 @@ PROJECTS_DIR = DATA_DIR / "projects"  # primary (writable) spec folder
 BUNDLED_PROJECTS_DIR = (
     FABRIKANT_HOME / "projects"
 )  # lowest priority; the starter spec in `examples/` is only copied by `fabrikant init`
-TEMPLATES_DIR = PACKAGE_DIR / "templates"  # mitgelieferte Loop-Vorlagen
+TEMPLATES_DIR = PACKAGE_DIR / "templates"  # bundled loop templates
 USER_TEMPLATES_DIR = DATA_DIR / "templates"
 RUNS_DIR = FABRIKANT_HOME / "runs"
 WORKTREES_ENV = "FABRIKANT_WORKTREES"
@@ -180,7 +180,7 @@ MAX_STEP_OUTPUT = 200_000  # chars kept per step in run records
 # Agent conversation in the run log (runs/<project>/<id>.log): caps so that large
 # prompts/texts do not blow up the log (full text stays in the session).
 AGENT_LOG_PROMPT_CAP = 2000  # characters of the agent prompt (input)
-AGENT_LOG_TEXT_CAP = 400  # Zeichen je Assistant-Message (Text-Part)
+AGENT_LOG_TEXT_CAP = 400  # characters per assistant message (text part)
 
 PROTECTED_DEFAULT = ["main", "master"]
 # GitHub API: retry on transient network errors (DNS flakes, resets).
@@ -282,7 +282,7 @@ ESCALATION_KINDS = ("blocked", "stalled", "exhausted", "scope", "access")
 
 HUMAN_GATE_ADR_PATHS = ["docs/adr"]
 HUMAN_GATE_MAX_FILES = 40  # more changed files → critical (large refactoring)
-HUMAN_GATE_MAX_LINES = 1500  # mehr +/- Zeilen → kritisch
+HUMAN_GATE_MAX_LINES = 1500  # more +/- lines → critical
 HUMAN_GATE_KEYWORDS = [
     "gdpr",
     "datenschutz",
