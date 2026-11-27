@@ -682,6 +682,7 @@ MESSAGES: dict[str, str] = {
     "steps.shell.cmd_contains_inline_placeholders_that": "cmd enthält Inline-Placehalter, die mit env:-Keys kollidieren ({v1}) — untrusted Werte gehören in env:, nicht in cmd (Issue #62)",
     "steps.shell.github_identity_failed": "github_identity {role!r}: {error}",
     "steps.shell.sandbox_failed": "Sandbox — {error}",
+    "steps.shell.sandbox_disabled_host_fallback": "Sandbox ist deaktiviert; dieser Shell-Schritt läuft auf dem Host.",
     "steps.state.state_step_unknown_action_available": "state-Step: unbekannte action '{action}' (verfügbar: {v2})",
     "steps.state.state_step_key_missing": "state-Step: key fehlt",
     "steps.state.blocked_state_path_is_outside": "BLOCKED: State-Pfad {p} liegt außerhalb der Projekt-Root {root_res} (Path-Traversal-Schutz)",

@@ -84,6 +84,15 @@ def test_helper_file_is_mounted_read_only():
     assert "/external/scripts/check.sh:/external/scripts/check.sh:ro" in cmd
 
 
+def test_shell_tmp_exec_does_not_change_agent_default():
+    cfg = sandbox.SandboxConfig()
+    agent_cmd = sandbox.render_docker_cmd(cfg, "agent", ["true"], _EX, {})
+    cfg.shell_tmp_exec = True
+    shell_cmd = sandbox.render_docker_cmd(cfg, "shell", ["true"], _EX, {})
+    assert "/tmp:size=256m" in agent_cmd
+    assert "/tmp:rw,exec,mode=1777,size=256m" in shell_cmd
+
+
 def _cfg(proxy_url: str = "http://proxy:8888") -> sandbox.SandboxConfig:
     return sandbox.SandboxConfig(image="test/img:1", user="1000:1000", proxy_url=proxy_url)
 
@@ -122,7 +131,7 @@ def test_render_docker_cmd_has_hardening_and_mounts():
     # Arbeitsklon im tmpfs (exec für Build-Tools, Größe begrenzt), read-only root fs.
     tmpfs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--tmpfs"]
     assert tmpfs == [
-        "/tmp:rw,exec,mode=1777,size=256m",  # exec: test runners and build tools run from /tmp
+        "/tmp:size=256m",  # agent sandbox retains its original options
         "/home/agent:rw,mode=1777,size=256m",
         "/work:rw,exec,mode=1777,size=2g",
     ]

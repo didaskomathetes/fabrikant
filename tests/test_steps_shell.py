@@ -529,8 +529,12 @@ def test_shell_sandboxed_without_identity_gets_no_token(tmp_path, monkeypatch):
 def test_shell_sandboxed_without_global_switch_runs_on_host(tmp_path, monkeypatch):
     monkeypatch.delenv("FABRIKANT_SANDBOX", raising=False)
     calls = _capture_run_shell(monkeypatch)
-    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo host", "sandboxed": True}, NOOP)
+    messages = []
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo host", "sandboxed": True}, messages.append)
     assert res["ok"] is True and "host" in res["output"] and calls == []
+    from fabrikant.i18n import t
+
+    assert any(t("steps.shell.sandbox_disabled_host_fallback") in msg for msg in messages)
 
 
 def test_shell_sandbox_error_fails_as_environment(tmp_path, monkeypatch):

@@ -236,6 +236,7 @@ class SandboxConfig:
     # scripts by host path (`{fabrikant_home}/scripts/…`) work in the container too. Empty → no mount.
     helper_scripts: str = ""
     helper_files: tuple[str, ...] = ()
+    shell_tmp_exec: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SandboxConfig:
@@ -520,8 +521,9 @@ def render_docker_cmd(
         str(cfg.pids_limit),
         "--read-only",
         "--tmpfs",
-        # exec: test runners and build tools put executables there (pytest's tmp_path, uv, pip builds).
-        f"/tmp:rw,exec,mode=1777,size={SMALL_TMPFS_SIZE}",  # nosec B108 # tmpfs in the container, not the host /tmp
+        # Shell test runners and build tools may put executables in /tmp; retain the original
+        # mount options for agent containers.
+        (f"/tmp:rw,exec,mode=1777,size={SMALL_TMPFS_SIZE}" if cfg.shell_tmp_exec else f"/tmp:size={SMALL_TMPFS_SIZE}"),  # nosec B108
         # HOME of the agent CLIs (config, caches). Own tmpfs options → mode explicit,
         # otherwise root:755 and not writable for the agent user.
         "--tmpfs",
@@ -658,6 +660,7 @@ def run_shell(
     top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
     rel = os.path.relpath(os.path.realpath(workdir), os.path.realpath(top))
     cfg = SandboxConfig.from_env()  # before the exchange: a config error must not leave refs/tmpdir behind
+    cfg.shell_tmp_exec = True
     cfg.helper_files = tuple(dict.fromkeys(helper_files))
     ex = prepare_exchange(session_id, top, default_branch_refs(top))
     argv = render_docker_cmd(cfg, session_id, ["sh", "-c", _SHELL_IN_SUBDIR, "fabrikant-shell", rel, cmd], ex, env)

@@ -78,6 +78,21 @@ def _container_env(identity_env: dict[str, str] | None, step_env: dict[str, str]
     return build_agent_env({**tokens, **step_env})
 
 
+def _build_env(ctx: dict, env_step: dict, identity_env: dict[str, str] | None, sandboxed: bool) -> dict[str, str]:
+    """Build the host or sandbox environment with the selected GitHub identity."""
+    step_vals = {str(k): _substitute(str(v), ctx) for k, v in env_step.items()}
+    if sandboxed:
+        return _container_env(identity_env, step_vals)
+    return {**process_env(), **(identity_env or {}), **step_vals}
+
+
+def _execute(cmd: str, workdir: str, env: dict[str, str], timeout: int, sandboxed: bool, helpers: list[str]):
+    """Execute the command on the selected host, propagating sandbox errors and timeouts."""
+    if sandboxed:
+        return sandbox.run_shell(f"shell-{uuid.uuid4().hex[:12]}", cmd, workdir, env, timeout, tuple(helpers))
+    return run_group(["sh", "-c", cmd], cwd=workdir, env=env, timeout=timeout)
+
+
 def _step_shell(ctx: dict, step: dict, emit) -> dict:
     raw_cmd = step["cmd"]
     env_step = step.get("env") or {}
@@ -105,6 +120,8 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
             return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="placeholder-env-clash")
     workdir = step_workdir(ctx, step)
     sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
+    if step.get(SANDBOXED_KEY) and not sandboxed:
+        emit(f"  ⚠ {t('steps.shell.sandbox_disabled_host_fallback')}")
     # Worktree-first only in the sandbox: on the host the trusted spec-directory helper must run, not
     # a same-named script the PR under test ships (it would run with the host env and tokens).
     helpers: list[str] = []
@@ -118,25 +135,17 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
         msg = t("steps.shell.github_identity_failed", role=role, error=e)
         emit(f"  ERROR: {msg}")
         return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="github-identity")
-    step_vals = {str(k): _substitute(str(v), ctx) for k, v in env_step.items()}
-    # On the host the identity env is an overlay (github_env carries only token/PATH/env-file
-    # variables): HOME, PATH and the rest of the project env must stay.
-    env = (
-        _container_env(identity_env, step_vals) if sandboxed else {**process_env(), **(identity_env or {}), **step_vals}
-    )
+    env = _build_env(ctx, env_step, identity_env, sandboxed)
     timeout = int(step.get("timeout", 600))
     # Log the template (with {placeholders}), NOT the substituted command:
     # substituted values can contain secrets/untrusted text.
     emit(f"  $ {raw_cmd}  (cwd={workdir}, timeout={timeout}s{', sandbox' if sandboxed else ''})")
-    if sandboxed:
-        try:
-            p = sandbox.run_shell(f"shell-{uuid.uuid4().hex[:12]}", cmd, workdir, env, timeout, tuple(helpers))
-        except sandbox.SandboxError as e:
-            msg = t("steps.shell.sandbox_failed", error=e)
-            emit(f"  ERROR: {msg}")
-            return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="sandbox")
-    else:
-        p = run_group(["sh", "-c", cmd], cwd=workdir, env=env, timeout=timeout)
+    try:
+        p = _execute(cmd, workdir, env, timeout, sandboxed, helpers)
+    except sandbox.SandboxError as e:
+        msg = t("steps.shell.sandbox_failed", error=e)
+        emit(f"  ERROR: {msg}")
+        return failed(msg, FailureKind.ENVIRONMENT, exit_code=1, output="", reason="sandbox")
     # Secret redaction (defense in depth): stdout/stderr can contain secrets
     # (e.g. if the command echoes an env value). The step masks output/summary itself;
     # the engine additionally masks at record write (secrets._redact_record).
