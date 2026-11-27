@@ -228,6 +228,8 @@ def test_validate_shell_sandboxed(tmp_path):
     ):
         with pytest.raises(ValueError, match="sandboxed gilt nur für shell"):
             specs._validate_spec(_step(_valid_spec(str(tmp_path)), bad))
+
+
 @pytest.mark.parametrize("key", ["tools", "allowed_tools"])
 def test_validate_agent_tool_lists(tmp_path, key):
     base = _valid_spec(str(tmp_path))

@@ -560,6 +560,8 @@ def test_shell_sandboxed_missing_result_fails_as_environment_not_outcome(tmp_pat
     res = _step_shell(_ctx(tmp_path), step, NOOP)
     assert res["ok"] is False and res["failure_kind"] == "environment"
     assert "kein Ergebnis aus dem Container" in res["summary"]
+
+
 # ---------------------------------------------------------------- warnings / done
 @pytest.mark.parametrize("exit_code", [0, 3])
 def test_shell_warning_lines_go_to_log_and_output_end(tmp_path, exit_code):
