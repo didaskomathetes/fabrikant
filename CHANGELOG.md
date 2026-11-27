@@ -73,6 +73,12 @@ All notable changes to fabrikant are documented here. The format follows
 - `scripts/ci-matrix-pytest.py`: pytest dying from a signal is a crash, not a red result — the entry is rerun once
   and a lasting crash exits with 75 (`transient`) instead of 1.
 
+### Changed
+
+- The source distribution contains only what the package build needs (`src/fabrikant`, `README.md`,
+  `LICENSE` and project metadata). Docs, tests, CI and deployment files are no longer shipped; get them from
+  the repository.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.
