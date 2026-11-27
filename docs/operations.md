@@ -68,7 +68,8 @@ concurrent runs per project; specs without `repo:` run without isolation in `roo
 run runs per loop + issue/PR; loops with the same `exclusive_group` (loop option, e.g. `review-pr` + `pr-reply`) also
 never run at the same time for the same issue/PR. A trigger run blocked this way is dropped like one over the limit
 (with `reconcile` it fires again on the next poll); queued runs wait. A run paused for approval keeps holding its
-issue/PR for its whole group until it is decided.
+issue/PR for its whole group until it is decided. Waiting runs recheck the store every five seconds so decisions
+made by another process can release them.
 These guarantees (slots, dedup, `exclusive_group`) only hold within one fabrikant process: a standalone
 `fabrikant run`/`approve` next to a running server does not see the server's running runs (only paused ones, which
 come from the run store) and can start a group-mate for the same issue/PR.

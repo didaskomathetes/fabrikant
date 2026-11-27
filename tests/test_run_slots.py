@@ -627,7 +627,7 @@ def test_queued_run_waits_for_paused_group_mate(limit, monkeypatch):
     """Review point PR #20: a queued (blocking) run waited for the running group-mate, but started as soon
     as the mate released its claim to pause for approval. It must wait until the approval is decided."""
     _group_spec(monkeypatch, "pausegrq")
-    monkeypatch.setattr(runs, "_PAUSED_RECHECK_S", 0.05)
+    monkeypatch.setattr(config, "PAUSED_GROUP_RECHECK_SECONDS", 0.05)
     limit["n"] = 5
     review = runs.claim_run("pausegrq", "review", {"pr_number": 5})
     assert review is not None

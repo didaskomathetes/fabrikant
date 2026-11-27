@@ -103,7 +103,8 @@ def max_parallel_for(project: str, spec: dict | None = None) -> int:
 def exclusive_groups(project: str, spec: dict | None = None) -> dict[str, str]:
     """Loop → `exclusive_group` of the spec: loops of the same group never run at the same time for the same
     issue/PR (e.g. `review-pr` + `pr-reply`: no review of a head that the running fix is about to replace).
-    Like the dedup, the check against running runs is process-local (ADR 0028: one process per project)."""
+    Like the dedup, the check against running runs is process-local; concurrent processes for the same
+    project are unsupported (ADR 0028)."""
     from .specs import load_projects
 
     try:
@@ -112,7 +113,11 @@ def exclusive_groups(project: str, spec: dict | None = None) -> dict[str, str]:
     except (OSError, ValueError):
         return {}
     loops = spec.get("loops") or {}
-    return {name: str(lp["exclusive_group"]) for name, lp in loops.items() if (lp or {}).get("exclusive_group")}
+    return {
+        name: group
+        for name, lp in loops.items()
+        if isinstance(lp, dict) and isinstance((group := lp.get("exclusive_group")), str) and group
+    }
 
 
 def _group_busy(key: tuple[str, str, str], groups: Mapping[str, str]) -> bool:
@@ -164,10 +169,6 @@ def paused_dedupe_keys(
     return keys
 
 
-# Re-check interval of a blocking claim waiting for a paused group-mate's approval decision.
-_PAUSED_RECHECK_S = 5.0
-
-
 def _paused_conflict(project: str, loops: list[str], item: str, exclude_run_id: str | None) -> bool:
     """Check the relevant paused runs while the claim condition is held."""
     return bool(item and loops and item in paused_dedupe_keys(project, loops[0], exclude_run_id, also=loops[1:]))
@@ -178,7 +179,7 @@ def _wait_for_paused_decision(scope: str) -> None:
     _priority_waiters[scope] = _priority_waiters.get(scope, 0) - 1
     _slots_cond.notify_all()
     try:
-        _slots_cond.wait(_PAUSED_RECHECK_S)
+        _slots_cond.wait(config.PAUSED_GROUP_RECHECK_SECONDS)
     finally:
         _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
 
