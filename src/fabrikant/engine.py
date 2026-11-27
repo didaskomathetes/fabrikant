@@ -279,11 +279,16 @@ def _persist_vars(record: dict, ctx: dict) -> None:
     LLM outputs, …). Only JSON-serializable values land in the record; `log`
     (SessionLog) thereby drops out. `last_agent_output` is capped so
     the record stays small (only consumer: review step)."""
+    from .runs import CLAIM_KEY_VAR
+
+    claim_key = (record.get("vars") or {}).get(CLAIM_KEY_VAR)
     record["vars"] = {
         k: (_cap(str(v)) if k == "last_agent_output" else v)
         for k, v in ctx.items()
         if isinstance(v, (str, int, float, bool))
     }
+    if claim_key is not None:
+        record["vars"][CLAIM_KEY_VAR] = claim_key
 
 
 @dataclass
@@ -895,6 +900,10 @@ def _run_loop(
         chain_key,
         replay_of,
     )
+    if not resume_id:
+        from .runs import CLAIM_KEY_VAR, dedupe_key
+
+        record.setdefault("vars", {})[CLAIM_KEY_VAR] = dedupe_key(initial_vars)
     log = SessionLog(run_id, project_name, loop_name, trigger, record.get("spec_hash", ""))
     log.start()  # INSERT OR IGNORE — on resume the session already exists
 
@@ -1376,7 +1385,9 @@ def spawn_priority_worker(
                 raise
 
     def target() -> None:
-        acquired = held or claim_run(project, loop, variables, blocking=True, registered=True)
+        acquired = held or claim_run(
+            project, loop, variables, blocking=True, registered=True, exclude_run_id=exclude_run_id
+        )
         assert acquired is not None  # blocking=True always returns a claim
         try:
             work(acquired)

@@ -532,3 +532,136 @@ def test_safe_run_callback_error_does_not_stop_run(monkeypatch, limit, capsys):
     assert done.wait(5)
     out = capsys.readouterr().out
     assert "RuntimeError" in out and "geheim" not in out
+
+
+def test_paused_run_blocks_exclusive_group_mates(limit, monkeypatch):
+    """An approval gate holds the issue/PR for the whole `exclusive_group`: a group-mate must not run on a
+    head the paused run will change once approved. Other PRs, loops outside the group and the resume
+    of the paused run itself still go through."""
+    from fabrikant import specs
+
+    spec = {
+        "repo": {"url": "x"},
+        "max_parallel": 5,
+        "loops": {"review": {"exclusive_group": "pr"}, "reply": {"exclusive_group": "pr"}, "other": {}},
+    }
+    monkeypatch.setattr(specs, "load_projects", lambda: {"pausegrp": spec})
+    limit["n"] = 5
+    _paused("pausegrp", "reply", {"pr_number": 5}, run_id="r1")
+    assert runs.claim_run("pausegrp", "review", {"pr_number": 5}) is None  # group-mate, same PR
+    claims = [
+        runs.claim_run("pausegrp", "review", {"pr_number": 6}),  # other PR
+        runs.claim_run("pausegrp", "other", {"pr_number": 5}),  # loop without a group
+        runs.claim_run("pausegrp", "reply", {"pr_number": 5}, exclude_run_id="r1"),  # its own resume
+    ]
+    assert all(claims)
+    for c in claims:
+        c.release()
+
+
+def test_paused_and_resumed_run_keep_original_claim_key(limit, monkeypatch):
+    _group_spec(monkeypatch, "originalkey")
+    _paused("originalkey", "reply", {"pr_number": 5, "issue_number": 12}, run_id="r1")
+    path = config.RUNS_DIR / "originalkey" / "r1.json"
+    record = json.loads(path.read_text())
+    record["vars"][runs.CLAIM_KEY_VAR] = "pr_number=5"
+    path.write_text(json.dumps(record))
+    assert runs.claim_run("originalkey", "review", {"pr_number": 5}) is None
+    resumed = runs.claim_run("originalkey", "reply", record["vars"], exclude_run_id="r1")
+    assert resumed is not None
+    assert runs.claim_run("originalkey", "review", {"pr_number": 5}) is None
+    resumed.release()
+
+
+def test_priority_worker_queued_resume_excludes_own_record(limit, monkeypatch):
+    _group_spec(monkeypatch, "queuedresume")
+    limit["n"] = 1
+    _paused("queuedresume", "reply", {"pr_number": 5}, run_id="r1")
+    held = runs.claim_run("queuedresume", "other", {"pr_number": 9})
+    assert held is not None
+    started = threading.Event()
+    queued = engine.spawn_priority_worker(
+        "queuedresume", "reply", {"pr_number": 5}, exclude_run_id="r1", work=lambda claim: started.set()
+    )
+    assert queued and not started.is_set()
+    held.release()
+    assert started.wait(5)
+
+
+def test_pause_lookup_and_claim_are_atomic(limit, monkeypatch):
+    _group_spec(monkeypatch, "atomicgrp")
+    entered = threading.Event()
+    continue_read = threading.Event()
+    results = []
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert continue_read.wait(5)
+        return set()
+
+    monkeypatch.setattr(runs, "paused_dedupe_keys", paused)
+    first = threading.Thread(target=lambda: results.append(runs.claim_run("atomicgrp", "review", {"pr_number": 5})))
+    first.start()
+    assert entered.wait(5)
+    second = threading.Thread(target=lambda: results.append(runs.claim_run("atomicgrp", "reply", {"pr_number": 5})))
+    second.start()
+    continue_read.set()
+    first.join(5)
+    second.join(5)
+    assert len(results) == 2 and sum(c is not None for c in results) == 1
+    next(c for c in results if c is not None).release()
+
+
+def _group_spec(monkeypatch, project: str) -> None:
+    from fabrikant import specs
+
+    spec = {
+        "repo": {"url": "x"},
+        "max_parallel": 5,
+        "loops": {"review": {"exclusive_group": "pr"}, "reply": {"exclusive_group": "pr"}, "other": {}},
+    }
+    monkeypatch.setattr(specs, "load_projects", lambda: {project: spec})
+
+
+def test_queued_run_waits_for_paused_group_mate(limit, monkeypatch):
+    """Review point PR #20: a queued (blocking) run waited for the running group-mate, but started as soon
+    as the mate released its claim to pause for approval. It must wait until the approval is decided."""
+    _group_spec(monkeypatch, "pausegrq")
+    monkeypatch.setattr(config, "PAUSED_GROUP_RECHECK_SECONDS", 0.05)
+    limit["n"] = 5
+    review = runs.claim_run("pausegrq", "review", {"pr_number": 5})
+    assert review is not None
+    got: list = []
+    waiter = threading.Thread(
+        target=lambda: got.append(runs.claim_run("pausegrq", "reply", {"pr_number": 5}, blocking=True))
+    )
+    waiter.start()
+    waiter.join(0.2)
+    assert waiter.is_alive() and not got  # waits for the running review
+    _paused("pausegrq", "review", {"pr_number": 5}, run_id="r1")  # review pauses for approval …
+    review.release()  # … and releases its claim
+    waiter.join(0.3)
+    assert waiter.is_alive() and not got  # the approval gate still holds the PR
+    # While it waits on the approval, it must not hold back trigger runs of the project (ADR 0015).
+    trigger = runs.claim_run("pausegrq", "other", {"pr_number": 9})
+    assert trigger is not None
+    trigger.release()
+    _paused("pausegrq", "review", {"pr_number": 5}, run_id="r1", status="rejected")  # decided
+    waiter.join(5)
+    assert not waiter.is_alive() and got[0] is not None
+    got[0].release()
+
+
+def test_queued_resume_is_not_blocked_by_its_own_record(limit, monkeypatch):
+    """Blocking claim with `exclude_run_id`: the run being resumed does not hold up its own claim; a
+    different paused group-mate still would."""
+    _group_spec(monkeypatch, "pausegrr")
+    limit["n"] = 5
+    _paused("pausegrr", "review", {"pr_number": 5}, run_id="r1")
+    own = runs.claim_run("pausegrr", "reply", {"pr_number": 5}, blocking=True, exclude_run_id="r1")
+    assert own is not None
+    own.release()
+    # Same loop: a manual run is not held by its own loop's paused run (ADR 0043, unchanged).
+    same = runs.claim_run("pausegrr", "review", {"pr_number": 5}, blocking=True)
+    assert same is not None
+    same.release()

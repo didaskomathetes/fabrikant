@@ -303,6 +303,7 @@ HUMAN_GATE_KEYWORDS = [
 
 # Parallel runs per project (ADR 0028); overridable via `max_parallel` in the spec.
 DEFAULT_MAX_PARALLEL = 3
+PAUSED_GROUP_RECHECK_SECONDS = 5.0  # approval decisions can arrive from another process
 DEFAULT_WORKERS = 4  # Worker pool size for trigger runs, overridable via FABRIKANT_WORKERS
 
 

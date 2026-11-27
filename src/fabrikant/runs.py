@@ -6,7 +6,7 @@ SQL backend. Run logs (``runs/<project>/<id>.log``) remain files."""
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -16,6 +16,7 @@ from .runmodel import Run, RunStatus, StepStatus
 from .runstore import STORE, RecordError, RunStoreError, parse_run, valid_project, valid_run_id
 
 LOCK_KEY_SEP = "::"  # separates project and loop in the scope key; forbidden in names (specs._validate_spec)
+CLAIM_KEY_VAR = "_fabrikant_claim_dedupe_key"
 
 # Status mark per step status (CLI `runs show`, `fabrikant run`).
 STEP_MARKS = {"pass": "✔", "fail": "✖", "timeout": "⏱", "error": "✖", "waiting": "⏸", StepStatus.SKIPPED.value: "–"}
@@ -99,6 +100,35 @@ def max_parallel_for(project: str, spec: dict | None = None) -> int:
     return max(1, value)
 
 
+def exclusive_groups(project: str, spec: dict | None = None) -> dict[str, str]:
+    """Loop → `exclusive_group` of the spec: loops of the same group never run at the same time for the same
+    issue/PR (e.g. `review-pr` + `pr-reply`: no review of a head that the running fix is about to replace).
+    Like the dedup, the check against running runs is process-local; concurrent processes for the same
+    project are unsupported (ADR 0028)."""
+    from .specs import load_projects
+
+    try:
+        if spec is None:
+            spec = load_projects().get(project) or {}
+    except (OSError, ValueError):
+        return {}
+    loops = spec.get("loops") or {}
+    return {
+        name: group
+        for name, lp in loops.items()
+        if isinstance(lp, dict) and isinstance((group := lp.get("exclusive_group")), str) and group
+    }
+
+
+def _group_busy(key: tuple[str, str, str], groups: Mapping[str, str]) -> bool:
+    """Is another loop of the same `exclusive_group` already running for the same issue/PR?"""
+    project, loop, item = key
+    group = groups.get(loop)
+    if not group or not item:
+        return False
+    return any(p == project and i == item and lp != loop and groups.get(lp) == group for p, lp, i in _active_keys)
+
+
 def dedupe_key(variables: dict | None) -> str:
     """Issue/PR reference of a run ("" = loop without reference, e.g. cron)."""
     for k in config.DEDUPE_VARS:
@@ -118,20 +148,40 @@ def mark_priority_waiter(scope: str, delta: int) -> None:
         _slots_cond.notify_all()
 
 
-def paused_dedupe_keys(project: str, loop: str, exclude_run_id: str | None = None) -> set[str]:
-    """Issue/PR references (:func:`dedupe_key`) of paused `needs_approval` runs of loop `loop`.
+def paused_dedupe_keys(
+    project: str, loop: str, exclude_run_id: str | None = None, *, also: Iterable[str] = ()
+) -> set[str]:
+    """Issue/PR references (:func:`dedupe_key`) of paused `needs_approval` runs of loop `loop`
+    (and of the loops in `also`, e.g. the other members of its `exclusive_group`).
 
     `exclude_run_id` leaves out the run that is being resumed itself —
     its own record would otherwise block the resume."""
+    loops = {loop, *also}
     keys: set[str] = set()
     for r in STORE.load_records(project, RunStatus.NEEDS_APPROVAL):
-        if r.get("id") == exclude_run_id or r.get("loop") != loop:
+        if r.get("id") == exclude_run_id or r.get("loop") not in loops:
             continue
         vars_ = r.get("vars")
-        key = dedupe_key(vars_ if isinstance(vars_, dict) else None)
+        variables = vars_ if isinstance(vars_, dict) else {}
+        key = variables.get(CLAIM_KEY_VAR, dedupe_key(variables))
         if key:
             keys.add(key)
     return keys
+
+
+def _paused_conflict(project: str, loops: list[str], item: str, exclude_run_id: str | None) -> bool:
+    """Check the relevant paused runs while the claim condition is held."""
+    return bool(item and loops and item in paused_dedupe_keys(project, loops[0], exclude_run_id, also=loops[1:]))
+
+
+def _wait_for_paused_decision(scope: str) -> None:
+    """Yield priority while waiting for an approval decision, which may come from another process."""
+    _priority_waiters[scope] = _priority_waiters.get(scope, 0) - 1
+    _slots_cond.notify_all()
+    try:
+        _slots_cond.wait(config.PAUSED_GROUP_RECHECK_SECONDS)
+    finally:
+        _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
 
 
 def claim_run(
@@ -146,7 +196,8 @@ def claim_run(
     """Reserves a run (ADR 0028): dedup + slot (max_parallel) for worktree loops.
 
     None if for loop + issue/PR a run is already active or paused
-    (`needs_approval`) (dedup), the limit
+    (`needs_approval`) (dedup), another loop of the same `exclusive_group` runs for this
+    issue/PR (:func:`exclusive_groups`), the limit
     is reached or a priority waiter in the same scope is waiting (ADR 0015) and
     `blocking=False`. `blocking=True` is a priority claim: it waits for a
     free slot **and** for the end of an active run of the same loop +
@@ -154,25 +205,46 @@ def claim_run(
     non-blocking claims yield to it meanwhile. ``registered=True``: the
     caller has already registered synchronously via :func:`mark_priority_waiter`
     (before the thread start, so trigger runs yield immediately); the entry
-    is removed again here. `exclude_run_id` (resume): the resumed run
-    itself does not block its own claim."""
+    is removed again here. A blocking claim also waits while a group-mate
+    (same `exclusive_group`) is paused for approval on the same issue/PR; it
+    does not count as a priority waiter meanwhile. `exclude_run_id` (resume):
+    the resumed run itself does not block its own claim."""
     scope = lock_key(project, loop)
     needs_slot = scope == project
     limit = max_parallel_for(project) if needs_slot else 0
-    key = (project, loop, dedupe_key(variables))
-    # Paused runs release their claim but keep occupying the reference; the
-    # resume (blocking or exclude_run_id) is exempt. File I/O deliberately
-    # outside the lock.
-    if not blocking and key[2] and key[2] in paused_dedupe_keys(project, loop, exclude_run_id):
-        return None
+    resumed = STORE.get_record(exclude_run_id, project) if exclude_run_id else None
+    resumed_vars = (resumed or {}).get("vars") or {}
+    item = resumed_vars.get(CLAIM_KEY_VAR, dedupe_key(variables))
+    key = (project, loop, item)
+    groups = exclusive_groups(project) if key[2] else {}
+    # Paused runs release their claim but keep occupying the reference — for their own loop and for
+    # the other loops of their `exclusive_group` (an approval gate holds the issue/PR until it is
+    # decided); the resume (exclude_run_id) is exempt. A blocking claim ignores its own loop's paused
+    # runs (ADR 0043) but waits for paused group-mates (checked below, once the reference is free).
+    # A pause is persisted before its active claim is released. Read the store while holding
+    # the claim lock so a release cannot occur between the read and acquiring a new claim.
+    group = groups.get(loop)
+    mates = [lp for lp, g in groups.items() if g == group and lp != loop] if group else []
     with _slots_cond:
         if blocking and not registered:
             _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
         try:
             while True:
-                free = key not in _active_keys and (not needs_slot or _slots_used.get(project, 0) < limit)
+                free = (
+                    key not in _active_keys
+                    and not _group_busy(key, groups)
+                    and (not needs_slot or _slots_used.get(project, 0) < limit)
+                )
                 if free and (blocking or not _priority_waiters.get(scope)):
-                    break
+                    checked = mates if blocking else [loop, *mates]
+                    if not _paused_conflict(project, checked, key[2], exclude_run_id):
+                        break
+                    if not blocking:
+                        return None
+                    # A decision (approve/reject) does not notify the condition → re-check periodically; meanwhile
+                    # don't hold back trigger runs of the scope (a decision can take days).
+                    _wait_for_paused_decision(scope)
+                    continue
                 if not blocking:
                     return None
                 _slots_cond.wait()

@@ -8,6 +8,10 @@ All notable changes to fabrikant are documented here. The format follows
 
 ### Added
 
+- Loop option `exclusive_group`: loops of the same group never run at the same time for the same issue/PR (e.g. a
+  review loop and a fix loop on one PR). A trigger run blocked this way is dropped like one over `max_parallel`
+  (with `reconcile` it fires again on the next poll); queued manual runs and resumes wait. A run paused for
+  approval keeps holding its issue/PR for the whole group.
 - `fabrikant validate` warns about spec keys the schema doesn't know (`⚠ <project>: unknown spec key <path>: <key>`).
   The engine ignores them, so a typo or a key from a newer fabrikant version would otherwise silently have no
   effect. `x-` keys and keys a step plugin declares in its schema (literal or via `patternProperties`) are exempt

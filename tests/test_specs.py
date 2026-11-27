@@ -196,6 +196,19 @@ def test_validate_agent_github_identity_unknown(tmp_path):
         )
 
 
+def test_validate_loop_exclusive_group(tmp_path):
+    s = _valid_spec(str(tmp_path))
+    s["loops"]["l1"]["exclusive_group"] = "pr-cycle"
+    specs._validate_spec(s)  # no raise
+    for bad, needle in ((" ", "exclusive_group darf nicht leer"), (5, "is not of type 'string'")):
+        s["loops"]["l1"]["exclusive_group"] = bad
+        with pytest.raises(ValueError) as exc:
+            specs._validate_spec(s)
+        # Reported exactly once (schema: type, semantic check: empty), not by both.
+        assert sum("exclusive_group" in line for line in str(exc.value).splitlines()[1:]) == 1, str(exc.value)
+        assert needle in str(exc.value)
+
+
 @pytest.mark.parametrize("key", ["tools", "allowed_tools"])
 def test_validate_agent_tool_lists(tmp_path, key):
     base = _valid_spec(str(tmp_path))
