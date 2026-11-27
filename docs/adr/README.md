@@ -48,7 +48,7 @@ The ADR merged first kept its number; the others were moved in merge order:
 | [0025](0025-alert-dedup-fingerprint.md) | Alert deduplication by fingerprint (instead of an issue per run) | Accepted; personal name replaced by GitHub handle 2026-11-26 |
 | [0026](0026-alert-log-tail-redaction.md) | Redaction of the alert `log_tail` | Accepted |
 | [0027](0027-on-webhook-trigger.md) | `on_webhook` trigger (HMAC, tunnel CORS) | Accepted; references fixed 2026-11-26 |
-| [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-11-26: Dedup inkl. `exclusive_group` prozesslokal) |
+| [0028](0028-worktree-per-run.md) | Worktree pro Run statt Projekt-Lock (`max_parallel`, geteilter Agent-State) | Akzeptiert (geändert 2026-10-23) |
 | [0030](0030-auth-local-users-roles.md) | Authentication + authorization (local users, roles) | Accepted; references fixed 2026-11-26 |
 | [0031](0031-issue-duplicates-dependencies.md) | Duplicate/dependency detection in refine, missing prerequisites as an issue, blocker gate in develop (`skip_blocked`), backfill | Accepted |
 | [0032](0032-adr-number-check.md) | ADR numbers — assignment, collision check, renumbering | Accepted |

@@ -168,6 +168,21 @@ def paused_dedupe_keys(
 _PAUSED_RECHECK_S = 5.0
 
 
+def _paused_conflict(project: str, loops: list[str], item: str, exclude_run_id: str | None) -> bool:
+    """Check the relevant paused runs while the claim condition is held."""
+    return bool(item and loops and item in paused_dedupe_keys(project, loops[0], exclude_run_id, also=loops[1:]))
+
+
+def _wait_for_paused_decision(scope: str) -> None:
+    """Yield priority while waiting for an approval decision, which may come from another process."""
+    _priority_waiters[scope] = _priority_waiters.get(scope, 0) - 1
+    _slots_cond.notify_all()
+    try:
+        _slots_cond.wait(_PAUSED_RECHECK_S)
+    finally:
+        _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
+
+
 def claim_run(
     project: str,
     loop: str,
@@ -221,23 +236,13 @@ def claim_run(
                 )
                 if free and (blocking or not _priority_waiters.get(scope)):
                     checked = mates if blocking else [loop, *mates]
-                    paused = bool(
-                        key[2]
-                        and checked
-                        and key[2] in paused_dedupe_keys(project, checked[0], exclude_run_id, also=checked[1:])
-                    )
-                    if not paused:
+                    if not _paused_conflict(project, checked, key[2], exclude_run_id):
                         break
                     if not blocking:
                         return None
                     # A decision (approve/reject) does not notify the condition → re-check periodically; meanwhile
                     # don't hold back trigger runs of the scope (a decision can take days).
-                    _priority_waiters[scope] = _priority_waiters.get(scope, 0) - 1
-                    _slots_cond.notify_all()
-                    try:
-                        _slots_cond.wait(_PAUSED_RECHECK_S)
-                    finally:
-                        _priority_waiters[scope] = _priority_waiters.get(scope, 0) + 1
+                    _wait_for_paused_decision(scope)
                     continue
                 if not blocking:
                     return None

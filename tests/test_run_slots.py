@@ -573,6 +573,21 @@ def test_paused_and_resumed_run_keep_original_claim_key(limit, monkeypatch):
     resumed.release()
 
 
+def test_priority_worker_queued_resume_excludes_own_record(limit, monkeypatch):
+    _group_spec(monkeypatch, "queuedresume")
+    limit["n"] = 1
+    _paused("queuedresume", "reply", {"pr_number": 5}, run_id="r1")
+    held = runs.claim_run("queuedresume", "other", {"pr_number": 9})
+    assert held is not None
+    started = threading.Event()
+    queued = engine.spawn_priority_worker(
+        "queuedresume", "reply", {"pr_number": 5}, exclude_run_id="r1", work=lambda claim: started.set()
+    )
+    assert queued and not started.is_set()
+    held.release()
+    assert started.wait(5)
+
+
 def test_pause_lookup_and_claim_are_atomic(limit, monkeypatch):
     _group_spec(monkeypatch, "atomicgrp")
     entered = threading.Event()
