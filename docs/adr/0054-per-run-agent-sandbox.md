@@ -154,4 +154,3 @@ even when the export fails, so only the bundle tells a red test from a broken ex
 agents. Steps that must post to GitHub or reach host services (e.g. a SonarQube upload) stay on the host
 and only read the sandboxed step's output as data. Validation rejects `sandboxed` on other step types, so
 the key can no longer be accepted and silently ignored.
-
