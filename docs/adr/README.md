@@ -69,7 +69,7 @@ The ADR merged first kept its number; the others were moved in merge order:
 | [0051](0051-egress-default-deny-proxy.md) | Egress default-deny — Agent-Internetzugang nur über den Allowlist-Proxy | Akzeptiert |
 | [0052](0052-named-connections.md) | Benannte Verbindungen — LLM-Provider und Agent-Backends in der UI konfigurieren | Akzeptiert (2026-11-06) |
 | [0053](0053-sonar-pr-project-cleanup.md) | Sonar-PR-Projekte nach Merge/Close aufräumen (Python-Helfer, fail-safe, advisory im main-Scan) | Akzeptiert (2026-11-13) |
-| [0054](0054-per-run-agent-sandbox.md) | Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container | In Überarbeitung (2026-11-06) |
+| [0054](0054-per-run-agent-sandbox.md) | Per-Run-Agent-Sandbox — One-Shot-CLI-Agenten in einem Docker-Container | In Überarbeitung (2026-11-06; amended 2026-11-25: shell steps in the sandbox) |
 | [0055](0055-ui-delegated-event-handlers.md) | UI ohne Inline-Event-Handler (data-* + Delegation) | Akzeptiert (2026-11-13) |
 | [0056](0056-deployment-profile-adapter-registry.md) | Deployment-Profil (`homelab\|cloud`) mit Adapter-Registry am Composition Root | Akzeptiert (2026-11-13) |
 | [0057](0057-run-launcher-ports-adapters.md) | Run-Launcher — Port/Adapter für das Ausführungs-Substrat (`FABRIKANT_LAUNCHER`) | Akzeptiert (2026-11-18) |

@@ -8,6 +8,11 @@ All notable changes to fabrikant are documented here. The format follows
 
 ### Added
 
+- Shell steps: `sandboxed: true` runs the command in the per-run agent container (ADR 0054), with a clone of the
+  worktree plus the remote default branch and fabrikant's `scripts/` mounted read-only; `github_identity: dev|reviewer`
+  runs `gh`/`git` as that role. Both keys are now rejected on step types that ignore them.
+  In a sandboxed step a `scripts/…` path the worktree has itself runs from the worktree; on the host the spec
+  directory's helper keeps running.
 - `fabrikant validate` warns about spec keys the schema doesn't know (`⚠ <project>: unknown spec key <path>: <key>`).
   The engine ignores them, so a typo or a key from a newer fabrikant version would otherwise silently have no
   effect. `x-` keys and keys a step plugin declares in its schema (literal or via `patternProperties`) are exempt

@@ -106,17 +106,33 @@ def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:
     return config.FABRIKANT_HOME / p
 
 
-def resolve_script_paths(command: str, spec_path: str | Path | None) -> str:
+def resolve_script_paths(
+    command: str,
+    spec_path: str | Path | None,
+    workdir: str | Path | None = None,
+    mounts: list[str] | None = None,
+) -> str:
     """Resolve ``scripts/...`` references in a shell command relative to its spec.
 
     Existing paths are made absolute so the shell step can retain the project's
     worktree as its working directory. Missing paths remain unchanged so the
     shell reports the same command-not-found error as before.
+
+    ``workdir`` (worktree-first) is for sandboxed steps only: a script that exists under ``workdir``
+    then stays relative, so the container runs the worktree's own copy (an absolute path into the
+    spec's checkout does not exist there). On the host the caller passes no ``workdir``: the trusted
+    spec-directory helper must win, otherwise a PR could ship a same-named script that runs on the
+    host with the step's tokens.
     """
 
     def replace(match: re.Match[str]) -> str:
         raw = match.group(0)
-        path = resolve_relative(raw.removeprefix("./"), spec_path)
+        rel = raw.removeprefix("./")
+        if workdir is not None and (Path(workdir) / rel).is_file():
+            return raw
+        path = resolve_relative(rel, spec_path)
+        if mounts is not None and path.is_file():
+            mounts.append(str(path))
         return str(path) if path.is_file() else raw
 
     return _SCRIPT_PATH_RE.sub(replace, command)

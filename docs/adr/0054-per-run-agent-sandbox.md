@@ -4,6 +4,8 @@
 offen sind das Sandbox-Image und die Host-Ausführung von Repo-Code (s. „Offene Punkte“).
 Ursprünglich unter der Nummer 0052 vorgeschlagen; umnummeriert, weil die Nummer an „Benannte Verbindungen“ (PR #508) ging.
 Am 2026-11-06 überarbeitet: Austausch über git-Bundles statt Worktree-Mount.
+Amendment 2026-11-25: shell steps that run repo code can run in the sandbox (`sandboxed: true`),
+which resolves the open point „Repo-Code läuft weiter auf dem Host“ (see the amendment below).
 **Betrifft:** Security (Code-Ausführung, OWASP ASI05), One-Shot-CLI-Backends, Deployment.
 **Issue:** #520 (ersetzt/verfeinert #20 „Worker Service + Per-Run Sandbox").
 
@@ -114,9 +116,41 @@ Mit `FABRIKANT_SANDBOX=1` hüllt `OneShotCliBackend.send_prompt` den Agent-Befeh
 
 - **Sandbox-Image:** `Dockerfile` + `fabrikant sandbox build-image` fehlen noch; ohne Image ist
   die Sandbox nicht nutzbar.
-- **Repo-Code läuft weiter auf dem Host:** Lint- und Test-Steps nach dem Agenten führen Code
+- ~~**Repo-Code läuft weiter auf dem Host:** Lint- und Test-Steps nach dem Agenten führen Code
   aus dem Repo auf dem Host aus (`make lint`, `conftest.py`, Build-Skripte) — auch das, was
-  der Agent geschrieben hat. Eine dichte Grenze braucht diese Steps ebenfalls in der Sandbox.
+  der Agent geschrieben hat. Eine dichte Grenze braucht diese Steps ebenfalls in der Sandbox.~~
+  Resolved by the amendment of 2026-11-25 (`sandboxed: true` on shell steps).
 - **Caches:** ein Cache-Volume pro Projekt (nicht das Host-Home) gegen kalte Caches.
 - **Mehrere Agent-Steps pro Run** (z. B. `pr-reply`): funktionieren (jeder Step klont den
   aktuellen Worktree-Stand), kosten aber pro Step einen Austausch.
+
+## Amendment 2026-11-25: shell steps in the sandbox
+
+**Decision:** a shell step can opt into the sandbox with `sandboxed: true`. With `FABRIKANT_SANDBOX` on,
+`sandbox.run_shell` runs the command in the same per-run container and over the same exchange as an agent
+(bundle in, checked result bundle back); without it the step runs on the host as before. Specs mark every
+step that executes repo code (lint, tests, coverage) this way, so code the agent wrote never runs on the
+host.
+
+What the container gets, beyond the agent case:
+
+- **The remote default branch** (`origin/HEAD`, else `origin/main|master`) in the bundle, under the same
+  ref name, so diff-based scripts (`--base origin/main`) work in the clone.
+- **fabrikant's `scripts/`** (`FABRIKANT_HOME/scripts`) mounted read-only at its host path: specs call
+  helpers as `{fabrikant_home}/scripts/…`, and the path must exist in the container too. In a sandboxed
+  step a `scripts/…` path the worktree has itself stays relative (the worktree's copy runs; the spec
+  checkout's path does not exist in the container). On the host `scripts/…` keeps resolving to the spec
+  directory's helper: a same-named script shipped by the PR under test must not run there with tokens.
+- **Env:** the scrubbed agent env (ADR 0050) plus the step's `env:`; with `github_identity` only that
+  role's token (`GH_TOKEN`/`GITHUB_TOKEN`), never the rest of the identity env.
+- **`/tmp` executable** (tmpfs `rw,exec`): test runners and build tools put executables there.
+
+The command runs in the step's subdirectory of the clone (`workdir` may be below the worktree root).
+A timeout stops the container and discards the exchange. A rejected or missing result bundle fails the
+step as `environment`, whatever the command's exit code: the entrypoint keeps a failing command's code
+even when the export fails, so only the bundle tells a red test from a broken exchange.
+
+**Consequences:** steps that need the network (package installs) go through the egress allowlist like
+agents. Steps that must post to GitHub or reach host services (e.g. a SonarQube upload) stay on the host
+and only read the sandboxed step's output as data. Validation rejects `sandboxed` on other step types, so
+the key can no longer be accepted and silently ignored.

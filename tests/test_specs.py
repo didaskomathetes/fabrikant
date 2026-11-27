@@ -34,6 +34,13 @@ def test_validate_ok(tmp_path):
     specs._validate_spec(_valid_spec(str(tmp_path)))  # kein Raise
 
 
+def test_sandboxed_shell_requires_worktree(tmp_path):
+    spec = _step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "true", "sandboxed": True})
+    spec["loops"]["l1"]["worktree"] = False
+    with pytest.raises(ValueError, match="sandboxed shell"):
+        specs._validate_spec(spec)
+
+
 def test_validate_root_missing(tmp_path):
     with pytest.raises(ValueError, match="root"):
         specs._validate_spec(_valid_spec(str(tmp_path / "nope")))
@@ -194,6 +201,33 @@ def test_validate_agent_github_identity_unknown(tmp_path):
         specs._validate_spec(
             _step(_valid_spec(str(tmp_path)), {"type": "agent", "prompt": "x", "github_identity": "me"})
         )
+
+
+def test_validate_shell_github_identity_ok(tmp_path):
+    step = {"type": "shell", "cmd": "true", "github_identity": "reviewer"}
+    specs._validate_spec(_step(_valid_spec(str(tmp_path)), step))  # no raise
+
+
+def test_validate_shell_github_identity_unknown(tmp_path):
+    with pytest.raises(ValueError, match="github_identity muss einer von"):
+        specs._validate_spec(
+            _step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "true", "github_identity": "me"})
+        )
+
+
+def test_validate_github_identity_rejected_on_other_step_types(tmp_path):
+    with pytest.raises(ValueError, match="github_identity gilt nur für"):
+        specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "git", "github_identity": "dev"}))
+
+
+def test_validate_shell_sandboxed(tmp_path):
+    specs._validate_spec(_step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "true", "sandboxed": True}))
+    for bad in (
+        {"type": "shell", "cmd": "true", "sandboxed": "yes"},
+        {"type": "agent", "prompt": "x", "sandboxed": True},
+    ):
+        with pytest.raises(ValueError, match="sandboxed gilt nur für shell"):
+            specs._validate_spec(_step(_valid_spec(str(tmp_path)), bad))
 
 
 @pytest.mark.parametrize("key", ["tools", "allowed_tools"])
