@@ -151,7 +151,10 @@ ref="$1"; shift
 mkdir -p {work_dir}/repo && cd {work_dir}/repo || exit {EX_EXCHANGE}
 {{ git init -q && git fetch -q --no-tags {in_bundle} "+$ref:refs/heads/fabrikant-base" \\
   && git checkout -q -b work fabrikant-base; }} >&2 || exit {EX_EXCHANGE}
-git fetch -q --no-tags {in_bundle} "+{_REMOTE_REFS}*:{_REMOTE_REFS}*" >&2 2>/dev/null || true
+refs=$(git bundle list-heads {in_bundle}) || exit {EX_EXCHANGE}
+if printf '%s\n' "$refs" | grep -q ' {_REMOTE_REFS}'; then
+  git fetch -q --no-tags {in_bundle} "+{_REMOTE_REFS}*:{_REMOTE_REFS}*" >&2 || exit {EX_EXCHANGE}
+fi
 rc=0
 "$@" || rc=$?
 {{ git add -A && git {unstage} {dirs} \\
@@ -486,6 +489,9 @@ def render_docker_cmd(
     (HOME=/root) or shadow the image binaries (host PATH). Afterwards
     the container defaults (`SANDBOX_ENV_OVERRIDES`) come LAST — with a
     duplicate `-e` Docker applies the last one, so that one wins."""
+    mounts = ["-v", f"{exchange.in_bundle}:{IN_BUNDLE}:ro", "-v", f"{exchange.out_dir}:{OUT_DIR}"]
+    for path in ((cfg.helper_scripts,) if cfg.helper_scripts else ()) + cfg.helper_files:
+        mounts += ["-v", f"{path}:{path}:ro"]
     cmd: list[str] = [
         "docker",
         "run",
@@ -525,17 +531,10 @@ def render_docker_cmd(
         f"{WORK_DIR}:rw,exec,mode=1777,size={cfg.work_size}",
         "-u",
         cfg.effective_user,
-        "-v",
-        f"{exchange.in_bundle}:{IN_BUNDLE}:ro",
-        "-v",
-        f"{exchange.out_dir}:{OUT_DIR}",
+        *mounts,
         "-w",
         WORK_DIR,
     ]
-    if cfg.helper_scripts:
-        cmd[-2:-2] = ["-v", f"{cfg.helper_scripts}:{cfg.helper_scripts}:ro"]
-    for path in cfg.helper_files:
-        cmd[-2:-2] = ["-v", f"{path}:{path}:ro"]
     for key in sorted(env):
         if key in SANDBOX_ENV_STRIP:
             continue

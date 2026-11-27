@@ -56,7 +56,7 @@ from ..agentenv import build_agent_env
 from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
 from ..excerpt import cap_output, failure_reason
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
-from ..gitops import GH_CLI_TOKEN_VAR, github_env, process_env
+from ..gitops import GH_CLI_TOKEN_VAR, GH_TOKEN_ENV, github_env, process_env
 from ..i18n import t
 from ..procs import run_group
 from ..runmodel import FailureKind, split_done, split_verdict, split_warnings
@@ -64,7 +64,7 @@ from ..secrets import _redact
 from ..spec_sources import resolve_script_paths
 
 SANDBOXED_KEY = "sandboxed"  # step key (bool): run the command in the agent container (ADR 0054)
-_TOKEN_VARS = (GH_CLI_TOKEN_VAR, "GITHUB_TOKEN")  # from github_env: only the token goes into the container
+_TOKEN_VARS = (GH_CLI_TOKEN_VAR, GH_TOKEN_ENV["dev"])  # only the role token goes into the container
 
 
 def run_shell(cmd: str, workdir: str, env: dict, timeout: int) -> subprocess.CompletedProcess:

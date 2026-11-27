@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -617,6 +618,24 @@ def test_run_shell_runs_in_subdir_with_origin_main_and_returns_changes(repo, tmp
     assert p.stdout.splitlines() == ["base ok", "pkg"]  # origin/main in the clone, cwd = subdirectory
     assert (repo / "pkg" / "fixed.txt").read_text() == "fmt\n"  # the change came back
     assert "refs/fabrikant/sandbox" not in _sh(repo, "git", "for-each-ref")  # cleaned up
+
+
+def test_remote_ref_fetch_failure_is_reported(repo, tmp_path, monkeypatch):
+    _sh(repo, "git", "update-ref", "refs/remotes/origin/main", "HEAD")
+    real_git = shutil.which("git")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    wrapper = bindir / "git"
+    wrapper.write_text(
+        '#!/bin/sh\ncase "$*" in *refs/remotes/\\** ) echo "remote fetch failed" >&2; exit 42;; esac\n'
+        f'exec "{real_git}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    _local_container(monkeypatch, tmp_path)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    with pytest.raises(sandbox.SandboxError):
+        sandbox.run_shell("shell-fetch-fail", "touch should-not-run", str(repo), {}, timeout=60)
+    assert not (repo / "should-not-run").exists()
 
 
 def test_run_shell_propagates_exit_code_and_keeps_git_metadata_out(repo, tmp_path, monkeypatch):

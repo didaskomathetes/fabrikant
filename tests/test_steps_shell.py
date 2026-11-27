@@ -559,7 +559,7 @@ def test_shell_sandboxed_missing_result_fails_as_environment_not_outcome(tmp_pat
     step = {"type": "shell", "cmd": "make test", "sandboxed": True, "failure_kind": "outcome"}
     res = _step_shell(_ctx(tmp_path), step, NOOP)
     assert res["ok"] is False and res["failure_kind"] == "environment"
-    assert "kein Ergebnis aus dem Container" in res["summary"]
+    assert sandbox.t("sandbox.shell_result_missing", code=1) in res["summary"]
 
 
 # ---------------------------------------------------------------- warnings / done
