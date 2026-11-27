@@ -1,6 +1,6 @@
 """KPI metrics: minimal counter registry + Prometheus text export.
 
-Factory KPIs (framework-v1-draft.md §5) need an export point.
+Factory KPIs (docs/roadmap.md, Factory KPIs) need an export point.
 Deliberately minimal (stdlib, no prometheus_client dependency): counters with
 label dimensions; `render()` returns Prometheus text format, scrapable via
 `GET /api/metrics` (control plane).
@@ -140,7 +140,7 @@ def render() -> str:
     return "\n".join(c.render() for c in cs) + "\n"
 
 
-# KPIs (framework-v1-draft.md §5). Each counter is registered where the
+# KPIs (docs/roadmap.md, Factory KPIs). Each counter is registered where the
 # feature lives and incremented at the actual event — the export is
 # thereby never empty and reflects the production state.
 #

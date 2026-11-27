@@ -32,7 +32,7 @@ gemeldeten Findings behoben hatte. Ursachen:
 4. **Fixes durch den Builder:** Die Fix-Runde nutzt Backend/Modell des letzten
    Agent-Steps (`ctx.last_agent_backend`/`last_agent_model`, von der Engine
    getrackt), überschreibbar per `fix_backend`/`fix_model`. Ohne Builder-Step
-   greifen `FABRIK_AGENT_BACKEND`/`FABRIK_AGENT_MODEL`.
+   greifen `FABRIKANT_AGENT_BACKEND`/`FABRIKANT_AGENT_MODEL`.
 
 ## Konsequenzen
 

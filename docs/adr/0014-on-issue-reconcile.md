@@ -1,54 +1,53 @@
-# ADR 0014: Reconcile-Modus für den `on_issue`-Trigger
+# ADR 0014: Reconcile mode for the `on_issue` trigger
 
-**Status:** Akzeptiert (2026-10-19); Amendment 2026-10-28 (ADR 0036 umgesetzt):
-Auto-Retry ist über die Retry-Policy (ADR 0036, Entscheidung 7) möglich — der
-Abschnitt „Kein Auto-Retry“ gilt für `reconcile` selbst unverändert
-**Entscheider:** Fabrik (dogfooding, Issue #131)
-**Kontext:** Der `on_issue`-Trigger merkte sich gesehene Issues nur im
-Speicher. Der erste Poll nach jedem Server-Start markierte alle offenen Issues
-als gesehen, ohne zu feuern. Jedes Issue, das beim (Neu-)Start schon existierte
-oder während einer Downtime entstand, wurde nie verarbeitet — u. a. die
-Refactor-Issues #63–#65 aus dem `refactor-sweep` und das Roadmap-Backlog
-#16–#34. Zusätzlich sah der Poll nur die 50 neuesten Issues.
+**Status:** Accepted (2026-10-19); amendment 2026-10-28 (ADR 0036 implemented):
+auto-retry is possible through the retry policy (ADR 0036, decision 7) — the
+"No auto-retry" section still applies unchanged to `reconcile` itself
+**Deciders:** Fabrikant (dogfooding, issue #131)
+**Context:** The `on_issue` trigger remembered seen issues only in memory. The
+first poll after every server start marked all open issues as seen without
+firing. Every issue that already existed at (re)start, or that was created during
+downtime, was never processed — among them the refactor issues #63–#65 from
+`refactor-sweep` and the roadmap backlog #16–#34. In addition, the poll only saw
+the 50 newest issues.
 
-## Entscheidung
+## Decision
 
-`on_issue` bekommt — wie `on_pr` (ADR 0011) — die opt-in-Option
-`reconcile: true` (`src/fabrik/scheduler.py`):
+Like `on_pr` (ADR 0011), `on_issue` gets the opt-in option `reconcile: true`
+(`src/fabrikant/scheduler.py`):
 
-- **Persistente Quelle statt In-Memory-Set:** Der Trigger feuert für jedes
-  passende offene Issue, für das der Loop **noch nie** einen Run hatte —
-  geprüft über die Run-Records (`runs/<projekt>/*.json`, `loop` +
-  `trigger == "on_issue:#N"`). Das überlebt Restarts und arbeitet den Bestand ab.
-- **Kein Auto-Retry:** „Hatte schon einen Run" zählt unabhängig vom Status
-  (auch `error`/`fail`) — `reconcile` startet für einen Trigger nie einen
-  zweiten Run, damit dauerhaft kaputte Issues keine Endlosschleife drehen.
-  Automatisches Retry existiert ausschließlich als begrenzte, klassenbasierte
-  Retry-Policy (ADR 0036, Entscheidung 7); „Retry bleibt manuell" entfällt
-  dadurch.
-- **Drosselung:** höchstens `max_per_poll` neue Runs pro Poll und Loop
-  (Default **2**, Werte < 1 werden auf 1 angehoben), **älteste Issues zuerst**
-  (`sort=created&direction=asc`). Ohne Drosselung würde `refine` beim
-  Aktivieren ~25 Runs mit je einem Approval-Gate auf einmal starten.
-- **Pagination:** Im Reconcile-Modus werden bis zu 10 Seiten à 50 Issues
-  gelesen (lazy — nur so viele, bis `max_per_poll` Kandidaten gefunden sind),
-  damit verarbeitete alte Issues neuere nicht dauerhaft verdecken.
-- **Gemeinsamer Run-Lookup:** `loop_run_triggers(projekt, loop, statuses)`
-  ist der eine Helfer für Run-Lookup nach Trigger; `_has_active_pr_run`
-  (on_pr) nutzt ihn mit `ACTIVE_RUN_STATUSES`.
-- Ohne `reconcile` bleibt das Event-Verhalten unverändert.
+- **Persistent source instead of an in-memory set:** the trigger fires for every
+  matching open issue for which the loop has **never** had a run — checked via
+  the run records (`runs/<project>/*.json`, `loop` +
+  `trigger == "on_issue:#N"`). This survives restarts and works through the
+  existing stock.
+- **No auto-retry:** "already had a run" counts regardless of status (including
+  `error`/`fail`) — `reconcile` never starts a second run for a trigger, so that
+  permanently broken issues do not spin in an endless loop. Automatic retry
+  exists exclusively as a bounded, class-based retry policy (ADR 0036,
+  decision 7); "retry stays manual" no longer applies because of it.
+- **Throttling:** at most `max_per_poll` new runs per poll and loop (default
+  **2**, values < 1 are raised to 1), **oldest issues first**
+  (`sort=created&direction=asc`). Without throttling, `refine` would start ~25
+  runs, each with an approval gate, at once when activated.
+- **Pagination:** in reconcile mode up to 10 pages of 50 issues are read (lazily
+  — only as many as needed until `max_per_poll` candidates are found), so that
+  processed old issues do not permanently hide newer ones.
+- **Shared run lookup:** `loop_run_triggers(project, loop, statuses)` is the one
+  helper for looking up runs by trigger; `_has_active_pr_run` (on_pr) uses it
+  with `ACTIVE_RUN_STATUSES`.
+- Without `reconcile` the event behaviour stays unchanged.
 
-Aktiviert in `projects/fabrik.fabrik.yaml` für `refine` und `develop`.
+Enabled in `projects/fabrikant.fabrikant.yaml` for `refine` and `develop`.
 
-## Konsequenzen
+## Consequences
 
-- Ein Run, der vom Projekt-Lock (`_safe_run`, non-blocking) verworfen wird,
-  hinterlässt keinen Record — der nächste Poll feuert erneut. Reconcile macht
-  verlorene Trigger-Events damit selbstheilend.
-- Wird ein Run-Record gelöscht, feuert das Issue erneut (bewusst: so lässt
-  sich ein Retry auch ohne UI erzwingen).
-- Jeder Poll liest die Run-Records des Projekts einmal (O(Runs)); bei 300 s
-  Poll-Intervall unkritisch. Wächst `runs/` stark, ist ein Index der nächste
-  Schritt.
-- Ein Issue, das *nachträglich* das Label bekommt, feuert im Reconcile-Modus
-  (wie im Event-Modus).
+- A run that is discarded by the project lock (`_safe_run`, non-blocking) leaves
+  no record — the next poll fires again. Reconcile thereby makes lost trigger
+  events self-healing.
+- If a run record is deleted, the issue fires again (deliberate: this way a retry
+  can be forced even without the UI).
+- Every poll reads the project's run records once (O(runs)); uncritical at a
+  300 s poll interval. If `runs/` grows large, an index is the next step.
+- An issue that gets the label *afterwards* fires in reconcile mode (as in event
+  mode).

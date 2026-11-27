@@ -130,7 +130,7 @@ def test_all_pass(runs_dir, projects_dir):
 
 
 def test_ctx_exposes_fabrikant_home(runs_dir, projects_dir):
-    """{fabrikant_home}: Prompts fremder Projekte finden fabriks Helfer-Scripts."""
+    """{fabrikant_home}: Prompts fremder Projekte finden fabrikants Helfer-Scripts."""
     e = _write_spec(projects_dir, "tctx_home", [{"name": "s1", "cmd": "echo {fabrikant_home}"}])
     rec = fabrikant.run_loop(e, "t")
     assert rec["steps"][0]["summary"] == str(fabrikant.config.FABRIKANT_HOME)

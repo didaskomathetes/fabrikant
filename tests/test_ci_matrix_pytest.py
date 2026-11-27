@@ -121,7 +121,7 @@ def test_main_dry_run_lists_selection(mod, repo, capsys):
     assert capsys.readouterr().out.strip() == "mcp-wrapper\tsrc/mcp/wrapper"
 
 
-@pytest.mark.parametrize(("results", "code"), [([True], 0), ([False], 1)])
+@pytest.mark.parametrize(("results", "code"), [(["pass"], 0), (["fail"], 1), (["crash", "crash"], 75)])
 def test_main_runs_selected_entries(mod, repo, monkeypatch, results, code):
     (repo / "src" / "mcp").mkdir(parents=True)
     (repo / "src" / "mcp" / "a.py").write_text("")
@@ -129,11 +129,12 @@ def test_main_runs_selected_entries(mod, repo, monkeypatch, results, code):
 
     def fake_run(entry, env, root, cov_xml=None):
         seen.append((entry.test_home, env))
-        return results.pop(0)
+        return mod.Outcome(results.pop(0))
 
     monkeypatch.setattr(mod, "run_entry", fake_run)
     assert mod.main(["--root", str(repo), "--base", "main"]) == code
-    assert seen == [("src/mcp/wrapper", {"PYTHONPATH": ".:.."})]
+    assert all(s == ("src/mcp/wrapper", {"PYTHONPATH": ".:.."}) for s in seen)
+    assert not results  # a crash runs exactly once more
 
 
 def test_run_entry_stops_when_sync_fails(mod, monkeypatch, tmp_path):
@@ -144,7 +145,7 @@ def test_run_entry_stops_when_sync_fails(mod, monkeypatch, tmp_path):
         return subprocess.CompletedProcess(cmd, 1)
 
     monkeypatch.setattr(mod.subprocess, "run", fake)
-    assert mod.run_entry(mod.MatrixEntry("p", "src/p"), {}, tmp_path) is False
+    assert mod.run_entry(mod.MatrixEntry("p", "src/p"), {}, tmp_path) is mod.Outcome.FAIL
     assert len(calls) == 1 and calls[0][:2] == ["uv", "sync"]
 
 
@@ -156,7 +157,7 @@ def test_run_entry_runs_pytest_in_test_home_with_env(mod, monkeypatch, tmp_path)
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(mod.subprocess, "run", fake)
-    assert mod.run_entry(mod.MatrixEntry("p", "src/p"), {"X": "1"}, tmp_path) is True
+    assert mod.run_entry(mod.MatrixEntry("p", "src/p"), {"X": "1"}, tmp_path) is mod.Outcome.PASS
     cmd, kw = calls[1]
     assert cmd[1:3] == ["-m", "pytest"] and kw["cwd"] == tmp_path / "src/p" and kw["env"]["X"] == "1"
     assert "--no-editable" in calls[0][0]  # ohne Coverage wie CI
@@ -172,7 +173,7 @@ def test_run_entry_with_coverage_syncs_editable_and_writes_xml(mod, monkeypatch,
 
     monkeypatch.setattr(mod.subprocess, "run", fake)
     xml = tmp_path / "cov" / "coverage-0.xml"
-    assert mod.run_entry(mod.MatrixEntry("p", "src/p/tests"), {}, tmp_path, xml) is True
+    assert mod.run_entry(mod.MatrixEntry("p", "src/p/tests"), {}, tmp_path, xml) is mod.Outcome.PASS
     sync, install, pytest_cmd = calls
     assert sync[:2] == ["uv", "sync"] and "--no-editable" not in sync  # Pfade auf die Quellen, nicht site-packages
     assert install[:3] == ["uv", "pip", "install"] and install[-1] == mod.COV_PACKAGE
@@ -186,7 +187,7 @@ def test_main_all_with_cov_dir_runs_whole_matrix(mod, repo, monkeypatch, tmp_pat
 
     def fake_run(entry, env, root, cov_xml=None):
         seen.append((entry.test_home, cov_xml))
-        return True
+        return mod.Outcome.PASS
 
     monkeypatch.setattr(mod, "run_entry", fake_run)
     cov = tmp_path / "cov"
@@ -199,6 +200,54 @@ def test_main_relative_cov_dir_is_made_absolute(mod, repo, monkeypatch, tmp_path
     """Regression: pytest läuft im test_home — ein relativer --cov-dir schrieb die XMLs dorthin."""
     monkeypatch.chdir(tmp_path)
     seen = []
-    monkeypatch.setattr(mod, "run_entry", lambda entry, env, root, cov_xml=None: seen.append(cov_xml) or True)
+    monkeypatch.setattr(
+        mod, "run_entry", lambda entry, env, root, cov_xml=None: seen.append(cov_xml) or mod.Outcome.PASS
+    )
     assert mod.main(["--root", str(repo), "--all", "--cov-dir", ".sonar-cov"]) == 0
     assert seen and all(c.is_absolute() and c.parent == tmp_path / ".sonar-cov" for c in seen)
+
+
+@pytest.mark.parametrize(
+    ("pytest_code", "outcome"),
+    [(0, "pass"), (1, "fail"), (2, "fail"), (-11, "crash"), (139, "crash"), (128, "fail")],
+)
+def test_run_entry_tells_red_tests_from_crashes(mod, monkeypatch, tmp_path, pytest_code, outcome):
+    """Regression: a SIGSEGV in the sandbox is a crash, not a red test result."""
+    codes = iter([0, pytest_code])  # uv sync, pytest
+    monkeypatch.setattr(mod.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, next(codes)))
+    assert mod.run_entry(mod.MatrixEntry("p", "src/p"), {}, tmp_path) is mod.Outcome(outcome)
+
+
+@pytest.mark.parametrize(
+    ("runs", "expected", "calls"),
+    [
+        (["crash", "pass"], "pass", 2),
+        (["crash", "crash"], "crash", 2),
+        (["fail"], "fail", 1),
+        (["crash", "fail"], "fail", 2),
+    ],
+)
+def test_run_entry_with_rerun_retries_only_crashes(mod, monkeypatch, tmp_path, capsys, runs, expected, calls):
+    seen = []
+
+    def fake_run(entry, env, root, cov_xml=None):
+        seen.append(entry)
+        return mod.Outcome(runs[len(seen) - 1])
+
+    monkeypatch.setattr(mod, "run_entry", fake_run)
+    assert mod.run_entry_with_rerun(mod.MatrixEntry("p", "src/p"), {}, tmp_path) is mod.Outcome(expected)
+    assert len(seen) == calls
+    assert ("abgestürzt" in capsys.readouterr().out) is (runs[0] == "crash")
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "code", "stderr"),
+    [
+        ([("a", "pass"), ("b", "pass")], 0, ""),
+        ([("a", "crash"), ("b", "pass")], 75, "abgestürzt: a"),
+        ([("a", "crash"), ("b", "fail")], 1, "rot: b"),  # a real red result beats the crash
+    ],
+)
+def test_exit_status(mod, capsys, outcomes, code, stderr):
+    assert mod.exit_status([(home, mod.Outcome(o)) for home, o in outcomes]) == code
+    assert stderr in capsys.readouterr().err

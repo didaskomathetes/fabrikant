@@ -277,6 +277,20 @@ def test_build_cmd_default_allows_edits_and_bash():
     cmd = ClaudeCodeBackend(model="m")._build_cmd()
     assert cmd[-4:] == ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
     assert "--tools" not in cmd
+    assert "--setting-sources" not in cmd and "--strict-mcp-config" not in cmd  # unrestricted: unchanged
+
+
+def assert_untrusted_workdir(cmd: list[str]) -> None:
+    """Restricted: only user settings, no MCP servers, every hook off (project settings can't re-enable them)."""
+    assert cmd[cmd.index("--setting-sources") + 1] == "user"
+    assert "--strict-mcp-config" in cmd
+    assert json.loads(cmd[cmd.index("--settings") + 1]) == {"disableAllHooks": True}
+
+
+@pytest.mark.parametrize("step", [{"tools": "Read"}, {"allowed_tools": "Read"}])
+def test_either_restriction_key_hardens(step):
+    """One key is enough: `tools` alone still runs on untrusted content, `allowed_tools` alone too."""
+    assert_untrusted_workdir(ClaudeCodeBackend.create(step, "", "m", 900)._build_cmd())
 
 
 def test_create_restricts_tools_from_step():
@@ -287,6 +301,7 @@ def test_create_restricts_tools_from_step():
     }
     cmd = ClaudeCodeBackend.create(step, "", "claude-opus-5-5", 900)._build_cmd()
     assert cmd[cmd.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write"
+    assert_untrusted_workdir(cmd)
     assert cmd[-4:] == [
         "--permission-mode",
         "dontAsk",
@@ -301,5 +316,35 @@ def test_create_keeps_explicit_empty_restrictions(value):
     """Empty ≠ omitted (programmatic steps bypass validation): fail closed, never the Bash default."""
     cmd = ClaudeCodeBackend.create({"tools": value, "allowed_tools": value}, "", "m", 900)._build_cmd()
     assert cmd[cmd.index("--tools") + 1] == ""
+    assert_untrusted_workdir(cmd)
     assert cmd[-2:] == ["--permission-mode", "dontAsk"]
     assert "--allowedTools" not in cmd and "Bash" not in cmd
+
+
+_MANAGED_MCP_ERR = b"You cannot dynamically configure MCP servers when an enterprise MCP config is present\n"
+
+
+def _poll_with_stderr(be: ClaudeCodeBackend, err: bytes) -> dict:
+    sid = be.create_task("/tmp/wd", "t")
+    p = FakePopen([])
+    p._rc = 1
+    p._err = err
+    be._sessions[sid]["proc"] = p
+    return be.poll(sid, "/tmp/wd")
+
+
+def test_restricted_step_on_managed_mcp_host_is_environment_failure():
+    """managed-mcp.json makes the CLI refuse --strict-mcp-config: host configuration, not a flaky agent."""
+    r = _poll_with_stderr(ClaudeCodeBackend.create({"tools": "Read"}, "", "m", 900), _MANAGED_MCP_ERR)
+    assert r["status"] == "failed"
+    assert r["failure_kind"] == "environment"
+    assert "managed-mcp.json" in r["text"] and "--strict-mcp-config" in r["text"]
+    assert "eingeschränkte Steps" in r["text"]
+    assert "enterprise MCP config is present" in r["text"]  # CLI text stays visible
+
+
+def test_unrestricted_step_keeps_generic_failure():
+    """Without the restriction the flag is not passed — no reinterpretation of the CLI output."""
+    r = _poll_with_stderr(ClaudeCodeBackend("", "m"), _MANAGED_MCP_ERR)
+    assert r["status"] == "failed"
+    assert "failure_kind" not in r

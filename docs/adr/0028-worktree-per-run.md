@@ -53,12 +53,12 @@ Poll-Runs ohne Lock wurden verworfen.
 
 ## Konsequenzen
 
-- Lange Runs blockieren kurze nicht mehr. Der Worker-Pool (`FABRIK_WORKERS`) begrenzt
+- Lange Runs blockieren kurze nicht mehr. Der Worker-Pool (`FABRIKANT_WORKERS`) begrenzt
   die Parallelität zusätzlich — für echte Parallelität muss er > 1 sein.
 - Mehr Plattenplatz und `git fetch`-Last (ein Worktree pro Run); gleichzeitige Runs
   desselben Projekts dürfen nicht denselben Branch auschecken (Branch-Namen pro
   Issue/Run, vgl. #25; Dedup deckt den Regelfall ab).
-- Der Slot-Zähler ist prozesslokal: `fabrik approve` (CLI) zählt nicht gegen einen
+- Der Slot-Zähler ist prozesslokal: `fabrikant approve` (CLI) zählt nicht gegen einen
   laufenden Server. Der Agent-State ist dagegen prozessübergreifend gelockt.
 - Andere Dateien in `state/` (z. B. `reply-<n>.md`, `review-<n>.json`) sind
   run-lokal und gehen mit dem Worktree verloren; nur die zwei oben genannten werden
@@ -91,7 +91,7 @@ blockiertes Heartbeat-Schreiben übersteigen (`300 s > 30 s + Puffer`), **nicht*
 können Heartbeats lebender Runs nie so lange blockiert werden, dass eine lebende Lease
 abläuft.
 
-Damit löscht ein zweiter Prozess (Server, `fabrik run`/`approve`) keine Worktrees
+Damit löscht ein zweiter Prozess (Server, `fabrikant run`/`approve`) keine Worktrees
 laufender Runs mehr. **Weiterhin offen** und nicht unterstützt: Slots (`max_parallel`),
 Dedup inkl. `exclusive_group` und Vorrang-Warter (`runs.claim_run`) sind prozesslokal (nur pausierte
 `needs_approval`-Runs kommen aus dem Run-Store und gelten prozessübergreifend); parallele Prozesse auf

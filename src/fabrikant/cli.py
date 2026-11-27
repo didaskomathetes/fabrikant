@@ -9,7 +9,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import auth, config, pause, profiles, retry_chains, scaffold, spec_proposals, spec_sources, templates
+from . import auth, config, pause, profiles, retry_chains, scaffold, spec_proposals, spec_sources, specschema, templates
 from .chat import _append_run_log, _approval_detail, _chat, _chat_alert_test, _revoke_approval
 from .engine import reject_run, run_loop
 from .failures import parse_kind
@@ -81,6 +81,8 @@ def cmd_validate(args):
             ok = False
         else:
             print(t("cli.validate_loops", name=name, n=len(spec["loops"])))
+            for key in specschema.unknown_keys(spec):
+                print(t("cli.unknown_spec_key", name=name, key=key))
             if not args.offline:
                 _warn_connection_refs(name, spec)
     sys.exit(0 if ok else 1)

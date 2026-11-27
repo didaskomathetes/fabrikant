@@ -1,7 +1,7 @@
 # ADR 0035: Fehlerklassifikation gescheiterter Steps und Runs (`FailureKind`)
 
 **Status:** Akzeptiert (2026-10-23; Draft 2026-10-21, überarbeitet 2026-10-22 nach Review in PR #291 und PR #295);
-Amendment 2026-10-26 (Draft, PR #362): Kappung von `retry_after` konkret über `max_wait` (ADR 0036)
+Amendment 2026-10-26 (Draft, PR #362): Kappung von `retry_after` konkret über `max_wait` (ADR 0036); references fixed 2026-11-26
 **Umsetzung:** #289
 **Ergänzt:** ADR 0012 (transiente Backend-Fehler im agent-Step), ADR 0025 (Alert-Dedup),
 ADR 0034 (typisiertes Run-Modell).
@@ -113,7 +113,7 @@ nicht der Runs.
 - (+) Grundlage für Retry (ADR 0036) und spätere spec-seitige Reaktionen, ohne Text-Parsing.
 - (−) Jeder Step-Typ braucht eine bewusste Zuordnung seiner Fehler; bis dahin `unknown`.
 - Altbestand ohne Feld wird als `unknown` gelesen: **kein Backfill** nötig. Das Run-Modell
-  bzw. relationale Schema (ADR 0034, 7.3) braucht für `failure_kind` und `retry_after` dennoch
+  bzw. relationale Schema (ADR 0034, Entscheidungen 1 und 4) braucht für `failure_kind` und `retry_after` dennoch
   eine **Schema-Migration** für neu erzeugte Runs.
 - `retry_after` wird beim Übernehmen validiert: nur bei `transient` zulässig (bei `environment`/
   `outcome` verworfen); ein Zeitpunkt in der Vergangenheit gilt als „sofort"; liegt er weiter als

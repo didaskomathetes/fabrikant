@@ -262,6 +262,15 @@ def test_agent_non_retryable_failure_does_not_retry(monkeypatch):
     assert fake.attempt == 1  # kein Retry
 
 
+def test_agent_context_exhausted_is_not_retried(monkeypatch):
+    """Context window full: even a `retryable` session is not restarted — the same prompt fails again."""
+    failed = {"status": "failed", "retryable": True, "text": "Prompt is too long", "tokens": {}, "cost": 0, "tools": []}
+    res, fake, emits = _run_retry(monkeypatch, _RetryFakeBackend([[failed]] * 3), {"retries": 2})
+    assert res["ok"] is False and res["failure_kind"] == "outcome"
+    assert fake.attempt == 1
+    assert any("Kontextfenster erschöpft" in line for line in emits)
+
+
 # ---------------------------------------------------------------- Transport-Fehler (ADR 0012)
 class _FlakyBackend:
     """Backend-Fake für Transport-Fehler-Tests: `poll()` liefert pro Aufruf den
@@ -710,3 +719,31 @@ def test_session_failed_without_exit_info_keeps_old_shape():
     assert res["summary"] == "agent session failed: boom (session s1)"
     assert "exit_code" not in res and "output" not in res
     assert lines == []
+
+
+def test_session_failed_context_exhausted_warns_as_outcome():
+    """Context window full: warning in the log, class `outcome` (no retry)."""
+    lines: list[str] = []
+    last = {"status": "failed", "text": "API Error: 400 Prompt is too long", "stderr_tail": ""}
+    res = agent_step._session_failed(last, "s1", {}, lines.append)
+    assert res["failure_kind"] == "outcome"
+    assert any("Kontextfenster erschöpft (session s1)" in line for line in lines)
+
+
+def test_session_failed_context_phrase_in_echoed_prompt_is_not_exhaustion():
+    """Regression: codex echoes the prompt to stderr — a prompt mentioning the context window must not
+    turn an auth error into `outcome`; the stderr tail stays in the log/record."""
+    lines: list[str] = []
+    tail = "user\nKeep the change small, the context window is full of old notes.\nERROR: 401 Unauthorized"
+    last = {"status": "failed", "text": "401 Unauthorized", "exit_code": 1, "stderr_tail": tail}
+    res = agent_step._session_failed(last, "s1", {}, lines.append)
+    assert res["failure_kind"] != "outcome"
+    assert not any("Kontextfenster" in line for line in lines)
+    assert "context window is full" in res["output"]
+
+
+def test_session_failed_other_errors_do_not_warn_about_context():
+    lines: list[str] = []
+    res = agent_step._session_failed({"status": "failed", "text": "boom"}, "s1", {}, lines.append)
+    assert res["failure_kind"] == "unknown"
+    assert not any("Kontextfenster" in line for line in lines)

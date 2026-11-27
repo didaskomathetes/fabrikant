@@ -1,37 +1,33 @@
-# ADR 0020: Worktree-freie Loops
+# ADR 0020: Worktree-free loops
 
-**Status:** Akzeptiert (2026-10-20, Merge #231; vorgeschlagen 2026-10-20; geändert durch ADR 0028)
+**Status:** Accepted (2026-10-20, merge #231; proposed 2026-10-20; changed by ADR 0028)
 
-## Kontext
+## Context
 
-Loops eines Projekts teilen sich normalerweise den Git-Worktree. Dadurch
-werden sie mit dem Projekt-Lock serialisiert, auch wenn ein Loop nur
-spec-validierende oder sonstige Schritte ausführt, die keinen Worktree
-benötigen. Für solche Loops soll parallele Ausführung möglich sein, ohne
-Git-Änderungen oder einen gemeinsamen Arbeitsstand zu riskieren.
+Loops of a project normally share the Git worktree. They are therefore serialized
+with the project lock, even if a loop only executes spec-validating or other
+steps that need no worktree. Such loops should be able to run in parallel without
+risking Git changes or a shared working state.
 
-## Entscheidung
+## Decision
 
-- Ein Loop nutzt standardmäßig den Projekt-Worktree und den Projekt-Lock.
-- Mit `worktree: false` erhält jeder Run eine eigene, leere Scratch-Workdir
-  unter `state/scratch/<run_id>` und einen eigenen, stabilen Lock pro Loop.
-  Solche Loops laufen parallel zu anderen Loops des Projekts, aber nicht
-  doppelt.
-- `worktree: false` ist nur zulässig, wenn der Loop weder direkt noch in
-  verschachtelten `verify.checks` einen `git`-, `pr`-, `agent`-, `review`-
-  oder `pr_review`-Step enthält.
-- Die Lock-Wahl wird vor dem Run gegen den geladenen Loop-Snapshot
-  abgeglichen. Ändert sich die Spec zwischen Lock-Wahl und Run, fällt ein
-  Wechsel von einem Loop-Lock zu einem Worktree-Run auf den Projekt-Lock
-  zurück.
-- Die Scratch-Workdir wird nach jedem Run entfernt. Fehler beim Aufräumen
-  werden im Run-Log festgehalten und beenden den Run nicht.
+- By default a loop uses the project worktree and the project lock.
+- With `worktree: false`, every run gets its own empty scratch workdir under
+  `state/scratch/<run_id>` and its own stable lock per loop. Such loops run in
+  parallel with other loops of the project, but not twice.
+- `worktree: false` is only allowed if the loop contains no `git`, `pr`, `agent`,
+  `review` or `pr_review` step, neither directly nor in nested `verify.checks`.
+- The lock choice is compared with the loaded loop snapshot before the run. If
+  the spec changes between choosing the lock and running, a change from a loop
+  lock to a worktree run falls back to the project lock.
+- The scratch workdir is removed after every run. Cleanup errors are recorded in
+  the run log and do not terminate the run.
 
-## Konsequenzen / Nicht-Ziele
+## Consequences / non-goals
 
-- Worktree-freie Loops dürfen keine Git- oder PR-Arbeit ausführen; ihre
-  Scratch-Workdir ist kein Ersatz für einen persistenten Checkout.
-- Die bestehende Prioritätsbehandlung für Freigaben und manuelle Runs gilt
-  pro Lock-Schlüssel und bleibt zwischen unabhängigen Loop-Locks getrennt.
-- Die Scratch-Workdir wird beim Start geleert, damit ein wiederverwendeter
-  `run_id` keinen alten Inhalt übernimmt.
+- Worktree-free loops must not do any Git or PR work; their scratch workdir is no
+  substitute for a persistent checkout.
+- The existing priority handling for approvals and manual runs applies per lock
+  key and stays separate between independent loop locks.
+- The scratch workdir is emptied at start, so that a reused `run_id` does not
+  take over old content.

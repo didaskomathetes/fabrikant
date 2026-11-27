@@ -25,6 +25,12 @@ Timeout: `timeout` (default 600 s). The command runs in its own process group
 Verdict: an output line `::fabrikant-verdict::<word>` (`runmodel.verdict_line`) reports the domain
 result of the step (e.g. `fail` of an audit, the step itself stays green). It is removed from output and
 summary and lands as `verdict` in the step record; the UI shows it as a badge.
+With `done_marker: true` (opt-in, shell steps only), a stdout line `::fabrikant-done::` (exit 0 only)
+ends the run successfully after this step — the remaining steps are skipped (gate without work).
+Without the key the line is ordinary output (not removed, no effect): output of tests, linters or
+echoed PR text must not be able to skip later gates.
+Lines `::fabrikant-warning::<text>` (stdout or stderr, also on exit ≠ 0) appear as ⚠ in the
+run log and as `WARNING: <text>` at the end of the output — for problems that don't fail the step.
 
 Failure class (ADR 0035): exit 126/127 → `environment`. Scripts can report their class
 themselves (sysexits.h): exit 75 (EX_TEMPFAIL) → `transient`, 78 (EX_CONFIG) →
@@ -37,11 +43,12 @@ from __future__ import annotations
 import subprocess
 
 from ..context import _PLACEHOLDER_RE, _cap, _substitute, step_workdir
+from ..excerpt import cap_output, failure_reason
 from ..failures import classify_exit_code, failed, is_signal_exit, parse_kind
 from ..gitops import process_env
 from ..i18n import t
 from ..procs import run_group
-from ..runmodel import FailureKind, split_verdict
+from ..runmodel import FailureKind, split_done, split_verdict, split_warnings
 from ..secrets import _redact
 from ..spec_sources import resolve_script_paths
 
@@ -89,17 +96,35 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     # the engine additionally masks at record write (secrets._redact_record).
     # Verdict line (`::fabrikant-verdict::<word>`) is metadata, not output: out of output/summary.
     stdout, verdict = split_verdict(p.stdout or "")
-    out = _redact(stdout + ("\n[stderr]\n" + p.stderr if p.stderr else ""))
-    tail = _redact("\n".join((stdout or p.stderr or "").strip().splitlines()[-8:]))
+    # `::fabrikant-done::` ends the run successfully — honoured only with the explicit opt-in
+    # `done_marker: true`: otherwise any output (test/lint output, echoed PR text) could skip later gates.
+    stdout, done = split_done(stdout) if step.get("done_marker") is True else (stdout, False)
+    stdout, warnings = split_warnings(stdout)
+    stderr, err_warnings = split_warnings(p.stderr or "")
+    warnings = [_redact(w) for w in (*warnings, *err_warnings)]
+    for w in warnings:
+        emit(f"  ⚠ {w}")
+    out = _redact(
+        stdout
+        + ("\n[stderr]\n" + stderr if stderr else "")
+        + ("\n[warnings]\n" + "\n".join(f"WARNING: {w}" for w in warnings) if warnings else "")
+    )
+    # Tail: last lines of stdout, else stderr, else the warnings (a step whose only output is a
+    # warning must not be summarised as "no output").
+    tail_src = stdout.strip() or stderr.strip() or "\n".join(f"WARNING: {w}" for w in warnings)
+    tail = _redact("\n".join(tail_src.splitlines()[-8:]))
     if p.returncode != 0:
+        # Last failure marker (e.g. `rot: <package>`, `1 failed`) instead of blindly the last stdout line:
+        # that can be a green partial result ("851 passed") and is misleading.
+        reason = failure_reason(out) or (tail.splitlines()[-1] if tail else "no output")
         return failed(
-            f"exit {p.returncode}: {tail.splitlines()[-1] if tail else 'no output'}",
+            f"exit {p.returncode}: {reason}",
             _exit_kind(p.returncode, step),
             exit_code=p.returncode,
-            output=_cap(out),
+            output=cap_output(out),
         )
     res = {"ok": True, "exit_code": 0, "output": _cap(out), "summary": (tail.splitlines()[-1] if tail else "ok")}
-    return res | ({"verdict": verdict} if verdict else {})
+    return res | ({"verdict": verdict} if verdict else {}) | ({"done": True} if done else {})
 
 
 def _exit_kind(code: int, step: dict) -> FailureKind:

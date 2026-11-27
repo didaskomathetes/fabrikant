@@ -3,7 +3,7 @@
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
 **Status:** Accepted (2026-10-18)
-**Decided by:** Fabrik (dogfooding, issue `pr-reply FAILED 20261018T141501Z`)
+**Decided by:** Fabrikant (dogfooding, issue `pr-reply FAILED 20261018T141501Z`)
 **Context:** The `pr-reply` loop (cron `*/15`, agent step via `opencode serve`)
 ran into a 6h hang on 2026-10-18 and was only marked by the dead-man's switch as
 `error` (`stale: >6h in 'running'`). The agent step has a step timeout
@@ -16,7 +16,7 @@ run 15 min later would start fresh anyway.
 
 ## Decision
 
-The agent step (`src/fabrik/steps/agent.py`, `_step_agent_backend`) treats
+The agent step (`src/fabrikant/steps/agent.py`, `_step_agent_backend`) treats
 **transport errors during polling** as transient:
 
 - `be.poll()`/`be.transcript()` throw → the step does **not** kill the run,

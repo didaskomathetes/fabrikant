@@ -25,6 +25,7 @@ from typing import Any
 from . import agent_state, config, connections, hosting, pause, retry_chains
 from .approval import ApprovalRequest
 from .context import _PLACEHOLDER_RE, _cap, _cond_matches, _substitute, tier_policy
+from .excerpt import failure_excerpt
 from .failures import Failure, FailureKind, SetupError, classify_exception, failed, from_result, run_failure
 from .gitops import (
     WorktreeLease,
@@ -627,8 +628,9 @@ def _step_fail(rn: _Run, step: dict, step_record: dict, res: dict, dur: float) -
     rn.emit(f"✖ {sname} fehlgeschlagen (exit {res.get('exit_code', '?')}) — {res.get('summary', '')}")
     out = (res.get("output") or "").strip()
     if out:
-        # Output tail into the log: without it "exit 1" is hardly debuggable.
-        rn.emit("  " + "\n  ".join(out.splitlines()[-10:]))
+        # Failure-aware excerpt into the log (markers + tail, cuts are stated): a plain tail showed only
+        # package lists instead of the cause for test steps. The full output is in the record.
+        rn.emit("  " + "\n  ".join(failure_excerpt(out).render().splitlines()))
 
 
 def _execute_step(rn: _Run, step: dict, i: int) -> str:
@@ -1128,6 +1130,16 @@ _queued_guard = threading.Lock()
 _ONCE_TRIGGER_PREFIXES = ("on_issue:", "on_slack:")
 
 
+def _is_once_trigger(trigger: str) -> bool:
+    """Does the trigger string identify a one-off event (execution-time dedup)?
+
+    Besides on_issue/on_slack also the on_pr reconcile keys ``on_pr:#N@<sha>``
+    (`reconcile: head`, ADR 0023) and ``on_pr:#N@u<stamp>`` (`reconcile: updated`): the
+    scheduler only produces an ``@`` key in these modes and checks it against all run
+    records. The plain ``on_pr:#N`` stays repeatable — event mode fires again on updates."""
+    return trigger.startswith(_ONCE_TRIGGER_PREFIXES) or (trigger.startswith("on_pr:#") and "@" in trigger)
+
+
 def queued_trigger_snapshot() -> list[dict]:
     """Pool queue: queued trigger runs (cron/file/issue/PR), sorted by submission.
 
@@ -1225,17 +1237,29 @@ def _claim_trigger_run(name: str, lname: str, trigger: str, initial_vars: dict |
         print(f"[fabrikant] Trigger-Run {name}/{lname} ({trigger}) verworfen: {state}")
         return None
     # Persistent dedup at execution time (one-off events: on_issue,
-    # on_slack): the work item may have sat in the pool queue for a long time while an
-    # earlier run for the same event had already finished and its record
-    # been written. The poll-time dedup is then not enough — otherwise
+    # on_slack, on_pr reconcile keys `@<sha>`/`@u<stamp>`): the work item may have sat in the
+    # pool queue for a long time while an earlier run for the same event had already finished
+    # and its record been written. The poll-time dedup is then not enough — otherwise
     # all queued copies run one after another (double runs, issue #226, Oct 2026).
-    # on_pr stays excluded: event mode intentionally fires again on PR updates.
-    if trigger.startswith(_ONCE_TRIGGER_PREFIXES) and trigger in loop_run_triggers(name, lname):
-        return None
+    # Plain `on_pr:#N` stays excluded: event mode intentionally fires again on PR updates.
+    # Checked while holding the claim: a copy of the same trigger has the same claim key, so an
+    # earlier run is either finished (record visible) or still active (claim refused). Checking
+    # before the claim would leave a gap — check, earlier run finishes and releases, claim.
     # Over the limit (max_parallel), with an active run for loop + issue/PR or
     # a waiting priority claim, the trigger is discarded; the next
     # poll/cron tick tries again.
-    return claim_run(name, lname, initial_vars)
+    claim = claim_run(name, lname, initial_vars)
+    if claim is None or not _is_once_trigger(trigger):
+        return claim
+    try:
+        seen = trigger in loop_run_triggers(name, lname)
+    except BaseException:
+        claim.release()
+        raise
+    if seen:
+        claim.release()
+        return None
+    return claim
 
 
 def _run_callback(callback: Callable[[], None] | None, name: str, lname: str) -> None:

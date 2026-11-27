@@ -49,6 +49,7 @@ from .specs import load_projects
 # of the job — not the id of the single tick/event/delivery.
 _ISSUE_TRIGGER_RE = re.compile(r"^on_issue:#(\d+)$")
 _PR_TRIGGER_RE = re.compile(r"^on_pr:#(\d+)")
+_PR_UPDATE_TRIGGER_RE = re.compile(r"^on_pr:#\d+@u")
 _GH_KEY_RE = re.compile(r"^(issue|pr):(.+)#(\d+)$")
 
 # A due attempt that could not start (no slot, loop paused,
@@ -751,22 +752,33 @@ def record_run_end(project: str, record: dict, projects: Mapping[str, dict] | No
 # ---------------------------------------------------------------- Versuche starten
 
 
-def _trigger_for_key(trigger_key: str, initial_vars: dict | None = None) -> str:
+def _trigger_for_key(trigger_key: str, initial_vars: dict | None = None, *, per_update: bool = False) -> str:
     """Trigger string for an attempt from the canonical key.
 
-    PR attempts carry the current head SHA (``on_pr:#N@<sha>``, ADR 0023)
-    — the scheduler reconciles against it; without the SHA a retry on the
-    new head would trigger a second run. The SHA comes from the (freshly
-    loaded) trigger variables of the attempt."""
+    PR attempts carry the current reconcile key the scheduler checks: the head SHA
+    (``on_pr:#N@<sha>``, ADR 0023) or, for a run of a `reconcile: updated` loop
+    (``per_update``), the observed ``updated_at`` (``on_pr:#N@u<stamp>``) — without it a
+    retry on the current PR state would trigger a second run. SHA/stamp come from the
+    (freshly loaded) trigger variables of the attempt."""
     m = _GH_KEY_RE.match(trigger_key)
     if m:
         kind, _repo, num = m.groups()
         if kind == "pr":
-            from .scheduler import _pr_trigger  # lokal: scheduler importiert engine (Zyklus)
+            # lokal: scheduler importiert engine (Zyklus)
+            from .scheduler import _pr_trigger, _pr_update_trigger
 
-            return _pr_trigger(int(num), str((initial_vars or {}).get("pr_head_sha") or ""))
+            v = initial_vars or {}
+            if per_update:
+                return _pr_update_trigger(int(num), str(v.get("pr_updated_at") or ""))
+            return _pr_trigger(int(num), str(v.get("pr_head_sha") or ""))
         return f"on_{kind}:#{num}"
     return "cron"
+
+
+def _is_update_trigger(trigger: str) -> bool:
+    """Is ``trigger`` a `reconcile: updated` key (``on_pr:#N@u<stamp>``)? A head SHA is hex,
+    so ``@u`` is unambiguous."""
+    return bool(_PR_UPDATE_TRIGGER_RE.match(trigger or ""))
 
 
 def _attempt_vars(trigger_key: str, *, accept_closed: bool = False) -> tuple[dict | None, bool]:
@@ -898,6 +910,13 @@ class _Attempt:
         if self.manual:
             self._record_not_started(_t("retry_chains.trigger_no_longer_exists"))
 
+    def _per_update(self) -> bool:
+        """Was the retried run keyed per PR update (``on_pr:#N@u<stamp>``)? The attempt then
+        uses the same key form, so the scheduler's reconcile check sees it."""
+        c = self.chain
+        last = get_run(c.last_run_id, c.project) if c.last_run_id else None
+        return _is_update_trigger(str((last or {}).get("trigger") or ""))
+
     def _record_not_started(self, reason: str) -> None:
         """``error`` record under the run id of a manual attempt that the
         UI has already received — otherwise it would point to a run that never exists.
@@ -910,7 +929,7 @@ class _Attempt:
             "id": self.run_id,
             "project": c.project,
             "loop": c.loop,
-            "trigger": _trigger_for_key(c.trigger_key),
+            "trigger": _trigger_for_key(c.trigger_key, per_update=self._per_update()),
             "note": "",
             "started": now,
             "finished": now,
@@ -967,7 +986,7 @@ class _Attempt:
             run_loop(
                 c.project,
                 c.loop,
-                trigger=_trigger_for_key(c.trigger_key, initial_vars),
+                trigger=_trigger_for_key(c.trigger_key, initial_vars, per_update=self._per_update()),
                 initial_vars=initial_vars,
                 run_id=self.run_id,
                 attempt=self.attempt,

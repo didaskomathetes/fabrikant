@@ -32,13 +32,25 @@ modal), the history filters by it.
 | `interrupted` | aborted from outside | server restart (reaper), dead-man's switch |
 | `transient` | external dependency briefly gone | exit 75 (`EX_TEMPFAIL`), network error, HTTP 429/5xx (except 501/505), `git fetch` without network, agent backend unreachable, hanging session |
 | `environment` | environment/configuration broken — needs a human | exit 126/127/78 (`EX_CONFIG`), missing file, invalid step configuration, project/loop unknown, HTTP 401/403, token missing |
-| `outcome` | genuine negative result | tests red (`failure_kind: outcome` on the step), review `changes_requested`, merge rejected |
+| `outcome` | genuine negative result | tests red (`failure_kind: outcome` on the step), review `changes_requested`, merge rejected, agent context window exhausted |
 | `unknown` | not classified (default, also legacy data) | everything else |
 
 Classification happens at the source (`src/fabrikant/failures.py`): steps report the class in the result or raise
 typed errors; text patterns exist only as a fallback for foreign CLI output (agent CLIs, `git`). With
 `transient`, a run can carry `retry_after` (UTC), e.g. from `Retry-After`. The class doesn't change the flow
 behavior; auto-retry builds on it (ADR 0036).
+
+## Failure summary and log excerpt
+
+A failed shell step's summary (`exit <code>: <reason>`) names the last line of its output (stdout and stderr) that
+carries a failure marker: a pytest `FAILED`/`ERROR` line or `N failed` summary, a traceback, `Fatal Python error`,
+an `error:` line (uv, ruff, compilers) or a `rot:` verdict of `scripts/ci-matrix-pytest.py`. Without a marker
+it stays the last output line. The run log shows a failure-aware excerpt of the step output: a window around each
+failure marker plus the last lines, at most 120 lines, with the left-out lines stated (`… (N lines)` and a
+closing `[excerpt: …; full output in the run record]`). The run record keeps the full output; if a failed shell
+step's output exceeds the record cap (200,000 characters), the record keeps the windows around failure markers
+(chosen before the cut, at most half the cap), its start and its end, with the number of omitted characters at
+each gap, so neither a crash in the middle nor the verdict at the end is lost.
 
 ## Verdict (business result)
 
@@ -49,6 +61,14 @@ and lands as `verdict` in the step record; the run's verdict is that of the last
 shows it as a badge next to the status (list, history, run detail, step): `pass`/`done` green, `fail`/`blocked`
 red, otherwise neutral. Flow, retry and alerts stay untouched. Relay reports `pass`/`fail` (audit) or the
 handoff status (`active`/`blocked`/`done`, session).
+
+A shell step with `done_marker: true` can also end the run early and successfully with a line
+`::fabrikant-done::` (stdout, exit 0 only), e.g. a gate that finds no new work: the remaining steps are recorded as
+skipped. The key is an explicit opt-in: without it the line is ordinary output (kept, no effect), so the output of
+tests, linters or echoed PR text cannot skip later gates — set it only on trusted gate steps. Lines
+`::fabrikant-warning::<text>` (stdout or stderr, also on failure) report problems that don't fail the step: they
+appear as ⚠ in the run log and as `WARNING: <text>` at the end of the step output. Honoured marker lines are
+removed from output and summary.
 
 ## Run retry (ADR 0036)
 
@@ -63,6 +83,15 @@ retry:
   on: [interrupted, transient]  # only these classes are retried
   max_wait: 24h               # upper bound for a reported `retry_after`
 ```
+
+Short network blips (DNS, dropped connections) usually never reach the run retry: GitHub/GitLab API calls
+and `git fetch`/`push`/`pull` retry themselves first, with growing waits (5 s, 15 s, 30 s, 60 s; about 2 minutes
+in total, `config.NET_RETRY_DELAYS_S`). Only a network error that outlasts these waits fails the step as
+`transient`. API writes are replayed only when that is safe (`netretry.may_replay`): GET/HEAD/PUT/DELETE and
+PATCH (fabrikant's PATCHes set absolute values) always, and so are POSTs without a repeatable side effect
+(GitHub git blobs/trees, which are content-addressed, and GraphQL queries). Any other POST (new issue, comment,
+GraphQL mutation) is replayed only if it never reached the server (name resolution failed, connection refused). A
+timeout or reset may follow a committed POST, so it fails the step instead of creating a duplicate.
 
 Only classes in `on` (always a subset of `interrupted`/`transient`) trigger a retry;
 `unknown`/`outcome`/`environment` end the chain. Every attempt passes all gates again (approval, blockers) and

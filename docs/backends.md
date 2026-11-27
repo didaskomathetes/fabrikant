@@ -62,6 +62,12 @@ thread (`_oneshot.py`, `_PipeDrain`): a pipe that is only read after the process
 CLI then blocks or drops the rest of the stream on shutdown (copilot: exit 0, JSONL without a `result` event;
 #153).
 
+A session that fails because the model's context window is exhausted (`prompt is too long`,
+`context_length_exceeded`, `maximum context length`, … in the backend's error text, not in the stderr tail, where
+CLIs echo the prompt) is not restarted, even if the backend marks it retryable: the same input fails again. The
+run log shows a warning to rescope the work (smaller ask, split the PR/issue, or point the agent at the relevant
+files), and the step fails as `outcome`.
+
 | Backend | Transport | Model | Notes |
 |---|---|---|---|
 | `opencode` | HTTP (`opencode serve`, 1.19+) | `FABRIKANT_AGENT_MODEL` (provider/id) | needs `FABRIKANT_AGENT_ENDPOINT`; session API, polling; containment via edit/bash permissions (relative to the workdir) |
@@ -95,8 +101,17 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
   - `allowed_tools` are pre-approval rules (`--allowedTools`) and switch to `--permission-mode dontAsk`: a call
     that would otherwise prompt is denied. This is not an allowlist. Calls that need no approval (file reads in
     the working directory, read-only Bash commands) still run, and so do calls approved by `permissions.allow`
-    rules in the user, project or local `settings.json` of the machine running the agent. To really keep a tool
-    out, leave it out of `tools`.
+    rules in the user `settings.json` of the machine running the agent. To really keep a tool out, leave it out
+    of `tools`.
+  - Either key also treats the working directory as untrusted, since restricted steps typically read content
+    someone else wrote (a PR head): `--setting-sources user` (no project/local settings — their hooks, `env`
+    block and `.mcp.json` servers would otherwise apply in a headless run), `--strict-mcp-config` (no MCP
+    servers) and `--settings '{"disableAllHooks": true}'` (no project, local or user hooks; hooks from managed
+    settings an administrator deployed still run, only a managed `disableAllHooks` turns those off).
+  - Hosts with an enterprise `managed-mcp.json` (e.g. `/etc/claude-code/managed-mcp.json`) can't run restricted
+    steps: Claude Code exits at startup when `--strict-mcp-config` is passed while that file is deployed. The
+    step fails as a configuration error (`failure_kind: environment`) instead of running without the isolation;
+    run such steps on a host without the file.
   - An empty value is rejected by validation; omit the key for the default.
 
   Example for a reviewer that may read the repo and write only its payload (`Write` exists but is not
@@ -115,7 +130,8 @@ stdout (`--output-format json`: `result`, `usage`, `total_cost_usd`, `subtype`, 
 
 One-shot: `send_prompt` starts `codex exec --sandbox … [--model …]` in the workdir, prompt via stdin (no argument
 limits, no shell interpolation). `poll` waits for the exit — exit 0 = `done` (stdout as text), otherwise `failed`
-(stderr). `cancel` kills the process group (killpg) — no orphans.
+with the `ERROR:` lines of stderr as the failure text (deduplicated; codex prints banners, warnings and the prompt
+before them), else stderr. `cancel` kills the process group (killpg) — no orphans.
 
 - **Sandbox:** default `workspace-write` (bubblewrap). In gateway/service contexts without bubblewrap:
   `FABRIKANT_CODEX_SANDBOX=danger-full-access` — containment then comes from the user/VM/container, not the

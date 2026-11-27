@@ -106,6 +106,16 @@ def test_cmd_validate_warns_on_unknown_connection(tmp_path, capsys):
     assert "⚠ c: l/dev: Agent-Verbindung 'ocx' unbekannt" in capsys.readouterr().out
 
 
+def test_cmd_validate_warns_on_unknown_keys(tmp_path, capsys):
+    """Unknown keys have no effect → warning, exit code unchanged."""
+    spec = tmp_path / "u.fabrikant.yaml"
+    spec.write_text("name: u\nroot: /x\nloops:\n  l:\n    steps:\n      - {type: shell, cmd: 'true', sandboxd: true}\n")
+    with pytest.raises(SystemExit) as e:
+        cli.main(["validate", "--offline", str(spec)])
+    assert e.value.code == 0
+    assert "⚠ u: unbekannter Spec-Schlüssel loops/l/steps/0: sandboxd (wird ignoriert)" in capsys.readouterr().out
+
+
 def test_cmd_validate_offline_skips_connection_check(tmp_path, capsys, monkeypatch):
     from fabrikant import connections
 
