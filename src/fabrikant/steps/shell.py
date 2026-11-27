@@ -100,7 +100,10 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     sandboxed = bool(step.get(SANDBOXED_KEY)) and sandbox.sandbox_enabled()
     # Worktree-first only in the sandbox: on the host the trusted spec-directory helper must run, not
     # a same-named script the PR under test ships (it would run with the host env and tokens).
-    cmd = resolve_script_paths(_substitute(raw_cmd, ctx), ctx.get("spec_path"), workdir if sandboxed else None)
+    helpers: list[str] = []
+    cmd = resolve_script_paths(
+        _substitute(raw_cmd, ctx), ctx.get("spec_path"), workdir if sandboxed else None, helpers if sandboxed else None
+    )
     role = str(step.get("github_identity") or "").strip()
     try:
         identity_env = github_env(role) if role else None
@@ -120,7 +123,7 @@ def _step_shell(ctx: dict, step: dict, emit) -> dict:
     emit(f"  $ {raw_cmd}  (cwd={workdir}, timeout={timeout}s{', sandbox' if sandboxed else ''})")
     if sandboxed:
         try:
-            p = sandbox.run_shell(f"shell-{uuid.uuid4().hex[:12]}", cmd, workdir, env, timeout)
+            p = sandbox.run_shell(f"shell-{uuid.uuid4().hex[:12]}", cmd, workdir, env, timeout, tuple(helpers))
         except sandbox.SandboxError as e:
             msg = t("steps.shell.sandbox_failed", error=e)
             emit(f"  ERROR: {msg}")

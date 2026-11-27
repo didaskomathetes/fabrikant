@@ -232,6 +232,7 @@ class SandboxConfig:
     # Host directory mounted read-only at the SAME path, so commands that call fabrikant's helper
     # scripts by host path (`{fabrikant_home}/scripts/…`) work in the container too. Empty → no mount.
     helper_scripts: str = ""
+    helper_files: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SandboxConfig:
@@ -533,6 +534,8 @@ def render_docker_cmd(
     ]
     if cfg.helper_scripts:
         cmd[-2:-2] = ["-v", f"{cfg.helper_scripts}:{cfg.helper_scripts}:ro"]
+    for path in cfg.helper_files:
+        cmd[-2:-2] = ["-v", f"{path}:{path}:ro"]
     for key in sorted(env):
         if key in SANDBOX_ENV_STRIP:
             continue
@@ -630,7 +633,12 @@ _SHELL_IN_SUBDIR = f'cd "$1" || exit {EX_EXCHANGE}; exec sh -c "$2"'
 
 
 def run_shell(
-    session_id: str, cmd: str, workdir: str, env: dict[str, str], timeout: float
+    session_id: str,
+    cmd: str,
+    workdir: str,
+    env: dict[str, str],
+    timeout: float,
+    helper_files: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     """Run a shell step's command in the agent container.
 
@@ -651,6 +659,7 @@ def run_shell(
     top = _git(workdir, "rev-parse", "--show-toplevel").stdout.decode().strip()
     rel = os.path.relpath(os.path.realpath(workdir), os.path.realpath(top))
     cfg = SandboxConfig.from_env()  # before the exchange: a config error must not leave refs/tmpdir behind
+    cfg.helper_files = tuple(dict.fromkeys(helper_files))
     ex = prepare_exchange(session_id, top, default_branch_refs(top))
     argv = render_docker_cmd(cfg, session_id, ["sh", "-c", _SHELL_IN_SUBDIR, "fabrikant-shell", rel, cmd], ex, env)
     try:

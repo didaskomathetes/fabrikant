@@ -98,6 +98,23 @@ def test_shell_sandboxed_keeps_worktree_helper_relative(tmp_path, monkeypatch):
     assert calls[0]["cmd"] == "sh scripts/which.sh" and str(spec_dir) not in calls[0]["cmd"]
 
 
+def test_shell_sandbox_mounts_resolved_spec_helper(tmp_path, monkeypatch):
+    monkeypatch.setenv("FABRIKANT_SANDBOX", "1")
+    calls = _capture_run_shell(monkeypatch)
+    spec = tmp_path / "spec"
+    helper = spec / "scripts" / "check.sh"
+    helper.parent.mkdir(parents=True)
+    helper.write_text("echo ok\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    _step_shell(
+        {"workdir": str(work), "spec_path": str(spec / "spec.yaml")},
+        {"type": "shell", "cmd": "sh scripts/check.sh", "sandboxed": True},
+        NOOP,
+    )
+    assert calls[0]["helper_files"] == (str(helper),)
+
+
 def test_shell_timeout(tmp_path):
     """Timeout wirft subprocess.TimeoutExpired (wird von der Engine gefangen)."""
     import subprocess
@@ -432,8 +449,8 @@ def test_shell_github_identity_missing_token_fails_as_environment(tmp_path, monk
 def _capture_run_shell(monkeypatch):
     calls = []
 
-    def fake(session_id, cmd, workdir, env, timeout):
-        calls.append({"cmd": cmd, "workdir": workdir, "env": env})
+    def fake(session_id, cmd, workdir, env, timeout, helper_files=()):
+        calls.append({"cmd": cmd, "workdir": workdir, "env": env, "helper_files": helper_files})
         return subprocess.CompletedProcess([], 0, "in-container\n", "")
 
     monkeypatch.setattr("fabrikant.sandbox.run_shell", fake)

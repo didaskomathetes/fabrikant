@@ -34,6 +34,13 @@ def test_validate_ok(tmp_path):
     specs._validate_spec(_valid_spec(str(tmp_path)))  # kein Raise
 
 
+def test_sandboxed_shell_requires_worktree(tmp_path):
+    spec = _step(_valid_spec(str(tmp_path)), {"type": "shell", "cmd": "true", "sandboxed": True})
+    spec["loops"]["l1"]["worktree"] = False
+    with pytest.raises(ValueError, match="sandboxed shell"):
+        specs._validate_spec(spec)
+
+
 def test_validate_root_missing(tmp_path):
     with pytest.raises(ValueError, match="root"):
         specs._validate_spec(_valid_spec(str(tmp_path / "nope")))

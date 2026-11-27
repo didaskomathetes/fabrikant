@@ -292,6 +292,8 @@ def _worktree_types(steps: list) -> set[str]:
             continue
         if st.get("type") in step_registry.worktree_types():
             found.add(st["type"])
+        if st.get("type") == "shell" and st.get("sandboxed") is True:
+            found.add("sandboxed shell")
         checks = st.get("checks")
         if isinstance(checks, list):
             found |= _worktree_types(checks)

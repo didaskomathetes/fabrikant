@@ -106,7 +106,12 @@ def resolve_relative(raw: str | Path, spec_path: str | Path | None) -> Path:
     return config.FABRIKANT_HOME / p
 
 
-def resolve_script_paths(command: str, spec_path: str | Path | None, workdir: str | Path | None = None) -> str:
+def resolve_script_paths(
+    command: str,
+    spec_path: str | Path | None,
+    workdir: str | Path | None = None,
+    mounts: list[str] | None = None,
+) -> str:
     """Resolve ``scripts/...`` references in a shell command relative to its spec.
 
     Existing paths are made absolute so the shell step can retain the project's
@@ -126,6 +131,8 @@ def resolve_script_paths(command: str, spec_path: str | Path | None, workdir: st
         if workdir is not None and (Path(workdir) / rel).is_file():
             return raw
         path = resolve_relative(rel, spec_path)
+        if mounts is not None and path.is_file():
+            mounts.append(str(path))
         return str(path) if path.is_file() else raw
 
     return _SCRIPT_PATH_RE.sub(replace, command)

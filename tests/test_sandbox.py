@@ -77,6 +77,12 @@ def test_container_name_is_docker_safe():
     assert "/" not in name and len(name) <= 63
 
 
+def test_helper_file_is_mounted_read_only():
+    cfg = sandbox.SandboxConfig(helper_files=("/external/scripts/check.sh",))
+    cmd = sandbox.render_docker_cmd(cfg, "test", ["true"], _EX, {})
+    assert "/external/scripts/check.sh:/external/scripts/check.sh:ro" in cmd
+
+
 def _cfg(proxy_url: str = "http://proxy:8888") -> sandbox.SandboxConfig:
     return sandbox.SandboxConfig(image="test/img:1", user="1000:1000", proxy_url=proxy_url)
 
