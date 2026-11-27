@@ -32,7 +32,7 @@ vars:
   # Merge gate pinned instead of the active chat provider; llama-cpp (Qwen) = not the builder model.
   gate_provider: llama-cpp
   fast_poll: 60
-  # Phase labels from framework-v1-draft §6 as priority (ADR 0021):
+  # Phase labels from docs/roadmap.md as priority (ADR 0021):
   # p0 before p1 … before unlabeled issues, oldest first within a level.
   priority_labels: [p0, p1, p2, p3]
 
@@ -157,7 +157,7 @@ loops:
         poll: "{fast_poll}"  # s; GitHub API budget uncritical (3 loops × 60/h)
         reconcile: true  # work through the backlog after a restart (ADR 0014)
         max_per_poll: 2
-        # Phase labels from framework-v1-draft §6 as priority (ADR 0021):
+        # Phase labels from docs/roadmap.md as priority (ADR 0021):
         # p0 before p1 … before unlabeled issues, oldest first within a level.
         priority_labels: "{priority_labels}"
     # Auto-retry (ADR 0036): restarts/network errors heal themselves (steps with

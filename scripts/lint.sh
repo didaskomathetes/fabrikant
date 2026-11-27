@@ -8,6 +8,7 @@
 #                                          ruff.json           → sonar.python.ruff.reportPaths
 #                                          bandit.json         → sonar.python.bandit.reportPaths
 #                                          pyright-sonar.json  → sonar.externalIssuesReportPaths
+#                                                                (generic issue format: scripts/sonar_issues.py)
 #                                        Exit 78 (EX_CONFIG) if a tool itself fails (not: findings).
 #
 # Configuration: [tool.ruff], [tool.pyright], [tool.bandit] in pyproject.toml.
@@ -39,8 +40,8 @@ if [ "${1:-}" = "--reports" ]; then
   report bandit "${BANDIT[@]}" -f json -o "$dir/bandit.json"
   report pyright sh -c 'uv run pyright --outputjson > "$1"' _ "$dir/pyright.json"
   # The converter has no notion of "findings": every exit ≠ 0 is an error.
-  if [ "$failed" -eq 0 ] && ! python3 scripts/pyright_sonar.py "$dir/pyright.json" "$dir/pyright-sonar.json"; then
-    log "FEHLER: pyright_sonar"; failed=1
+  if [ "$failed" -eq 0 ] && ! python3 scripts/sonar_issues.py "$dir/pyright-sonar.json" --pyright "$dir/pyright.json"; then
+    log "FEHLER: sonar_issues"; failed=1
   fi
   if [ "$failed" -ne 0 ]; then exit "$EX_CONFIG"; fi
   log "Reports in $dir"

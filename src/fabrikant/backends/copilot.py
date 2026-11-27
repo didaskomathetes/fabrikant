@@ -30,7 +30,7 @@ from ..agentenv import COPILOT_AUTH_VARS, passthrough
 from ..billing import Billing
 from ..i18n import t as _t
 from ..tokens import TokenCounts
-from ._oneshot import OneShotCliBackend
+from ._oneshot import OneShotCliBackend, csv_arg
 
 # JSONL event types of the Copilot CLI schema (read defensively — the schema is
 # not fully documented; new/older variants are ignored).
@@ -56,7 +56,7 @@ class CopilotBackend(OneShotCliBackend):
 
     @classmethod
     def create(cls, step: dict, endpoint: str, model: str, stale_after: int) -> CopilotBackend:
-        tools = (step.get("tools") or os.environ.get("FABRIKANT_COPILOT_TOOLS", "")).strip()
+        tools = (csv_arg(step.get("tools")) or os.environ.get("FABRIKANT_COPILOT_TOOLS", "")).strip()
         return cls(endpoint, model, stale_after=stale_after, tools=tools or None)
 
     # ------------------------------------------------------------------ Hooks

@@ -36,6 +36,49 @@ def test_shell_fail_exit_code(tmp_path):
     assert "oops" in res["output"]
 
 
+def test_shell_fail_summary_names_last_failure_marker(tmp_path):
+    """Regression: stdout ended with a green partial result, the verdict was on stderr."""
+    cmd = "echo '3 failed, 10 passed'; echo '851 passed'; echo 'warning: noise' >&2; echo 'rot: src/a' >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: rot: src/a"
+
+
+def test_shell_fail_summary_without_marker_uses_last_stdout_line(tmp_path):
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo first; echo last; exit 2"}, NOOP)
+    assert res["summary"] == "exit 2: last"
+
+
+def test_shell_long_failure_output_keeps_head_and_tail(tmp_path, monkeypatch):
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (200,))
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo START; seq 1 500; echo VERDICT; exit 1"}, NOOP)
+    assert res["output"].startswith("START") and res["output"].rstrip().endswith("VERDICT")
+    assert "Zeichen ausgelassen" in res["output"]
+
+
+def test_shell_long_failure_output_keeps_marker_in_the_middle(tmp_path, monkeypatch):
+    """Regression: the cap cut the middle before the engine looked for a failure marker — the
+    traceback and its diagnostic lines vanished from the record and the log excerpt."""
+    from fabrikant.excerpt import failure_excerpt
+
+    monkeypatch.setattr("fabrikant.excerpt.cap_output.__defaults__", (2000,))
+    cmd = (
+        "seq 1 2000; echo 'Traceback (most recent call last):'; echo '  File \"app.py\", line 3';"
+        " echo 'ZeroDivisionError: boom'; seq 1 2000; exit 1"
+    )
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert len(res["output"]) < 2200
+    for line in ("Traceback (most recent call last):", "ZeroDivisionError: boom"):
+        assert line in res["output"]
+        assert line in failure_excerpt(res["output"]).render()
+
+
+def test_cap_output_short_and_empty_unchanged():
+    from fabrikant.excerpt import cap_output
+
+    assert cap_output(None) == "" and cap_output("abc", 3) == "abc"
+    assert cap_output("abcdefghij", 4) == "ab\n…[6 Zeichen ausgelassen]…\nij"
+
+
 def test_shell_inline_substitution(tmp_path):
     res = _step_shell(_ctx(tmp_path, issue_number="62"), {"type": "shell", "cmd": "echo issue {issue_number}"}, NOOP)
     assert res["ok"] is True
@@ -517,3 +560,47 @@ def test_shell_sandboxed_missing_result_fails_as_environment_not_outcome(tmp_pat
     res = _step_shell(_ctx(tmp_path), step, NOOP)
     assert res["ok"] is False and res["failure_kind"] == "environment"
     assert "kein Ergebnis aus dem Container" in res["summary"]
+# ---------------------------------------------------------------- warnings / done
+@pytest.mark.parametrize("exit_code", [0, 3])
+def test_shell_warning_lines_go_to_log_and_output_end(tmp_path, exit_code):
+    log: list[str] = []
+    cmd = f"echo '::fabrikant-warning::ref verworfen' >&2; echo '::fabrikant-warning::zweite'; echo done; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, log.append)
+    assert [m for m in log if "⚠" in m] == ["  ⚠ zweite", "  ⚠ ref verworfen"]
+    assert "fabrikant-warning" not in res["output"]
+    assert res["output"].endswith("[warnings]\nWARNING: zweite\nWARNING: ref verworfen")
+    assert res["summary"].endswith("done")
+
+
+def test_shell_done_marker_ends_run_and_is_stripped(tmp_path):
+    step = {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is True and res.get("done") is True
+    assert "::fabrikant-done::" not in res["output"] and res["summary"] == "nichts zu tun"
+
+
+def test_shell_done_marker_without_opt_in_is_plain_output(tmp_path):
+    """Without `done_marker: true` the line is ordinary output: kept, no early end (untrusted output)."""
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": "echo nichts zu tun; echo ::fabrikant-done::"}, NOOP)
+    assert res["ok"] is True and "done" not in res
+    assert "::fabrikant-done::" in res["output"] and res["summary"] == "::fabrikant-done::"
+
+
+def test_shell_done_marker_ignored_on_failure(tmp_path):
+    step = {"type": "shell", "cmd": "echo ::fabrikant-done::; exit 1", "done_marker": True}
+    res = _step_shell(_ctx(tmp_path), step, NOOP)
+    assert res["ok"] is False and not res.get("done")
+
+
+@pytest.mark.parametrize(("exit_code", "ok"), [(0, True), (2, False)])
+def test_shell_only_warning_output_is_summary(tmp_path, exit_code, ok):
+    cmd = f"echo '::fabrikant-warning::config fehlt'; exit {exit_code}"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["ok"] is ok
+    assert res["summary"].endswith("WARNING: config fehlt")
+
+
+def test_shell_blank_stdout_after_markers_falls_back_to_stderr(tmp_path):
+    cmd = "echo; echo '::fabrikant-warning::w'; echo oops >&2; exit 1"
+    res = _step_shell(_ctx(tmp_path), {"type": "shell", "cmd": cmd}, NOOP)
+    assert res["summary"] == "exit 1: oops"

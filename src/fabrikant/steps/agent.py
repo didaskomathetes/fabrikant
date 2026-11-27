@@ -13,7 +13,15 @@ from ..backends._oneshot import OneShotCliBackend
 from ..billing import Billing
 from ..billing import for_step as billing_for_step
 from ..context import _cap, _substitute, step_workdir
-from ..failures import ConfigError, Failure, classify_agent_output, describe_exit, failed, from_result
+from ..failures import (
+    ConfigError,
+    Failure,
+    classify_agent_output,
+    describe_exit,
+    failed,
+    from_result,
+    is_context_exhausted,
+)
 from ..gitops import cleared_tokens, github_env, subprocess_env, token_overrides
 from ..i18n import t as _t
 from ..runmodel import FailureKind
@@ -141,10 +149,18 @@ def _session_failure(last: dict) -> Failure:
     return classify_agent_output(str(last.get("text") or ""))
 
 
+def _context_exhausted(sid: str, emit) -> Failure:
+    """Context window full: warn loudly in the run log. A retry of the same prompt fails again →
+    ``outcome``, no automatic restart."""
+    emit(_t("steps.agent.context_exhausted", sid=sid))
+    return Failure(FailureKind.OUTCOME)
+
+
 def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
     """Step result of a failed session. Exit code (with signal name) into the summary, the end
     of stderr (one-shot CLIs: `stderr_tail`) redacted into the run log and as `output` into the record —
-    on a crash the cause is there, not in the truncated `text`."""
+    on a crash the cause is there, not in the truncated `text`. Exhausted context window (judged from
+    `text`, the backend's error): a warning and class ``outcome`` (:func:`_context_exhausted`)."""
     code = last.get("exit_code")
     exit_note = f" ({describe_exit(code)})" if isinstance(code, int) else ""
     extra: dict = {"exit_code": code} if isinstance(code, int) else {}
@@ -153,9 +169,13 @@ def _session_failed(last: dict, sid: str, usage: dict, emit) -> dict:
         for line in tail.splitlines():
             emit(f"    {line}")
         extra["output"] = _cap(tail)
+    # Classify from the backend's normalized error, not the stderr tail: CLIs echo the prompt there,
+    # and a prompt that mentions "context window" must not turn e.g. an auth error into `outcome`.
+    exhausted = is_context_exhausted(str(last.get("text") or ""))
+    failure = _context_exhausted(sid, emit) if exhausted else _session_failure(last)
     return failed(
         f"agent session failed{exit_note}: {str(last.get('text', ''))[:120]} (session {sid})",
-        _session_failure(last),
+        failure,
         usage=usage,
         **extra,
     )
@@ -387,7 +407,8 @@ def _step_agent_backend(ctx: dict, step: dict, emit, backend_name: str, prompt: 
                     if lg is not None:
                         _record_agent_messages(lg, messages, recorded_n, sname, flush=True)
                     # Transient error + attempts left → restart.
-                    if last.get("retryable") and attempt < max_retries:
+                    exhausted = is_context_exhausted(str(last.get("text") or ""))
+                    if last.get("retryable") and not exhausted and attempt < max_retries:
                         wait = 5 * (attempt + 1)
                         emit(
                             _t(

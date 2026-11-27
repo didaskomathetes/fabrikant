@@ -42,7 +42,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, gitops
+from . import config, gitops, netretry
 from .failures import GitError, classify_exception, exit_code
 from .hosting import GITHUB_HOST, HostingNotSupported, current_spec, repo_host
 from .hosting.select import HOSTING_KEY
@@ -105,7 +105,10 @@ def repo_from_remote(url: str) -> str:
 
 
 def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, timeout=GIT_TIMEOUT_S)
+    cmd = ["git", "-C", str(root), *args]
+    if args and args[0] == "push":  # network access: retry transient errors
+        return netretry.run_git(cmd, timeout=GIT_TIMEOUT_S, text=False)
+    return subprocess.run(cmd, capture_output=True, timeout=GIT_TIMEOUT_S)
 
 
 def _git(root: Path, *args: str) -> str:

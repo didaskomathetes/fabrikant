@@ -134,7 +134,7 @@
   },
   "patternProperties": {
     "^x-": {
-      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts); `x-` is the documented convention for them."
+      "description": "Extension key (e.g. YAML anchor definitions like x-context, x-shared-steps). Ignored by the engine; not part of the spec format. Unknown keys are accepted everywhere (the schema never rejects what the Python validation accepts), but `fabrikant validate` warns about them; `x-` keys are exempt from that warning."
     }
   },
   "$defs": {
@@ -322,6 +322,10 @@
           "enum": ["transient", "environment", "outcome"],
           "description": "Failure class (ADR 0035) for non-zero exit codes; shell steps only."
         },
+        "done_marker": {
+          "type": "boolean",
+          "description": "shell: true = a stdout line `::fabrikant-done::` (exit 0) ends the run successfully after this step (default false: the line stays ordinary output). Set it only on trusted gate steps."
+        },
         "extra_context": {
           "type": "array",
           "items": { "$ref": "#/$defs/context_source" },
@@ -367,6 +371,17 @@
         "endpoint": { "type": "string", "description": "agent: backend endpoint override." },
         "connection": { "type": "string", "description": "agent: named connection (ADR 0052) providing the backend credentials; unknown names are a warning, not an error (host state)." },
         "variant": { "type": "string", "description": "agent: backend variant." },
+        "sandbox": { "type": "string", "description": "agent with backend codex: `codex exec --sandbox` mode (default: FABRIKANT_CODEX_SANDBOX or workspace-write)." },
+        "username": { "oneOf": [{ "type": "string" }, { "type": "number" }], "description": "agent with backend opencode: server basic-auth user (default: FABRIKANT_AGENT_USERNAME or opencode)." },
+        "password": { "oneOf": [{ "type": "string" }, { "type": "number" }], "description": "agent with backend opencode: server basic-auth password (default: FABRIKANT_AGENT_PASSWORD; prefer the env var or a connection over a password in the spec)." },
+        "tools": {
+          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+          "description": "agent (claude_code, copilot): restrict the available tools. claude_code: hard limit on the built-ins that exist, passed to --tools (e.g. [Read, Grep, Edit]; MCP tools unaffected); copilot: --allow-tool value (default: all tools)."
+        },
+        "allowed_tools": {
+          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+          "description": "agent (claude_code): pre-approval rules passed to --allowedTools (e.g. Edit(/.fabrikant-session/review/review.json)); the CLI then runs in dontAsk mode and denies calls that would prompt. Not an allowlist: calls needing no approval (reads, read-only Bash) and approvals from settings.json files still run; use tools for a hard limit. Default: acceptEdits + Bash."
+        },
         "billing": { "type": "string", "enum": ["api", "subscription", "unknown"], "description": "llm/agent: billing kind (api = real cost, subscription = list-price equivalent only, unknown); overrides backend auto-detection." },
         "github_identity": {
           "type": "string",
@@ -588,9 +603,9 @@
         "reconcile": {
           "oneOf": [
             { "type": "boolean" },
-            { "type": "string", "const": "head" }
+            { "type": "string", "enum": ["head", "updated"] }
           ],
-          "description": "on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false or 'head' (per head SHA, ADR 0023)."
+          "description": "on_issue: fire for every matching open issue without a run record (ADR 0014). on_pr: true/false, 'head' (per head SHA, ADR 0023) or 'updated' (per observed PR state: one run per `updated_at` seen at poll time; several changes between two polls give one run)."
         },
         "skip_blocked": { "type": "boolean", "description": "on_issue with reconcile: true: skip issues with open 'blocked by' dependencies (ADR 0031)." },
         "max_per_poll": { "$ref": "#/$defs/numeric", "description": "on_issue with reconcile: max runs started per poll (integer >= 1)." },

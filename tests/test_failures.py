@@ -26,6 +26,7 @@ from fabrikant.failures import (
     describe_exit,
     failed,
     from_result,
+    is_context_exhausted,
     is_signal_exit,
     parse_kind,
     parse_retry_after,
@@ -240,6 +241,12 @@ def test_git_output(stderr, kind):
             "ECONNRESET: The socket connection",
             K.TRANSIENT,
         ),
+        # Context window full: a retry with the same prompt fails again → outcome
+        ("API Error: 400 prompt is too long: 212345 tokens > 200000 maximum", K.OUTCOME),
+        ("Error: context_length_exceeded", K.OUTCOME),
+        ("Your input exceeds the context window of this model.", K.OUTCOME),
+        ("This model's maximum context length is 128000 tokens", K.OUTCOME),
+        ("ContextOverflowError: context overflow", K.OUTCOME),
         ("API Error: 529 overloaded_error", K.TRANSIENT),
         ("Error: 429 Too Many Requests", K.TRANSIENT),
         ("API Error: 500 Internal error", K.TRANSIENT),
@@ -338,3 +345,16 @@ def test_run_retry_after_is_latest_value():
 def test_run_retry_after_dropped_unless_transient():
     steps = [_step("fail", "transient", "2026-10-26T12:00:00+00:00"), _step("error", "environment")]
     assert run_failure(steps, aborted_by=1) == Failure(K.ENVIRONMENT)
+
+
+@pytest.mark.parametrize(
+    ("text", "hit"),
+    [
+        ("Prompt is too long", True),
+        ("context window exceeded", True),
+        ("I read the context of the PR", False),
+        ("", False),
+    ],
+)
+def test_is_context_exhausted(text, hit):
+    assert is_context_exhausted(text) is hit

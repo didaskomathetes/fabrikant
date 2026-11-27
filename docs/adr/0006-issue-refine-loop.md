@@ -3,19 +3,19 @@
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
 **Status:** Accepted (2026-10-18); §"Human gate" **replaced by ADR 0017** (2026-10-19);
-addendum 2026-11-04 (ADR 0013 stage 1): AC format with verification hint
-**Decided by:** Dominic
+addendum 2026-11-04 (ADR 0013 stage 1): AC format with verification hint; personal name replaced by GitHub handle 2026-11-26
+**Decided by:** didaskomathetes
 **Context:** The `triage` loop (ADR 0001) only classified issues (label +
 acceptance criteria for `ready to develop`). Practical feedback: issues need more
 preparation before development, and there was no clean branch for
 duplicate/already-done/pointless issues. In addition a bug: `{issue_number}`
-was not substituted in the git step (branch `fabrik/auto/{issue_number}`
+was not substituted in the git step (branch `fabrikant/auto/{issue_number}`
 was created literally) — fixed in the git and pr steps (variable substitution for
 `branch` and `head`/`base` respectively).
 
 ## Decision
 
-The `triage` loop becomes the **`refine` loop** (`projects/fabrik.fabrik.yaml`):
+The `triage` loop becomes the **`refine` loop** (`projects/fabrikant.fabrikant.yaml`):
 
 | Step | Type | Effect |
 |---|---|---|
@@ -67,7 +67,7 @@ implemented automatically.
 - Existing issues with `ready to develop` must be relabeled manually
   (one-off).
 - The git step substitutes `branch`, the pr step `head`/`base` (regression tests in
-  `tests/test_steps_git_pr.py`); spec tests in `tests/test_fabrik_spec.py`.
+  `tests/test_steps_git_pr.py`); spec tests in `tests/test_fabrikant_spec.py`.
 - ADR 0001 §1 (triage as T1 + step approval) is replaced by this ADR for the
   `refine` loop; the other loops remain unchanged.
 

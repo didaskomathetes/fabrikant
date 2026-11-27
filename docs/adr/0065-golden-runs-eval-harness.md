@@ -1,11 +1,11 @@
 # ADR 0065: Golden Runs — Pinned Baseline + Eval Harness
 
-**Status:** Accepted (2026-11-21); proposed on the `feat/golden-runs` branch
+**Status:** Accepted (2026-11-21); proposed on the `feat/golden-runs` branch; references fixed 2026-11-26
 **Betrifft:** ADR 0061 (replay, `replay_of`), ADR 0034 (run store), `docs/roadmap.md` First win 2 (#130)
 
 ## Context
 
-"Definitive local runtime" (framework-v1-draft.md §5) requires that pipeline
+"Definitive local runtime" (`docs/roadmap.md`, Factory KPIs) requires that pipeline
 changes are *provably* non-regressing, not just "feels the same". ADR 0061 gives
 us deterministic re-execution of a finished run (replay). What replay alone
 cannot answer is: *is this re-execution the same as the last time we trusted
@@ -40,9 +40,9 @@ surface (new/missing step, flipped review verdict, status flip) forces a
 deliberate re-baseline (re-capture).
 
 CLI:
-- `fabrik golden capture <project> <loop> <run-id> [--name N]` — pin a baseline
-- `fabrik golden show <project> [--name N]` — list goldens
-- `fabrik eval <project> <loop> [--name N] [--yes]` — run an eval; **Exit 0 =
+- `fabrikant golden capture <project> <loop> <run-id> [--name N]` — pin a baseline
+- `fabrikant golden show <project> [--name N]` — list goldens
+- `fabrikant eval <project> <loop> [--name N] [--yes]` — run an eval; **Exit 0 =
   no regression** (the CI-gate contract)
 
 CI: the eval is **opt-in** via a dedicated `workflow_dispatch` workflow — it

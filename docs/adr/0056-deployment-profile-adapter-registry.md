@@ -12,7 +12,7 @@ Feature-Flag in der Business-Logik.
 ## Entscheidung
 
 1. **Profil statt Feature-Flags.** Ein Deployment-Profil `homelab|cloud` wird gewählt per
-   `--profile` (CLI) > `FABRIK_PROFILE` (Env) > Default `homelab`. Ungültige Werte
+   `--profile` (CLI) > `FABRIKANT_PROFILE` (Env) > Default `homelab`. Ungültige Werte
    scheitern mit einer Meldung, die die erlaubten Werte nennt.
 2. **Adapter-Auswahl am Composition Root.** Eine `AdapterRegistry` bildet `(Profil, Port)` auf
    eine Adapter-Factory ab. Die Auflösung passiert einmal beim Start (`cli.main` →

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeGuard, cast
 
-from . import config, httpsafe
+from . import config, httpsafe, netretry
 from .failures import GitError, SetupError
 from .filelock import locked
 from .i18n import t
@@ -216,9 +216,7 @@ def _git_fetch(repo_root: Path, ref: str | None = None) -> None:
     Explicit refspec — otherwise the fetch lands only in FETCH_HEAD and
     refs/remotes/origin/<ref> stays stale."""
     refspec = [tracking_refspec(ref)] if ref else []
-    p = subprocess.run(
-        ["git", "-C", str(repo_root), "fetch", "origin", *refspec], capture_output=True, text=True, timeout=300
-    )
+    p = netretry.run_git(["git", "-C", str(repo_root), "fetch", "origin", *refspec], timeout=300)
     if p.returncode == 0:
         return
     token = _gh_token_safe()
@@ -228,9 +226,7 @@ def _git_fetch(repo_root: Path, ref: str | None = None) -> None:
         ).stdout.strip()
         if remote.startswith("https://"):
             auth_url = remote.replace("https://", f"https://x-access-token:{token}@", 1)
-            p2 = subprocess.run(
-                ["git", "-C", str(repo_root), "fetch", auth_url, *refspec], capture_output=True, text=True, timeout=300
-            )
+            p2 = netretry.run_git(["git", "-C", str(repo_root), "fetch", auth_url, *refspec], timeout=300)
             if p2.returncode == 0:
                 return
             raise GitError(f"git fetch (token) fehlgeschlagen: {_redact(p2.stderr.strip())}", p2.stderr)
@@ -675,18 +671,19 @@ def _gh_token(role: str = "dev") -> str:
 
 def _gh_request(req: urllib.request.Request) -> bytes:
     """urlopen with retry on transient network errors (DNS flakes,
-    connection reset). HTTPError (4xx/5xx) is an answer, not a flake —
-    NOT retried."""
-    for attempt in range(config.GH_RETRIES):
+    connection reset) — for writes only if replay-safe (`netretry.may_replay`).
+    HTTPError (4xx/5xx) is an answer, not a flake — NOT retried."""
+    waits = netretry.delays()
+    for attempt in range(len(waits) + 1):
         try:
             with httpsafe.urlopen(req, timeout=60) as r:
                 return r.read()
         except urllib.error.HTTPError:
             raise
-        except (urllib.error.URLError, ConnectionError, TimeoutError):
-            if attempt >= config.GH_RETRIES - 1:
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            if attempt == len(waits) or not netretry.may_replay(req.get_method(), e, req.full_url, req.data):
                 raise
-            time.sleep(config.GH_RETRY_DELAY_S)
+            time.sleep(waits[attempt])
     raise AssertionError("unreachable")  # pragma: no cover
 
 

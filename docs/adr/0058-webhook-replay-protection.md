@@ -1,12 +1,12 @@
 # ADR 0058: Webhook-Replay-Schutz (opt-in `replay_protection`)
 
-**Status:** Akzeptiert (2026-11-18)
-**Betrifft:** ADR 0027 (`on_webhook`-Trigger) — erweitert dessen „kein Replay-Schutz“ um einen opt-in Modus
+**Status:** Akzeptiert (2026-11-18); references fixed 2026-11-26
+**Betrifft:** ADR 0027 (`on_webhook`-Trigger) — erweitert dessen „No replay protection“ um einen opt-in Modus
 
 ## Kontext
 
 ADR 0027 definiert die Webhook-Authentifizierung als HMAC-SHA256 über den rohen
-Body (`X-Fabrik-Signature`). Damit ist ein Request mit gültiger Signatur beliebig
+Body (`X-Fabrikant-Signature`). Damit ist ein Request mit gültiger Signatur beliebig
 oft wiederholbar (Replay): ein abgehörter Request startet denselben Run immer
 wieder, solange das Secret gilt. ADR 0027 hatte Replay-Schutz bewusst
 ausgeklammert, weil er für alle Trigger Pflicht-Header und eine neue
@@ -21,8 +21,8 @@ Verhalten:
 1. **Trigger-Flag.** `replay_protection: true` im `on_webhook`-Trigger aktiviert
    den Modus. Ohne Flag bleibt die ADR-0027-Signatur (HMAC über den Body)
    gültig — abwärtskompatibel.
-2. **Pflicht-Header.** Im Modus sind `X-Fabrik-Timestamp` (Unix-Epoch, Sekunden)
-   und `X-Fabrik-Nonce` (frei wählbar, max. 128 Zeichen) Pflicht.
+2. **Pflicht-Header.** Im Modus sind `X-Fabrikant-Timestamp` (Unix-Epoch, Sekunden)
+   und `X-Fabrikant-Nonce` (frei wählbar, max. 128 Zeichen) Pflicht.
 3. **Signatur.** Die Signatur deckt `<timestamp>.<nonce>.<body>` ab
    (`sign_replay`), nicht nur den Body. Timestamp und Nonce sind damit
    signiert und nicht nachträglich austauschbar.

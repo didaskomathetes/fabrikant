@@ -61,7 +61,7 @@ def test_passthrough_returns_only_set_nonempty_names(monkeypatch):
 
 
 def test_backends_pass_only_their_own_auth(monkeypatch):
-    """Jede CLI bekommt ihre eigene Auth — nie fabriks GITHUB_TOKEN/GH_TOKEN."""
+    """Jede CLI bekommt ihre eigene Auth — nie fabrikants GITHUB_TOKEN/GH_TOKEN."""
     from fabrikant.backends.claude_code import ClaudeCodeBackend
     from fabrikant.backends.codex import CodexBackend
     from fabrikant.backends.copilot import CopilotBackend

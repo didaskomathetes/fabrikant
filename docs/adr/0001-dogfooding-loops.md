@@ -1,9 +1,9 @@
-# ADR 0001: Fabrik dogfooding — Fabrik develops Fabrik
+# ADR 0001: Fabrikant dogfooding — Fabrikant develops Fabrikant
 
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-**Status:** Accepted (2026-10-16)
-**Decided by:** Dominic
+**Status:** Accepted (2026-10-16); personal name replaced by GitHub handle 2026-11-26
+**Decided by:** didaskomathetes
 **Amendment:** 2026-10-17 — model assignment decoupled: the invariant is
 reviewer ≠ builder; concrete models are deployment details (they change quickly).
 **Amendment:** 2026-10-19 — model choice is configuration (**ADR 0022**); replaces
@@ -17,17 +17,17 @@ human gate → develop → checks → PR).
 
 ## Decision
 
-New project `projects/fabrik.fabrik.yaml` with six loops:
+New project `projects/fabrikant.fabrikant.yaml` with six loops:
 
 > "Model" column: roles, not bindings — models live in the spec (ADR 0022).
 
 | Loop | Trigger | Tier | Model | Gate |
 |---|---|---|---|---|
-| `triage` | on_issue (`fabrik`) | T1 | (llm step) | before `apply-label` |
+| `triage` | on_issue (`fabrikant`) | T1 | (llm step) | before `apply-label` |
 | `develop` | on_issue (`ready to develop`) | T2 | default (builder) | before `pr` |
 | `refactor` | manual (`--var target=…`) | T2 | default (builder) | before `pr` |
 | `refactor-sweep` | manual | T2 | default (builder) | end of run |
-| `review-pr` | on_pr (`fabrik`) | T1 | reviewer (≠ builder, guiding principle 4) | — |
+| `review-pr` | on_pr (`fabrikant`) | T1 | reviewer (≠ builder, guiding principle 4) | — |
 | `pr-reply` | cron `*/15` | T1 | builder (as `develop`) | — |
 
 ## Rationale for the details
@@ -66,14 +66,14 @@ The **invariant rule**: reviewer and builder must use different models.
 The reviewer has fresh context and a different model family — defects that both
 miss are the only ones that get through. Concrete model names are
 deployment details and change quickly with the field — they live in the spec
-(`projects/fabrik.fabrik.yaml`), not here.
+(`projects/fabrikant.fabrikant.yaml`), not here.
 
 > **Replaced by ADR 0022:** model/backend per step is spec configuration;
 > `develop` and `pr-reply` share the builder model via a YAML anchor
-> (`builder_model`), not via `FABRIK_AGENT_MODEL`.
+> (`builder_model`), not via `FABRIKANT_AGENT_MODEL`.
 
 `pr-reply` deliberately runs with the **builder model** (as `develop`, env
-`FABRIK_AGENT_MODEL`): the replier fixes code on the PR branch and therefore needs
+`FABRIKANT_AGENT_MODEL`): the replier fixes code on the PR branch and therefore needs
 builder capacity. `review-pr` runs with a cheap, strong model via the Copilot CLI
 (concrete model: spec, YAML anchor `reviewer_model`) — review quality at controlled cost.
 
@@ -86,7 +86,7 @@ That was the Squid-compliant version: no new substrate, just a prompt.
 
 **Since 2026-10-19:** the native `on_pr` trigger exists (GitHub API polling like
 `on_issue`: `repo`, `labels`, `poll`, `states`). `review-pr` now runs on
-`on_pr` (label `fabrik`): the engine fires on new/updated PRs and sets
+`on_pr` (label `fabrikant`): the engine fires on new/updated PRs and sets
 `{pr_number}`/`{pr_title}`/`{pr_head_ref}`/`{pr_body}` as variables. Dedup
 (no PR twice) and re-review triggering (update → new run) are handled by the
 engine — the state-file workaround logic has been removed from the prompt.
@@ -96,13 +96,13 @@ a different layer than PR dedup and stays on the agent side.)
 ### 5. `gh` CLI for issue/PR operations
 A native `issue` step does not exist (→ issue). `gh` is already used in production
 specs and available. Until the `issue` step exists, `shell` + `gh` remains the standard way.
-**Token note:** shell steps run in the fabrik process env (`fabrik.env` →
+**Token note:** shell steps run in the fabrikant process env (`fabrikant.env` →
 `GITHUB_TOKEN`). Agent steps run in the **opencode-serve** process env —
 `GITHUB_TOKEN` must be exported when `serve` starts (deployment prerequisite,
 see Consequences). The engine does not inject env into agent sessions (`create_task` has no
 env field).
 
-### 6. Base branch `fabrik/v0.3`
+### 6. Base branch `fabrikant/v0.3`
 Current main line of development (main is still at v0.2). When main becomes the
 trunk line, we change `base:` in `develop`/`refactor`.
 
@@ -121,7 +121,7 @@ systematic: small improvements inline, larger ones as issues.
   untestable and unreadable. Separate loops = separate runs, separate audit trails.
 
 ## Consequences
-- New prompts: `prompts/fabrik-{develop,refactor,refactor-sweep,review,pr-reply}.prompt.md`
+- New prompts: `prompts/fabrikant-{develop,refactor,refactor-sweep,review,pr-reply}.prompt.md`
 - The reviewer model must be available in the deployment (Copilot CLI → `copilot` in PATH
   + `COPILOT_GITHUB_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`). Copilot withdraws models regularly
   — on `Model "…" is not available`, swap the model in the spec.
