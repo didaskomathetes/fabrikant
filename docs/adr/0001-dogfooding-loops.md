@@ -2,8 +2,8 @@
 
 > Originally written in German; translated to English 2026-11-19 (wording only, content unchanged).
 
-**Status:** Accepted (2026-10-16)
-**Decided by:** Dominic
+**Status:** Accepted (2026-10-16); personal name replaced by GitHub handle 2026-11-26
+**Decided by:** didaskomathetes
 **Amendment:** 2026-10-17 — model assignment decoupled: the invariant is
 reviewer ≠ builder; concrete models are deployment details (they change quickly).
 **Amendment:** 2026-10-19 — model choice is configuration (**ADR 0022**); replaces

@@ -1,9 +1,9 @@
 # ADR 0021: Issue prioritization via phase labels (`priority_labels`)
 
-**Status:** Accepted (2026-10-20, merge #213; proposed 2026-10-19)
+**Status:** Accepted (2026-10-20, merge #213; proposed 2026-10-19); references fixed 2026-11-26
 **Context:** `refine` and `develop` work through the issue stock via `on_issue`
 reconcile (ADR 0014), **oldest first**. The issues now carry phase labels
-`p0`–`p3` according to `docs/framework-v1-draft.md` §6. Every phase must be
+`p0`–`p3` according to the phases in `docs/roadmap.md`. Every phase must be
 useful on its own and builds on the previous one. An old p3 issue (e.g. cloud
 deployment) should therefore not be refined or developed before a new p0 issue
 (e.g. secret redaction).

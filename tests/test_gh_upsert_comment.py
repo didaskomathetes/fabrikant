@@ -82,7 +82,7 @@ def test_config_errors_exit_78_without_api_calls(tmp_path, env_file, args):
 @pytest.mark.parametrize(
     ("user_login", "expected_filter"),
     [
-        ("dominic", '.user.login == "dominic"'),  # PAT: nur eigene Kommentare, auch ohne Bot-Typ
+        ("octocat", '.user.login == "octocat"'),  # PAT: nur eigene Kommentare, auch ohne Bot-Typ
         ("", '.user.type == "Bot"'),  # App-Token: /user verboten → Bot-Kommentare
     ],
 )

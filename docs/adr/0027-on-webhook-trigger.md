@@ -1,44 +1,44 @@
-# ADR 0027: `on_webhook`-Trigger (HMAC, Tunnel-CORS)
+# ADR 0027: `on_webhook` trigger (HMAC, tunnel CORS)
 
-**Status:** Akzeptiert (2026-10-20, Merge #189; vorgeschlagen 2026-10-20; geändert durch ADR 0028; erweitert durch ADR 0058)
-**Ergänzt:** `docs/framework-v1-draft.md` §1.3 (aus P0 gestrichen, hier P2).
+**Status:** Accepted (2026-10-20, merge #189; proposed 2026-10-20; changed by ADR 0028; extended by ADR 0058); references fixed 2026-11-26
+**Complements:** `docs/roadmap.md` Phase 0 (`on_webhook` cut from P0, here P2).
 
-## Kontext
+## Context
 
-Der Server bindet auf 127.0.0.1 und prüft nur Origin/optionales Bearer-Token. Ein
-Tunnel (cloudflared) würde ihn öffentlich machen: `POST /api/runs` ohne
-`Origin`-Header (curl) passiert den Origin-Check und startet Shell-Steps.
+The server binds to 127.0.0.1 and checks only Origin/an optional bearer token. A
+tunnel (cloudflared) would make it public: `POST /api/runs` without an
+`Origin` header (curl) passes the Origin check and starts shell steps.
 
-## Entscheidung
+## Decision
 
-- **Route:** `POST /api/webhook/<projekt>/<loop>`; Loop braucht einen
-  `on_webhook`-Trigger (`secret_env`, optional `map`).
-- **Auth:** HMAC-SHA256 über den rohen Body im Header `X-Fabrikant-Signature:
-  sha256=<hex>`, Vergleich per `hmac.compare_digest`. Fehlende/falsche Signatur,
-  unbekanntes Projekt/Loop, kein Trigger oder ungesetztes Secret → einheitlich
-  **401** (kein Existenz-Orakel); es startet nie ein Run. Die Route ist von
-  Origin/`FABRIKANT_TOKEN` ausgenommen (Aufrufer sind Server; HMAC ersetzt sie).
-- **Secret-Handhabung:** Das Spec nennt nur den Env-Namen (`secret_env`), nie den
-  Wert. Pro Loop ein eigenes Secret. Kein Replay-Schutz (Timestamp/Nonce) in
-  diesem Schritt — bewusst ausgeklammert, Folge-Issue falls nötig.
-  *(Nachtrag 2026-11-18: Replay-Schutz ist seit ADR 0058 als opt-in
-  `replay_protection: true` verfügbar; die Ausklammerung gilt nur noch für
-  Trigger ohne das Flag.)*
-- **Payload→Variablen:** `map: {variable: "punkt.pfad"}` (Dict-Keys, Listen-Index).
-  Ungültiges JSON/kein Objekt → 400, fehlendes Feld → 422. Werte sind untrusted
-  (§1.4), Nicht-Strings werden als JSON serialisiert. Body max. 1 MB (413).
-- **Ein Code-Pfad:** Der Start läuft über `FabrikantHandler._start_run` — dieselbe
-  Funktion wie `POST /api/runs` ("Run mit Initial-Variablen starten"); Trigger
-  `on_webhook`, Antwort mit `run_id`, 409 bei belegtem Projekt-Lock.
-- **CORS:** `FABRIKANT_WEBHOOK_ORIGIN` (z. B. `https://hooks.example.com`). Nur auf der
-  Webhook-Route und nur bei exakt gleichem `Origin` wird
-  `Access-Control-Allow-Origin` gesetzt (+ Preflight `OPTIONS`). Nie `*`.
-- **Tunnel-Exposition:** Requests mit `Host` = Tunnel-Host erreichen ausschließlich
-  `/api/webhook/*` (alles andere 404). Der Tunnel muss den Original-Host
-  durchreichen (cloudflared-Default). Ohne `FABRIKANT_WEBHOOK_ORIGIN` gibt es keine
-  Sperre und kein CORS; der Operator darf den Tunnel dann nicht öffnen.
+- **Route:** `POST /api/webhook/<project>/<loop>`; the loop needs an
+  `on_webhook` trigger (`secret_env`, optional `map`).
+- **Auth:** HMAC-SHA256 over the raw body in the header `X-Fabrikant-Signature:
+  sha256=<hex>`, compared via `hmac.compare_digest`. Missing/wrong signature,
+  unknown project/loop, no trigger or unset secret → uniformly
+  **401** (no existence oracle); a run never starts. The route is exempt from
+  Origin/`FABRIKANT_TOKEN` (callers are servers; HMAC replaces them).
+- **Secret handling:** The spec names only the env name (`secret_env`), never the
+  value. A separate secret per loop. No replay protection (timestamp/nonce) in
+  this step — deliberately left out, follow-up issue if needed.
+  *(Addendum 2026-11-18: replay protection is available since ADR 0058 as opt-in
+  `replay_protection: true`; the omission now applies only to
+  triggers without the flag.)*
+- **Payload→variables:** `map: {variable: "dot.path"}` (dict keys, list index).
+  Invalid JSON/not an object → 400, missing field → 422. Values are untrusted
+  (§1.4), non-strings are serialized as JSON. Body max. 1 MB (413).
+- **One code path:** The start goes through `FabrikantHandler._start_run` — the same
+  function as `POST /api/runs` ("start a run with initial variables"); trigger
+  `on_webhook`, response with `run_id`, 409 if the project lock is held.
+- **CORS:** `FABRIKANT_WEBHOOK_ORIGIN` (e.g. `https://hooks.example.com`). Only on the
+  webhook route and only for an exactly equal `Origin` is
+  `Access-Control-Allow-Origin` set (+ preflight `OPTIONS`). Never `*`.
+- **Tunnel exposure:** Requests with `Host` = tunnel host reach only
+  `/api/webhook/*` (everything else 404). The tunnel must pass the original host
+  through (cloudflared default). Without `FABRIKANT_WEBHOOK_ORIGIN` there is no
+  block and no CORS; the operator must then not open the tunnel.
 
-## Konsequenzen
+## Consequences
 
-Webhooks sind erst nach Setzen von Secret und Origin nutzbar. Ein Secret-Leak
-erlaubt Runs für genau diesen Loop (Tier-/Approval-Gates greifen weiter).
+Webhooks are usable only after setting secret and origin. A secret leak
+allows runs for exactly this loop (tier/approval gates still apply).

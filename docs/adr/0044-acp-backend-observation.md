@@ -1,7 +1,7 @@
 # ADR 0044: ACP-Backend (OpenHands via SDK/ACP) — beobachten, nicht adoptieren
 
-**Status:** Akzeptiert (2026-11-13)
-**Bezug:** `docs/framework-v1-draft.md` Phase 3 ("ACP-Backend (wenn Standard)"), `docs/backends.md`.
+**Status:** Akzeptiert (2026-11-13); references fixed 2026-11-26
+**Bezug:** `docs/roadmap.md` Phase 3 ("ACP-Backend (wenn Standard)"), `docs/backends.md`.
 
 ## Kontext
 

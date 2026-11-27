@@ -1,7 +1,7 @@
 # ADR 0058: Webhook-Replay-Schutz (opt-in `replay_protection`)
 
-**Status:** Akzeptiert (2026-11-18)
-**Betrifft:** ADR 0027 (`on_webhook`-Trigger) — erweitert dessen „kein Replay-Schutz“ um einen opt-in Modus
+**Status:** Akzeptiert (2026-11-18); references fixed 2026-11-26
+**Betrifft:** ADR 0027 (`on_webhook`-Trigger) — erweitert dessen „No replay protection“ um einen opt-in Modus
 
 ## Kontext
 

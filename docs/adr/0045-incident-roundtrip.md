@@ -1,7 +1,7 @@
 # ADR 0045: Incident-Roundtrip (Sentry/CloudWatch → Triage → Hotfix-PR)
 
-**Status:** Akzeptiert (2026-11-13)
-**Bezug:** `docs/framework-v1-draft.md` Phase 3 + §4, ADR 0027 (`on_webhook`), ADR 0011 (Approval),
+**Status:** Akzeptiert (2026-11-13); references fixed 2026-11-26
+**Bezug:** `docs/roadmap.md` Phase 3, ADR 0027 (`on_webhook`), ADR 0011 (Approval),
 Issue #33 (`on_slack`), #34 (`on_datadog`).
 
 ## Kontext

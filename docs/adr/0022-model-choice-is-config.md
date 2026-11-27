@@ -1,7 +1,7 @@
 # ADR 0022: Model choice is configuration, not architecture
 
-**Status:** Accepted (2026-10-19)
-**Deciders:** Dominic
+**Status:** Accepted (2026-10-19); personal name replaced by GitHub handle 2026-11-26
+**Deciders:** didaskomathetes
 **Supersedes:** ADR 0001 §3, paragraph 2 (binding of `pr-reply`/`review-pr` to
 concrete models or to `FABRIKANT_AGENT_MODEL`) and the "Model" column of the loop
 table in ADR 0001. The invariant builder ≠ reviewer (ADR 0001 §3, ADR 0003)
