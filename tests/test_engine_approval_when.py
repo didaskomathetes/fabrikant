@@ -67,6 +67,18 @@ def test_condition_met_pauses_and_resume_runs_step(runs_dir, projects_dir, tmp_p
     assert "bedingung: label = close" in log
 
 
+def test_original_claim_key_survives_pause_and_resume(store_backend, projects_dir, tmp_path):
+    from fabrikant import runs
+    from fabrikant.runstore import STORE
+
+    _write_spec(projects_dir, tmp_path, "aw_claim", _STEPS)
+    rec = run_loop("aw_claim", "s", initial_vars={"label": "close", "pr_number": 7})
+    saved = STORE.get_record(rec["id"], "aw_claim")
+    assert saved["vars"][runs.CLAIM_KEY_VAR] == "pr_number=7"
+    rec2 = run_loop("aw_claim", "s", resume_id=rec["id"])
+    assert rec2["vars"][runs.CLAIM_KEY_VAR] == "pr_number=7"
+
+
 def test_condition_not_met_runs_through(runs_dir, projects_dir, tmp_path):
     _write_spec(projects_dir, tmp_path, "aw_through", _STEPS)
     rec = run_loop("aw_through", "s", initial_vars={"label": "ready for development"})

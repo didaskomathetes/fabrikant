@@ -476,6 +476,44 @@ def test_paused_run_blocks_exclusive_group_mates(limit, monkeypatch):
         c.release()
 
 
+def test_paused_and_resumed_run_keep_original_claim_key(limit, monkeypatch):
+    _group_spec(monkeypatch, "originalkey")
+    _paused("originalkey", "reply", {"pr_number": 5, "issue_number": 12}, run_id="r1")
+    path = config.RUNS_DIR / "originalkey" / "r1.json"
+    record = json.loads(path.read_text())
+    record["vars"][runs.CLAIM_KEY_VAR] = "pr_number=5"
+    path.write_text(json.dumps(record))
+    assert runs.claim_run("originalkey", "review", {"pr_number": 5}) is None
+    resumed = runs.claim_run("originalkey", "reply", record["vars"], exclude_run_id="r1")
+    assert resumed is not None
+    assert runs.claim_run("originalkey", "review", {"pr_number": 5}) is None
+    resumed.release()
+
+
+def test_pause_lookup_and_claim_are_atomic(limit, monkeypatch):
+    _group_spec(monkeypatch, "atomicgrp")
+    entered = threading.Event()
+    continue_read = threading.Event()
+    results = []
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert continue_read.wait(5)
+        return set()
+
+    monkeypatch.setattr(runs, "paused_dedupe_keys", paused)
+    first = threading.Thread(target=lambda: results.append(runs.claim_run("atomicgrp", "review", {"pr_number": 5})))
+    first.start()
+    assert entered.wait(5)
+    second = threading.Thread(target=lambda: results.append(runs.claim_run("atomicgrp", "reply", {"pr_number": 5})))
+    second.start()
+    continue_read.set()
+    first.join(5)
+    second.join(5)
+    assert len(results) == 2 and sum(c is not None for c in results) == 1
+    next(c for c in results if c is not None).release()
+
+
 def _group_spec(monkeypatch, project: str) -> None:
     from fabrikant import specs
 
