@@ -19,10 +19,16 @@
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS opencode
 ARG OPENCODE_VERSION=2.2.5
 ARG OPENCODE_SHA256=09f44302c10fd036912f59c81fd1aef5df45dd06f649197f9dfc9bbe2a79614e
+ARG OPENCODE_ARM64_SHA256=5a528f42caf576c6cdece6a191eb273d3db54effa5518e0402684d8f8026aeb6
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && case "$(dpkg --print-architecture)" in \
+        amd64) arch=x64; checksum="${OPENCODE_SHA256}" ;; \
+        arm64) arch=arm64; checksum="${OPENCODE_ARM64_SHA256}" ;; \
+        *) echo "Unsupported OpenCode architecture" >&2; exit 1 ;; \
+    esac \
     && curl -fsSL -o /tmp/opencode.tar.gz \
-        "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
-    && echo "${OPENCODE_SHA256}  /tmp/opencode.tar.gz" | sha256sum -c - \
+        "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${arch}.tar.gz" \
+    && echo "${checksum}  /tmp/opencode.tar.gz" | sha256sum -c - \
     && mkdir /opt/opencode && tar -xzf /tmp/opencode.tar.gz -C /opt/opencode \
     && find /opt/opencode -maxdepth 2 -type f -name opencode -exec install -m 0755 {} /usr/local/bin/opencode \;
 
